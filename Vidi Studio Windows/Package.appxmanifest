@@ -11,7 +11,7 @@
   <Identity
     Name="7b6f5f53-8ba2-429e-a747-0e2393ce9cee"
     Publisher="CN=personal"
-    Version="1.0.0.0" />
+    Version="1.0.1.0" />
 
   <mp:PhoneIdentity PhoneProductId="7b6f5f53-8ba2-429e-a747-0e2393ce9cee" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
@@ -43,10 +43,27 @@
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
+      <Extensions>
+        <uap:Extension Category="windows.shareTarget">
+          <uap:ShareTarget>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.mp4</uap:FileType>
+              <uap:FileType>.mov</uap:FileType>
+              <uap:FileType>.m4v</uap:FileType>
+              <uap:FileType>.mkv</uap:FileType>
+              <uap:FileType>.avi</uap:FileType>
+              <uap:FileType>.webm</uap:FileType>
+            </uap:SupportedFileTypes>
+            <uap:DataFormat>StorageItems</uap:DataFormat>
+            <uap:DataFormat>WebLink</uap:DataFormat>
+          </uap:ShareTarget>
+        </uap:Extension>
+      </Extensions>
     </Application>
   </Applications>
 
   <Capabilities>
+    <Capability Name="internetClient" />
     <rescap:Capability Name="runFullTrust" />
     <systemai:Capability Name="systemAIModels"/>
   </Capabilities>

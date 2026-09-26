@@ -1,0 +1,56 @@
+# Windows migration progress
+
+## 2026-09-26 — 1.0.1 / 1.0.1.0
+
+Reviewed the Mac README, feature map, Swift models, command invocation, and portable engine. Copied the engine and its tests into the Windows project without modifying the Mac checkout. Retained local portable projects and all existing processing/export command implementations.
+
+Added WinUI models/view model, engine/settings/speech services, native library/editor/settings/export controls, local and YouTube playback adapters, segment edits and range regeneration, OCR, narration, summary readback, generated-content controls, and export actions. Added an isolated .NET speech host supporting Windows Core and SAPI 5 voices, including an alternate architecture host path for legacy voices.
+
+Validation completed:
+
+- ARM64 Debug WinUI build passed using Visual Studio MSBuild.
+- x64 Debug WinUI build passed using Visual Studio MSBuild.
+- Self-contained ARM64 and x64 speech helpers published successfully.
+- Actual ARM64 host discovery returned three Windows Core voices and two SAPI desktop voices.
+- Python suite: 94 tests passed in 35.397 seconds. Includes actual WAV synthesis through Core and SAPI, FFmpeg video import/export, caption streams/rendering, HDR and HLS behavior, histories, storage safety, and mocked AI integration.
+- Initial Core voice enumeration failed under the restricted sandbox but succeeded with normal user speech-service access. This was an execution-environment restriction, not a missing voice fallback.
+
+Native UI validation subsequently passed on ARM64 and on x64 under Windows ARM emulation. The harness opens all six editor views, switches library layouts and panels, navigates every settings section including repeated voice selection, opens export options, and invokes the engine doctor. It renders the gallery, transcript editor, descriptions, and appearance settings for visual inspection. Hardware video surfaces are not captured by RenderTargetBitmap.
+
+Adapted the UI to the supplied Mac screenshots: gallery cards, compact preview and labeled timeline tracks, a contextual right inspector, timestamped rows with origin/readiness labels, a narration overview, formatted summaries, and grouped caption appearance controls. Fixed DPI clipping, settings control reparenting, window cleanup, stale thumbnail refresh, and JSON origin preservation. A smoke assertion checks that AI origins survive project loading.
+
+Core word highlighting, live on-device narration, preview captions, native menus/context menus, multiple project windows, and Share target handlers are implemented. Actual Windows Share activation, third-party SAPI engines, live Gemini/YouTube, listening checks, screen-reader behavior, and signed package installation remain unverified. Full parity remains active; see docs/FEATURE_PARITY.md.
+
+Final Release compilation passed for both ARM64 and x64 with package signing disabled. This validates compilation, not signed MSIX installation.
+
+Playback follow-up: preview dialogue and AD now render in separate caption boxes using their respective configured colors. ARM64 native checks verify dialogue timing, AD timing/color, and expiration. Cue transitions clear prior narration sources so a cue without generated audio cannot continue the previous cue's recording. These changes were compiled and exercised by the ARM64 UI harness; listening validation remains outstanding.
+
+Native workflow validation now passes for ARM64 and x64 (x64 runs under ARM emulation): save an edited AI description, verify ai_modified provenance, undo and redo through the engine, synthesize narration with Windows Core then SAPI 5, export combined SRT, and confirm its text matches the edited cue. Both runs also include caption timing/style assertions and the existing view/settings checks. These use an isolated synthetic project, not the user library.
+
+Distribution validation: setup-windows.ps1 -FreezeEngine -LegacySapiHosts completed, publishing ARM64/x64/x86 speech hosts and a standalone x64 Python engine. The ARM64 UI workflow passed with -FrozenEngine and an intentionally nonexistent external Python path. This exposed and fixed locale-dependent JSON reads: configuration, projects, and edit payloads now explicitly use UTF-8. The fixture includes Hindi text. The x86 SAPI helper enumerated two Microsoft desktop voices and produced a valid PCM 22050 Hz WAV. Third-party voice engines remain unverified. The first frozen build emitted PRI qualifier warnings for Python extension filenames; runtime validation passed, but signed MSIX packaging remains to be checked.
+
+Settings lifecycle follow-up: installed-voice discovery now cancels earlier requests, rejects stale provider results, and stops when the dialog closes. Model discovery is tied to dialog lifetime, and cancelled samples cannot start playback after closing. ARM64 frozen-engine workflow passed with a rapid SAPI/Core/Gemini switching assertion in addition to edits, narration, and export checks.
+
+Unsigned ARM64 and x64 MSIX generation succeeded. Package inspection verifies the manifest architecture, matching UI and speech executable PE types, bundled engine/runtime/defaults, and YouTube asset. Added script/verify-windows-package.py and build-windows.ps1 -Package. Packages were not signed or installed. PRI249 warnings for Python extension filenames and missing mspdbcmf.exe symbol-package tooling remain; these did not prevent either MSIX from building.
+
+Project lifecycle follow-up: gallery navigation now pauses the YouTube player as well as native video and narration. Project deletion releases playback sources and clears the editor, inspector, timeline, captions, and summary before returning to the gallery. ARM64 frozen-engine workflow passed with an assertion that ClearProject leaves no active project, playback source, or inspector details. Actual YouTube playback remains pending a live test URL.
+
+YouTube parity follow-up: bridge polling now returns duration and title, and the native editor persists player duration changes through update-metadata, matching Mac behavior for URL imports without initial duration. Poll completion ignores a project that was replaced or closed. ARM64 frozen-engine regression passed; node tests/test_youtube_bridge.cjs verifies bridge metadata and controls with a stub player. Live YouTube playback is still unverified.
+
+Summary playback follow-up: readback requests serialize access to their MediaPlayer so cancellation/cleanup from an old request cannot clear the next request's source. ARM64 native workflow passes with immediate replacement, pause/resume, and cancellation. Accessibility export review confirms portable track titles and HLS attributes in the engine, but the Mac AVFoundation tagged-characteristic MOV postprocessing has no Windows equivalent implemented yet.
+
+MOV metadata gap addressed: implemented the Apple-documented ASCII tagc user-data atoms for described audio and dialogue subtitles, with audio/subtitle alternate groups. Writer modifies only temporary exports, preserves chunk/media offsets, rejects malformed or fragmented headers, and is idempotent. All 97 engine tests passed (37.252 seconds), including real media exports. Rebuilt frozen engine and exported an actual two-audio-track MOV with captions; independently parsed correct per-track characteristics. Earlier notes that this writer was unimplemented are superseded. Apple-player recognition remains unverified.
+
+Synchronized native playback validation passes for both ARM64 and x64 using the bundled engine: start real video inside an AD cue, check narration offset within 0.5 seconds, pause both, then seek past the cue and verify narration is inactive. Media is muted during this test; it verifies player state/timing, not perceived audio quality. Both full native regression runs also pass the latest settings, close-state, summary-cancellation, edit, and export checks.
+
+ARM64 native workflow now also passes project rename/search filtering and opening a second editor with independent view selection. The debug harness runs once per process to permit child-window validation. Added docs/ACCEPTANCE.md with concrete remaining live, installation, listening, screen-reader, and Apple-player checks. Read-only environment check found no user Gemini settings/key and no installed package for this app identity.
+
+Packaged startup verified: normal-user queries revealed the existing 1.0.0.0 Visual Studio development registration and required Windows App Runtime; the earlier sandbox-only no-package observation was incomplete. Updated that development registration to ARM64 1.0.1.0 using existing Developer Mode, without certificate changes. Activated through IApplicationActivationManager, verified GetPackageFullName returned the expected app identity, and passed the full native workflow. Direct executable launch correctly failed the identity requirement. Added DEBUG-only activation payload support and test-windows-ui.ps1 -AppDirectory/-RequirePackage. Signed MSIX installation and actual Share-target dispatch remain unverified. Gemini key absence was rechecked with normal user access and confirmed.
+
+Accessibility implementation review: project menus now use WinUI ContextRequested rather than mouse-only RightTapped, supporting keyboard context requests with focused/selected-project fallback. Segment seek/preview names include timing and text, artifact status icons have accessible names, and unavailable narration previews are disabled. Screen-reader/physical-keyboard acceptance remains to be performed.
+
+Navigation and appearance follow-up: the All Projects page now presents only File, View, and Help menus, while project editor windows present File, View, Analysis, Segments, Playback, and Help. Appearance selection previews immediately, Save persists it, Cancel restores the saved choice, and the native title bar follows the resolved light/dark theme. Removed a fixed Settings background brush that could remain light. ARM64 native regression verifies both menu sets, resolved themes, and darker/lighter rendered page backgrounds; ARM64 and x64 Debug builds pass.
+
+Final offline audit (2026-09-26): rebuilt current ARM64 and x64 Release unsigned MSIX packages. Both pass architecture/content inspection, now including the MOV accessibility writer. The updated x64 frozen-engine native workflow passes, including the latest accessibility changes. Existing PRI qualifier and missing symbol-tool warnings remain. Documentation now records development activation and rename/search/multiple-window evidence accurately. Live Gemini credentials are still absent; live-service and external acceptance checks in docs/ACCEPTANCE.md remain prerequisites for declaring full parity. No complete-parity claim is made.
+
+User-reported Debug ARM64 CS0123 reproduced: four stale MainWindow.g.cs bindings still used RightTapped while source XAML used ContextRequested. Removed only the generated obj/ARM64/Debug cache and rebuilt successfully. Verified all four regenerated bindings and passed registered-package activation plus the isolated native workflow. Added README troubleshooting; no handler workaround or generated-source edit was needed.

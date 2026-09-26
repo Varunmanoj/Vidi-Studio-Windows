@@ -1,0 +1,36 @@
+using System;
+using System.IO;
+using System.Text.Json.Nodes;
+
+namespace Vidi_Studio_Windows.Services;
+
+public sealed class SettingsStore
+{
+    public static string DirectoryPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VidiStudio");
+    public static string ConfigPath => Environment.GetEnvironmentVariable("VIDISTUDIO_CONFIG") ?? Path.Combine(DirectoryPath, "config.json");
+    public JsonObject Data { get; private set; }
+    public SettingsStore()
+    {
+        var defaultsPath = Path.Combine(AppContext.BaseDirectory, "engine", "ai-defaults.json");
+        Data = File.Exists(defaultsPath) ? JsonNode.Parse(File.ReadAllText(defaultsPath))!.AsObject() : new();
+        if (File.Exists(ConfigPath)) Merge(Data, JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject());
+        if (Data["ttsMode"] == null || Get("ttsMode") == "system") Set("ttsMode", "windows-core");
+        if (Data["libraryPath"] == null) Set("libraryPath", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VidiStudio Projects"));
+    }
+    private static void Merge(JsonObject target, JsonObject source)
+    {
+        foreach (var item in source)
+            if (item.Value is JsonObject child && target[item.Key] is JsonObject existing) Merge(existing, child);
+            else target[item.Key] = item.Value?.DeepClone();
+    }
+    public string Get(string key, string fallback = "") => Data[key]?.GetValue<string>() ?? fallback;
+    public void Set(string key, string value) => Data[key] = value;
+    public double Number(string key, double fallback = 1) => Data[key]?.GetValue<double>() ?? fallback;
+    public void Save()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        var temporary = ConfigPath + "." + Guid.NewGuid() + ".tmp";
+        try { File.WriteAllText(temporary, Data.ToJsonString(Models.Json.Options)); File.Move(temporary, ConfigPath, true); }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+}

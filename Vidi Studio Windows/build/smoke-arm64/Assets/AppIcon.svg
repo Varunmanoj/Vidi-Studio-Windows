@@ -1,0 +1,36 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<linearGradient id="camGrad" x1="100" y1="100" x2="400" y2="400" gradientUnits="userSpaceOnUse">
+<stop offset="0%" stop-color="#4F46E5"/>
+<stop offset="100%" stop-color="#3730A3"/>
+</linearGradient>
+<linearGradient id="headphoneGrad" x1="0" y1="0" x2="512" y2="0" gradientUnits="userSpaceOnUse">
+<stop offset="0%" stop-color="#3B82F6"/>
+<stop offset="50%" stop-color="#F59E0B"/>
+<stop offset="100%" stop-color="#EF4444"/>
+</linearGradient>
+<linearGradient id="starGrad" x1="400" y1="50" x2="480" y2="130" gradientUnits="userSpaceOnUse">
+<stop offset="0%" stop-color="#3B82F6"/>
+<stop offset="50%" stop-color="#EC4899"/>
+<stop offset="100%" stop-color="#EAB308"/>
+</linearGradient>
+<linearGradient id="speakerGrad" x1="310" y1="410" x2="430" y2="410" gradientUnits="userSpaceOnUse">
+<stop offset="0%" stop-color="#3B82F6"/>
+<stop offset="50%" stop-color="#F59E0B"/>
+<stop offset="100%" stop-color="#EF4444"/>
+</linearGradient>
+</defs>
+<path d="M100 256C100 169.8 169.8 100 256 100C342.2 100 412 169.8 412 256V350C412 372 394 390 372 390H356V280H392V256C392 180.9 331.1 120 256 120C180.9 120 120 180.9 120 256V280H156V390H140C118 390 100 372 100 350V256Z" fill="url(#headphoneGrad)" opacity="0.9"/>
+<path d="M180 200H300C311 200 320 209 320 220V320C320 331 311 340 300 340H180C169 340 160 331 160 320V220C160 209 169 200 180 200Z" fill="url(#camGrad)"/>
+<path d="M330 240L380 210V330L330 300V240Z" fill="url(#camGrad)"/>
+<circle cx="210" cy="180" r="25" stroke="#4F46E5" stroke-width="8" fill="none"/>
+<circle cx="270" cy="170" r="20" stroke="#4F46E5" stroke-width="8" fill="none"/>
+<line x1="140" y1="380" x2="400" y2="120" stroke="#EF4444" stroke-width="24" stroke-linecap="round"/>
+<rect x="90" y="380" width="100" height="12" rx="6" fill="#3B82F6"/>
+<rect x="90" y="405" width="70" height="12" rx="6" fill="#F59E0B"/>
+<rect x="130" y="430" width="50" height="12" rx="6" fill="#3B82F6"/>
+<path d="M330 390V430L360 450V370L330 390H310V430H330Z" fill="url(#speakerGrad)"/>
+<path d="M380 380C395 390 395 430 380 440" stroke="url(#speakerGrad)" stroke-width="6" stroke-linecap="round" fill="none"/>
+<path d="M400 365C425 380 425 440 400 455" stroke="url(#speakerGrad)" stroke-width="6" stroke-linecap="round" fill="none"/>
+<path d="M440 60 L450 90 L480 100 L450 110 L440 140 L430 110 L400 100 L430 90 Z" fill="url(#starGrad)"/>
+</svg>

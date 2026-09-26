@@ -1,0 +1,9 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body,#player{width:100%;height:100%;margin:0;background:#000}</style></head><body><div id="player"></div><script>
+const id=new URLSearchParams(location.search).get('id');let player;
+function onYouTubeIframeAPIReady(){if(!/^[A-Za-z0-9_-]{11}$/.test(id))return;player=new YT.Player('player',{videoId:id,playerVars:{origin:location.origin,playsinline:1}})}
+window.vidiState=()=>({time:player?.getCurrentTime?.()||0,playing:player?.getPlayerState?.()===1,duration:player?.getDuration?.()||0,title:player?.getVideoData?.()?.title||""});
+window.vidiSeek=t=>player?.seekTo?.(t,true);
+window.vidiPlay=()=>player?.playVideo?.();
+window.vidiPause=()=>player?.pauseVideo?.();
+window.vidiToggle=()=>player?.getPlayerState?.()===1?player.pauseVideo():player?.playVideo?.();
+</script><script src="https://www.youtube.com/iframe_api"></script></body></html>

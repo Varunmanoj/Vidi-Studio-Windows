@@ -1,0 +1,207 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using System;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Vidi_Studio_Windows.Models;
+using Windows.System;
+
+namespace Vidi_Studio_Windows;
+
+public sealed partial class MainWindow
+{
+    private bool editMode;
+    private bool galleryReady;
+    private void InitializePresentation()
+    {
+        Model.Projects.CollectionChanged += (_, _) => RefreshGalleryCount();
+        Root.Loaded += (_, _) => { galleryReady = true; RefreshGalleryCount(); };
+    }
+    private void RefreshGalleryCount()
+    {
+        if (ProjectCount == null) return;
+        ProjectCount.Text = $"{Model.Projects.Count} projects";
+        GalleryEmpty.Visibility = Model.Projects.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private void ShowGallery_Click(object sender, RoutedEventArgs e)
+    {
+        StopProjectPlayback();
+        GalleryPanel.Visibility = Visibility.Visible; EditorWorkspace.Visibility = Visibility.Collapsed;
+        UpdateMenuBar(false);
+        ProjectTitle.Text = "All Projects"; Title = "All Projects — Vidi Studio";
+        TopOpenFolderButton.Visibility = TopInspectorToggle.Visibility = Visibility.Collapsed;
+        GalleryImport.Visibility = Visibility.Visible;
+        Model.Reload(); RefreshGalleryCount();
+    }
+    private void StopProjectPlayback()
+    {
+        video.Pause(); speech.Pause(); narrationPlayer.Pause(); onDeviceNarrator.Stop(); readback.Stop();
+        activeCue = null;
+        _ = PauseYouTubeAsync();
+        UpdatePlaybackControls();
+    }
+    private async Task PauseYouTubeAsync()
+    {
+        youtubePlaying = false;
+        UpdatePlaybackControls();
+        if (YouTubePlayer.CoreWebView2 == null) return;
+        try { await YouTubePlayer.ExecuteScriptAsync("window.vidiPause?.()"); }
+        catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
+    }
+    private void ClearProject()
+    {
+        StopProjectPlayback();
+        video.Source = speech.Source = narrationPlayer.Source = null;
+        foreach (var active in activeSegmentRows) active.IsActive = false;
+        activeSegmentRows.Clear();
+        Model.Project = null; loadedProject = null; highlightedSegment = null;
+        Segments.ItemsSource = null; ExportList.ItemsSource = null;
+        ClearSummaryHighlight(); SummaryRichText.Children.Clear(); summaryLines.Clear(); ReadbackSentence.Text = "";
+        ProjectDetails.Children.Clear(); VideoDetails.Children.Clear(); InspectorExports.Children.Clear();
+        Thumbnails.Children.Clear(); TranscriptTrack.Children.Clear(); DescriptionTrack.Children.Clear();
+        CaptionText.Text = DescriptionCaptionText.Text = ""; CaptionOverlay.Visibility = Visibility.Collapsed;
+        ShowGallery_Click(this, new RoutedEventArgs());
+    }
+    private void ShowEditor()
+    {
+        GalleryPanel.Visibility = Visibility.Collapsed; EditorWorkspace.Visibility = Visibility.Visible;
+        UpdateMenuBar(true);
+        TopOpenFolderButton.Visibility = TopInspectorToggle.Visibility = Visibility.Visible;
+        GalleryImport.Visibility = Visibility.Collapsed;
+        Title = (Model.Project?.Name ?? "Project") + " — Vidi Studio";
+    }
+    private void GalleryFilter_Changed(object sender, SelectionChangedEventArgs e) { if (galleryReady) FilterGallery(); }
+    private void GallerySearch_Changed(object sender, TextChangedEventArgs e) { if (galleryReady) FilterGallery(); }
+    private void FilterGallery() => Model.Reload(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", _ => "all" });
+    private void GalleryLayout_Click(object sender, RoutedEventArgs e)
+    {
+        var list = GalleryGrid.Visibility == Visibility.Visible;
+        GalleryGrid.Visibility = list ? Visibility.Collapsed : Visibility.Visible;
+        GalleryTable.Visibility = list ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private void GalleryProject_Click(object sender, ItemClickEventArgs e) { if (e.ClickedItem is StudioProject p) App.OpenWindow(p.Folder); }
+    private async void NewProject_Click(object sender, RoutedEventArgs e) => await ShowNewProjectDialogAsync(false);
+    private void GenerateCurrent_Click(object sender, RoutedEventArgs e)
+    {
+        var command = Section.SelectedIndex switch { 0 => "transcribe", 1 => "generate-summary", 2 => "generate-ad-cues", _ => "synthesize-tts" };
+        Command_Click(new Button { Tag = command }, e);
+    }
+    private void EditMode_Click(object sender, RoutedEventArgs e)
+    {
+        editMode = !editMode; EditModeButton.Content = editMode ? "Done" : "Edit";
+        EditToolbar.Visibility = editMode ? Visibility.Visible : Visibility.Collapsed;
+        Segments.SelectionMode = editMode ? ListViewSelectionMode.Multiple : ListViewSelectionMode.None;
+    }
+    private void SegmentSeek_Click(object sender, RoutedEventArgs e) { if (((FrameworkElement)sender).Tag is Segment segment) Seek(segment.Start); }
+    private void SegmentPreview_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).Tag is not Segment segment || Model.Project is not { } p) return;
+        if (segment.AudioReady && segment.Audio != null) { speech.Source = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(p.Resolve(segment.Audio))); speech.Play(); }
+    }
+    private void UpdateSectionPresentation()
+    {
+        if (Model.Project is not { } p) return;
+        var index = Section.SelectedIndex;
+        foreach (var segment in p.Transcript.Concat(p.Cues)) segment.ShowKind = index == 4;
+        // Reset the source so row templates see the combined-view labels.
+        var name = index switch { 0 => "Transcript", 1 => "Summary", 2 => "Audio Descriptions", 3 => "Narration", 4 => "AD Transcript", _ => "Created Exports" };
+        var existing = index switch { 0 => p.Transcript.Count > 0, 1 => p.Summary.Length > 0, 2 => p.Cues.Count > 0, _ => false };
+        GenerateCurrent.Content = InspectorGenerate.Content = (existing ? "Regenerate " : "Generate ") + name + "…";
+        GenerateCurrent.Visibility = InspectorGenerate.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
+        InspectorSectionTitle.Text = name;
+        NarrationActions.Visibility = index is 2 or 3 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        Narration.Visibility = index is 2 or 3 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        Follow.Visibility = index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        EditModeButton.Visibility = index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        EditToolbar.Visibility = editMode && index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        OverviewPanel.Visibility = index == 3 ? Visibility.Visible : Visibility.Collapsed;
+        OverviewStatistics.Children.Clear(); OriginStatistics.Children.Clear();
+        AddInfo(OverviewStatistics, "Description segments", p.Cues.Count.ToString());
+        AddInfo(OverviewStatistics, "Narration audio ready", p.Cues.Count(c => c.AudioReady).ToString());
+        AddInfo(OverviewStatistics, "Audio needs updating", p.Cues.Count(c => c.Audio != null && c.AudioText != c.Text).ToString());
+        AddInfo(OverviewStatistics, "Audio missing", p.Cues.Count(c => !c.AudioReady && (c.Audio == null || c.AudioText == c.Text)).ToString());
+        AddInfo(OverviewStatistics, "Description time", TimeSpan.FromSeconds(p.Cues.Sum(c => c.End - c.Start)).ToString(@"mm\:ss"));
+        AddInfo(OverviewStatistics, "Spoken transcript segments", p.Transcript.Count.ToString());
+        foreach (var origin in new[] { ("ai", "AI-generated"), ("ai_modified", "AI-generated · modified"), ("manual", "Manually added"), ("unknown", "Origin unknown") })
+            AddInfo(OriginStatistics, origin.Item2, p.Cues.Count(c => c.Origin == origin.Item1).ToString());
+        OriginStatistics.Children.Add(new TextBlock { Text = "AI-generated and modified segments are counted separately. Manual descriptions stay manual when edited.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
+        OverviewVoice.Text = "Speech engine: " + Model.Settings.Get("ttsMode", "windows-core") + "\nVoice: " + (Model.Settings.Get("ttsMode") == "gemini" ? Model.Settings.Get("geminiVoice", "Kore") : string.IsNullOrEmpty(Model.Settings.Get("systemVoice")) ? "System default" : Model.Settings.Get("systemVoice").Split('\\').Last());
+    }
+    private static void AddInfo(StackPanel panel, string label, string value)
+    {
+        var row = new Grid { ColumnSpacing = 10 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.Children.Add(new TextBlock { Text = label, FontSize = 12 });
+        var text = new TextBlock { Text = value, TextTrimming = TextTrimming.CharacterEllipsis, HorizontalAlignment = HorizontalAlignment.Right, FontSize = 12, Opacity = .65 };
+        ToolTipService.SetToolTip(text, value); Grid.SetColumn(text, 1); row.Children.Add(text); panel.Children.Add(row);
+    }
+    private async void UpdateInspector(StudioProject p)
+    {
+        ProjectDetails.Children.Clear(); VideoDetails.Children.Clear(); InspectorExports.Children.Clear();
+        AddInfo(ProjectDetails, "Name", p.Name); AddInfo(ProjectDetails, "Type", p.IsYouTube ? "YouTube" : "Local Video");
+        AddInfo(ProjectDetails, "Folder", p.Folder);
+        AddInfo(VideoDetails, "Source", p.IsYouTube ? p.YoutubeURL ?? "" : Path.GetFileName(p.Source));
+        AddInfo(VideoDetails, "Duration", TimeSpan.FromSeconds(p.Duration).ToString(@"hh\:mm\:ss"));
+        AddInfo(VideoDetails, "Resolution", $"{p.Width} × {p.Height}");
+        try
+        {
+            var probe = p.Resolve("metadata/probe.json");
+            if (File.Exists(probe))
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(probe));
+                string Value(JsonElement node, string key) => node.TryGetProperty(key, out var v) ? v.ToString() : "Not reported";
+                if (doc.RootElement.TryGetProperty("streams", out var streams))
+                    foreach (var stream in streams.EnumerateArray())
+                    {
+                        if (Value(stream, "codec_type") == "video")
+                        {
+                            AddInfo(VideoDetails, "Video", Value(stream, "codec_long_name")); AddInfo(VideoDetails, "Frame rate", Value(stream, "avg_frame_rate"));
+                            AddInfo(VideoDetails, "Color / HDR", Value(stream, "color_transfer") + ", " + Value(stream, "pix_fmt"));
+                        }
+                        else if (Value(stream, "codec_type") == "audio") AddInfo(VideoDetails, "Audio", Value(stream, "codec_name") + ", " + Value(stream, "channels") + " channels");
+                    }
+                if (doc.RootElement.TryGetProperty("format", out var format)) { AddInfo(VideoDetails, "Container", Value(format, "format_long_name")); if (long.TryParse(Value(format, "size"), out var size)) AddInfo(VideoDetails, "Source size", $"{size / 1048576d:F1} MB"); }
+            }
+            foreach (var relative in p.Exports)
+            {
+                var row = new Grid { ColumnSpacing = 6 };
+                row.ColumnDefinitions.Add(new ColumnDefinition());
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var button = new Button { Content = Path.GetFileName(relative), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left };
+                ToolTipService.SetToolTip(button, relative);
+                button.Click += async (_, _) => { var path = p.Resolve(relative); if (Directory.Exists(path)) await Launcher.LaunchFolderPathAsync(path); else if (File.Exists(path)) await Launcher.LaunchFileAsync(await Windows.Storage.StorageFile.GetFileFromPathAsync(path)); };
+                row.Children.Add(button);
+                var info = new Button { Content = "\uE946", FontFamily = new FontFamily("Segoe Fluent Icons"), Tag = relative };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(info, "Export information for " + Path.GetFileName(relative));
+                ToolTipService.SetToolTip(info, "Export information");
+                info.Click += ExportInfo_Click;
+                Grid.SetColumn(info, 1);
+                row.Children.Add(info);
+                InspectorExports.Children.Add(row);
+            }
+            UpdateAvailability();
+            var bytes = await Task.Run(() => Directory.EnumerateFiles(p.Folder, "*", SearchOption.AllDirectories).Sum(file => new FileInfo(file).Length));
+            if (ReferenceEquals(Model.Project, p)) AddInfo(ProjectDetails, "Project size", $"{bytes / 1048576d:F1} MB");
+        }
+        catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
+    }
+    private void UpdateAvailability()
+    {
+        if (Model.Project is not { } p) return;
+        if (p.IsYouTube) { AnalysisAvailability.Text = "YouTube is accessed through its public link."; return; }
+        if (p.Extra?.TryGetValue("geminiVideo", out var state) == true && state.ValueKind == JsonValueKind.Object)
+        {
+            var label = state.TryGetProperty("state", out var name) ? name.GetString() : "Not checked";
+            if (state.TryGetProperty("expiresAt", out var expiry) && expiry.TryGetDouble(out var seconds))
+            {
+                var remaining = TimeSpan.FromSeconds(Math.Max(0, seconds - DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
+                label += $" · {remaining.Days}d {remaining.Hours}h {remaining.Minutes}m {remaining.Seconds}s remaining";
+            }
+            AnalysisAvailability.Text = label;
+        }
+        else AnalysisAvailability.Text = "Not prepared for video analysis.";
+    }
+}

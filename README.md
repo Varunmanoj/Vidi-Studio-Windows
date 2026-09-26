@@ -1,1 +1,76 @@
-# Vidi Studio Windows
+# Vidi Studio for Windows
+
+Native WinUI 3 / .NET 8 front end for the VidiStudio portable media engine. The Windows application targets **ARM64 and x64**. Project folders remain compatible with the macOS engine. The Mac checkout has not been modified.
+
+## Build and run in Visual Studio on Windows ARM64
+
+1. Install Visual Studio with WinUI application development support, .NET desktop tools, and the Windows SDK. This project retains the template's Microsoft.WindowsAppSDK 2.5.1 and SDK BuildTools 10.0.28000.2705 references. NuGet restore needs network access.
+2. Install Python 3.11 or later. FFmpeg and FFprobe can use your existing Winget installation. Restart Visual Studio after installing tools so its PATH is refreshed.
+3. Open PowerShell in this repository and run:
+
+   ```powershell
+   .\script\setup-windows.ps1 -Platform ARM64 -Python 'C:\path\to\python.exe'
+   ```
+
+   This creates `.venv-windows`, installs the Google GenAI SDK, and publishes a self-contained ARM64 speech helper to `runtime/speech/ARM64`. The script does not install FFmpeg or change system speech registrations.
+4. Open `Vidi Studio Windows.slnx` in Visual Studio. Select **Debug / ARM64**, set **Vidi Studio Windows** as the startup project, and start **Vidi Studio Windows (Package)**. Use Visual Studio's development signing/deployment settings when prompted. Enable Windows Developer Mode for local packaged development if required by Visual Studio.
+5. In **Settings → Storage and tools**, set **Python executable** to the full path of `.venv-windows\Scripts\python.exe` in this repository. FFmpeg and FFprobe use PATH by default; if needed, use the **Browse…** button beside each path to select its `.exe`. Save, then reopen Settings and run the engine check.
+6. In **Settings → Narration**, choose **Windows OneCore voices**, **SAPI 5 voices**, or **Gemini voices**. The voice dropdown follows the selected speech engine; refresh installed voices and adjust rate, pitch, and volume with sliders. Play a sample with the Play button, which becomes Pause during playback and Resume when paused; Stop cancels generation or resets playback. OneCore samples use Windows speech directly in the app; SAPI 5 samples use the selected local SAPI host. SAPI sample and live playback apply rate and volume; pitch is applied when generating saved narration. Gemini requires your personal API key. In **Settings → Gemini API**, load the model catalog, then choose models from dropdowns for local and YouTube jobs or use the latest available choices. Google controls which models and voices are available to each key.
+7. Import a video, or open an existing folder containing `project.json`. Existing projects are edited in place, so use a copy if you want to compare platforms independently.
+
+For x64, rerun setup with `-Platform x64`, then select **x64** in Visual Studio. A command-line build is also available:
+
+```powershell
+.\script\build-windows.ps1 -Platform ARM64
+.\script\build-windows.ps1 -Platform x64 -Configuration Release
+```
+
+## Engine distribution and CPU architecture
+
+The WinUI process and default speech helper use the selected platform. Python and FFmpeg are separate processes: x64 builds can run under Windows ARM64 emulation without loading x64 DLLs into the ARM64 UI. For an entirely native ARM64 distribution, use ARM64 Python and ARM64 media tools and verify dependency wheels on that machine.
+
+For a frozen Python engine, run setup with `-FreezeEngine`. The engine is built using the architecture of the Python executable supplied, then copied into `runtime/engine`. Build the WinUI app after setup so the engine and speech helper files are included. Frozen builds take precedence over source Python in the app. Validate this mode with `.\script\test-windows-ui.ps1 -Platform ARM64 -FrozenEngine`; the test deliberately disables the external Python path. Do not mix stale frozen engine files with newer engine source.
+
+Legacy third-party SAPI voices may be registered only for x86 or x64. Run setup with `-LegacySapiHosts` and select the matching `runtime/speech/x86/VidiStudio.SpeechHost.exe` or x64 helper in Narration settings. Keep the helper's entire directory together. The application itself remains ARM64 or x64. Voices are never copied between registry views or silently substituted.
+
+## Workflow
+
+- Library: **New Project** offers Video File and YouTube Video sources in one light/dark-aware dialog. Choose a local file to preview it and inspect FFprobe duration, resolution, frame rate, codecs, and size before creating the project. For a public YouTube URL, select **Fetch Details** to review its title, channel, and thumbnail; Create stays disabled until details load. The engine checks Gemini availability when the YouTube project is created. All Projects switches between cards and a table with name, duration, AD segment count, transcript, summary, narration, video exports, and audio exports. Open portable project folders, search/filter, rename, or move a project to the Recycle Bin.
+- Analyze: complete analysis or individual transcript, summary, and description generation. Gemini preparation and availability checks use the original engine.
+- Editor: Transcript, Summary, Descriptions, AD Overview, combined AD Transcript, and Created Exports. Click or drag across the timeline tracks to seek and begin playback, or drag the position slider; a red triangle marks the playhead above the tracks. The transport has one button that changes between Play and Pause, with the Playback menu reflecting the same state. Transcript, Descriptions, and AD Transcript scroll to and highlight the active row when **Follow** is enabled. The top-right **Open folder** button reveals the current project in File Explorer. Add/edit/select/delete rows, undo/redo, re-analyze a selected range, extract frame text, or rewrite an AD cue to fit.
+- Narration: generate all, changed, or selected narration; preview a cue; select Core, SAPI 5, or Gemini voices. Generated narration is synchronized with video playback. Summary readback uses one Play/Pause/Resume button plus Stop, in both the Summary view and Playback menu. The Summary view keeps those controls visible while its text scrolls. The spoken sentence and word are highlighted in the summary itself; their colors and visibility are set under **Settings → Appearance**. OneCore supplies exact word boundaries when available; SAPI and Gemini use playback-position estimates.
+- Export: The two-column dialog has icon sections for Video, Audio, Text, and Web Playback, with centered Save and Cancel buttons. Video offers original, selectable, or mixed Audio Description soundtracks with no, closed, open, or dual caption tracks; an unchanged original-video copy is available when neither descriptions nor captions are selected. Audio offers original/described MP3 or narration-only M4A. Text offers SRT, VTT, TXT, and JSON for transcript, descriptions, or AD Transcript, plus Markdown for summaries. Web Playback creates an HLS folder. YouTube URL projects offer text and narration-only audio, matching engine availability. Exports stay inside the project and can be opened or deleted from Created Exports. Repeating an identical export requires removing the old export first; narration-dependent exports require current narration audio.
+
+Ctrl+N opens New Project; Ctrl+Shift+O opens a project folder; Ctrl+Shift+E exports; Ctrl+Shift+Space toggles playback; Ctrl+1 through Ctrl+5 choose editor sections. Native controls provide keyboard focus and accessible names.
+
+## Storage and credentials
+
+Project JSON and referenced media are portable. The engine is the sole writer of project data; it retains path confinement, OS locks, atomic JSON replacement, edit validation, bounded history, and generated-file cleanup.
+
+User settings live in `%APPDATA%\VidiStudio\config.json`, outside projects. As in the Mac application, the API key is stored in local plaintext in the user profile. Do not distribute that file. Keys are not passed on process command lines and are redacted from diagnostics. Diagnostic details go to `%APPDATA%\VidiStudio\diagnostics.log`.
+
+Settings opens as a native window with standard minimize and close controls and follows the selected light, dark, or system appearance. The overview's **Voice and Narration Settings** button opens Narration; the Help menu opens the separate Help and About sections directly. If Settings is already open, those entry points switch its page and bring that window forward. **Help** lists Windows keyboard shortcuts; **About** reads the app version from package metadata and reports the configured FFmpeg build's version and license flags. FFmpeg is supplied by the user's installation, not bundled by this repository. The detected license depends on that build's configuration; see [FFmpeg's licensing page](https://ffmpeg.org/legal.html).
+
+Cancelling processing terminates the engine process tree. Completed stages remain saved; Windows process termination can leave temporary work files until project cleanup. Do not manually delete source files or change a project while it is processing.
+
+## Verification and status
+
+Both ARM64 and x64 WinUI builds and native smoke tests have passed. The smoke test covers Settings button and menu routing, OneCore and SAPI 5 sample playback, appearance changes, the gallery/editor, timeline position, Transcript and AD Transcript synchronization, summary highlight colors and readback controls, local-video inspection, YouTube preview gating, saved narration, and all four export sections. On the development Windows ARM64 system, **100 engine tests passed**, including actual Core and SAPI WAV generation and real FFmpeg import/export, HLS, caption, and HDR tests. Live Gemini model/voice listings and a live YouTube preview still require external accounts or network access and have not been checked against a live account in the smoke test.
+
+Run `.\script\test-windows-ui.ps1 -Platform ARM64` (or `x64`) to rebuild and check the native views, persisted edits, undo/redo, Core/SAPI narration, caption timing, synchronized playback pause/seek, and combined subtitle export against an isolated synthetic project. It saves screen renders and a report under `build/ui-test-<platform>` without changing your library.
+
+The full port remains in progress. See [feature parity](docs/FEATURE_PARITY.md), [architecture](docs/ARCHITECTURE.md), and [validation record](PROGRESS.md) for implemented workflows and outstanding work. Do not treat a passing build as proof of complete Mac feature parity.
+
+## Inspect a distribution package
+
+Run `.\script\build-windows.ps1 -Platform ARM64 -Configuration Release -Package` (or `x64`) to produce an unsigned MSIX under `Vidi Studio Windows/AppPackages`. The command does not install the app or modify certificate trust. To install outside Visual Studio, sign using your own development/distribution certificate whose publisher matches the manifest.
+
+Verify the package with `.venv-windows\Scripts\python.exe script/verify-windows-package.py '<path-to-msix>' --platform arm64` (or `x64`). This checks the manifest, native UI and speech-host CPU types, engine files, and player asset. It does not prove installed-package activation. A bundled x64 engine is supported as a separate process on Windows ARM64.
+
+See [remaining acceptance checks](docs/ACCEPTANCE.md) for live-service, installed-package, listening, accessibility, and cross-platform verification steps.
+
+The ARM64 development registration and Windows launch contract have been tested. After registering a DEBUG build from Visual Studio or `Add-AppxPackage -Register <AppxManifest.xml>`, run `script/test-windows-ui.ps1 -Platform ARM64 -FrozenEngine -AppDirectory <registered-build-directory> -RequirePackage` to verify actual package identity and the isolated workflow. This mode activates the registered app and closes its test windows afterward; Release builds do not contain the test entry point.
+
+## Stale XAML build errors
+
+If CS0123 in `MainWindow.g.cs` mentions `RightTappedEventHandler` for `ProjectContext_Requested`, the generated XAML cache predates the switch to `ContextRequested`. The source XAML and handler already use the correct event. Close Visual Studio, remove only the affected generated `Vidi Studio Windows\obj\ARM64\Debug` directory (or the corresponding platform/configuration), reopen the solution, and rebuild. Do not edit `MainWindow.g.cs`; it is generated. Clearing that cache resolved the reproduced Debug ARM64 failure.

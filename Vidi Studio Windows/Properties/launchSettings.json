@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Vidi Studio Windows (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Vidi Studio Windows (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

@@ -78,7 +78,7 @@ public sealed partial class SettingsDialog : Window
 #endif
     private readonly StudioViewModel model;
     private readonly JsonObject draft;
-    private readonly Action<string>? previewTheme;
+    private readonly string originalTheme;
     private readonly MediaPlayer samplePlayer = new();
     private enum SampleState { Stopped, Generating, Playing, Paused }
     private SampleState sampleState;
@@ -103,7 +103,7 @@ public sealed partial class SettingsDialog : Window
         if (initialSection < 0 || initialSection > 6) throw new ArgumentOutOfRangeException(nameof(initialSection));
         requestedSection = initialSection;
         this.model = model; draft = model.Settings.Data.DeepClone().AsObject();
-        if (window is MainWindow mainWindow) previewTheme = mainWindow.PreviewTheme;
+        originalTheme = App.ActiveTheme ?? model.Settings.Get("theme", "system");
         Title = "Vidi Studio Settings";
         WindowAppearance.ApplyIcon(this);
         layout = new Grid { Padding = new Thickness(16), ColumnSpacing = 16 };
@@ -134,6 +134,7 @@ public sealed partial class SettingsDialog : Window
         save.Click += (_, _) => SaveAndClose(); Grid.SetColumn(save, 2); footer.Children.Add(save);
         Grid.SetRow(footer, 2); Grid.SetColumnSpan(footer, 2); layout.Children.Add(footer);
         Content = layout;
+        App.ThemeChanged += ReceiveTheme;
         samplePlayer.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
             if (closed || sampleState != SampleState.Playing) return;
@@ -150,7 +151,7 @@ public sealed partial class SettingsDialog : Window
         });
         // AppWindow sizes are physical pixels; FrameworkElement.ActualWidth is in device-independent pixels.
         AppWindow.Resize(new Windows.Graphics.SizeInt32(Math.Max(940, window.AppWindow.Size.Width - 160), Math.Max(680, window.AppWindow.Size.Height - 120)));
-        ApplyWindowTheme(model.Settings.Get("theme", "system"));
+        ReceiveTheme(App.ActiveTheme ?? model.Settings.Get("theme", "system"));
         layout.ActualThemeChanged += (_, _) => UpdateWindowTitleBar();
         sections.SelectionChanged += (_, _) =>
         {
@@ -199,7 +200,8 @@ public sealed partial class SettingsDialog : Window
         layout.Loaded += (_, _) => sections.SelectedIndex = requestedSection;
         Closed += (_, _) =>
         {
-            previewTheme?.Invoke(model.Settings.Get("theme", "system"));
+            App.ThemeChanged -= ReceiveTheme;
+            if (!saved) App.PreviewTheme(originalTheme);
             closed = true; voiceRequest++; lifetime.Cancel(); voiceCancellation?.Cancel(); sampleCancellation?.Cancel(); samplePlayer.Dispose();
             foreach (var file in temporaryFiles) { try { File.Delete(file); } catch (IOException) { } }
             completion.TrySetResult(saved);
@@ -217,22 +219,26 @@ public sealed partial class SettingsDialog : Window
     private void SaveAndClose()
     {
         foreach (var item in draft) model.Settings.Data[item.Key] = item.Value?.DeepClone();
-        model.Settings.Save(); saved = true; Close();
+        model.Settings.Save(); saved = true; App.CommitTheme(model.Settings.Get("theme", "system")); Close();
     }
     private void ApplyWindowTheme(string theme)
     {
+        App.PreviewTheme(theme);
+    }
+    private void ReceiveTheme(string theme)
+    {
         layout.RequestedTheme = theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
-        previewTheme?.Invoke(theme);
         UpdateWindowTitleBar();
     }
     private void UpdateWindowTitleBar()
     {
+        if (AppWindow?.TitleBar is not { } titleBar) return;
         var dark = layout.ActualTheme == ElementTheme.Dark;
         layout.Background = new SolidColorBrush(dark ? Windows.UI.Color.FromArgb(255, 24, 24, 24) : Microsoft.UI.Colors.White);
-        AppWindow.TitleBar.BackgroundColor = dark ? Microsoft.UI.Colors.Black : Microsoft.UI.Colors.White;
-        AppWindow.TitleBar.ForegroundColor = dark ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
-        AppWindow.TitleBar.ButtonBackgroundColor = AppWindow.TitleBar.BackgroundColor;
-        AppWindow.TitleBar.ButtonForegroundColor = AppWindow.TitleBar.ForegroundColor;
+        titleBar.BackgroundColor = dark ? Microsoft.UI.Colors.Black : Microsoft.UI.Colors.White;
+        titleBar.ForegroundColor = dark ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
+        titleBar.ButtonBackgroundColor = titleBar.BackgroundColor;
+        titleBar.ButtonForegroundColor = titleBar.ForegroundColor;
     }
     private void AddText(StackPanel panel, string label, string key, string fallback = "")
     {

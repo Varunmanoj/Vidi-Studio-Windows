@@ -33,6 +33,7 @@ public sealed partial class MainWindow
         UpdateMenuBar(false);
         ProjectTitle.Text = "All Projects"; Title = "All Projects — Vidi Studio";
         TopOpenFolderButton.Visibility = TopInspectorToggle.Visibility = Visibility.Collapsed;
+        GallerySearchHost.Visibility = Visibility.Visible;
         GalleryImport.Visibility = Visibility.Visible;
         Model.Reload(); RefreshGalleryCount();
     }
@@ -58,7 +59,7 @@ public sealed partial class MainWindow
         foreach (var active in activeSegmentRows) active.IsActive = false;
         activeSegmentRows.Clear();
         Model.Project = null; loadedProject = null; highlightedSegment = null;
-        Segments.ItemsSource = null; ExportList.ItemsSource = null;
+        Segments.ItemsSource = null; ExportGroups.Children.Clear();
         ClearSummaryHighlight(); SummaryRichText.Children.Clear(); summaryLines.Clear(); ReadbackSentence.Text = "";
         ProjectDetails.Children.Clear(); VideoDetails.Children.Clear(); InspectorExports.Children.Clear();
         Thumbnails.Children.Clear(); TranscriptTrack.Children.Clear(); DescriptionTrack.Children.Clear();
@@ -70,6 +71,7 @@ public sealed partial class MainWindow
         GalleryPanel.Visibility = Visibility.Collapsed; EditorWorkspace.Visibility = Visibility.Visible;
         UpdateMenuBar(true);
         TopOpenFolderButton.Visibility = TopInspectorToggle.Visibility = Visibility.Visible;
+        GallerySearchHost.Visibility = Visibility.Collapsed;
         GalleryImport.Visibility = Visibility.Collapsed;
         Title = (Model.Project?.Name ?? "Project") + " — Vidi Studio";
     }
@@ -165,28 +167,77 @@ public sealed partial class MainWindow
                     }
                 if (doc.RootElement.TryGetProperty("format", out var format)) { AddInfo(VideoDetails, "Container", Value(format, "format_long_name")); if (long.TryParse(Value(format, "size"), out var size)) AddInfo(VideoDetails, "Source size", $"{size / 1048576d:F1} MB"); }
             }
-            foreach (var relative in p.Exports)
-            {
-                var row = new Grid { ColumnSpacing = 6 };
-                row.ColumnDefinitions.Add(new ColumnDefinition());
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                var button = new Button { Content = Path.GetFileName(relative), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left };
-                ToolTipService.SetToolTip(button, relative);
-                button.Click += async (_, _) => { var path = p.Resolve(relative); if (Directory.Exists(path)) await Launcher.LaunchFolderPathAsync(path); else if (File.Exists(path)) await Launcher.LaunchFileAsync(await Windows.Storage.StorageFile.GetFileFromPathAsync(path)); };
-                row.Children.Add(button);
-                var info = new Button { Content = "\uE946", FontFamily = new FontFamily("Segoe Fluent Icons"), Tag = relative };
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(info, "Export information for " + Path.GetFileName(relative));
-                ToolTipService.SetToolTip(info, "Export information");
-                info.Click += ExportInfo_Click;
-                Grid.SetColumn(info, 1);
-                row.Children.Add(info);
-                InspectorExports.Children.Add(row);
-            }
+            PopulateExportGroups(InspectorExports, p);
             UpdateAvailability();
             var bytes = await Task.Run(() => Directory.EnumerateFiles(p.Folder, "*", SearchOption.AllDirectories).Sum(file => new FileInfo(file).Length));
             if (ReferenceEquals(Model.Project, p)) AddInfo(ProjectDetails, "Project size", $"{bytes / 1048576d:F1} MB");
         }
         catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
+    }
+    private static (string Name, string Glyph, int Order) ExportCategoryFor(StudioProject project, string relative)
+    {
+        var extension = Path.GetExtension(relative).ToLowerInvariant();
+        var name = ExportDisplayName(project, relative);
+        if (extension is ".mp4" or ".mov" or ".mkv" or ".webm") return ("Video", "\uE714", 0);
+        if (extension is ".mp3" or ".m4a" or ".wav" or ".aac" or ".flac") return ("Audio", "\uE767", 1);
+        if (extension == ".md") return ("Summary", "\uE8A5", 3);
+        if (extension is ".srt" or ".vtt" or ".txt" or ".json")
+        {
+            if (name.Contains("AD Transcript", StringComparison.OrdinalIgnoreCase)) return ("AD Transcript", "\uE8A5", 5);
+            if (name.Contains("Descriptions", StringComparison.OrdinalIgnoreCase)) return ("Descriptions", "\uE8A5", 4);
+            if (name.Contains("Transcript", StringComparison.OrdinalIgnoreCase)) return ("Transcript", "\uE8A5", 2);
+            return ("Text", "\uE8A5", 6);
+        }
+        if (extension.Length == 0 || name.Contains("Web Playback", StringComparison.OrdinalIgnoreCase)) return ("Web Playback", "\uE774", 7);
+        return ("Other exports", "\uE8A5", 8);
+    }
+    private static string ExportDisplayName(StudioProject project, string relative)
+    {
+        var name = Path.GetFileName(relative);
+        var prefix = project.Name + " - ";
+        return name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? name[prefix.Length..] : name;
+    }
+    private void PopulateExportGroups(StackPanel target, StudioProject project)
+    {
+        target.Children.Clear();
+        if (project.Exports.Count == 0)
+        {
+            target.Children.Add(new TextBlock { Text = "No exports yet", Opacity = .65 });
+            return;
+        }
+        var groups = project.Exports.Select(relative => (Relative: relative, Category: ExportCategoryFor(project, relative)))
+            .GroupBy(item => item.Category.Name).OrderBy(group => group.First().Category.Order);
+        foreach (var group in groups)
+        {
+            var category = group.First().Category;
+            var section = new StackPanel { Spacing = 6, Margin = new Thickness(0, target.Children.Count == 0 ? 0 : 12, 0, 0) };
+            var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            heading.Children.Add(new FontIcon { Glyph = category.Glyph, FontSize = 16,
+                Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0, 120, 212)) });
+            heading.Children.Add(new TextBlock { Text = category.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center });
+            section.Children.Add(heading);
+            foreach (var item in group)
+            {
+                var row = new Grid { ColumnSpacing = 6 };
+                row.ColumnDefinitions.Add(new ColumnDefinition());
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var button = new Button { Content = new TextBlock { Text = ExportDisplayName(project, item.Relative),
+                    TextTrimming = TextTrimming.CharacterEllipsis }, Tag = item.Relative,
+                    HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+                ToolTipService.SetToolTip(button, item.Relative);
+                button.Click += ExportOpen_Click;
+                row.Children.Add(button);
+                var info = new Button { Content = "\uE946", FontFamily = new FontFamily("Segoe Fluent Icons"), Tag = item.Relative };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(info, "Export information for " + Path.GetFileName(item.Relative));
+                ToolTipService.SetToolTip(info, "Export information");
+                info.Click += ExportInfo_Click;
+                Grid.SetColumn(info, 1);
+                row.Children.Add(info);
+                section.Children.Add(row);
+            }
+            target.Children.Add(section);
+        }
     }
     private void UpdateAvailability()
     {

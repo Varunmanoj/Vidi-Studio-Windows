@@ -12,6 +12,18 @@ namespace Vidi_Studio_Windows;
 public partial class App : Application
 {
     private static readonly List<MainWindow> Windows = new();
+    internal static event Action<string>? ThemeChanged;
+    internal static string? ActiveTheme { get; private set; }
+    internal static void PreviewTheme(string theme)
+    {
+        ActiveTheme = theme is "light" or "dark" ? theme : "system";
+        ThemeChanged?.Invoke(ActiveTheme);
+    }
+    internal static void CommitTheme(string theme)
+    {
+        foreach (var window in Windows) window.Model.Settings.Set("theme", theme);
+        PreviewTheme(theme);
+    }
     public App()
     {
         InitializeComponent();

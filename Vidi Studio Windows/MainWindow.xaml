@@ -40,9 +40,13 @@
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
   <MenuBar x:Name="MainMenu"/>
   <Grid Grid.Row="1" Padding="20,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" MinHeight="54">
-   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-   <TextBlock x:Name="ProjectTitle" Text="All Projects" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-   <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="1.6*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+   <TextBlock x:Name="ProjectTitle" Grid.ColumnSpan="2" Text="All Projects" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+   <Grid x:Name="GallerySearchHost" Grid.Column="1" HorizontalAlignment="Stretch" MaxWidth="520" Margin="8,0">
+    <TextBox x:Name="GallerySearch" PlaceholderText="Search projects" TextChanged="GallerySearch_Changed" AutomationProperties.Name="Search all projects" Padding="36,5,12,5" CornerRadius="18"/>
+    <SymbolIcon Symbol="Find" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="12,0,0,0" IsHitTestVisible="False"/>
+   </Grid>
+   <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
     <Button x:Name="GalleryImport" Content="New project" Style="{StaticResource AccentButtonStyle}" Click="NewProject_Click"/>
     <Button x:Name="TopOpenFolderButton" Content="Open folder" Click="TopOpenFolder_Click" Visibility="Collapsed"/>
     <Button x:Name="TopInspectorToggle" Content="&#xE8A0;" FontFamily="Segoe Fluent Icons" Click="ToggleInspector_Click" Visibility="Collapsed" AutomationProperties.Name="Show or hide inspector"/>
@@ -56,7 +60,6 @@
     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
      <ComboBox x:Name="GalleryFilter" SelectedIndex="0" SelectionChanged="GalleryFilter_Changed" AutomationProperties.Name="Project source"><ComboBoxItem Content="All projects"/><ComboBoxItem Content="Local video"/><ComboBoxItem Content="YouTube"/></ComboBox>
      <Button Content="&#xE8FD;" FontFamily="Segoe Fluent Icons" Click="GalleryLayout_Click" AutomationProperties.Name="Switch list and grid view"/>
-     <TextBox x:Name="GallerySearch" Width="260" PlaceholderText="Search projects" TextChanged="GallerySearch_Changed" AutomationProperties.Name="Search all projects"/>
     </StackPanel>
    </Grid>
    <Grid Grid.Row="1">
@@ -124,9 +127,7 @@
       <ListView x:Name="Segments" SelectionMode="None" ItemTemplate="{StaticResource SegmentRow}" DoubleTapped="Segment_DoubleTapped" AutomationProperties.Name="Timed segments"><ListView.ItemContainerStyle><Style TargetType="ListViewItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="0"/></Style></ListView.ItemContainerStyle></ListView>
       <Grid x:Name="SummaryView" Visibility="Collapsed"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><StackPanel Orientation="Horizontal" Spacing="8" Padding="14,16"><Button x:Name="SummaryPlayButton" Content="Play" Style="{StaticResource AccentButtonStyle}" Click="SpeakSummary_Click"/><Button x:Name="SummaryStopButton" Content="Stop" Click="StopSpeech_Click" IsEnabled="False"/><TextBlock Text="Summary readback" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel><ScrollViewer x:Name="SummaryPanel" Grid.Row="1"><StackPanel Padding="14,0,14,16" Spacing="18"><StackPanel x:Name="SummaryRichText" Spacing="8"/><TextBlock x:Name="SummaryText" Visibility="Collapsed"/><TextBlock x:Name="ReadbackSentence" TextWrapping="Wrap" FontStyle="Italic" Visibility="Collapsed"/></StackPanel></ScrollViewer></Grid>
       <ScrollViewer x:Name="OverviewPanel" Visibility="Collapsed"><StackPanel Padding="14,24" Spacing="22"><Grid ColumnSpacing="20"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><StackPanel Spacing="10"><TextBlock Text="Audio description overview" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel x:Name="OverviewStatistics" Spacing="16"/></Border></StackPanel><StackPanel Grid.Column="1" Spacing="10"><TextBlock Text="Description origins" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel x:Name="OriginStatistics" Spacing="16"/></Border></StackPanel></Grid><TextBlock x:Name="Overview" Visibility="Collapsed"/><TextBlock Text="Create narration audio" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel Spacing="12"><TextBlock x:Name="OverviewVoice" TextWrapping="Wrap"/><StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Generate All AD Audio" Tag="synthesize-tts" Click="Command_Click"/><Button Content="Generate Missing or Changed Audio" Click="ChangedNarration_Click"/></StackPanel><Button Content="Voice and Narration Settings" Tag="Narration" Click="Settings_Click"/></StackPanel></Border></StackPanel></ScrollViewer>
-      <ListView x:Name="ExportList" Visibility="Collapsed" DoubleTapped="Export_DoubleTapped" AutomationProperties.Name="Created exports">
-       <ListView.ItemTemplate><DataTemplate><Grid ColumnSpacing="12" Padding="6"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/><Button Grid.Column="1" Content="&#xE946;" FontFamily="Segoe Fluent Icons" Tag="{Binding}" Click="ExportInfo_Click" AutomationProperties.Name="Export information" ToolTipService.ToolTip="Export information"/></Grid></DataTemplate></ListView.ItemTemplate>
-      </ListView>
+      <ScrollViewer x:Name="ExportList" Visibility="Collapsed" AutomationProperties.Name="Created exports"><StackPanel x:Name="ExportGroups" Padding="14,18" Spacing="8"/></ScrollViewer>
      </Grid>
      <ScrollViewer x:Name="EditToolbar" Grid.Row="4" Visibility="Collapsed" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"><StackPanel Orientation="Horizontal" Spacing="6" Padding="14,8"><Button Content="Add segment" Click="Add_Click"/><Button Content="Edit selected" Click="Edit_Click"/><Button Content="Delete selected" Click="DeleteSegments_Click"/><Button Content="Select all" Click="SelectAll_Click"/><Button Content="Deselect" Click="Deselect_Click"/><Button Content="Undo" Click="Undo_Click"/><Button Content="Redo" Click="Redo_Click"/></StackPanel></ScrollViewer>
     </Grid>

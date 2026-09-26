@@ -48,6 +48,7 @@ public sealed partial class MainWindow : Window
         onDeviceNarrator = new OnDeviceNarrator(Model.Settings, Model.Engine);
         InitializeComponent();
         Views.WindowAppearance.ApplyIcon(this);
+        App.ThemeChanged += ApplyThemeFromApp;
         BuildMenus();
         video.PlaybackSession.PlaybackStateChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdatePlaybackControls);
         InitializePresentation();
@@ -62,6 +63,7 @@ public sealed partial class MainWindow : Window
         timer.Start();
         Closed += (_, _) =>
         {
+            App.ThemeChanged -= ApplyThemeFromApp;
             Model.Cancel(); timer.Stop();
             foreach (var cleanup in new Action[] { video.Dispose, speech.Dispose, narrationPlayer.Dispose, onDeviceNarrator.Dispose, readback.Dispose,
                 () => { if (YouTubePlayer.CoreWebView2 != null) YouTubePlayer.Close(); } })
@@ -91,9 +93,15 @@ public sealed partial class MainWindow : Window
         shortcut.Invoked += (_, e) => { if (Model.Idle) handler(this, new RoutedEventArgs()); e.Handled = true; };
         Root.KeyboardAccelerators.Add(shortcut);
     }
-    private void ApplyTheme() => PreviewTheme(Model.Settings.Get("theme", "system"));
+    private void ApplyTheme()
+    {
+        if (App.ActiveTheme is { } active) ApplyThemeFromApp(active);
+        else PreviewTheme(Model.Settings.Get("theme", "system"));
+    }
 
-    internal void PreviewTheme(string theme)
+    internal void PreviewTheme(string theme) => App.PreviewTheme(theme);
+
+    private void ApplyThemeFromApp(string theme)
     {
         var requested = theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
         Root.RequestedTheme = requested;
@@ -102,24 +110,25 @@ public sealed partial class MainWindow : Window
 
     private void UpdateTitleBarTheme(ElementTheme theme)
     {
+        if (AppWindow?.TitleBar is not { } titleBar) return;
         var dark = theme == ElementTheme.Dark;
         var background = dark ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 243, 243, 243);
         var foreground = dark ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
         var inactive = dark ? Windows.UI.Color.FromArgb(255, 170, 170, 170) : Windows.UI.Color.FromArgb(255, 90, 90, 90);
         var hover = dark ? Windows.UI.Color.FromArgb(255, 62, 62, 62) : Windows.UI.Color.FromArgb(255, 224, 224, 224);
         var pressed = dark ? Windows.UI.Color.FromArgb(255, 82, 82, 82) : Windows.UI.Color.FromArgb(255, 205, 205, 205);
-        AppWindow.TitleBar.BackgroundColor = background;
-        AppWindow.TitleBar.ForegroundColor = foreground;
-        AppWindow.TitleBar.InactiveBackgroundColor = background;
-        AppWindow.TitleBar.InactiveForegroundColor = inactive;
-        AppWindow.TitleBar.ButtonBackgroundColor = background;
-        AppWindow.TitleBar.ButtonForegroundColor = foreground;
-        AppWindow.TitleBar.ButtonInactiveBackgroundColor = background;
-        AppWindow.TitleBar.ButtonInactiveForegroundColor = inactive;
-        AppWindow.TitleBar.ButtonHoverBackgroundColor = hover;
-        AppWindow.TitleBar.ButtonHoverForegroundColor = foreground;
-        AppWindow.TitleBar.ButtonPressedBackgroundColor = pressed;
-        AppWindow.TitleBar.ButtonPressedForegroundColor = foreground;
+        titleBar.BackgroundColor = background;
+        titleBar.ForegroundColor = foreground;
+        titleBar.InactiveBackgroundColor = background;
+        titleBar.InactiveForegroundColor = inactive;
+        titleBar.ButtonBackgroundColor = background;
+        titleBar.ButtonForegroundColor = foreground;
+        titleBar.ButtonInactiveBackgroundColor = background;
+        titleBar.ButtonInactiveForegroundColor = inactive;
+        titleBar.ButtonHoverBackgroundColor = hover;
+        titleBar.ButtonHoverForegroundColor = foreground;
+        titleBar.ButtonPressedBackgroundColor = pressed;
+        titleBar.ButtonPressedForegroundColor = foreground;
     }
     private ContentDialog Dialog(string title, object content, string action = "Save") => new()
     { Title = title, Content = content, PrimaryButtonText = action, CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
@@ -231,7 +240,7 @@ public sealed partial class MainWindow : Window
         RenderTracks();
         var usable = p.Cues.Count(c => c.Audio != null && c.AudioText == c.Text && File.Exists(p.Resolve(c.Audio)));
         Overview.Text = $"Audio Description overview\n\n{p.Cues.Count} description segments\n{usable} narration files ready\n{p.Cues.Count - usable} missing or changed\n{p.Cues.Sum(c => c.End - c.Start):F1} seconds of description time";
-        ExportList.ItemsSource = p.Exports;
+        PopulateExportGroups(ExportGroups, p);
         foreach (var active in activeSegmentRows) active.IsActive = false;
         activeSegmentRows.Clear();
         highlightedSegment = null;
@@ -504,10 +513,16 @@ public sealed partial class MainWindow : Window
     }
     private async void Export_Click(object sender, RoutedEventArgs e)
     { if (Model.Project != null) await ShowDialogAsync(new Views.ExportDialog(Model), 1040, 760); }
-    private async void Export_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    private async void ExportOpen_Click(object sender, RoutedEventArgs e)
     {
-        if (ExportList.SelectedItem is string path && Model.Project is { } p)
-        { var full = p.Resolve(path); if (Directory.Exists(full)) await Launcher.LaunchFolderPathAsync(full); else if (File.Exists(full)) await Launcher.LaunchFileAsync(await Windows.Storage.StorageFile.GetFileFromPathAsync(full)); }
+        if ((sender as FrameworkElement)?.Tag is not string path || Model.Project is not { } p || !p.Exports.Contains(path)) return;
+        try
+        {
+            var full = p.Resolve(path);
+            if (Directory.Exists(full)) await Launcher.LaunchFolderPathAsync(full);
+            else if (File.Exists(full)) await Launcher.LaunchFileAsync(await Windows.Storage.StorageFile.GetFileFromPathAsync(full));
+        }
+        catch (Exception ex) { await ShowError(ex); }
     }
     private async void ExportInfo_Click(object sender, RoutedEventArgs e)
     {

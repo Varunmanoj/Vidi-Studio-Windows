@@ -19,21 +19,22 @@ internal static class WindowAppearance
     internal static void ApplyTheme(Window window, FrameworkElement content, ElementTheme theme)
     {
         content.RequestedTheme = theme;
-        void Update()
-        {
-            var dark = content.ActualTheme == ElementTheme.Dark;
-            var background = dark ? Windows.UI.Color.FromArgb(255, 24, 24, 24) : Microsoft.UI.Colors.White;
-            var foreground = dark ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
-            if (content is Panel panel) panel.Background = new SolidColorBrush(background);
-            window.AppWindow.TitleBar.BackgroundColor = background;
-            window.AppWindow.TitleBar.ForegroundColor = foreground;
-            window.AppWindow.TitleBar.ButtonBackgroundColor = background;
-            window.AppWindow.TitleBar.ButtonForegroundColor = foreground;
-            window.AppWindow.TitleBar.InactiveBackgroundColor = background;
-            window.AppWindow.TitleBar.ButtonInactiveBackgroundColor = background;
-        }
-        content.ActualThemeChanged += (_, _) => Update();
-        Update();
+        UpdateColors(window, content, theme == ElementTheme.Default ? content.ActualTheme : theme);
+    }
+
+    internal static void UpdateColors(Window window, FrameworkElement content, ElementTheme theme)
+    {
+        if (window.AppWindow?.TitleBar is not { } titleBar) return;
+        var dark = theme == ElementTheme.Dark;
+        var background = dark ? Windows.UI.Color.FromArgb(255, 24, 24, 24) : Microsoft.UI.Colors.White;
+        var foreground = dark ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
+        if (content is Panel panel) panel.Background = new SolidColorBrush(background);
+        titleBar.BackgroundColor = background;
+        titleBar.ForegroundColor = foreground;
+        titleBar.ButtonBackgroundColor = background;
+        titleBar.ButtonForegroundColor = foreground;
+        titleBar.InactiveBackgroundColor = background;
+        titleBar.ButtonInactiveBackgroundColor = background;
     }
 }
 
@@ -52,8 +53,15 @@ internal static class WindowedDialog
             presenter.IsMaximizable = true;
             presenter.IsResizable = true;
         }
-        var theme = (owner.Content as FrameworkElement)?.ActualTheme ?? ElementTheme.Default;
-        WindowAppearance.ApplyTheme(window, root, theme);
+        void ApplyTheme(string theme)
+        {
+            var requested = theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
+            WindowAppearance.ApplyTheme(window, root, requested);
+            dialog.RequestedTheme = requested;
+        }
+        root.ActualThemeChanged += (_, _) => WindowAppearance.UpdateColors(window, root, root.ActualTheme);
+        App.ThemeChanged += ApplyTheme;
+        ApplyTheme(App.ActiveTheme ?? ((owner.Content as FrameworkElement)?.ActualTheme == ElementTheme.Dark ? "dark" : "light"));
         var area = owner.AppWindow;
         // AppWindow uses physical pixels; dialog measurements and requested sizes use XAML pixels.
         var scale = (owner.Content as FrameworkElement)?.XamlRoot?.RasterizationScale ?? 1;
@@ -71,9 +79,8 @@ internal static class WindowedDialog
         {
             if (!await loaded.Task) return ContentDialogResult.None;
             dialog.XamlRoot = root.XamlRoot;
-            dialog.RequestedTheme = root.ActualTheme;
             return await dialog.ShowAsync();
         }
-        finally { window.Close(); }
+        finally { App.ThemeChanged -= ApplyTheme; window.Close(); }
     }
 }

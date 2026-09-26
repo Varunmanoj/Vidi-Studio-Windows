@@ -97,10 +97,41 @@ public sealed partial class MainWindow
     }
     private void BuildMenus()
     {
+        static string? Shortcut(string label) => label switch
+        {
+            "Import video" => "Ctrl+N",
+            "Open project folder" => "Ctrl+Shift+O",
+            "Export" => "Ctrl+Shift+E",
+            "Settings" => "Ctrl+,",
+            "Close window" => "Ctrl+W",
+            "Help and keyboard shortcuts" => "F1",
+            "Show / hide preview" => "Ctrl+Shift+V",
+            "Full-screen video" => "Ctrl+Alt+F",
+            "Transcript" => "Ctrl+1",
+            "Summary" => "Ctrl+2",
+            "Descriptions" => "Ctrl+3",
+            "AD Overview" => "Ctrl+4",
+            "AD Transcript" => "Ctrl+5",
+            "Add segment" => "Ctrl+Shift+N",
+            "Undo" => "Ctrl+Alt+Z",
+            "Redo" => "Ctrl+Alt+Shift+Z",
+            "Generate all narration" => "Ctrl+Shift+D",
+            "Play video" => "Ctrl+Shift+Space",
+            "Rewind five seconds" => "Ctrl+Alt+Left",
+            "Forward five seconds" => "Ctrl+Alt+Right",
+            "Follow active segment" => "Ctrl+Shift+F",
+            _ => null
+        };
         MenuBarItem Menu(string title, params (string Label, RoutedEventHandler Handler)[] entries)
         {
             var menu = new MenuBarItem { Title = title };
-            foreach (var entry in entries) { var item = new MenuFlyoutItem { Text = entry.Label }; item.Click += entry.Handler; menu.Items.Add(item); }
+            foreach (var entry in entries)
+            {
+                var item = new MenuFlyoutItem { Text = entry.Label };
+                if (Shortcut(entry.Label) is { } shortcut) item.KeyboardAcceleratorTextOverride = shortcut;
+                item.Click += entry.Handler;
+                menu.Items.Add(item);
+            }
             return menu;
         }
 
@@ -145,6 +176,9 @@ public sealed partial class MainWindow
         AddShortcut(VirtualKey.Z, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, Redo_Click);
         AddShortcut(VirtualKey.V, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, TogglePreview_Click);
         AddShortcut(VirtualKey.F, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, FullScreen_Click);
+        AddShortcut((VirtualKey)188, VirtualKeyModifiers.Control, Settings_Click);
+        AddShortcut(VirtualKey.W, VirtualKeyModifiers.Control, (_, _) => Close());
+        AddShortcut(VirtualKey.F1, VirtualKeyModifiers.None, HelpSettings_Click);
     }
 
     private void UpdateMenuBar(bool editor)

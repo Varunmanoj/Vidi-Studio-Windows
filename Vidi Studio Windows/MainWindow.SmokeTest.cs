@@ -22,6 +22,9 @@ public sealed partial class MainWindow
             Model.Open(folder);
             if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Analysis", "Segments", "Playback", "Help" }))
                 throw new InvalidOperationException("Editor menu set does not match the active page.");
+            if (editorMenus[0].Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().First(item => item.Text == "Export").KeyboardAcceleratorTextOverride != "Ctrl+Shift+E" ||
+                editorMenus[4].Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().First(item => item.Text == "Play video").KeyboardAcceleratorTextOverride != "Ctrl+Shift+Space")
+                throw new InvalidOperationException("Menu commands do not show their keyboard shortcuts.");
             var originalTheme = Model.Settings.Get("theme", "system");
             PreviewTheme("dark");
             await Task.Delay(50);
@@ -96,12 +99,31 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Gallery menu includes project-only commands.");
             if (TopOpenFolderButton.Visibility != Visibility.Collapsed)
                 throw new InvalidOperationException("All Projects still shows the editor's Open folder button.");
+            PreviewTheme("dark"); await Task.Delay(80);
+            var searchOrigin = GallerySearchHost.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point());
+            if (GallerySearchHost.Visibility != Visibility.Visible ||
+                Math.Abs(searchOrigin.X + GallerySearchHost.ActualWidth / 2 - Root.ActualWidth / 2) > 24)
+                throw new InvalidOperationException("All Projects search is not centered in the top header.");
+            if (GalleryPanel.ActualTheme != ElementTheme.Dark || GalleryGrid.ActualTheme != ElementTheme.Dark || GalleryTable.ActualTheme != ElementTheme.Dark)
+                throw new InvalidOperationException("All Projects did not update every view to dark appearance.");
+            await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "gallery-dark.png"));
+            PreviewTheme("light"); await Task.Delay(80);
+            if (GalleryPanel.ActualTheme != ElementTheme.Light || GalleryGrid.ActualTheme != ElementTheme.Light || GalleryTable.ActualTheme != ElementTheme.Light)
+                throw new InvalidOperationException("All Projects did not update every view to light appearance.");
+            await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "gallery-light.png"));
+            PreviewTheme(originalTheme);
             await Task.Delay(200);
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "gallery.png"));
             GalleryLayout_Click(this, new RoutedEventArgs());
             if (GalleryTable.Visibility != Visibility.Visible || GalleryList.Items.Count != 1 ||
                 Model.Projects[0].DurationLabel != "00:08" || Model.Projects[0].AdSegmentLabel != "1")
                 throw new InvalidOperationException("All Projects table did not display the project metadata columns.");
+            PreviewTheme("dark"); await Task.Delay(80);
+            if (GalleryList.ActualTheme != ElementTheme.Dark) throw new InvalidOperationException("All Projects table did not change to dark appearance.");
+            await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "gallery-table-dark.png"));
+            PreviewTheme("light"); await Task.Delay(80);
+            if (GalleryList.ActualTheme != ElementTheme.Light) throw new InvalidOperationException("All Projects table did not change to light appearance.");
+            PreviewTheme(originalTheme);
             await Task.Delay(250);
             if (GalleryList.ContainerFromIndex(0) is not Microsoft.UI.Xaml.Controls.ListViewItem tableRow ||
                 tableRow.ActualHeight < 30)
@@ -111,6 +133,8 @@ public sealed partial class MainWindow
             Model.Open(folder);
             if (TopOpenFolderButton.Visibility != Visibility.Visible)
                 throw new InvalidOperationException("The editor does not show its project folder button.");
+            if (GallerySearchHost.Visibility != Visibility.Collapsed)
+                throw new InvalidOperationException("All Projects search remained in the editor header.");
             for (var i = 0; i < 6; i++) { Section.SelectedIndex = i; await Task.Delay(50); }
             ToggleGrid_Click(this, new RoutedEventArgs());
             ToggleGrid_Click(this, new RoutedEventArgs());
@@ -121,6 +145,13 @@ public sealed partial class MainWindow
             var settings = new Views.SettingsDialog(Model, this);
             var display = settings.ShowAsync();
             await Task.Delay(250);
+            PreviewTheme("dark"); await Task.Delay(80);
+            if (((FrameworkElement)settings.Content).ActualTheme != ElementTheme.Dark || Root.ActualTheme != ElementTheme.Dark)
+                throw new InvalidOperationException("An open Settings window did not follow the app's dark theme.");
+            PreviewTheme("light"); await Task.Delay(80);
+            if (((FrameworkElement)settings.Content).ActualTheme != ElementTheme.Light || Root.ActualTheme != ElementTheme.Light)
+                throw new InvalidOperationException("An open Settings window did not follow the app's light theme.");
+            PreviewTheme(originalTheme);
             await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-appearance.png"));
             await settings.VerifyWindowThemeAsync();
             settings.NavigateForSmokeTest(1);
@@ -164,6 +195,9 @@ public sealed partial class MainWindow
             var newProject = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings);
             var newProjectDisplay = ShowDialogAsync(newProject, 680, 780); await Task.Delay(100);
             if (newProjectDisplay.IsCompleted) await newProjectDisplay;
+            PreviewTheme("light"); await Task.Delay(80);
+            if (newProject.ActualTheme != ElementTheme.Light) throw new InvalidOperationException("An open New Project dialog did not switch to light appearance.");
+            PreviewTheme("dark"); await Task.Delay(80);
             if (newProject.RequestedTheme != ElementTheme.Dark || newProject.IsPrimaryButtonEnabled)
                 throw new InvalidOperationException("New Project did not follow dark mode or disable Create without a source.");
             await newProject.InspectVideoForSmokeTestAsync(Model.Project!.Resolve(Model.Project.Source));
@@ -182,6 +216,11 @@ public sealed partial class MainWindow
             PreviewTheme(originalTheme);
             var export = new Views.ExportDialog(Model);
             var exportDisplay = ShowDialogAsync(export, 1040, 760); await Task.Delay(250);
+            PreviewTheme("dark"); await Task.Delay(80);
+            if (export.ActualTheme != ElementTheme.Dark) throw new InvalidOperationException("An open Export dialog did not switch to dark appearance.");
+            PreviewTheme("light"); await Task.Delay(80);
+            if (export.ActualTheme != ElementTheme.Light) throw new InvalidOperationException("An open Export dialog did not switch to light appearance.");
+            PreviewTheme(originalTheme);
             if (export.FooterForSmokeTest.HorizontalAlignment != HorizontalAlignment.Center ||
                 export.FooterForSmokeTest.Children.Count != 2)
                 throw new InvalidOperationException("Export actions are not centered in the dialog.");
@@ -237,6 +276,13 @@ public sealed partial class MainWindow
             var child = App.OpenWindow(folder);
             await Task.Delay(300);
             if (child.Model.Project?.Folder != Model.Project?.Folder || ReferenceEquals(child.Model, Model)) throw new InvalidOperationException("Independent editor window did not open.");
+            PreviewTheme("dark"); await Task.Delay(80);
+            if (child.Root.ActualTheme != ElementTheme.Dark || Root.ActualTheme != ElementTheme.Dark)
+                throw new InvalidOperationException("Another open editor did not follow the app-wide dark theme.");
+            App.CommitTheme("dark");
+            if (child.Model.Settings.Get("theme") != "dark" || Model.Settings.Get("theme") != "dark")
+                throw new InvalidOperationException("Saved theme selection did not update all open editor settings.");
+            App.CommitTheme(originalTheme);
             child.Section.SelectedIndex = 1;
             if (Section.SelectedIndex == 1) throw new InvalidOperationException("Editor view selection leaked between windows.");
             child.Close();
@@ -244,9 +290,37 @@ public sealed partial class MainWindow
             if (Model.Status != "Complete") throw new InvalidOperationException("Native subtitle export failed: " + Model.Status);
             var subtitle = Model.Project!.Exports.FirstOrDefault(path => path.EndsWith(".srt", StringComparison.OrdinalIgnoreCase));
             if (subtitle == null || !File.ReadAllText(Model.Project.Resolve(subtitle)).Contains("A blue screen.")) throw new InvalidOperationException("Exported subtitles are missing the edited description.");
-            if (InspectorExports.Children.OfType<Microsoft.UI.Xaml.Controls.Grid>().FirstOrDefault() is not { } exportRow ||
+            if (InspectorExports.Children.OfType<Microsoft.UI.Xaml.Controls.StackPanel>().FirstOrDefault() is not { } exportSection ||
+                exportSection.Children.OfType<Microsoft.UI.Xaml.Controls.Grid>().FirstOrDefault() is not { } exportRow ||
                 exportRow.Children.OfType<Microsoft.UI.Xaml.Controls.Button>().LastOrDefault()?.Tag as string != subtitle)
                 throw new InvalidOperationException("Created exports do not have their own information actions.");
+            var syntheticExports = new[] {
+                $"exports/{Model.Project.Name} - Video.mp4", $"exports/{Model.Project.Name} - Audio.mp3",
+                $"exports/{Model.Project.Name} - Transcript.vtt", $"exports/{Model.Project.Name} - Summary.md",
+                $"exports/{Model.Project.Name} - Descriptions.json", $"exports/{Model.Project.Name} - Web Playback"
+            };
+            Model.Project.Exports.AddRange(syntheticExports);
+            PopulateExportGroups(InspectorExports, Model.Project);
+            PopulateExportGroups(ExportGroups, Model.Project);
+            var expectedExportGroups = new[] { "Video", "Audio", "Transcript", "Summary", "Descriptions", "AD Transcript", "Web Playback" };
+            foreach (var panel in new[] { InspectorExports, ExportGroups })
+            {
+                var headings = panel.Children.OfType<Microsoft.UI.Xaml.Controls.StackPanel>()
+                    .Select(section => section.Children.OfType<Microsoft.UI.Xaml.Controls.StackPanel>().First())
+                    .Select(heading => (Icon: heading.Children.OfType<Microsoft.UI.Xaml.Controls.FontIcon>().FirstOrDefault(),
+                        Name: heading.Children.OfType<Microsoft.UI.Xaml.Controls.TextBlock>().FirstOrDefault()?.Text)).ToList();
+                if (!headings.Select(heading => heading.Name).SequenceEqual(expectedExportGroups) ||
+                    headings.Any(heading => heading.Icon == null))
+                    throw new InvalidOperationException("Created exports were not grouped with matching format icons.");
+            }
+            var previousSection = Section.SelectedIndex;
+            Section.SelectedIndex = 5;
+            await Task.Delay(100);
+            await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "export-groups.png"));
+            Section.SelectedIndex = previousSection;
+            Model.Project.Exports.RemoveAll(relative => syntheticExports.Contains(relative));
+            PopulateExportGroups(InspectorExports, Model.Project);
+            PopulateExportGroups(ExportGroups, Model.Project);
             video.Volume = narrationPlayer.Volume = 0;
             Model.Settings.Set("narrationPlayback", "generated");
             Narration.IsOn = true;
@@ -292,7 +366,7 @@ public sealed partial class MainWindow
             }
             ClearProject();
             if (Model.Project != null || EditorWorkspace.Visibility != Visibility.Collapsed || GalleryPanel.Visibility != Visibility.Visible || video.Source != null || narrationPlayer.Source != null || ProjectDetails.Children.Count != 0) throw new InvalidOperationException("Project close left stale editor state.");
-            await File.WriteAllTextAsync(report, "PASS: video timeline playhead, synchronized Transcript and AD Transcript rows, summary word/sentence highlight colors and playback controls, dark New Project video inspection, edit persistence, undo/redo, OneCore and SAPI narration and voice samples, combined subtitle export, caption timing/styles, six editor sections, direct Settings routes, export dialog, and engine invocation.");
+            await File.WriteAllTextAsync(report, "PASS: app-wide live light/dark themes across gallery, editor, Settings, New Project and Export; menu shortcut labels; video timeline playhead, synchronized Transcript and AD Transcript rows, summary highlighting and playback, New Project inspection, edit persistence, undo/redo, OneCore and SAPI narration, subtitle export, six editor sections, and engine invocation.");
         }
         catch (Exception ex) { await File.WriteAllTextAsync(report, ex.ToString()); }
         finally

@@ -1,5 +1,9 @@
 # Windows migration progress
 
+## 2026-10-03 — Visual Studio ARM64 Debug XAML cache repair
+
+Reproduced the reported CS0029 and CS1061 directly in the generated ARM64 Debug files: `MainWindow.g.i.cs` correctly declared `ActiveExports` as `ExportProgressView`, while `MainWindow.g.cs` still cast the element to the previous `ItemsControl` and referenced the removed `MainWindow.CancelExport_Click`. Source XAML and the cancel handler in `ExportProgressView` were correct. Removed only the verified workspace `obj/ARM64/Debug` cache and rebuilt the actual packaged Debug configuration successfully. Regenerated code now casts to `ExportProgressView` and contains no obsolete MainWindow cancel binding. Updated troubleshooting documentation. App version remains 1.0.2 / 1.0.2.0 because this repaired generated build state without changing app behavior. Existing PRI249 packaging warnings remain.
+
 ## 2026-10-03 — Mac export update sync (1.0.2 / 1.0.2.0)
 
 Compared the current Mac checkout at `d38a3b1` with Windows. Ported configurable video formats (MKV default, MP4, MOV, M4V) and audio formats (WAV default, MP3, M4A), original public YouTube soundtrack downloads and described soundtrack exports, and FFmpeg/HLS progress events. Preserved Windows OneCore/SAPI routing, model selection, UTF-8 project/config reads, and the source-copy compatibility command. UI defaults and disabled options follow Mac content/narration readiness: every description must have current nonempty audio with valid timing; combined captions need both transcript and descriptions. Matching exports can be explicitly replaced while failure leaves the previous output intact; changing formats keeps both. Open-caption quality/HDR guidance is visible. M4V is classified as video in the library and Created Exports.

@@ -79,4 +79,6 @@ The ARM64 development registration and Windows launch contract have been tested.
 
 ## Stale XAML build errors
 
-If CS0123 in `MainWindow.g.cs` mentions `RightTappedEventHandler` for `ProjectContext_Requested`, the generated XAML cache predates the switch to `ContextRequested`. The source XAML and handler already use the correct event. Close Visual Studio, remove only the affected generated `Vidi Studio Windows\obj\ARM64\Debug` directory (or the corresponding platform/configuration), reopen the solution, and rebuild. Do not edit `MainWindow.g.cs`; it is generated. Clearing that cache resolved the reproduced Debug ARM64 failure.
+Stale generated XAML can report CS0123 for the old `RightTappedEventHandler`, or CS0029 converting `ItemsControl` to `ExportProgressView` together with CS1061 for `MainWindow.CancelExport_Click`. The current source uses `ContextRequested` and the reusable `ExportProgressView`; the export cancel handler belongs to that control. These errors occur when `MainWindow.g.cs` still contains bindings from an earlier layout while `MainWindow.g.i.cs` has the current field types.
+
+Close Visual Studio, remove only the affected generated `Vidi Studio Windows\obj\ARM64\Debug` directory (or the corresponding platform/configuration), reopen the solution, and rebuild. Do not edit generated `.g.cs` files or add a duplicate handler to MainWindow. Clearing that cache and rebuilding resolved both reproduced Debug ARM64 failures.

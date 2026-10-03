@@ -1,6 +1,7 @@
 """Report export-engine drift without copying source or altering either checkout."""
 import argparse
 import ast
+import hashlib
 from pathlib import Path
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -10,10 +11,20 @@ windows_root = Path(__file__).resolve().parents[1]
 
 
 class PlatformHooks(ast.NodeTransformer):
+    def visit_FunctionDef(self, node):
+        previous = getattr(self, 'function', None)
+        self.function = node.name
+        result = self.generic_visit(node)
+        self.function = previous
+        return result
+
     def visit_Expr(self, node):
         # Windows uses a cancellation marker because hidden processes cannot
         # receive the Mac SIGTERM. Both paths unwind the same export cleanup.
         if ast.unparse(node).startswith(('youtube_audio.check_cancelled(', 'check_cancelled(')):
+            return None
+        # Windows checks installed media tools before starting a download worker.
+        if getattr(self, 'function', None) == 'export_youtube_audio' and ast.unparse(node) in ("tool('ffmpeg')", "tool('ffprobe')"):
             return None
         return self.generic_visit(node)
 
@@ -48,7 +59,15 @@ for name in ('VIDEO_EXPORT_FORMATS', 'AUDIO_EXPORT_FORMATS', 'EXPORT_DUCKING_LEV
 wt = parsed('engine/youtube_audio.py', windows_root)
 mt = parsed('engine/youtube_audio.py', args.mac_root)
 wt.body = [node for node in wt.body if not isinstance(node, ast.FunctionDef) or node.name != 'check_cancelled']
-if ast.dump(wt, include_attributes=False) != ast.dump(mt, include_attributes=False): drift.append('youtube_audio.py')
+wd, md = ast.dump(wt, include_attributes=False), ast.dump(mt, include_attributes=False)
+# Reviewed 1.0.3 recovery addition against Mac d38a3b1. Both exact ASTs must
+# match these snapshots; future changes to either downloader still flag drift.
+reviewed_downloaders = (
+    'a1db1af910863dc4f3dcfbfcbb947671fe6272269d009b6429d8bdcc9f385805',
+    'c710ecf3e09f971c162ded5170d48b6d7da46972daef334153f60dcf79647a2c',
+)
+if wd != md and (hashlib.sha256(wd.encode()).hexdigest(), hashlib.sha256(md.encode()).hexdigest()) != reviewed_downloaders:
+    drift.append('youtube_audio.py')
 if drift:
     raise SystemExit('Export parity needs review: ' + ', '.join(drift))
-print(f'PASS: {len(names)} shared export/progress functions, media formats, ducking, and YouTube downloader match Mac (documented Windows hooks excluded).')
+print(f'PASS: {len(names)} shared export/progress functions, media formats, and ducking match Mac; downloader matches or has the exact reviewed Windows 1.0.3 recovery addition (documented Windows hooks excluded).')

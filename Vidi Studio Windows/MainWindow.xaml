@@ -144,9 +144,9 @@
     </Grid>
    </Grid>
   </ContentControl>
-  <StackPanel Grid.Row="3" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
-   <views:ExportProgressView x:Name="ActiveExports"/>
-   <Grid Padding="14,7" ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><ProgressRing IsActive="{x:Bind Model.Busy, Mode=OneWay}" Width="20" Height="20"/><TextBlock Grid.Column="1" Text="{x:Bind Model.Status, Mode=OneWay}" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12" AutomationProperties.LiveSetting="Polite"/><Button Grid.Column="2" Content="Cancel processing" IsEnabled="{x:Bind Model.Busy, Mode=OneWay}" Click="Cancel_Click" Padding="8,3"/></Grid>
-  </StackPanel>
+  <Border x:Name="StatusFooter" Grid.Row="3" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="14,7">
+   <TextBlock Text="{x:Bind Model.Status, Mode=OneWay}" TextWrapping="Wrap" FontSize="12"/>
+  </Border>
+  <views:ProgressOverlay x:Name="ActiveExports" Grid.RowSpan="4"/>
  </Grid>
 </Window>

@@ -21,8 +21,8 @@ This is a work record, not a declaration that the full migration is finished.
 | Captions in editor preview | Implemented with separate dialogue/AD colors, opacity, position and size settings |
 | On-device narration without saved project audio | Implemented through Core/SAPI; synchronization requires listening validation |
 | Exports, caption variants, audio, HLS | Synced to Mac d38a3b1: MKV/MP4/MOV/M4V video; WAV/MP3/M4A audio; replacement matching and content/narration gating; actual media and native ARM64/x64 checks pass |
-| Public YouTube soundtrack exports | Original audio, narration only, and downloaded soundtrack with narration; live source and packaged soundtrack download/export plus packaged Windows narration/M4A mix pass |
-| Export progress and cancellation | Shared across library/editor/Settings windows; media-time progress, aggregate HLS progress, indeterminate downloads, per-export cancellation; native cross-window and engine cancellation checks pass |
+| Public YouTube soundtrack exports | Original audio, narration only, and downloaded soundtrack with narration; live source and packaged soundtrack download/export plus packaged Windows narration/M4A mix pass. Windows 1.0.3 adds one fresh retry for temporary failures and safe specific worker errors; this extends the Mac d38a3b1 downloader. |
+| Export progress and cancellation | Centered progress cards across library/editor/Settings windows for active processing and exports; media-time progress, aggregate HLS progress, indeterminate downloads, per-export cancellation; native placement, cross-window, completion, and engine cancellation checks pass |
 | Menu and segment action icons | Fluent icons on every menu-bar action, project context action, and segment/editor More menu; native icon assertions pass |
 | Future export drift detection | Read-only script compares shared Mac/Windows export logic and reports changes requiring review; synchronization remains an explicit port/validation step |
 | Created export open/delete | Connected; interactive validation outstanding |

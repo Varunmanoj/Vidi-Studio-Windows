@@ -1,5 +1,6 @@
 """Temporary public YouTube soundtrack retrieval for described-audio exports."""
 import contextlib
+import json
 import os
 import signal
 import subprocess
@@ -15,6 +16,64 @@ MAX_AUDIO_BYTES = 2 * 1024 * 1024 * 1024
 DOWNLOAD_ERROR = ('YouTube audio could not be downloaded. Check your connection and that the video '
                   'is public, then try again. If YouTube blocks the download, import your original '
                   'video as a local project and export its described audio instead.')
+ERROR_FILE = 'download-error.json'
+ERROR_MESSAGES = {
+    'download': DOWNLOAD_ERROR,
+    'network': 'The YouTube audio download lost its connection or timed out. Check your connection and try again.',
+    'blocked': 'YouTube refused the audio download (HTTP 403 or 429). Try again later, or import your original video.',
+    'restricted': 'YouTube requires sign-in or restricts this video. Choose a public unrestricted video, or import your original video.',
+    'live': 'Wait until the YouTube live video has finished processing before exporting.',
+    'video': 'Choose one public YouTube video.',
+    'audio': 'This YouTube video has no downloadable audio-only track.',
+    'size': 'The YouTube audio is too large to download. Import your original video instead.',
+    'runtime': 'The YouTube JavaScript runtime could not run. Rebuild the bundled engine and try again.',
+    'ffmpeg': 'FFmpeg is unavailable. Set its executable path in Settings → Storage and tools.',
+    'worker': 'The YouTube download worker could not finish. Rebuild the bundled engine and try again.',
+}
+RETRYABLE_ERRORS = {'download', 'network', 'blocked'}
+
+
+class DownloadError(ValueError):
+    def __init__(self, code='download'):
+        self.code = code if code in ERROR_MESSAGES else 'download'
+        super().__init__(ERROR_MESSAGES[self.code])
+
+
+def download_error(error):
+    """Map diagnostics to fixed messages; never return signed URLs or tokens."""
+    if isinstance(error, DownloadError):
+        return error
+    message = str(error).lower()
+    if 'ffmpeg is unavailable' in message:
+        code = 'ffmpeg'
+    elif any(word in message for word in ('sign in', 'sign-in', 'private video', 'age-restricted', 'not available in your country')):
+        code = 'restricted'
+    elif any(word in message for word in ('http error 403', 'http error 429')):
+        code = 'blocked'
+    elif any(word in message for word in ('timed out', 'timeout', 'connection', 'network', 'certificate', 'ssl', 'http error 503')):
+        code = 'network'
+    elif any(word in message for word in ('deno', 'javascript runtime', 'signature', 'challenge', 'yt_dlp_ejs')):
+        code = 'runtime'
+    elif 'no downloadable audio-only track' in message:
+        code = 'audio'
+    else:
+        code = 'download'
+    return DownloadError(code)
+
+
+def write_worker_error(directory, error):
+    failure = download_error(error)
+    # Only a known code crosses the worker boundary. The file stays temporary.
+    (Path(directory) / ERROR_FILE).write_text(json.dumps({'code': failure.code}), encoding='utf-8')
+    return failure
+
+
+def read_worker_error(directory):
+    try:
+        code = json.loads((Path(directory) / ERROR_FILE).read_text(encoding='utf-8'))['code']
+        return DownloadError(code) if code in ERROR_MESSAGES else DownloadError('worker')
+    except (OSError, ValueError, KeyError, TypeError):
+        return DownloadError('worker')
 
 
 def check_cancelled():
@@ -39,7 +98,7 @@ def original_audio_format(context):
     original = [item for item in formats if 'original' in str(item.get('format_note', '')).lower()
                 or str(item.get('language', '')).endswith('-orig')]
     if not formats:
-        raise ValueError('This YouTube video has no downloadable audio-only track.')
+        raise DownloadError('audio')
     yield (original or formats)[-1]
 
 
@@ -59,7 +118,7 @@ def download(url, directory, emit, ffmpeg_path=None):
         nonlocal last_update
         downloaded = status.get('downloaded_bytes', 0)
         if downloaded > MAX_AUDIO_BYTES:
-            raise ValueError('The YouTube audio is too large to download. Import your original video instead.')
+            raise DownloadError('size')
         now = time.monotonic()
         if status['status'] == 'downloading' and now - last_update >= 1:
             total = status.get('total_bytes') or status.get('total_bytes_estimate')
@@ -74,25 +133,25 @@ def download(url, directory, emit, ffmpeg_path=None):
         'outtmpl': str(Path(directory) / 'soundtrack.%(ext)s'),
         'cachedir': False, 'socket_timeout': 20, 'retries': 2, 'fragment_retries': 2,
         'extractor_retries': 2, 'max_filesize': MAX_AUDIO_BYTES,
-        'js_runtimes': {'deno': {'path': str(javascript_runtime())}},
         'remote_components': set(),
     }
     if ffmpeg_path:
         options['ffmpeg_location'] = str(Path(ffmpeg_path).parent)
     try:
+        options['js_runtimes'] = {'deno': {'path': str(javascript_runtime())}}
         with yt_dlp.YoutubeDL(options) as downloader:
             info = downloader.extract_info(url, download=False)
             if not info or info.get('_type', 'video') != 'video':
-                raise ValueError('Choose one public YouTube video.')
+                raise DownloadError('video')
             if info.get('is_live') or info.get('live_status') in ('is_live', 'is_upcoming', 'post_live'):
-                raise ValueError('Wait until the YouTube live video has finished processing before exporting.')
+                raise DownloadError('live')
             if info.get('availability') not in (None, 'public'):
-                raise ValueError('The YouTube video must be public before its audio can be exported.')
+                raise DownloadError('restricted')
             downloader.process_info(info)
-    except Exception:
+    except Exception as error:
         # Downloader errors may contain temporary signed stream URLs. Keep them
         # out of stdout, application logs, and saved project errors.
-        raise ValueError(DOWNLOAD_ERROR) from None
+        raise download_error(error) from None
 
 
 def stop_worker(process):
@@ -114,6 +173,21 @@ def stop_worker(process):
 def soundtrack(url, emit):
     """Bound the entire download and kill its runtime on timeout/cancellation."""
     url = parity.youtube_url(url)
+    deadline = time.monotonic() + DOWNLOAD_TIMEOUT
+    for attempt in range(2):
+        with soundtrack_attempt(url, emit, deadline) as result:
+            if isinstance(result, DownloadError):
+                if attempt == 0 and result.code in RETRYABLE_ERRORS:
+                    check_cancelled()
+                    emit('Retrying YouTube audio download with a fresh connection', exportProgress=None)
+                    continue
+                raise result
+            yield result
+            return
+
+
+@contextlib.contextmanager
+def soundtrack_attempt(url, emit, deadline):
     with tempfile.TemporaryDirectory(prefix='vidistudio-youtube-audio-') as temporary:
         command = [sys.executable]
         if not getattr(sys, 'frozen', False):
@@ -122,7 +196,6 @@ def soundtrack(url, emit):
         emit('Downloading original YouTube audio', exportProgress=None)
         process = subprocess.Popen(command, stderr=subprocess.DEVNULL, start_new_session=os.name != 'nt')
         try:
-            deadline = time.monotonic() + DOWNLOAD_TIMEOUT
             while process.poll() is None:
                 check_cancelled()
                 if time.monotonic() >= deadline:
@@ -132,11 +205,13 @@ def soundtrack(url, emit):
                 except subprocess.TimeoutExpired:
                     pass
             if process.returncode:
-                raise ValueError(DOWNLOAD_ERROR)
+                yield read_worker_error(temporary)
+                return
             files = [item for item in Path(temporary).glob('soundtrack.*')
                      if item.is_file() and item.suffix not in ('.part', '.ytdl')]
             if len(files) != 1 or not files[0].stat().st_size or files[0].stat().st_size > MAX_AUDIO_BYTES:
-                raise ValueError(DOWNLOAD_ERROR)
+                yield DownloadError()
+                return
             yield files[0]
         finally:
             stop_worker(process)

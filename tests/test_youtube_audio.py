@@ -1,5 +1,6 @@
 import array
 import contextlib
+import json
 import math
 import os
 import subprocess
@@ -14,6 +15,80 @@ import youtube_audio
 
 
 class YouTubeAudio(unittest.TestCase):
+    def test_worker_error_protocol_is_specific_and_never_contains_stream_urls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for detail, code in (
+                ('HTTP Error 403: https://stream.invalid/?token=secret', 'blocked'),
+                ('Connection timed out for https://stream.invalid/?token=secret', 'network'),
+                ('Sign in to confirm your age: https://stream.invalid/?token=secret', 'restricted'),
+                ('FFmpeg is unavailable. Set its path in Settings.', 'ffmpeg'),
+                ('Deno challenge failed: https://stream.invalid/?token=secret', 'runtime'),
+            ):
+                with self.subTest(code=code):
+                    failure = youtube_audio.write_worker_error(directory, RuntimeError(detail))
+                    self.assertEqual(failure.code, code)
+                    saved = (Path(directory)/youtube_audio.ERROR_FILE).read_text(encoding='utf-8')
+                    self.assertEqual(json.loads(saved), {'code': code})
+                    self.assertNotIn('secret', str(failure))
+                    self.assertEqual(youtube_audio.read_worker_error(directory).code, code)
+            (Path(directory)/youtube_audio.ERROR_FILE).write_text('{"code":"https://stream.invalid/?token=secret"}', encoding='utf-8')
+            self.assertEqual(youtube_audio.read_worker_error(directory).code, 'worker')
+            (Path(directory)/youtube_audio.ERROR_FILE).write_text('invalid json', encoding='utf-8')
+            self.assertEqual(youtube_audio.read_worker_error(directory).code, 'worker')
+
+    def run_download_workers(self, failures):
+        real_popen = subprocess.Popen
+        directories = []
+        def start(command, **kwargs):
+            if command[0] != sys.executable:
+                return real_popen(command, **kwargs)
+            directory = Path(command[-1])
+            if directories:
+                self.assertFalse(directories[-1].exists(), 'A retry retained the failed download')
+            directories.append(directory)
+            index = len(directories) - 1
+            code = failures[index] if index < len(failures) else None
+            script = ('import json,sys; from pathlib import Path; folder=Path(sys.argv[1]); '
+                      + ('(folder/"download-error.json").write_text(json.dumps({"code":sys.argv[2]})); '
+                         '(folder/"soundtrack.part").write_bytes(b"partial"); sys.exit(1)' if code else
+                         '(folder/"soundtrack.webm").write_bytes(b"complete")'))
+            return real_popen([sys.executable, '-c', script, str(directory), code or ''], **kwargs)
+        return directories, patch.object(youtube_audio.subprocess, 'Popen', side_effect=start)
+
+    def test_temporary_failure_retries_once_with_new_worker_and_removes_partial_files(self):
+        directories, workers = self.run_download_workers(['blocked'])
+        emit = Mock()
+        with workers, youtube_audio.soundtrack('https://youtu.be/abcdefghijk', emit) as soundtrack:
+            self.assertEqual(soundtrack.read_bytes(), b'complete')
+            self.assertEqual(len(directories), 2)
+        self.assertTrue(all(not folder.exists() for folder in directories))
+        self.assertTrue(any('Retrying' in call.args[0] for call in emit.call_args_list))
+
+    def test_repeated_or_permanent_download_failure_stays_bounded_and_specific(self):
+        for failures, expected_count in ((['network', 'network'], 2), (['restricted'], 1), (['runtime'], 1)):
+            with self.subTest(failures=failures):
+                directories, workers = self.run_download_workers(failures)
+                with workers, self.assertRaises(youtube_audio.DownloadError) as error:
+                    with youtube_audio.soundtrack('https://youtu.be/abcdefghijk', Mock()):
+                        pass
+                self.assertEqual(error.exception.code, failures[-1])
+                self.assertEqual(len(directories), expected_count)
+                self.assertTrue(all(not folder.exists() for folder in directories))
+
+    def test_missing_media_tools_are_reported_before_download(self):
+        for missing in ('ffmpeg', 'ffprobe'):
+            with tempfile.TemporaryDirectory() as temporary:
+                project = dict(sourceType='youtube', duration=0, cues=[])
+                def tool(name):
+                    if name == missing:
+                        raise ValueError(f'{name} is unavailable. Set its path in Settings.')
+                    return 'test.exe'
+                with patch.object(engine, 'tool', side_effect=tool), patch.object(youtube_audio, 'soundtrack') as download:
+                    with self.assertRaisesRegex(ValueError, missing + ' is unavailable'):
+                        engine.export_youtube_audio(Path(temporary), project)
+                    download.assert_not_called()
+                    self.assertFalse((Path(temporary)/'exports').exists())
+
     def test_youtube_audio_only_needs_no_narration_or_generated_duration(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

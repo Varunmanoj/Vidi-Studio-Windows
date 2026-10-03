@@ -156,6 +156,20 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("An open Settings window did not follow the app's light theme.");
             PreviewTheme(originalTheme);
             await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-appearance.png"));
+            var previewSession = new Services.ExportSession("Windows UI smoke fixture", () => { });
+            previewSession.Update("Creating audio export", .42, true);
+            Services.ExportSession.Active.Add(previewSession);
+            try
+            {
+                ActiveExports.VerifyCenteredForSmokeTest();
+                ((Microsoft.UI.Xaml.Controls.Grid)settings.Content).Children.OfType<Views.ProgressOverlay>().Single().VerifyCenteredForSmokeTest();
+                PreviewTheme("dark"); await Task.Delay(80);
+                await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "progress-center-dark.png"));
+                await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-progress-center.png"));
+                PreviewTheme("light"); await Task.Delay(80);
+                await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "progress-center-light.png"));
+            }
+            finally { Services.ExportSession.Active.Remove(previewSession); PreviewTheme(originalTheme); }
             await settings.VerifyWindowThemeAsync();
             settings.VerifyGeminiModelFiltering();
             await Task.Delay(100);
@@ -276,7 +290,10 @@ public sealed partial class MainWindow
             foreach (var provider in new[] { "windows-core", "sapi5" })
             {
                 Model.Settings.Set("ttsMode", provider);
-                await Model.RunAsync("synthesize-tts");
+                var narrationTask = Model.RunAsync("synthesize-tts");
+                ActiveExports.VerifyCenteredForSmokeTest();
+                await narrationTask;
+                if (ActiveExports.Visibility != Visibility.Collapsed) throw new InvalidOperationException("Processing progress did not close after narration finished.");
                 if (Model.Status != "Complete" || !Model.Project!.Cues[0].AudioReady) throw new InvalidOperationException(provider + " narration failed: " + Model.Status);
             }
             if (!Model.Project!.HasCompleteExportNarration) throw new InvalidOperationException("Current narration was rejected for export.");
@@ -319,12 +336,16 @@ public sealed partial class MainWindow
             child.Section.SelectedIndex = 1;
             if (Section.SelectedIndex == 1) throw new InvalidOperationException("Editor view selection leaked between windows.");
             var mediaExportTask = Model.RunAsync("export-original-audio", new[] { "--media-format", "wav", "--replace-existing" });
+            ActiveExports.VerifyCenteredForSmokeTest();
+            child.ActiveExports.VerifyCenteredForSmokeTest();
             if (Model.ExportSessions.Count != 1 || child.Model.ExportSessions.Count != 1 || child.ActiveExports.SessionCount != 1)
                 throw new InvalidOperationException("Export activity did not appear in another editor.");
             var session = Model.ExportSessions[0];
             var observedProgress = new System.Collections.Generic.List<double>();
             session.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(session.Percent) && !session.IsIndeterminate) observedProgress.Add(session.Percent); };
             await mediaExportTask;
+            if (ActiveExports.Visibility != Visibility.Collapsed || child.ActiveExports.Visibility != Visibility.Collapsed)
+                throw new InvalidOperationException("Centered export progress did not close in every window.");
             if (Model.Status != "Complete" || Model.ExportSessions.Count != 0 || !observedProgress.Any(p => p > 0 && p < 100) ||
                 !observedProgress.SequenceEqual(observedProgress.OrderBy(p => p)))
                 throw new InvalidOperationException("Export progress/completion was not monotonic or did not clear.");

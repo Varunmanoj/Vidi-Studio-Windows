@@ -1,5 +1,19 @@
 # Windows migration progress
 
+## 2026-10-03 — Centered progress display (1.0.4 / 1.0.4.0)
+
+Moved active processing and shared export progress from the bottom status strip into a centered, theme-aware card in each application window, including Settings. Status text is larger, export bars fill the card width, and each task retains its Cancel button. The card appears only while work is active and automatically closes on completion, failure, or cancellation. Long lists of simultaneous exports scroll within the available window height. The footer now shows idle/completion/error status without active progress controls. Observers are detached when windows close. Existing task execution, export percentages, and cancellation behavior remain intact.
+
+ARM64 Debug build and native frozen-engine workflows on ARM64 and x64 passed. Native checks verify centered placement in the main window and Settings, processing visibility during actual Core/SAPI narration, shared export visibility in a second editor, and automatic dismissal after completion. Captured and visually reviewed light/dark screenshots. Existing PRI249 packaging warnings remain.
+
+## 2026-10-03 — YouTube audio download recovery (1.0.3 / 1.0.3.0)
+
+Investigated the reported failure for public video `YUMl5LUlSRk`. The existing bundled engine downloaded the original soundtrack, completed a full MP3 export using the saved app settings in an isolated project, and downloaded successfully under the actual Windows package identity. The original failure could not be reproduced; the running app already had FFmpeg on PATH and bundled Deno was present. The old parent worker discarded all error reasons, including missing tools, and replaced them with the same generic download error.
+
+Added a temporary worker protocol carrying only allowlisted error codes, specific messages for connection failures, HTTP refusal, restricted/live videos, missing runtime/tools, and invalid audio, plus one fresh worker/download retry for temporary failures. Partial downloads are removed between attempts; both attempts share the original total timeout and retain cancellation cleanup. FFmpeg/FFprobe are checked before downloading. No browser credentials or signed stream URLs are saved or displayed. These reliability changes intentionally extend the Mac d38a3b1 downloader; the parity checker recognizes the exact reviewed pair of downloader ASTs and flags subsequent changes on either platform. Mac source remains unchanged.
+
+Validation: all 120 engine tests passed with the rebuilt bundled CLI and actual ARM64 speech host; ARM64 Debug build and native frozen-engine workflow passed. The rebuilt engine exported the reported video to MP3 under Windows package identity and returned the specific FFmpeg error with a fixed worker code when PATH was deliberately empty. Test media/configuration remained in isolated workspace fixtures. Existing PRI249 warnings remain.
+
 ## 2026-10-03 — Visual Studio ARM64 Debug XAML cache repair
 
 Reproduced the reported CS0029 and CS1061 directly in the generated ARM64 Debug files: `MainWindow.g.i.cs` correctly declared `ActiveExports` as `ExportProgressView`, while `MainWindow.g.cs` still cast the element to the previous `ItemsControl` and referenced the removed `MainWindow.CancelExport_Click`. Source XAML and the cancel handler in `ExportProgressView` were correct. Removed only the verified workspace `obj/ARM64/Debug` cache and rebuilt the actual packaged Debug configuration successfully. Regenerated code now casts to `ExportProgressView` and contains no obsolete MainWindow cancel binding. Updated troubleshooting documentation. App version remains 1.0.2 / 1.0.2.0 because this repaired generated build state without changing app behavior. Existing PRI249 packaging warnings remain.

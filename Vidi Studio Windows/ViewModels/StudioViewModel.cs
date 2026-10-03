@@ -24,6 +24,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     private bool busy;
     public bool Busy { get => busy; private set { busy = value; Changed(); Changed(nameof(Idle)); } }
     public bool Idle => !Busy;
+    public bool IsExporting { get; private set; }
     private string status = "Import a video or open an existing project to begin.";
     public string Status { get => status; private set { status = value; Changed(); } }
     private CancellationTokenSource? operation;
@@ -62,6 +63,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     {
         if (Busy) return new();
         if (needsProject && Project == null) { Status = "Open a project first."; return new(); }
+        IsExporting = command.StartsWith("export-", StringComparison.Ordinal) && Project != null;
         Busy = true;
         operation = new();
         Status = "Starting…";
@@ -101,7 +103,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
                 catch (Exception ex) { Engine.Log(ex.ToString()); Status = "Could not reload the project. Reopen its folder to retry."; }
             }
             if (exportSession != null) ExportSessions.Remove(exportSession);
-            operation.Dispose(); operation = null; Busy = false;
+            operation.Dispose(); operation = null; IsExporting = false; Busy = false;
         }
         return new();
     }

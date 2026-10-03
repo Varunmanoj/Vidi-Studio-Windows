@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -47,6 +48,8 @@ public sealed partial class MainWindow : Window
         readback = new SummaryReadback(Model.Engine, Model.Settings);
         onDeviceNarrator = new OnDeviceNarrator(Model.Settings, Model.Engine);
         InitializeComponent();
+        ActiveExports.Observe(Model);
+        Model.PropertyChanged += UpdateStatusFooter;
         Views.WindowAppearance.ApplyIcon(this);
         App.ThemeChanged += ApplyThemeFromApp;
         BuildMenus();
@@ -64,6 +67,8 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             App.ThemeChanged -= ApplyThemeFromApp;
+            ActiveExports.Detach();
+            Model.PropertyChanged -= UpdateStatusFooter;
             Model.Cancel(); timer.Stop();
             foreach (var cleanup in new Action[] { video.Dispose, speech.Dispose, narrationPlayer.Dispose, onDeviceNarrator.Dispose, readback.Dispose,
                 () => { if (YouTubePlayer.CoreWebView2 != null) YouTubePlayer.Close(); } })
@@ -93,6 +98,8 @@ public sealed partial class MainWindow : Window
         shortcut.Invoked += (_, e) => { if (Model.Idle) handler(this, new RoutedEventArgs()); e.Handled = true; };
         Root.KeyboardAccelerators.Add(shortcut);
     }
+    private void UpdateStatusFooter(object? sender, PropertyChangedEventArgs e)
+    { if (e.PropertyName == nameof(Model.Busy)) StatusFooter.Visibility = Model.Idle ? Visibility.Visible : Visibility.Collapsed; }
     private void ApplyTheme()
     {
         if (App.ActiveTheme is { } active) ApplyThemeFromApp(active);

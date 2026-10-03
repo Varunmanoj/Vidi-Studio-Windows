@@ -1878,6 +1878,9 @@ def export_youtube_audio(root, project, described=False, replace_existing=False,
     if described and (not math.isfinite(duration) or duration <= 0):
         raise ValueError('Generate the YouTube video transcript to determine its duration before exporting.')
     cues = exportable_narration_cues(root, project) if described else []
+    # Report missing media tools before entering the download worker.
+    tool('ffmpeg')
+    tool('ffprobe')
     relative, output, temporary = prepare_export_target(
         root, project, 'YouTube Studio Audio Description' if described else 'YouTube Audio Only', format, replace_existing
     )
@@ -2501,7 +2504,11 @@ def main():
     if args.command == 'download-youtube-audio':
         if not args.url or not args.output:
             raise ValueError('Choose a YouTube URL and temporary audio folder.')
-        youtube_audio.download(args.url, args.output, emit, ffmpeg_path=tool('ffmpeg')); return
+        try:
+            youtube_audio.download(args.url, args.output, emit, ffmpeg_path=tool('ffmpeg'))
+        except Exception as error:
+            raise youtube_audio.write_worker_error(args.output, error) from None
+        return
     if args.command == 'preview-tts':
         preview_tts(args.output, args.text); return
     if args.command == 'list-models':

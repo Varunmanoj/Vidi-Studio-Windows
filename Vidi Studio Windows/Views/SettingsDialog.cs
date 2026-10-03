@@ -133,9 +133,11 @@ public sealed partial class SettingsDialog : Window
         var cancel = new Button { Content = "Cancel", MinWidth = 100 }; cancel.Click += (_, _) => Close(); Grid.SetColumn(cancel, 1); footer.Children.Add(cancel);
         var save = new Button { Content = "Save settings", MinWidth = 130, Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         save.Click += (_, _) => SaveAndClose(); Grid.SetColumn(save, 2); footer.Children.Add(save);
-        var exports = new ExportProgressView();
-        Grid.SetRow(exports, 2); Grid.SetColumnSpan(exports, 2); layout.Children.Add(exports);
         Grid.SetRow(footer, 3); Grid.SetColumnSpan(footer, 2); layout.Children.Add(footer);
+        var progress = new ProgressOverlay();
+        Grid.SetRowSpan(progress, 4); Grid.SetColumnSpan(progress, 2); layout.Children.Add(progress);
+        progress.Observe(model);
+        Closed += (_, _) => progress.Detach();
         Content = layout;
         App.ThemeChanged += ReceiveTheme;
         samplePlayer.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() =>

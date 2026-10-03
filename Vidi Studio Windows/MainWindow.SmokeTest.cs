@@ -29,6 +29,29 @@ public sealed partial class MainWindow
                 editorMenus[4].Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().First(item => item.Text == "Play video").KeyboardAcceleratorTextOverride != "Ctrl+Shift+Space")
                 throw new InvalidOperationException("Menu commands do not show their keyboard shortcuts.");
             var originalTheme = Model.Settings.Get("theme", "system");
+            var thumbnailProject = Models.StudioProject.Load(folder);
+            var thumbnail = File.Exists(Path.Combine(folder, "youtube-thumbnail.jpg")) ? "youtube-thumbnail.jpg" : thumbnailProject.Thumbnails[0];
+            thumbnailProject.SourceType = "youtube";
+            thumbnailProject.Thumbnails = new() { thumbnail };
+            RenderTimelineThumbnails(thumbnailProject);
+            await Task.Delay(100);
+            VerifyTimelineThumbnailsForSmokeTest(1);
+            await CaptureSmokeImage(TimelinePanel, Path.Combine(Path.GetDirectoryName(report)!, "youtube-thumbnail-strip.png"));
+            var initialThumbnailWidth = Thumbnails.ActualWidth;
+            ToggleInspector_Click(this, new RoutedEventArgs());
+            await Task.Delay(50);
+            VerifyTimelineThumbnailsForSmokeTest(1);
+            if (Thumbnails.ActualWidth <= initialThumbnailWidth) throw new InvalidOperationException("Thumbnail strip did not expand when the inspector closed.");
+            ToggleInspector_Click(this, new RoutedEventArgs());
+            thumbnailProject.SourceType = "local";
+            thumbnailProject.Thumbnails = Enumerable.Repeat(thumbnail, 8).ToList();
+            RenderTimelineThumbnails(thumbnailProject);
+            await Task.Delay(100);
+            VerifyTimelineThumbnailsForSmokeTest(8);
+            thumbnailProject.Thumbnails.Clear();
+            RenderTimelineThumbnails(thumbnailProject);
+            if (ThumbnailEmpty.Visibility != Visibility.Visible) throw new InvalidOperationException("Missing thumbnails have no placeholder.");
+            RenderTimelineThumbnails(Model.Project!);
             PreviewTheme("dark");
             await Task.Delay(50);
             if (Root.RequestedTheme != ElementTheme.Dark || Root.ActualTheme != ElementTheme.Dark)
@@ -74,6 +97,8 @@ public sealed partial class MainWindow
             UpdateActiveSegment(true);
             if (TimelineScrubSurface.ActualWidth > 0 && Microsoft.UI.Xaml.Controls.Canvas.GetLeft(TimelineCursor) < TimelineScrubSurface.ActualWidth * .2)
                 throw new InvalidOperationException("Timeline playhead did not follow the video position.");
+            if (ThumbnailScrubSurface.ActualWidth > 0 && Microsoft.UI.Xaml.Controls.Canvas.GetLeft(ThumbnailCursor) < ThumbnailScrubSurface.ActualWidth * .2)
+                throw new InvalidOperationException("Thumbnail playhead did not follow the video position.");
             Section.SelectedIndex = 1;
             Model.Settings.Set("summarySentenceHighlightColor", "#C0D8FF"); Model.Settings.Set("summaryWordHighlightColor", "#FFDA57");
             HighlightReadbackSentence("Native Windows summary."); HighlightReadbackWord(7, 7);
@@ -443,6 +468,16 @@ public sealed partial class MainWindow
             catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == unchecked((int)0x80004004)) { }
             Application.Current.Exit();
         }
+    }
+    private void VerifyTimelineThumbnailsForSmokeTest(int count)
+    {
+        Root.UpdateLayout();
+        var tiles = Thumbnails.Children.OfType<Microsoft.UI.Xaml.Controls.Grid>().ToList();
+        if (tiles.Count != count || ThumbnailEmpty.Visibility != Visibility.Collapsed ||
+            tiles.Any(tile => Math.Abs(tile.ActualHeight - 42) > 1 || tile.Background is not Microsoft.UI.Xaml.Media.ImageBrush brush || brush.Stretch != Microsoft.UI.Xaml.Media.Stretch.UniformToFill) ||
+            Math.Abs(tiles.Sum(tile => tile.ActualWidth) + (count - 1) * 2 - ThumbnailScrubSurface.ActualWidth) > 2 ||
+            Math.Abs(Thumbnails.ActualWidth - TranscriptTrack.ActualWidth) > 2)
+            throw new InvalidOperationException("Timeline thumbnails did not fill and align with the timeline tracks.");
     }
     private static async Task CaptureSmokeImage(FrameworkElement element, string path)
     {

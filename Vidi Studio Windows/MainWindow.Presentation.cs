@@ -62,7 +62,8 @@ public sealed partial class MainWindow
         Segments.ItemsSource = null; ExportGroups.Children.Clear();
         ClearSummaryHighlight(); SummaryRichText.Children.Clear(); summaryLines.Clear(); ReadbackSentence.Text = "";
         ProjectDetails.Children.Clear(); VideoDetails.Children.Clear(); InspectorExports.Children.Clear();
-        Thumbnails.Children.Clear(); TranscriptTrack.Children.Clear(); DescriptionTrack.Children.Clear();
+        Thumbnails.Children.Clear(); Thumbnails.ColumnDefinitions.Clear(); ThumbnailEmpty.Visibility = Visibility.Visible;
+        TranscriptTrack.Children.Clear(); DescriptionTrack.Children.Clear(); UpdateTimelineCursor();
         CaptionText.Text = DescriptionCaptionText.Text = ""; CaptionOverlay.Visibility = Visibility.Collapsed;
         ShowGallery_Click(this, new RoutedEventArgs());
     }

@@ -17,7 +17,7 @@ This is a work record, not a declaration that the full migration is finished.
 | Generated narration synchronization | Native muted-media checks pass on ARM64/x64 for cue alignment, pause, and seeking beyond a cue; listening review remains |
 | Summary readback | Single Play/Pause/Resume control plus Stop in view and menu; sentence and word highlighting in the summary uses Appearance colors; Core word boundaries and fallback playback-position estimates implemented |
 | Voice filtering, samples, settings | Implemented; native settings navigation and visual checks pass; screen-reader validation outstanding |
-| Transcript/AD labeled timeline tracks | Thumbnails, click/drag scrub surface, moving playhead, and seek bar implemented; timed rows follow playback in Transcript, Descriptions, and AD Transcript |
+| Transcript/AD labeled timeline tracks | Mac-style full-width thumbnail strip with centered crop, equal local-frame cells, synchronized thumbnail playhead, click/drag seeking, and empty state; timed rows follow playback in Transcript, Descriptions, and AD Transcript |
 | Captions in editor preview | Implemented with separate dialogue/AD colors, opacity, position and size settings |
 | On-device narration without saved project audio | Implemented through Core/SAPI; synchronization requires listening validation |
 | Exports, caption variants, audio, HLS | Synced to Mac d38a3b1: MKV/MP4/MOV/M4V video; WAV/MP3/M4A audio; replacement matching and content/narration gating; actual media and native ARM64/x64 checks pass |

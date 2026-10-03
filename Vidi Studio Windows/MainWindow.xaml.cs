@@ -192,19 +192,7 @@ public sealed partial class MainWindow : Window
         UpdateTimelineCursor();
         UpdatePlaybackControls();
         RenderSection();
-        Thumbnails.Children.Clear();
-        foreach (var thumbnail in p.Thumbnails)
-        {
-            try
-            {
-                var index = Thumbnails.Children.Count;
-                var button = new Button { Content = new Image { Source = new BitmapImage(new Uri(p.Resolve(thumbnail))), Width = 88, Height = 50 }, Padding = new Thickness(0) };
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, $"Seek to timeline picture {index + 1}");
-                button.Click += (_, _) => Seek(index * p.Duration / Math.Max(1, p.Thumbnails.Count));
-                Thumbnails.Children.Add(button);
-            }
-            catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
-        }
+        RenderTimelineThumbnails(p);
         if (loadedProject == p.Folder) return;
         loadedProject = p.Folder; activeCue = null; speech.Pause(); narrationPlayer.Pause(); video.Pause(); onDeviceNarrator.Stop(); readback.Stop();
         Player.Visibility = p.IsYouTube ? Visibility.Collapsed : Visibility.Visible;
@@ -231,6 +219,29 @@ public sealed partial class MainWindow : Window
         catch (Exception ex) { await ShowError(ex); }
     }
     private void Section_Changed(object sender, SelectionChangedEventArgs e) { if (ready) RenderSection(); }
+    private void RenderTimelineThumbnails(StudioProject project)
+    {
+        Thumbnails.Children.Clear(); Thumbnails.ColumnDefinitions.Clear();
+        foreach (var thumbnail in project.Thumbnails)
+        {
+            try
+            {
+                var path = project.Resolve(thumbnail);
+                if (!File.Exists(path)) continue;
+                var tile = new Grid { Height = 42, Background = new Microsoft.UI.Xaml.Media.ImageBrush
+                {
+                    ImageSource = new BitmapImage(new Uri(path)), Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill,
+                    AlignmentX = Microsoft.UI.Xaml.Media.AlignmentX.Center, AlignmentY = Microsoft.UI.Xaml.Media.AlignmentY.Center
+                } };
+                Grid.SetColumn(tile, Thumbnails.Children.Count);
+                Thumbnails.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                Thumbnails.Children.Add(tile);
+            }
+            catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
+        }
+        ThumbnailEmpty.Visibility = Thumbnails.Children.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateTimelineCursor();
+    }
     private void RenderSection()
     {
         if (Model.Project is not { } p) return;
@@ -328,28 +339,33 @@ public sealed partial class MainWindow : Window
     private void UpdateTimelineCursor()
     {
         var duration = Model.Project?.Duration ?? 0;
+        ThumbnailCursor.Visibility = double.IsFinite(duration) && duration > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (double.IsFinite(duration) && duration > 0 && ThumbnailScrubSurface.ActualWidth > 0)
+            Canvas.SetLeft(ThumbnailCursor, Math.Clamp(Position / duration * ThumbnailScrubSurface.ActualWidth - ThumbnailCursor.Width / 2,
+                0, Math.Max(0, ThumbnailScrubSurface.ActualWidth - ThumbnailCursor.Width)));
         var width = TimelineScrubSurface.ActualWidth;
         if (duration <= 0 || width <= 0) return;
         Microsoft.UI.Xaml.Controls.Canvas.SetLeft(TimelineCursor, Math.Clamp(Math.Clamp(Position / duration, 0, 1) * width - TimelineCursor.Width / 2, 0, Math.Max(0, width - TimelineCursor.Width)));
     }
-    private void ScrubTimeline(PointerRoutedEventArgs e)
+    private void ScrubTimeline(FrameworkElement surface, PointerRoutedEventArgs e)
     {
-        if (Model.Project is not { Duration: > 0 } project || TimelineScrubSurface.ActualWidth <= 0) return;
-        var fraction = Math.Clamp(e.GetCurrentPoint(TimelineScrubSurface).Position.X / TimelineScrubSurface.ActualWidth, 0, 1);
+        if (Model.Project is not { Duration: > 0 } project || surface.ActualWidth <= 0) return;
+        var fraction = Math.Clamp(e.GetCurrentPoint(surface).Position.X / surface.ActualWidth, 0, 1);
         Seek(fraction * project.Duration);
     }
     private void TimelineScrubSurface_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (Model.Project == null) return;
-        timelineScrubbing = TimelineScrubSurface.CapturePointer(e.Pointer);
-        ScrubTimeline(e);
+        var surface = (FrameworkElement)sender;
+        timelineScrubbing = surface.CapturePointer(e.Pointer);
+        ScrubTimeline(surface, e);
         StartVideoPlayback();
         e.Handled = true;
     }
     private void TimelineScrubSurface_PointerMoved(object sender, PointerRoutedEventArgs e)
-    { if (timelineScrubbing) { ScrubTimeline(e); e.Handled = true; } }
+    { if (timelineScrubbing) { ScrubTimeline((FrameworkElement)sender, e); e.Handled = true; } }
     private void TimelineScrubSurface_PointerReleased(object sender, PointerRoutedEventArgs e)
-    { if (timelineScrubbing) ScrubTimeline(e); timelineScrubbing = false; TimelineScrubSurface.ReleasePointerCapture(e.Pointer); e.Handled = true; }
+    { if (timelineScrubbing) ScrubTimeline((FrameworkElement)sender, e); timelineScrubbing = false; ((FrameworkElement)sender).ReleasePointerCapture(e.Pointer); e.Handled = true; }
     private void TimelineScrubSurface_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => timelineScrubbing = false;
     private async void StartVideoPlayback()
     {

@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-04 — Timeline thumbnail parity (1.0.5 / 1.0.5.0)
+
+Compared the actual Mac `thumbnailTrack` in ContentView.swift with Windows. Windows used fixed 88×50 thumbnail buttons in a scrolling row, leaving a YouTube project's single cover image at the left. Replaced that row with a full-width 42-pixel strip, equal-width cells, 2-pixel gaps, and centered image-fill cropping, matching Mac. Image brushes keep the crop inside each cell rather than letting WinUI Image content overflow its viewport. The strip resizes with the editor/inspector and aligns with transcript/description tracks. Added the synchronized thumbnail playhead and pointer click/drag seeking across the entire strip; the existing video-position slider remains available for keyboard seeking. Empty or missing thumbnails show a placeholder.
+
+ARM64 and x64 native frozen-engine workflows passed with a copy of the reported video's actual thumbnail in isolated fixtures. Checks cover a single YouTube cover, eight local thumbnail cells, inspector resizing, empty state, and synchronized playheads. The actual Visual Studio ARM64 Debug build also passed. Visually reviewed the resulting crop against the Mac screenshot. Mac source and user project files were read only. Existing PRI249 packaging warnings remain.
+
 ## 2026-10-03 — Centered progress display (1.0.4 / 1.0.4.0)
 
 Moved active processing and shared export progress from the bottom status strip into a centered, theme-aware card in each application window, including Settings. Status text is larger, export bars fill the card width, and each task retains its Cancel button. The card appears only while work is active and automatically closes on completion, failure, or cancellation. Long lists of simultaneous exports scroll within the available window height. The footer now shows idle/completion/error status without active progress controls. Observers are detached when windows close. Existing task execution, export percentages, and cancellation behavior remain intact.

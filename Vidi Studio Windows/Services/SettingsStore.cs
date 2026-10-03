@@ -28,6 +28,10 @@ public sealed class SettingsStore
     public double Number(string key, double fallback = 1) => Data[key]?.GetValue<double>() ?? fallback;
     public void Save()
     {
+        // These jobs now share the base selection for local and YouTube projects.
+        if (Data["models"] is JsonObject models)
+            foreach (var stage in new[] { "summary", "audio_descriptions", "screen_text", "text_rewrite", "tts_audio" })
+                models.Remove("youtube_" + stage);
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
         var temporary = ConfigPath + "." + Guid.NewGuid() + ".tmp";
         try { File.WriteAllText(temporary, Data.ToJsonString(Models.Json.Options)); File.Move(temporary, ConfigPath, true); }

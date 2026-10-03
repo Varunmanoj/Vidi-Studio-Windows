@@ -389,11 +389,15 @@ def validate_youtube_for_gemini(url):
 def client_and_model(kind, project=None):
     cfg = config()
     key = {'tts':'tts_audio','transcribe':'transcript','generate-summary':'summary','generate-ad-cues':'audio_descriptions'}.get(kind,kind)
-    if project and project.get('sourceType') == 'youtube' and not key.startswith('youtube_'):
-        youtube_key = 'youtube_' + key
-        if cfg['models'].get(youtube_key): key = youtube_key
+    # Only transcription differs by source. Ignore legacy per-YouTube overrides.
+    if key.startswith('youtube_') and key != 'youtube_transcript':
+        key = key.removeprefix('youtube_')
+    if key == 'transcript' and project and project.get('sourceType') == 'youtube':
+        key = 'youtube_transcript'
     model = cfg['models'].get(key)
     if not model: raise ValueError('Choose a Gemini model in Settings first.')
+    if key == 'youtube_transcript' and any(token in model.lower() for token in ('transcribe', 'tts')):
+        raise ValueError('Choose a video model for YouTube transcription in Settings, such as Gemini Flash.')
     return gemini_client(), model
 
 
@@ -966,8 +970,7 @@ def system_voice_signature(cfg):
 
 def narration_signature(cfg, project=None):
     if cfg.get('ttsMode', 'system') == 'gemini':
-        model_key = 'youtube_tts_audio' if project and project.get('sourceType') == 'youtube' else 'tts_audio'
-        return f"gemini|{cfg.get('geminiVoice', 'Kore')}|{cfg.get('models', {}).get(model_key) or cfg.get('models', {}).get('tts_audio', '')}"
+        return f"gemini|{cfg.get('geminiVoice', 'Kore')}|{cfg.get('models', {}).get('tts_audio', '')}"
     rate, pitch, volume = speech_controls(cfg)
     return f"{cfg.get('ttsMode', 'system')}|{system_voice_signature(cfg)}|{rate:.3f}|{pitch:.3f}|{volume:.3f}"
 

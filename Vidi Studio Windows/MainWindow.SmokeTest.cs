@@ -154,6 +154,9 @@ public sealed partial class MainWindow
             PreviewTheme(originalTheme);
             await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-appearance.png"));
             await settings.VerifyWindowThemeAsync();
+            settings.VerifyGeminiModelFiltering();
+            await Task.Delay(100);
+            await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-gemini.png"));
             settings.NavigateForSmokeTest(1);
             await Task.Delay(100);
             await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-narration.png"));

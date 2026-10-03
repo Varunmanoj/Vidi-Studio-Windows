@@ -10,16 +10,34 @@ from unittest.mock import patch, Mock
 from test_engine import engine
 
 class VoicePreview(unittest.TestCase):
-    def test_youtube_model_choices_and_narration_signature_are_source_specific(self):
-        models = {'summary': 'local-summary', 'youtube_summary': 'youtube-summary',
-                  'tts_audio': 'local-tts', 'youtube_tts_audio': 'youtube-tts'}
+    def test_shared_models_ignore_legacy_youtube_overrides(self):
+        stages = ('summary', 'audio_descriptions', 'screen_text', 'text_rewrite', 'tts_audio')
+        models = {stage: 'shared-' + stage for stage in stages}
+        models.update({'youtube_' + stage: 'legacy-' + stage for stage in stages})
+        models.update(transcript='gemini-local-transcribe', youtube_transcript='gemini-flash')
         with patch.object(engine, 'config', return_value={'models': models}), patch.object(engine, 'gemini_client', return_value=Mock()):
-            self.assertEqual(engine.client_and_model('summary', {'sourceType': 'local'})[1], 'local-summary')
-            self.assertEqual(engine.client_and_model('summary', {'sourceType': 'youtube'})[1], 'youtube-summary')
-            self.assertEqual(engine.client_and_model('tts', {'sourceType': 'youtube'})[1], 'youtube-tts')
+            for stage in stages:
+                for source in ('local', 'youtube'):
+                    with self.subTest(stage=stage, source=source):
+                        self.assertEqual(engine.client_and_model(stage, {'sourceType': source})[1], models[stage])
+                self.assertEqual(engine.client_and_model('youtube_' + stage)[1], models[stage])
+            self.assertEqual(engine.client_and_model('transcribe', {'sourceType': 'local'})[1], 'gemini-local-transcribe')
+            self.assertEqual(engine.client_and_model('transcribe', {'sourceType': 'youtube'})[1], 'gemini-flash')
+            self.assertEqual(engine.client_and_model('youtube_transcript')[1], 'gemini-flash')
+            self.assertEqual(engine.client_and_model('tts', {'sourceType': 'youtube'})[1], models['tts_audio'])
         settings = {'ttsMode': 'gemini', 'geminiVoice': 'Kore', 'models': models}
-        self.assertNotEqual(engine.narration_signature(settings, {'sourceType': 'local'}),
-                            engine.narration_signature(settings, {'sourceType': 'youtube'}))
+        self.assertEqual(engine.narration_signature(settings, {'sourceType': 'local'}),
+                         engine.narration_signature(settings, {'sourceType': 'youtube'}))
+        previous = engine.narration_signature(settings)
+        models['tts_audio'] = 'new-shared-tts'
+        self.assertNotEqual(previous, engine.narration_signature(settings, {'sourceType': 'youtube'}))
+
+    def test_youtube_transcription_rejects_speech_only_models(self):
+        for model in ('gemini-3.5-transcribe', 'gemini-flash-tts'):
+            with patch.object(engine, 'config', return_value={'models': {'youtube_transcript': model}}), patch.object(engine, 'gemini_client') as client:
+                with self.assertRaisesRegex(ValueError, 'video model for YouTube'):
+                    engine.client_and_model('youtube_transcript')
+                client.assert_not_called()
 
     def test_gemini_voice_catalog_emits_human_names_and_ids(self):
         client = Mock()

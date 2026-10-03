@@ -110,6 +110,7 @@ public sealed partial class SettingsDialog : Window
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition());
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(210) });
         layout.ColumnDefinitions.Add(new ColumnDefinition());
         layout.Children.Add(new TextBlock { Text = "Settings", FontSize = 26, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(4, 4, 0, 18) });
@@ -132,7 +133,9 @@ public sealed partial class SettingsDialog : Window
         var cancel = new Button { Content = "Cancel", MinWidth = 100 }; cancel.Click += (_, _) => Close(); Grid.SetColumn(cancel, 1); footer.Children.Add(cancel);
         var save = new Button { Content = "Save settings", MinWidth = 130, Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         save.Click += (_, _) => SaveAndClose(); Grid.SetColumn(save, 2); footer.Children.Add(save);
-        Grid.SetRow(footer, 2); Grid.SetColumnSpan(footer, 2); layout.Children.Add(footer);
+        var exports = new ExportProgressView();
+        Grid.SetRow(exports, 2); Grid.SetColumnSpan(exports, 2); layout.Children.Add(exports);
+        Grid.SetRow(footer, 3); Grid.SetColumnSpan(footer, 2); layout.Children.Add(footer);
         Content = layout;
         App.ThemeChanged += ReceiveTheme;
         samplePlayer.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() =>

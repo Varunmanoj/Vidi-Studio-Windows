@@ -14,6 +14,19 @@ def track(media):
 
 
 class MetadataTests(unittest.TestCase):
+    def test_single_described_audio_and_descriptive_subtitles_are_tagged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "mixed.mov"
+            movie = track(b"vide") + track(b"soun") + track(b"sbtl") + track(b"sbtl")
+            path.write_bytes(mov.atom(b"moov", movie) + mov.atom(b"mdat", b"MEDIA"))
+            mov.finalize(path, described_audio_indices=(0,), described_subtitle_indices=(1,))
+            result = path.read_bytes()
+            updated = next(value for kind, value in mov.children(result) if kind == b"moov")
+            self.assertEqual(updated.count(mov.DESCRIPTION), 2)
+            self.assertEqual(updated.count(mov.TRANSCRIPT), 2)
+            mov.finalize(path, described_audio_indices=(0,), described_subtitle_indices=(1,))
+            self.assertEqual(path.read_bytes(), result)
+
     def test_tags_groups_and_media_offsets(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "export.mov"

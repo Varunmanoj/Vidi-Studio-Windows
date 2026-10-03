@@ -405,7 +405,7 @@ public sealed partial class MainWindow : Window
         VideoPlayPauseButton.Content = playing ? "\uE769" : "\uE768";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(VideoPlayPauseButton, playing ? "Pause video" : "Play video");
         ToolTipService.SetToolTip(VideoPlayPauseButton, playing ? "Pause video" : "Play video");
-        if (videoPlayMenuItem != null) videoPlayMenuItem.Text = playing ? "Pause video" : "Play video";
+        if (videoPlayMenuItem != null) { videoPlayMenuItem.Text = playing ? "Pause video" : "Play video"; videoPlayMenuItem.Icon = Views.MenuIcons.Create(videoPlayMenuItem.Text); }
     }
     private void Rewind_Click(object sender, RoutedEventArgs e) => Seek(Position - 5);
     private void Forward_Click(object sender, RoutedEventArgs e) => Seek(Position + 5);
@@ -512,7 +512,7 @@ public sealed partial class MainWindow : Window
         { speech.Source = null; await Model.RunAsync("delete-generated", boxes.Where(b => b.IsChecked == true).SelectMany(b => new[] { "--component", (string)b.Tag })); }
     }
     private async void Export_Click(object sender, RoutedEventArgs e)
-    { if (Model.Project != null) await ShowDialogAsync(new Views.ExportDialog(Model), 1040, 760); }
+    { if (Model.Project != null && Model.Idle) await ShowDialogAsync(new Views.ExportDialog(Model), 1040, 760); }
     private async void ExportOpen_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not string path || Model.Project is not { } p || !p.Exports.Contains(path)) return;

@@ -30,12 +30,14 @@ with zipfile.ZipFile(args.package) as package:
         return struct.unpack_from("<H", data, offset+4)[0]
     assert machine(app.attrib["Executable"]) == expected, "Wrong UI architecture"
     assert machine("speech/VidiStudio.SpeechHost.exe") == expected, "Wrong speech helper architecture"
-    for file in ["speech/VidiStudio.SpeechHost.runtimeconfig.json", "engine/vidistudio_engine.py", "engine/windows_speech.py", "engine/mov_accessibility.py", "engine/ai-defaults.json", "Assets/youtube.html"]:
+    for file in ["speech/VidiStudio.SpeechHost.runtimeconfig.json", "engine/vidistudio_engine.py", "engine/windows_speech.py", "engine/mov_accessibility.py", "engine/youtube_audio.py", "engine/ai-defaults.json", "Assets/youtube.html"]:
         read(file)
     if "engine-bin/vidistudio-engine.exe" in names:
         engine_machine = machine("engine-bin/vidistudio-engine.exe")
         assert engine_machine in (expected, 0x8664), "Engine is incompatible with target"
         read("engine-bin/_internal/ai-defaults.json")
+        assert machine("engine-bin/media/deno.exe") in (expected, 0x8664), "YouTube JavaScript runtime is incompatible with target"
+        read("engine-bin/_internal/yt_dlp_ejs/yt/solver/core.min.js")
         assert any(name.startswith("engine-bin/") and re.search(r"/python3\d+\.dll$", name) for name in names), "Missing bundled Python runtime"
         print("Bundled engine PE machine:", hex(engine_machine))
     print("PASS:", args.platform, "MSIX manifest, executable architectures, speech host, engine, and player assets")

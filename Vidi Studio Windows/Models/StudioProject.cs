@@ -86,8 +86,26 @@ public sealed class StudioProject
     [JsonIgnore] public bool HasTranscript => Transcript.Count > 0;
     [JsonIgnore] public bool HasSummary => !string.IsNullOrWhiteSpace(Summary);
     [JsonIgnore] public bool HasNarration => Cues.Any(c => c.AudioReady);
+    [JsonIgnore] public bool HasLocalSource
+    {
+        get { try { return !IsYouTube && !string.IsNullOrEmpty(Source) && File.Exists(Resolve(Source)); } catch (Exception) { return false; } }
+    }
+    [JsonIgnore] public bool HasCompleteExportNarration => double.IsFinite(Duration) && Duration > 0 && Cues.Count > 0 && Cues.All(c =>
+    {
+        if (string.IsNullOrWhiteSpace(c.Text) || c.AudioText != c.Text || string.IsNullOrEmpty(c.Audio) ||
+            !double.IsFinite(c.Start) || !double.IsFinite(c.End) || c.Start < 0 || c.End <= c.Start || c.End > Duration) return false;
+        try { return new FileInfo(Resolve(c.Audio)) is { Exists: true, Length: > 0 }; } catch (Exception) { return false; }
+    });
+    public bool CanExportText(string content) => content switch
+    {
+        "transcript" => Transcript.Count > 0,
+        "summary" => !string.IsNullOrWhiteSpace(Summary),
+        "descriptions" => Cues.Count > 0,
+        "combined" => Transcript.Count > 0 && Cues.Count > 0,
+        _ => false
+    };
     [JsonIgnore] public int VideoExportCount => Exports.Count(path =>
-        Path.GetExtension(path).ToLowerInvariant() is ".mp4" or ".mov" or ".mkv" or ".webm" || IsExportFolder(path));
+        Path.GetExtension(path).ToLowerInvariant() is ".mp4" or ".mov" or ".m4v" or ".mkv" or ".webm" || IsExportFolder(path));
     [JsonIgnore] public int AudioExportCount => Exports.Count(path =>
         Path.GetExtension(path).ToLowerInvariant() is ".mp3" or ".m4a" or ".wav" or ".aac" or ".flac");
     [JsonIgnore] public bool HasVideoExports => VideoExportCount > 0;

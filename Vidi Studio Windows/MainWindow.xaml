@@ -31,7 +31,7 @@
        <TextBlock Text="{Binding AudioStatus}" FontWeight="SemiBold" Visibility="{Binding IsDescription, Converter={StaticResource VisibleWhenTrue}}"><TextBlock.Foreground><SolidColorBrush Color="{Binding AudioStatusColor}"/></TextBlock.Foreground></TextBlock>
        <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="16"/>
       </StackPanel>
-      <Button Grid.Column="3" Content="&#xE768;" FontFamily="Segoe Fluent Icons" Tag="{Binding}" Click="SegmentPreview_Click" Padding="7" VerticalAlignment="Top" Visibility="{Binding IsDescription, Converter={StaticResource VisibleWhenTrue}}" AutomationProperties.Name="{Binding PreviewLabel}" IsEnabled="{Binding AudioReady}"/>
+      <StackPanel Grid.Column="3" Spacing="6" VerticalAlignment="Top"><Button Content="&#xE768;" FontFamily="Segoe Fluent Icons" Tag="{Binding}" Click="SegmentPreview_Click" Padding="7" Visibility="{Binding IsDescription, Converter={StaticResource VisibleWhenTrue}}" AutomationProperties.Name="{Binding PreviewLabel}" IsEnabled="{Binding AudioReady}"/><Button Content="&#xE712;" FontFamily="Segoe Fluent Icons" Tag="{Binding}" Click="SegmentMore_Click" Padding="7" AutomationProperties.Name="More segment options" ToolTipService.ToolTip="More segment options"/></StackPanel>
      </Grid>
     </Border>
     </Grid>
@@ -121,7 +121,7 @@
        <ToggleSwitch x:Name="Narration" OnContent="Narration" OffContent="Narration" MinWidth="104" AutomationProperties.Name="Narration"/>
        <ToggleSwitch x:Name="Follow" OnContent="Follow" OffContent="Follow" MinWidth="85" IsOn="True" Toggled="Follow_Toggled" AutomationProperties.Name="Follow active segment"/>
       </StackPanel>
-      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"><Button x:Name="GenerateCurrent" Content="Generate Transcript" Click="GenerateCurrent_Click"/><Button x:Name="EditModeButton" Content="Edit" Click="EditMode_Click"/></StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"><Button x:Name="GenerateCurrent" Content="Generate Transcript" Click="GenerateCurrent_Click"/><Button x:Name="EditModeButton" Content="Edit" Click="EditMode_Click"/><Button Content="&#xE712;" FontFamily="Segoe Fluent Icons" Click="SegmentMore_Click" AutomationProperties.Name="More editor options" ToolTipService.ToolTip="More editor options"/></StackPanel>
      </Grid>
      <Grid Grid.Row="3" Padding="14,0">
       <ListView x:Name="Segments" SelectionMode="None" ItemTemplate="{StaticResource SegmentRow}" DoubleTapped="Segment_DoubleTapped" AutomationProperties.Name="Timed segments"><ListView.ItemContainerStyle><Style TargetType="ListViewItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="0"/></Style></ListView.ItemContainerStyle></ListView>
@@ -144,6 +144,9 @@
     </Grid>
    </Grid>
   </ContentControl>
-  <Grid Grid.Row="3" Padding="14,7" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><ProgressRing IsActive="{x:Bind Model.Busy, Mode=OneWay}" Width="20" Height="20"/><TextBlock Grid.Column="1" Text="{x:Bind Model.Status, Mode=OneWay}" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12" AutomationProperties.LiveSetting="Polite"/><Button Grid.Column="2" Content="Cancel processing" IsEnabled="{x:Bind Model.Busy, Mode=OneWay}" Click="Cancel_Click" Padding="8,3"/></Grid>
+  <StackPanel Grid.Row="3" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+   <views:ExportProgressView x:Name="ActiveExports"/>
+   <Grid Padding="14,7" ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><ProgressRing IsActive="{x:Bind Model.Busy, Mode=OneWay}" Width="20" Height="20"/><TextBlock Grid.Column="1" Text="{x:Bind Model.Status, Mode=OneWay}" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12" AutomationProperties.LiveSetting="Polite"/><Button Grid.Column="2" Content="Cancel processing" IsEnabled="{x:Bind Model.Busy, Mode=OneWay}" Click="Cancel_Click" Padding="8,3"/></Grid>
+  </StackPanel>
  </Grid>
 </Window>

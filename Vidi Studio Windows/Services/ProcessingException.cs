@@ -16,6 +16,12 @@ public sealed class ProcessingException : Exception
             "Every AD segment needs description text.", "Every transcript segment needs text.",
             "An audio description overlaps spoken dialogue. Adjust its timing.",
             "Create audio description segments first.", "Synthesize all changed AD segments before exporting.",
+            "Create and synthesize AD segments before exporting.",
+            "Some descriptions have missing or outdated narration. Synthesize narration or confirm an incomplete export.",
+            "The source video has no audio track to export.",
+            "YouTube audio could not be downloaded. Check your connection and that the video is public, then try again. If YouTube blocks the download, import your original video as a local project and export its described audio instead.",
+            "YouTube audio download timed out. Try again, or import your original video.",
+            "YouTube audio duration does not match this project. The video may have been edited. Refresh its transcript and descriptions, or import the matching original video.",
             "No edit history in this direction.", "No summary available to export.", "No text available to export."
         }) if (diagnostic == message) return message;
         if (diagnostic.Contains("API key", StringComparison.OrdinalIgnoreCase)) return "Check your Gemini API key in Settings, save it, and retry. Existing results remain saved.";

@@ -3,6 +3,8 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text.RegularExpressions;
 using Vidi_Studio_Windows.ViewModels;
 using Windows.UI;
 
@@ -25,11 +27,21 @@ public sealed class ExportDialog : ContentDialog
     private readonly StackPanel footer = new() { Orientation = Orientation.Horizontal,
         HorizontalAlignment = HorizontalAlignment.Center, Spacing = 12, Padding = new Thickness(0, 12, 0, 8) };
     private readonly Button saveButton = new() { Content = "Save", Width = 120 };
+    private readonly CheckBox replaceExisting = new() { Content = "Replace the existing export", Visibility = Visibility.Collapsed };
+    private readonly TextBlock replacementNotice = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
+    private readonly TextBlock captionNotice = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
+    private string videoFormat = "mkv", audioFormat = "wav", lastTarget = "";
     private int videoAudio = 1, videoCaptions, audioChoice = 1, webAudio = 1, webCaptions, textContent, textFormat;
 
     public ExportDialog(StudioViewModel model)
     {
         this.model = model;
+        var ready = model.Project?.HasCompleteExportNarration == true;
+        videoAudio = webAudio = ready ? 1 : 0;
+        videoCaptions = !ready && model.Project?.CanExportText("transcript") == true ? 1 : 0;
+        audioChoice = model.Project?.IsYouTube == true ? 0 : ready ? 1 : 0;
+        textContent = Array.FindIndex(TextIds, id => model.Project?.CanExportText(id) == true);
+        if (textContent < 0) textContent = 0;
         Title = "Export";
         Width = 950; MinWidth = 620; MaxWidth = 950;
         Resources["ContentDialogMinWidth"] = 620.0;
@@ -59,10 +71,14 @@ public sealed class ExportDialog : ContentDialog
         cancelButton.Click += (_, _) => Hide();
         saveButton.Click += (_, _) =>
         {
+            if (!CanSave()) return;
             var (command, arguments) = BuildRequest();
+            if (replaceExisting.IsChecked == true) arguments.Add("--replace-existing");
             Closed += async (_, _) => await model.RunAsync(command, arguments);
             Hide();
         };
+        replaceExisting.Checked += (_, _) => UpdatePreview();
+        replaceExisting.Unchecked += (_, _) => UpdatePreview();
         footer.Children.Add(cancelButton);
         footer.Children.Add(saveButton);
         Grid.SetRow(footer, 1);
@@ -78,11 +94,15 @@ public sealed class ExportDialog : ContentDialog
             shell.ColumnDefinitions[0].Width = new GridLength(width < 780 ? 170 : 210);
         };
         sidebar.SelectionChanged += (_, _) => BuildPage();
-        sidebar.SelectedIndex = model.Project?.IsYouTube == true ? 2 : 0;
+        sidebar.SelectedIndex = model.Project?.IsYouTube == true ? 1 : 0;
     }
 
 #if DEBUG
     internal StackPanel FooterForSmokeTest => footer;
+    internal bool CanSaveForSmokeTest => saveButton.IsEnabled;
+    internal bool AudioChoiceForSmokeTest(int index) => CanUseAudio(index);
+    internal bool CaptionChoiceForSmokeTest(int index) => CanUseCaptions(index);
+    internal void FormatsForSmokeTest(string video, string audio) { videoFormat = video; audioFormat = audio; BuildPage(); }
     internal void NavigateForSmokeTest(int section) => sidebar.SelectedIndex = section;
     internal (string Command, List<string> Arguments) RequestForSmokeTest() => BuildRequest();
     internal (string Command, List<string> Arguments) RequestForSmokeTest(int section, int primary, int secondary)
@@ -95,6 +115,7 @@ public sealed class ExportDialog : ContentDialog
             case 2: textContent = primary; textFormat = secondary; break;
             case 3: webAudio = primary; webCaptions = secondary; break;
         }
+        BuildPage();
         return BuildRequest();
     }
 #endif
@@ -118,6 +139,9 @@ public sealed class ExportDialog : ContentDialog
             case 3: BuildWeb(); break;
         }
         page.Children.Add(explanation);
+        page.Children.Add(captionNotice);
+        page.Children.Add(replacementNotice);
+        page.Children.Add(replaceExisting);
         UpdatePreview();
     }
 
@@ -127,12 +151,19 @@ public sealed class ExportDialog : ContentDialog
         Background = new SolidColorBrush(Color.FromArgb(18, 128, 128, 128))
     };
 
-    private void AddChoices(string title, string prompt, string[] labels, int selected, Action<int> changed)
+    private void AddChoices(string title, string prompt, string[] labels, int selected, Action<int> changed, Func<int, bool>? available = null)
     {
         var group = new StackPanel { Spacing = 8 };
         group.Children.Add(new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 16 });
         var buttons = new RadioButtons { Header = prompt };
-        foreach (var label in labels) buttons.Items.Add(label);
+        for (var index = 0; index < labels.Length; index++)
+        {
+            var enabled = available?.Invoke(index) ?? true;
+            var option = new RadioButton { Content = labels[index], IsEnabled = enabled };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(option, labels[index]);
+            if (!enabled) ToolTipService.SetToolTip(option, "Create the required text or generate current narration for every description first.");
+            buttons.Items.Add(option);
+        }
         buttons.SelectedIndex = selected;
         buttons.SelectionChanged += (_, _) =>
         { if (buttons.SelectedIndex >= 0) { changed(buttons.SelectedIndex); UpdatePreview(); } };
@@ -141,27 +172,30 @@ public sealed class ExportDialog : ContentDialog
 
     private void BuildVideo()
     {
+        AddFormat("Video file format", new[] { "mkv", "mp4", "mov", "m4v" }, videoFormat, value => videoFormat = value);
         AddChoices("Audio", "Audio included in the video",
             new[] { "Original audio only", "Closed Audio Description", "Open Audio Description" },
-            videoAudio, index => videoAudio = index);
+            videoAudio, index => videoAudio = index, CanUseVideoAudio);
         AddChoices("Transcript and captions", "Transcript included in the video", CaptionLabels,
-            videoCaptions, index => videoCaptions = index);
+            videoCaptions, index => videoCaptions = index, CanUseCaptions);
     }
 
     private void BuildAudio()
     {
         var youtube = model.Project?.IsYouTube == true;
-        var labels = youtube ? new[] { "Narration audio only — M4A" } :
-            new[] { "Original video audio — MP3", "Final audio with Audio Description — MP3", "Narration audio only — M4A" };
-        AddChoices("Audio", "Audio to save", labels, youtube ? 0 : audioChoice,
-            index => audioChoice = youtube ? 2 : index);
+        AddFormat("Audio file format", new[] { "wav", "mp3", "m4a" }, audioFormat, value => audioFormat = value);
+        var labels = youtube ? new[] { "YouTube audio only", "Narration audio only", "YouTube audio with narration" } :
+            new[] { "Original video audio", "Final audio with Audio Description", "Narration audio only" };
+        AddChoices("Audio", "Audio to save", labels, audioChoice, index => audioChoice = index, CanUseAudio);
     }
 
     private void BuildText()
     {
         var form = new StackPanel { Spacing = 12 };
-        var content = new ComboBox { Header = "Content", ItemsSource = TextLabels,
-            SelectedIndex = textContent, HorizontalAlignment = HorizontalAlignment.Stretch };
+        var content = new ComboBox { Header = "Content", HorizontalAlignment = HorizontalAlignment.Stretch };
+        for (var index = 0; index < TextLabels.Length; index++) content.Items.Add(new ComboBoxItem
+        { Content = TextLabels[index], IsEnabled = model.Project?.CanExportText(TextIds[index]) == true });
+        content.SelectedIndex = textContent;
         var format = new ComboBox { Header = "Format", HorizontalAlignment = HorizontalAlignment.Stretch };
         void RefreshFormats()
         {
@@ -183,10 +217,41 @@ public sealed class ExportDialog : ContentDialog
     {
         AddChoices("Audio", "Audio included in Web Playback",
             new[] { "Original audio only", "Closed Audio Description", "Open Audio Description" },
-            webAudio, index => webAudio = index);
+            webAudio, index => webAudio = index, CanUseVideoAudio);
         AddChoices("Transcript and captions", "Transcript included in Web Playback", CaptionLabels,
-            webCaptions, index => webCaptions = index);
+            webCaptions, index => webCaptions = index, CanUseCaptions);
     }
+
+    private void AddFormat(string title, string[] formats, string selected, Action<string> changed)
+    {
+        var picker = new ComboBox { Header = title, ItemsSource = formats, SelectedItem = selected,
+            HorizontalAlignment = HorizontalAlignment.Stretch };
+        picker.SelectionChanged += (_, _) => { if (picker.SelectedItem is string value) { changed(value); UpdatePreview(); } };
+        page.Children.Add(Card(picker));
+    }
+
+    private bool CanUseVideoAudio(int choice) => model.Project is { HasLocalSource: true } project &&
+        (choice == 0 || project.HasCompleteExportNarration);
+    private bool CanUseAudio(int choice) => model.Project is { } project && (project.IsYouTube
+        ? choice == 0 || project.HasCompleteExportNarration
+        : choice == 0 ? project.HasLocalSource && project.HasAudio
+        : choice == 1 ? project.HasLocalSource && project.HasCompleteExportNarration : project.HasCompleteExportNarration);
+    private bool CanUseCaptions(int choice) => model.Project is { } project && (choice switch
+    {
+        0 => true,
+        1 or 2 => project.CanExportText("transcript"),
+        3 or 4 => project.CanExportText("combined"),
+        5 => project.CanExportText("transcript") && project.CanExportText("combined"),
+        _ => false
+    });
+    private bool CanSave() => model.Idle && model.Project != null && (sidebar.SelectedIndex switch
+    {
+        0 => CanUseVideoAudio(videoAudio) && CanUseCaptions(videoCaptions) && (videoAudio != 0 || videoCaptions != 0),
+        1 => CanUseAudio(audioChoice),
+        2 => model.Project.CanExportText(TextIds[textContent]),
+        3 => CanUseVideoAudio(webAudio) && CanUseCaptions(webCaptions),
+        _ => false
+    }) && (replaceExisting.Visibility != Visibility.Visible || replaceExisting.IsChecked == true);
 
     private void UpdatePreview()
     {
@@ -195,24 +260,28 @@ public sealed class ExportDialog : ContentDialog
         var section = sidebar.SelectedIndex;
         explanation.Text = section switch
         {
-            0 when videoAudio == 0 => videoCaptions == 0 ? "Save an unchanged copy of the source video." : "Save the original soundtrack with the selected captions.",
+            0 when videoAudio == 0 => videoCaptions == 0 ? "Choose captions or Audio Description to create a video export." : "Save the original soundtrack with the selected captions.",
             0 when videoAudio == 1 => "Save the original soundtrack and a separate described soundtrack viewers can choose.",
             0 => "Save the video with synchronized Audio Description mixed into its soundtrack.",
-            1 when project?.IsYouTube == true || audioChoice == 2 => "Save synchronized narration without the original soundtrack as M4A.",
-            1 when audioChoice == 0 => "Save the original video soundtrack as MP3.",
-            1 => "Save the original soundtrack mixed with synchronized Audio Description as MP3.",
+            1 when project?.IsYouTube == true && audioChoice == 0 => "Download the original public YouTube soundtrack and save it in the selected format.",
+            1 when project?.IsYouTube == true && audioChoice == 2 => "Download the original public YouTube soundtrack and mix it with synchronized Audio Description.",
+            1 when project?.IsYouTube == true || audioChoice == 2 => "Save synchronized narration without the original soundtrack in the selected format.",
+            1 when audioChoice == 0 => "Save the original video soundtrack in the selected format.",
+            1 => "Save the original soundtrack mixed with synchronized Audio Description in the selected format.",
             2 when textContent == 1 => "Save the project summary as Markdown.",
             2 when textContent == 3 => "Save transcript and Audio Description segments together, including their timing.",
             2 => "Save the selected text and segment timing in the chosen format.",
             _ => "Save an adaptive HLS Web Playback folder with the selected audio and captions."
         };
-        saveButton.IsEnabled = project != null && (section != 2 || textContent switch
-        {
-            0 => project.Transcript.Count > 0,
-            1 => !string.IsNullOrWhiteSpace(project.Summary),
-            2 => project.Cues.Count > 0,
-            _ => project.Transcript.Count + project.Cues.Count > 0
-        });
+        captionNotice.Visibility = section is 0 or 3 && (section == 0 ? videoCaptions : webCaptions) is 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        captionNotice.Text = "Open captions require a new video encode. Picture size is preserved and HDR is kept where possible, but quality or Dolby Vision information may change. Use closed captions for the closest match to the source.";
+        var target = TargetRelativePath();
+        if (lastTarget != target) { lastTarget = target; replaceExisting.IsChecked = false; }
+        var exists = project != null && target.Length > 0 && (File.Exists(project.Resolve(target)) || Directory.Exists(project.Resolve(target)));
+        replaceExisting.Visibility = replacementNotice.Visibility = exists ? Visibility.Visible : Visibility.Collapsed;
+        replacementNotice.Text = exists ? $"{Path.GetFileName(target)} already exists. Replacing it saves the new export in its place; the old export is kept if generation fails." : "";
+        saveButton.Content = exists ? "Replace export" : "Save";
+        saveButton.IsEnabled = CanSave();
     }
 
     private (string Command, List<string> Arguments) BuildRequest()
@@ -236,10 +305,13 @@ public sealed class ExportDialog : ContentDialog
                     command = captions switch { 0 => "export-original-video", 1 or 3 => "export-closed-caption-video", 2 or 4 => "export-open-caption-video", _ => "export-dual-closed-caption-video" };
                 else command = audio == 1 ? "export-closed-audio-description-video" : "export-open-audio-description-video";
                 args.AddRange(new[] { "--captions", captionMode, "--content", content });
+                if (sidebar.SelectedIndex == 0 && command != "export-original-video") args.AddRange(new[] { "--media-format", videoFormat });
                 break;
             case 1:
-                command = (model.Project?.IsYouTube == true ? 2 : audioChoice) switch
-                { 0 => "export-original-audio", 1 => "export-described-audio", _ => "export-audio" };
+                command = model.Project?.IsYouTube == true ? audioChoice switch
+                { 0 => "export-youtube-original-audio", 1 => "export-audio", _ => "export-youtube-described-audio" }
+                : audioChoice switch { 0 => "export-original-audio", 1 => "export-described-audio", _ => "export-audio" };
+                args.AddRange(new[] { "--media-format", audioFormat });
                 break;
             case 2:
                 command = "export-subtitles";
@@ -249,5 +321,35 @@ public sealed class ExportDialog : ContentDialog
             default: throw new InvalidOperationException("Choose an export category.");
         }
         return (command, args);
+    }
+
+    private string TargetRelativePath()
+    {
+        if (model.Project is not { } project || sidebar.SelectedIndex < 0) return "";
+        var name = Regex.Replace(project.Name.Trim(), "[<>:\"/\\\\|?*\\x00-\\x1F\\x7F]+", "-");
+        name = Regex.Replace(Regex.Replace(name, @"\s*-\s*", " - "), @"\s+", " ").Trim(' ', '.', '-');
+        if (name.Length > 100) name = name[..100].Trim(' ', '.', '-');
+        if (name.Length == 0) name = "Project";
+        var section = sidebar.SelectedIndex;
+        var audio = section == 0 ? videoAudio : webAudio;
+        var captions = section == 0 ? videoCaptions : webCaptions;
+        var captionSuffix = captions switch
+        {
+            1 => " with Transcript Closed Captions", 2 => " with Transcript Open Captions",
+            3 => " with AD Transcript Closed Captions", 4 => " with AD Transcript Open Captions",
+            5 => " with Transcript and Descriptive Transcript Closed Captions", _ => ""
+        };
+        var type = section switch
+        {
+            0 when audio == 0 => captions switch
+            { 1 => "Transcript Closed Caption Video", 2 => "Transcript Open Caption Video", 3 => "AD Transcript Closed Caption Video", 4 => "AD Transcript Open Caption Video", 5 => "Transcript and Descriptive Transcript Closed Caption Video", _ => "Original Video" },
+            0 => (audio == 1 ? "Closed Audio Description" : "Open Audio Description") + captionSuffix,
+            1 when project.IsYouTube => audioChoice switch { 0 => "YouTube Audio Only", 1 => "Narration Audio", _ => "YouTube Studio Audio Description" },
+            1 => audioChoice switch { 0 => "Original Video Audio", 1 => "Final Audio with Audio Description", _ => "Narration Audio" },
+            2 => TextLabels[textContent],
+            _ => "Web Playback - " + (audio switch { 0 => "Original Audio", 1 => "Closed Audio Description", _ => "Open Audio Description" }) + captionSuffix
+        };
+        var extension = section switch { 0 => videoFormat, 1 => audioFormat, 2 => textContent == 1 ? "md" : new[] { "srt", "vtt", "txt", "json" }[textFormat], _ => "" };
+        return $"exports/{name} - {type}" + (extension.Length == 0 ? "" : "." + extension);
     }
 }

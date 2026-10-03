@@ -91,7 +91,7 @@ public sealed partial class MainWindow
         SummaryPlayButton.Content = state == Services.SummaryReadbackState.Stopped ? "Play" : state == Services.SummaryReadbackState.Preparing ? "Preparing…" : state == Services.SummaryReadbackState.Playing ? "Pause" : "Resume";
         SummaryPlayButton.IsEnabled = state != Services.SummaryReadbackState.Preparing;
         SummaryStopButton.IsEnabled = state != Services.SummaryReadbackState.Stopped;
-        if (summaryPlayMenuItem != null) { summaryPlayMenuItem.Text = label; summaryPlayMenuItem.IsEnabled = state != Services.SummaryReadbackState.Preparing; }
+        if (summaryPlayMenuItem != null) { summaryPlayMenuItem.Text = label; summaryPlayMenuItem.Icon = Views.MenuIcons.Create(label); summaryPlayMenuItem.IsEnabled = state != Services.SummaryReadbackState.Preparing; }
         if (summaryStopMenuItem != null) summaryStopMenuItem.IsEnabled = state != Services.SummaryReadbackState.Stopped;
         if (state == Services.SummaryReadbackState.Stopped) ClearSummaryHighlight();
     }
@@ -127,7 +127,7 @@ public sealed partial class MainWindow
             var menu = new MenuBarItem { Title = title };
             foreach (var entry in entries)
             {
-                var item = new MenuFlyoutItem { Text = entry.Label };
+                var item = new MenuFlyoutItem { Text = entry.Label, Icon = Views.MenuIcons.Create(entry.Label) };
                 if (Shortcut(entry.Label) is { } shortcut) item.KeyboardAcceleratorTextOverride = shortcut;
                 item.Click += entry.Handler;
                 menu.Items.Add(item);
@@ -211,7 +211,7 @@ public sealed partial class MainWindow
         var menu = new MenuFlyout();
         void Item(string label, RoutedEventHandler handler)
         {
-            var item = new MenuFlyoutItem { Text = label };
+            var item = new MenuFlyoutItem { Text = label, Icon = Views.MenuIcons.Create(label) };
             item.Click += (s, args) => { Model.Open(project.Folder); handler(s, args); }; menu.Items.Add(item);
         }
         Item("Open editor in new window", OpenEditor_Click); Item("Export", Export_Click); Item("Open project folder", Reveal_Click);
@@ -222,6 +222,53 @@ public sealed partial class MainWindow
         else menu.ShowAt(element ?? (FrameworkElement)sender);
         e.Handled = true;
     }
+    private MenuFlyout SegmentMenu(Segment? segment = null)
+    {
+        var menu = new MenuFlyout();
+        void Item(string label, RoutedEventHandler action, bool available = true)
+        {
+            var item = new MenuFlyoutItem { Text = label, Icon = Views.MenuIcons.Create(label), IsEnabled = Model.Idle && available };
+            item.Click += (_, args) =>
+            {
+                if (segment != null)
+                {
+                    if (!editMode) EditMode_Click(this, args);
+                    Segments.SelectedItems.Clear(); Segments.SelectedItem = segment;
+                }
+                action(item, args);
+            };
+            menu.Items.Add(item);
+        }
+        if (segment != null)
+        {
+            Item("Seek to segment", (_, _) => Seek(segment.Start));
+            Item("Edit segment", Edit_Click);
+            if (segment.IsDescription)
+            {
+                Item("Preview narration", PreviewNarration_Click, segment.AudioReady);
+                Item("Generate narration", NarrateSelected_Click);
+                Item("Rewrite description to fit", Rewrite_Click);
+                Item("Delete narration", DeleteNarration_Click, segment.Audio != null);
+            }
+            Item("Delete segment", DeleteSegments_Click);
+        }
+        else
+        {
+            var timedSection = Section.SelectedIndex is 0 or 2 or 4;
+            Item("Add segment", Add_Click, timedSection);
+            Item("Edit selected", Edit_Click, timedSection && Segments.SelectedItems.Count > 0);
+            Item("Select all", SelectAll_Click, timedSection);
+            Item("Deselect all", Deselect_Click, timedSection && Segments.SelectedItems.Count > 0);
+            Item("Delete selected", DeleteSegments_Click, timedSection && Segments.SelectedItems.Count > 0);
+            Item("Undo", Undo_Click, timedSection);
+            Item("Redo", Redo_Click, timedSection);
+            Item("Generate all narration", (_, args) => Command_Click(new Button { Tag = "synthesize-tts" }, args), Model.Project?.Cues.Count > 0);
+            Item("Generate changed narration", ChangedNarration_Click, Model.Project?.Cues.Count > 0);
+        }
+        return menu;
+    }
+    private void SegmentMore_Click(object sender, RoutedEventArgs e)
+    { if (sender is FrameworkElement element) SegmentMenu(element.Tag as Segment).ShowAt(element); }
     private void Track_SizeChanged(object sender, SizeChangedEventArgs e) => RenderTracks();
     private void RenderTracks()
     {

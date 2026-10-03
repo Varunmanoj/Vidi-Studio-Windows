@@ -1,5 +1,22 @@
 # Windows migration progress
 
+## 2026-10-03 — Mac export update sync (1.0.2 / 1.0.2.0)
+
+Compared the current Mac checkout at `d38a3b1` with Windows. Ported configurable video formats (MKV default, MP4, MOV, M4V) and audio formats (WAV default, MP3, M4A), original public YouTube soundtrack downloads and described soundtrack exports, and FFmpeg/HLS progress events. Preserved Windows OneCore/SAPI routing, model selection, UTF-8 project/config reads, and the source-copy compatibility command. UI defaults and disabled options follow Mac content/narration readiness: every description must have current nonempty audio with valid timing; combined captions need both transcript and descriptions. Matching exports can be explicitly replaced while failure leaves the previous output intact; changing formats keeps both. Open-caption quality/HDR guidance is visible. M4V is classified as video in the library and Created Exports.
+
+Active export progress and per-export cancellation appear across library/editor windows and Settings. Percentages stay monotonic and below completion until media validation, portable MOV track tagging, and saving finish. Windows uses a cancellation marker to let media/download workers unwind temporary files, with a three-second termination fallback. MOV tagging now handles a single mixed described-audio track and descriptive transcript characteristics as well as alternate audio tracks. Bundled yt-dlp/EJS and Deno are included in the refreshed frozen engine and checked by package inspection.
+
+Added Fluent icons to every menu-bar action and project context action, plus segment/editor More menus; Play/Pause/Resume icons follow playback. Added a read-only Mac export drift checker comparing 53 shared functions, formats, ducking, and the downloader, excluding the documented Windows cancellation/MOV hooks. Both app and package versions advanced to 1.0.2 / 1.0.2.0. Mac files and its pre-existing local changes were left untouched.
+
+Validation completed:
+
+- 115 source-engine tests passed before the final cancellation-marker test; the final 116-test regression suite passed with `VIDISTUDIO_TEST_ENGINE` pointing at the rebuilt frozen executable, exercising bundled CLI format dispatch, progress, and media exports alongside source API tests and actual OneCore/SAPI speech.
+- ARM64 and x64 native frozen-engine smoke workflows passed. New assertions cover missing/current/outdated narration, invalid duration, YouTube audio command routing, media-format arguments, replacement gating, shared export visibility in another editor, monotonic percentages and cleared completion state, and icons on menu/segment actions. Rendered export controls show the disabled AD choices.
+- Real public YouTube `jNQXAC9IVRw` soundtrack download/export passed through source (WAV) and frozen (MP3) engines in an isolated fixture. The frozen engine also generated Windows narration and downloaded/mixed the actual soundtrack into a validated described M4A. No user project or credential was changed.
+- ARM64 and x64 Release unsigned MSIX builds succeeded. Package inspection passed for app/speech/engine CPU architecture, source modules, bundled Python, Deno, EJS solver, defaults, and player assets.
+- Shared export drift check and `git diff --check` passed. Existing PRI249 Python-extension qualifier and missing symbol-tool warnings remain. Packages were built/inspected, not signed or installed. Listening, screen-reader behavior, Apple-player recognition, and unrelated live Gemini acceptance remain in `docs/ACCEPTANCE.md`; this update does not assert complete platform parity.
+
+
 ## 2026-09-26 — 1.0.1 / 1.0.1.0
 
 Reviewed the Mac README, feature map, Swift models, command invocation, and portable engine. Copied the engine and its tests into the Windows project without modifying the Mac checkout. Retained local portable projects and all existing processing/export command implementations.

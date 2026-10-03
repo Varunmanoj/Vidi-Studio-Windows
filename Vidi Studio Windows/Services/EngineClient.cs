@@ -22,6 +22,7 @@ public sealed class EngineClient
         CancellationToken cancellation = default, string? configPath = null)
     {
         await gate.WaitAsync(cancellation);
+        string? cancellationFile = null;
         try
         {
             var frozen = Path.Combine(AppContext.BaseDirectory, "engine-bin", "vidistudio-engine.exe");
@@ -37,8 +38,16 @@ public sealed class EngineClient
             start.Environment["VIDISTUDIO_CONFIG"] = configPath ?? SettingsStore.ConfigPath;
             start.Environment["VIDISTUDIO_SPEECH_HOST"] = SpeechHost;
             start.Environment["PYTHONUTF8"] = "1";
+            Directory.CreateDirectory(SettingsStore.DirectoryPath);
+            cancellationFile = Path.Combine(SettingsStore.DirectoryPath, Guid.NewGuid() + ".cancel");
+            start.Environment["VIDISTUDIO_CANCEL_FILE"] = cancellationFile;
             using var process = Process.Start(start) ?? throw new InvalidOperationException("Cannot start processing engine.");
-            using var registration = cancellation.Register(() => { try { process.Kill(true); } catch (InvalidOperationException) { } });
+            using var registration = cancellation.Register(() =>
+            {
+                try { File.WriteAllText(cancellationFile, "cancel"); }
+                catch (Exception) { try { process.Kill(true); } catch (InvalidOperationException) { } }
+                _ = StopUnresponsiveProcessAsync(process);
+            });
             var errors = process.StandardError.ReadToEndAsync();
             var events = new List<EngineEvent>();
             while (await process.StandardOutput.ReadLineAsync() is { } line)
@@ -65,7 +74,17 @@ public sealed class EngineClient
             }
             return events;
         }
-        finally { gate.Release(); }
+        finally
+        {
+            try { if (cancellationFile != null) File.Delete(cancellationFile); }
+            finally { gate.Release(); }
+        }
+    }
+
+    private static async Task StopUnresponsiveProcessAsync(Process process)
+    {
+        await Task.Delay(3000);
+        try { if (!process.HasExited) process.Kill(true); } catch (InvalidOperationException) { }
     }
 
     public void Log(string detail)

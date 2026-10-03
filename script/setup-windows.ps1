@@ -23,10 +23,7 @@ try {
     if ($FreezeEngine) {
         & $venvPython -m pip install pyinstaller
         if ($LASTEXITCODE -ne 0) { throw 'PyInstaller installation failed.' }
-        & $venvPython -m PyInstaller --noconfirm --onedir --name vidistudio-engine --distpath dist/windows --workpath build/engine --specpath build --add-data "$projectRoot/engine/ai-defaults.json;." --collect-all google.genai engine/vidistudio_engine.py
-        if ($LASTEXITCODE -ne 0) { throw 'Engine packaging failed.' }
-        New-Item -ItemType Directory -Force runtime/engine | Out-Null
-        Copy-Item -Path 'dist/windows/vidistudio-engine/*' -Destination runtime/engine -Recurse -Force
+        & (Join-Path $PSScriptRoot 'bundle-windows-engine.ps1') -Python $venvPython
     }
     Write-Host "Ready to build $Platform in Visual Studio. For source-engine mode, set Python executable in Settings to: $venvPython"
     Write-Host 'FFmpeg and FFprobe must be on PATH or configured in Settings. Restart Visual Studio after changing PATH.'

@@ -20,7 +20,11 @@ This is a work record, not a declaration that the full migration is finished.
 | Transcript/AD labeled timeline tracks | Thumbnails, click/drag scrub surface, moving playhead, and seek bar implemented; timed rows follow playback in Transcript, Descriptions, and AD Transcript |
 | Captions in editor preview | Implemented with separate dialogue/AD colors, opacity, position and size settings |
 | On-device narration without saved project audio | Implemented through Core/SAPI; synchronization requires listening validation |
-| Exports, caption variants, audio, HLS | Connected; extensive actual media tests pass |
+| Exports, caption variants, audio, HLS | Synced to Mac d38a3b1: MKV/MP4/MOV/M4V video; WAV/MP3/M4A audio; replacement matching and content/narration gating; actual media and native ARM64/x64 checks pass |
+| Public YouTube soundtrack exports | Original audio, narration only, and downloaded soundtrack with narration; live source and packaged soundtrack download/export plus packaged Windows narration/M4A mix pass |
+| Export progress and cancellation | Shared across library/editor/Settings windows; media-time progress, aggregate HLS progress, indeterminate downloads, per-export cancellation; native cross-window and engine cancellation checks pass |
+| Menu and segment action icons | Fluent icons on every menu-bar action, project context action, and segment/editor More menu; native icon assertions pass |
+| Future export drift detection | Read-only script compares shared Mac/Windows export logic and reports changes requiring review; synchronization remains an explicit port/validation step |
 | Created export open/delete | Connected; interactive validation outstanding |
 | Generated-content deletion dependencies | Connected |
 | Grid/list library presentation, context menus | Grid/list, thumbnail cards, search/filter, and native context menus implemented; view checks pass |

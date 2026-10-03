@@ -17,6 +17,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public SettingsStore Settings { get; } = new();
     public EngineClient Engine { get; }
     public ObservableCollection<StudioProject> Projects { get; } = new();
+    public ObservableCollection<ExportSession> ExportSessions => ExportSession.Active;
     private readonly HashSet<string> externalFolders = new(StringComparer.OrdinalIgnoreCase);
     private StudioProject? project;
     public StudioProject? Project { get => project; set { project = value; Changed(); } }
@@ -64,13 +65,25 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         Busy = true;
         operation = new();
         Status = "Starting…";
+        ExportSession? exportSession = null;
+        if (command.StartsWith("export-", StringComparison.Ordinal) && Project is { } exportProject)
+        {
+            exportSession = new(exportProject.Name, Cancel);
+            ExportSessions.Add(exportSession);
+        }
         try
         {
             Settings.Save();
             var args = new List<string> { command };
             if (needsProject) args.AddRange(new[] { "--project", Project!.Folder });
             if (extra != null) args.AddRange(extra);
-            var result = await Engine.RunAsync(args, new Progress<EngineEvent>(e => Status = e.Message), operation.Token);
+            var result = await Engine.RunAsync(args, new Progress<EngineEvent>(e =>
+            {
+                Status = e.Message;
+                var hasFraction = e.Data.TryGetProperty("exportProgress", out var progress);
+                double? fraction = hasFraction && progress.ValueKind == System.Text.Json.JsonValueKind.Number && progress.TryGetDouble(out var number) ? number : null;
+                exportSession?.Update(e.Message, fraction, hasFraction);
+            }), operation.Token);
             var imported = result.LastOrDefault(e => e.Data.TryGetProperty("project", out _));
             var folder = imported?.Data.GetProperty("project").GetString() ?? Project?.Folder;
             if (folder != null && File.Exists(Path.Combine(folder, "project.json"))) Open(folder);
@@ -87,6 +100,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
                 try { Project = StudioProject.Load(Project.Folder); ProjectReloaded?.Invoke(this, EventArgs.Empty); }
                 catch (Exception ex) { Engine.Log(ex.ToString()); Status = "Could not reload the project. Reopen its folder to retry."; }
             }
+            if (exportSession != null) ExportSessions.Remove(exportSession);
             operation.Dispose(); operation = null; Busy = false;
         }
         return new();

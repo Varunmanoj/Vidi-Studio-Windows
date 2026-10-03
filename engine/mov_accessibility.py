@@ -48,6 +48,7 @@ def track_type(track):
 
 
 def update_track(track, characteristic, group):
+    characteristics = (characteristic,) if isinstance(characteristic, bytes) else (characteristic or ())
     output = []
     found_userdata = False
     for kind, payload in children(track):
@@ -63,33 +64,42 @@ def update_track(track, characteristic, group):
                 raise ValueError("Duplicate QuickTime track user data.")
             found_userdata = True
             entries = list(children(payload))
-            if characteristic and not any(k == b"tagc" and v == characteristic for k, v in entries):
-                entries.append((b"tagc", characteristic))
+            for value in characteristics:
+                if not any(k == b"tagc" and v == value for k, v in entries):
+                    entries.append((b"tagc", value))
             payload = b"".join(atom(k, v) for k, v in entries)
         output.append(atom(kind, payload))
-    if characteristic and not found_userdata:
-        output.append(atom(b"udta", atom(b"tagc", characteristic)))
+    if characteristics and not found_userdata:
+        output.append(atom(b"udta", b"".join(atom(b"tagc", value) for value in characteristics)))
     return b"".join(output)
 
 
-def tag_movie(movie):
+def tag_movie(movie, described_audio_indices=None, described_subtitle_indices=()):
     result = []
     audio_count = 0
+    subtitle_count = 0
     for kind, payload in children(movie):
         if kind == b"trak":
             media = track_type(payload)
             if media == b"soun":
                 audio_count += 1
-                payload = update_track(payload, DESCRIPTION if audio_count == 2 else None, 1)
+                described = audio_count == 2 if described_audio_indices is None else audio_count - 1 in described_audio_indices
+                payload = update_track(payload, DESCRIPTION if described else None, 1)
             elif media in (b"text", b"sbtl", b"subt", b"clcp"):
-                payload = update_track(payload, TRANSCRIPT, 2)
+                characteristics = (TRANSCRIPT, DESCRIPTION) if subtitle_count in described_subtitle_indices else (TRANSCRIPT,)
+                payload = update_track(payload, characteristics, 2)
+                subtitle_count += 1
         result.append(atom(kind, payload))
-    if audio_count != 2:
+    if described_audio_indices is None and audio_count != 2:
         raise ValueError("Accessibility tagging requires exactly two audio tracks.")
+    if described_audio_indices is not None and any(index < 0 or index >= audio_count for index in described_audio_indices):
+        raise ValueError("Described audio track index is outside the movie.")
+    if any(index < 0 or index >= subtitle_count for index in described_subtitle_indices):
+        raise ValueError("Descriptive subtitle track index is outside the movie.")
     return b"".join(result)
 
 
-def finalize(path):
+def finalize(path, described_audio_indices=None, described_subtitle_indices=()):
     """Tag a newly generated MOV before the engine commits its export."""
     path = Path(path)
     with path.open("r+b") as file:
@@ -123,7 +133,7 @@ def finalize(path):
         if len(movies) != 1:
             raise ValueError("Expected one QuickTime movie header.")
         position, old = movies[0]
-        updated = tag_movie(old)
+        updated = tag_movie(old, described_audio_indices, described_subtitle_indices)
         if updated == old:
             return
         file.seek(length)

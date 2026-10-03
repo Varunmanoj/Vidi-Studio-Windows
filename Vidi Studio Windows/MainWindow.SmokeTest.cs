@@ -22,6 +22,9 @@ public sealed partial class MainWindow
             Model.Open(folder);
             if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Analysis", "Segments", "Playback", "Help" }))
                 throw new InvalidOperationException("Editor menu set does not match the active page.");
+            if (galleryMenus.Concat(editorMenus).SelectMany(menu => menu.Items).OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().Any(item => item.Icon == null) ||
+                SegmentMenu(Model.Project!.Cues[0]).Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().Any(item => item.Icon == null))
+                throw new InvalidOperationException("A menu or segment action has no icon.");
             if (editorMenus[0].Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().First(item => item.Text == "Export").KeyboardAcceleratorTextOverride != "Ctrl+Shift+E" ||
                 editorMenus[4].Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().First(item => item.Text == "Play video").KeyboardAcceleratorTextOverride != "Ctrl+Shift+Space")
                 throw new InvalidOperationException("Menu commands do not show their keyboard shortcuts.");
@@ -218,6 +221,9 @@ public sealed partial class MainWindow
             newProject.Hide(); await newProjectDisplay;
             PreviewTheme(originalTheme);
             var export = new Views.ExportDialog(Model);
+            if (Model.Project!.HasCompleteExportNarration || export.AudioChoiceForSmokeTest(1) || export.AudioChoiceForSmokeTest(2))
+                throw new InvalidOperationException("Missing narration left narration-dependent audio enabled.");
+            if (!export.CaptionChoiceForSmokeTest(3)) throw new InvalidOperationException("Available AD Transcript text was disabled.");
             var exportDisplay = ShowDialogAsync(export, 1040, 760); await Task.Delay(250);
             PreviewTheme("dark"); await Task.Delay(80);
             if (export.ActualTheme != ElementTheme.Dark) throw new InvalidOperationException("An open Export dialog did not switch to dark appearance.");
@@ -228,7 +234,7 @@ public sealed partial class MainWindow
                 export.FooterForSmokeTest.Children.Count != 2)
                 throw new InvalidOperationException("Export actions are not centered in the dialog.");
             await CaptureSmokeImage(export, Path.Combine(Path.GetDirectoryName(report)!, "export-dialog.png"));
-            foreach (var (section, command) in new[] { (0, "export-closed-audio-description-video"), (1, "export-described-audio"),
+            foreach (var (section, command) in new[] { (0, "export-closed-caption-video"), (1, "export-original-audio"),
                 (2, "export-subtitles"), (3, "export-hls") })
             {
                 export.NavigateForSmokeTest(section);
@@ -245,6 +251,10 @@ public sealed partial class MainWindow
             var describedCaptions = export.RequestForSmokeTest(0, 2, 4);
             if (describedCaptions.Command != "export-open-audio-description-video" || !describedCaptions.Arguments.Contains("combined") || !describedCaptions.Arguments.Contains("open"))
                 throw new InvalidOperationException("Described video caption export is misrouted.");
+            if (export.CanSaveForSmokeTest) throw new InvalidOperationException("Save bypassed missing narration.");
+            export.FormatsForSmokeTest("m4v", "mp3");
+            if (!export.RequestForSmokeTest(0, 0, 1).Arguments.Contains("m4v") || !export.RequestForSmokeTest(1, 0, 0).Arguments.Contains("mp3"))
+                throw new InvalidOperationException("Selected formats did not reach export commands.");
             var summaryExport = export.RequestForSmokeTest(2, 1, 0);
             if (summaryExport.Command != "export-subtitles" || !summaryExport.Arguments.Contains("md")) throw new InvalidOperationException("Summary Markdown export is misrouted.");
             var jsonExport = export.RequestForSmokeTest(2, 0, 3);
@@ -269,6 +279,26 @@ public sealed partial class MainWindow
                 await Model.RunAsync("synthesize-tts");
                 if (Model.Status != "Complete" || !Model.Project!.Cues[0].AudioReady) throw new InvalidOperationException(provider + " narration failed: " + Model.Status);
             }
+            if (!Model.Project!.HasCompleteExportNarration) throw new InvalidOperationException("Current narration was rejected for export.");
+            var readyExport = new Views.ExportDialog(Model);
+            if (!readyExport.AudioChoiceForSmokeTest(1) || !readyExport.AudioChoiceForSmokeTest(2)) throw new InvalidOperationException("Current narration did not enable audio choices.");
+            var cue = Model.Project.Cues[0];
+            var savedText = cue.Text;
+            cue.Text += " changed";
+            if (Model.Project.HasCompleteExportNarration) throw new InvalidOperationException("Outdated narration was accepted.");
+            cue.Text = savedText;
+            var savedDuration = Model.Project.Duration;
+            Model.Project.Duration = double.NaN;
+            if (Model.Project.HasCompleteExportNarration) throw new InvalidOperationException("Invalid duration was accepted.");
+            Model.Project.Duration = savedDuration;
+            var savedType = Model.Project.SourceType;
+            Model.Project.SourceType = "youtube";
+            var youtubeExport = new Views.ExportDialog(Model);
+            if (youtubeExport.RequestForSmokeTest(1, 0, 0).Command != "export-youtube-original-audio" ||
+                youtubeExport.RequestForSmokeTest(1, 1, 0).Command != "export-audio" ||
+                youtubeExport.RequestForSmokeTest(1, 2, 0).Command != "export-youtube-described-audio")
+                throw new InvalidOperationException("YouTube audio choices are misrouted.");
+            Model.Project.SourceType = savedType;
             var originalName = Model.Project!.Name;
             await Model.RunAsync("rename-project", new[] { "--name", "Renamed native project" });
             Model.Reload("renamed native");
@@ -288,14 +318,27 @@ public sealed partial class MainWindow
             App.CommitTheme(originalTheme);
             child.Section.SelectedIndex = 1;
             if (Section.SelectedIndex == 1) throw new InvalidOperationException("Editor view selection leaked between windows.");
+            var mediaExportTask = Model.RunAsync("export-original-audio", new[] { "--media-format", "wav", "--replace-existing" });
+            if (Model.ExportSessions.Count != 1 || child.Model.ExportSessions.Count != 1 || child.ActiveExports.SessionCount != 1)
+                throw new InvalidOperationException("Export activity did not appear in another editor.");
+            var session = Model.ExportSessions[0];
+            var observedProgress = new System.Collections.Generic.List<double>();
+            session.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(session.Percent) && !session.IsIndeterminate) observedProgress.Add(session.Percent); };
+            await mediaExportTask;
+            if (Model.Status != "Complete" || Model.ExportSessions.Count != 0 || !observedProgress.Any(p => p > 0 && p < 100) ||
+                !observedProgress.SequenceEqual(observedProgress.OrderBy(p => p)))
+                throw new InvalidOperationException("Export progress/completion was not monotonic or did not clear.");
+            var replacementDialog = new Views.ExportDialog(Model);
+            replacementDialog.RequestForSmokeTest(1, 0, 0);
+            if (replacementDialog.CanSaveForSmokeTest) throw new InvalidOperationException("Existing export replacement did not require an explicit selection.");
             child.Close();
             await Model.RunAsync("export-subtitles", new[] { "--content", "combined", "--format", "srt", "--replace-existing" });
             if (Model.Status != "Complete") throw new InvalidOperationException("Native subtitle export failed: " + Model.Status);
             var subtitle = Model.Project!.Exports.FirstOrDefault(path => path.EndsWith(".srt", StringComparison.OrdinalIgnoreCase));
             if (subtitle == null || !File.ReadAllText(Model.Project.Resolve(subtitle)).Contains("A blue screen.")) throw new InvalidOperationException("Exported subtitles are missing the edited description.");
-            if (InspectorExports.Children.OfType<Microsoft.UI.Xaml.Controls.StackPanel>().FirstOrDefault() is not { } exportSection ||
-                exportSection.Children.OfType<Microsoft.UI.Xaml.Controls.Grid>().FirstOrDefault() is not { } exportRow ||
-                exportRow.Children.OfType<Microsoft.UI.Xaml.Controls.Button>().LastOrDefault()?.Tag as string != subtitle)
+            if (!InspectorExports.Children.OfType<Microsoft.UI.Xaml.Controls.StackPanel>()
+                .SelectMany(section => section.Children.OfType<Microsoft.UI.Xaml.Controls.Grid>())
+                .Any(row => row.Children.OfType<Microsoft.UI.Xaml.Controls.Button>().LastOrDefault()?.Tag as string == subtitle))
                 throw new InvalidOperationException("Created exports do not have their own information actions.");
             var syntheticExports = new[] {
                 $"exports/{Model.Project.Name} - Video.mp4", $"exports/{Model.Project.Name} - Audio.mp3",

@@ -178,7 +178,7 @@ public sealed partial class MainWindow
     {
         var extension = Path.GetExtension(relative).ToLowerInvariant();
         var name = ExportDisplayName(project, relative);
-        if (extension is ".mp4" or ".mov" or ".mkv" or ".webm") return ("Video", "\uE714", 0);
+        if (extension is ".mp4" or ".mov" or ".m4v" or ".mkv" or ".webm") return ("Video", "\uE714", 0);
         if (extension is ".mp3" or ".m4a" or ".wav" or ".aac" or ".flac") return ("Audio", "\uE767", 1);
         if (extension == ".md") return ("Summary", "\uE8A5", 3);
         if (extension is ".srt" or ".vtt" or ".txt" or ".json")

@@ -86,6 +86,8 @@ public sealed partial class MainWindow
             Section.SelectedIndex = 2; Seek(2.5); await Task.Delay(100); UpdateActiveSegment(true);
             if (highlightedSegment?.Id != "a1" || !highlightedSegment.IsActive)
                 throw new InvalidOperationException("Descriptions follow highlight did not synchronize with video time.");
+            await VerifySegmentSelectionForSmokeTestAsync(report);
+            PreviewTheme(originalTheme);
             Section.SelectedIndex = 4; Seek(2.5); await Task.Delay(100); UpdateActiveSegment(true);
             if (highlightedSegment?.Id != "a1" || !highlightedSegment.IsActive)
                 throw new InvalidOperationException("AD Transcript follow highlight did not synchronize with video time.");
@@ -458,7 +460,7 @@ public sealed partial class MainWindow
             }
             ClearProject();
             if (Model.Project != null || EditorWorkspace.Visibility != Visibility.Collapsed || GalleryPanel.Visibility != Visibility.Visible || video.Source != null || narrationPlayer.Source != null || ProjectDetails.Children.Count != 0) throw new InvalidOperationException("Project close left stale editor state.");
-            await File.WriteAllTextAsync(report, "PASS: app-wide live light/dark themes across gallery, editor, Settings, New Project and Export; menu shortcut labels; video timeline playhead, synchronized Transcript and AD Transcript rows, summary highlighting and playback, New Project inspection, edit persistence, undo/redo, OneCore and SAPI narration, subtitle export, six editor sections, and engine invocation.");
+            await File.WriteAllTextAsync(report, "PASS: app-wide live light/dark themes across gallery, editor, Settings, New Project and Export; visible segment checkboxes and edit multi-selection, select all, deselect and Done in both themes; menu shortcut labels; video timeline playhead, synchronized Transcript and AD Transcript rows, summary highlighting and playback, New Project inspection, edit persistence, undo/redo, OneCore and SAPI narration, subtitle export, six editor sections, and engine invocation.");
         }
         catch (Exception ex) { await File.WriteAllTextAsync(report, ex.ToString()); }
         finally
@@ -468,6 +470,66 @@ public sealed partial class MainWindow
             catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == unchecked((int)0x80004004)) { }
             Application.Current.Exit();
         }
+    }
+    private async Task VerifySegmentSelectionForSmokeTestAsync(string report)
+    {
+        foreach (var theme in new[] { "dark", "light" })
+        {
+            PreviewTheme(theme);
+            foreach (var section in new[] { 0, 2, 4 })
+            {
+                Section.SelectedIndex = section;
+                if (!editMode) EditMode_Click(this, new RoutedEventArgs());
+                Deselect_Click(this, new RoutedEventArgs());
+                await Task.Delay(80);
+                Root.UpdateLayout();
+                if (Segments.SelectionMode != Microsoft.UI.Xaml.Controls.ListViewSelectionMode.Multiple ||
+                    EditToolbar.Visibility != Visibility.Visible ||
+                    Segments.ContainerFromIndex(0) is not Microsoft.UI.Xaml.Controls.ListViewItem row)
+                    throw new InvalidOperationException("Edit mode did not show selectable segment rows.");
+                var presenter = FindSelectionPresenter(row);
+                if (presenter == null || !presenter.SelectionCheckMarkVisualEnabled ||
+                    presenter.CheckBoxBorderBrush is not Microsoft.UI.Xaml.Media.SolidColorBrush border || border.Color.A == 0 ||
+                    presenter.CheckBoxSelectedBrush is not Microsoft.UI.Xaml.Media.SolidColorBrush fill || fill.Color.A == 0 ||
+                    presenter.CheckBrush is not Microsoft.UI.Xaml.Media.SolidColorBrush check || check.Color.A == 0 ||
+                    Math.Abs(check.Color.R - fill.Color.R) + Math.Abs(check.Color.G - fill.Color.G) + Math.Abs(check.Color.B - fill.Color.B) < 100)
+                    throw new InvalidOperationException($"Segment checkboxes have no visible themed border, selected fill or contrasting checkmark ({theme}).");
+                if (section == 2)
+                    await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, $"description-checkboxes-{theme}-unchecked.png"));
+                row.IsSelected = true;
+                if (Segments.SelectedItems.Count != 1 || !Segments.SelectedItems.Contains(row.Content))
+                    throw new InvalidOperationException("Selecting a segment row did not update the edit selection.");
+                if (section == 4)
+                {
+                    var second = (Microsoft.UI.Xaml.Controls.ListViewItem)Segments.ContainerFromIndex(1);
+                    second.IsSelected = true;
+                    if (Segments.SelectedItems.Count != 2) throw new InvalidOperationException("Selecting another row cleared the first selection.");
+                    second.IsSelected = false;
+                    if (Segments.SelectedItems.Count != 1) throw new InvalidOperationException("Deselecting one row cleared another selection.");
+                }
+                if (section == 2)
+                {
+                    await Task.Delay(80);
+                    await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, $"description-checkboxes-{theme}-checked.png"));
+                    if (!Model.Project!.Cues[0].IsActive) throw new InvalidOperationException("Editing selection cleared the playback highlight.");
+                }
+                SelectAll_Click(this, new RoutedEventArgs());
+                if (Segments.SelectedItems.Count != Segments.Items.Count) throw new InvalidOperationException("Select all missed segment rows.");
+                Deselect_Click(this, new RoutedEventArgs());
+                if (Segments.SelectedItems.Count != 0) throw new InvalidOperationException("Deselect left selected segment rows.");
+                EditMode_Click(this, new RoutedEventArgs());
+                if (Segments.SelectionMode != Microsoft.UI.Xaml.Controls.ListViewSelectionMode.None || EditToolbar.Visibility != Visibility.Collapsed)
+                    throw new InvalidOperationException("Done did not exit segment selection mode.");
+            }
+        }
+        Section.SelectedIndex = 2;
+    }
+    private static Microsoft.UI.Xaml.Controls.Primitives.ListViewItemPresenter? FindSelectionPresenter(DependencyObject element)
+    {
+        if (element is Microsoft.UI.Xaml.Controls.Primitives.ListViewItemPresenter presenter) return presenter;
+        for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(element); i++)
+            if (FindSelectionPresenter(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(element, i)) is { } child) return child;
+        return null;
     }
     private void VerifyTimelineThumbnailsForSmokeTest(int count)
     {

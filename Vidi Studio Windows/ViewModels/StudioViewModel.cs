@@ -118,4 +118,54 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         }
         finally { File.Delete(temporary); }
     }
+    public async Task SaveSummaryAsync(string summary)
+    {
+        if (Project is not { } p) return;
+        p.Summary = summary;
+        var temporary = Path.Combine(SettingsStore.DirectoryPath, Guid.NewGuid() + ".txt");
+        Directory.CreateDirectory(SettingsStore.DirectoryPath);
+        try
+        {
+            await File.WriteAllTextAsync(temporary, summary, System.Text.Encoding.UTF8);
+            var result = await RunAsync("save-summary", new[] { "--input", temporary });
+            if (result.Count == 0)
+            {
+                SaveSummaryDirectly(p.Folder, summary);
+                Project = StudioProject.Load(p.Folder);
+                ProjectReloaded?.Invoke(this, EventArgs.Empty);
+            }
+        }
+        catch
+        {
+            SaveSummaryDirectly(p.Folder, summary);
+            Project = StudioProject.Load(p.Folder);
+            ProjectReloaded?.Invoke(this, EventArgs.Empty);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
+    }
+    private static void SaveSummaryDirectly(string folder, string summary)
+    {
+        var projectFile = Path.Combine(folder, "project.json");
+        if (!File.Exists(projectFile)) return;
+        var json = File.ReadAllText(projectFile);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var dict = new Dictionary<string, object?>();
+        foreach (var prop in doc.RootElement.EnumerateObject())
+        {
+            if (prop.NameEquals("summary"))
+                dict["summary"] = summary;
+            else if (prop.NameEquals("summaryGenerated"))
+                dict["summaryGenerated"] = !string.IsNullOrWhiteSpace(summary);
+            else
+                dict[prop.Name] = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(prop.Value.GetRawText());
+        }
+        if (!dict.ContainsKey("summary")) dict["summary"] = summary;
+        if (!dict.ContainsKey("summaryGenerated")) dict["summaryGenerated"] = !string.IsNullOrWhiteSpace(summary);
+        var tempFile = Path.Combine(folder, "project." + Guid.NewGuid() + ".json");
+        File.WriteAllText(tempFile, System.Text.Json.JsonSerializer.Serialize(dict, Json.Options));
+        File.Move(tempFile, projectFile, overwrite: true);
+    }
 }

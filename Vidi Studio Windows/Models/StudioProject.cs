@@ -139,6 +139,7 @@ public sealed class StudioProject
             ?? throw new InvalidDataException("Invalid project.");
         project.Folder = Path.GetFullPath(folder);
         foreach (var cue in project.Cues) { cue.IsDescription = true; cue.ProjectFolder = project.Folder; }
+        foreach (var item in project.Transcript) { item.IsDescription = false; item.ProjectFolder = project.Folder; }
         return project;
     }
     public override string ToString() => Name;

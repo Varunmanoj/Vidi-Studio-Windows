@@ -227,7 +227,7 @@ public sealed partial class MainWindow
         var menu = new MenuFlyout();
         void Item(string label, RoutedEventHandler action, bool available = true)
         {
-            var item = new MenuFlyoutItem { Text = label, Icon = Views.MenuIcons.Create(label), IsEnabled = Model.Idle && available };
+            var item = new MenuFlyoutItem { Text = label, Icon = Views.MenuIcons.Create(label), IsEnabled = Model.Idle && available, Tag = segment };
             item.Click += (_, args) =>
             {
                 if (segment != null)
@@ -242,7 +242,7 @@ public sealed partial class MainWindow
         if (segment != null)
         {
             Item("Seek to segment", (_, _) => Seek(segment.Start));
-            Item("Edit segment", Edit_Click);
+            Item("Edit segment", async (_, _) => await EditSegment(segment));
             if (segment.IsDescription)
             {
                 Item("Preview narration", PreviewNarration_Click, segment.AudioReady);
@@ -250,7 +250,13 @@ public sealed partial class MainWindow
                 Item("Rewrite description to fit", Rewrite_Click);
                 Item("Delete narration", DeleteNarration_Click, segment.Audio != null);
             }
-            Item("Delete segment", DeleteSegments_Click);
+            Item("Delete segment", async (_, _) =>
+            {
+                if (Model.Project is not { } p) return;
+                if (!await Confirm("Delete segment", "This text and associated narration are permanently removed. Existing exports are invalidated.", "Delete")) return;
+                speech.Source = null;
+                await Model.SaveSegmentsAsync(p.Transcript.Where(c => c.Id != segment.Id), p.Cues.Where(c => c.Id != segment.Id));
+            });
         }
         else
         {

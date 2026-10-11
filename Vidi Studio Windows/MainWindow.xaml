@@ -31,7 +31,7 @@
        <TextBlock Text="{Binding AudioStatus}" FontWeight="SemiBold" Visibility="{Binding IsDescription, Converter={StaticResource VisibleWhenTrue}}"><TextBlock.Foreground><SolidColorBrush Color="{Binding AudioStatusColor}"/></TextBlock.Foreground></TextBlock>
        <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="16"/>
       </StackPanel>
-      <StackPanel Grid.Column="3" Spacing="6" VerticalAlignment="Top"><Button Content="&#xE768;" FontFamily="Segoe Fluent Icons" Tag="{Binding}" Click="SegmentPreview_Click" Padding="7" Visibility="{Binding IsDescription, Converter={StaticResource VisibleWhenTrue}}" AutomationProperties.Name="{Binding PreviewLabel}" IsEnabled="{Binding AudioReady}"/><Button Content="&#xE712;" FontFamily="Segoe Fluent Icons" Tag="{Binding}" Click="SegmentMore_Click" Padding="7" AutomationProperties.Name="More segment options" ToolTipService.ToolTip="More segment options"/></StackPanel>
+      <StackPanel Grid.Column="3" Spacing="6" VerticalAlignment="Top"><Button Content="&#xE70F;" FontFamily="Segoe Fluent Icons" Tag="{Binding}" Click="SegmentEditRow_Click" Padding="7" AutomationProperties.Name="Edit segment" ToolTipService.ToolTip="Edit segment"/><Button Content="&#xE768;" FontFamily="Segoe Fluent Icons" Tag="{Binding}" Click="SegmentPreview_Click" Padding="7" Visibility="{Binding IsDescription, Converter={StaticResource VisibleWhenTrue}}" AutomationProperties.Name="{Binding PreviewLabel}" IsEnabled="{Binding AudioReady}"/><Button Content="&#xE712;" FontFamily="Segoe Fluent Icons" Tag="{Binding}" Click="SegmentMore_Click" Padding="7" AutomationProperties.Name="More segment options" ToolTipService.ToolTip="More segment options"/></StackPanel>
      </Grid>
     </Border>
     </Grid>
@@ -142,7 +142,57 @@
         </Style>
        </ListView.ItemContainerStyle>
       </ListView>
-      <Grid x:Name="SummaryView" Visibility="Collapsed"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><StackPanel Orientation="Horizontal" Spacing="8" Padding="14,16"><Button x:Name="SummaryPlayButton" Content="Play" Style="{StaticResource AccentButtonStyle}" Click="SpeakSummary_Click"/><Button x:Name="SummaryStopButton" Content="Stop" Click="StopSpeech_Click" IsEnabled="False"/><TextBlock Text="Summary readback" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel><ScrollViewer x:Name="SummaryPanel" Grid.Row="1"><StackPanel Padding="14,0,14,16" Spacing="18"><StackPanel x:Name="SummaryRichText" Spacing="8"/><TextBlock x:Name="SummaryText" Visibility="Collapsed"/><TextBlock x:Name="ReadbackSentence" TextWrapping="Wrap" FontStyle="Italic" Visibility="Collapsed"/></StackPanel></ScrollViewer></Grid>
+      <Grid x:Name="SummaryView" Visibility="Collapsed">
+       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+       <Grid Padding="14,12" ColumnSpacing="12">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+         <Button x:Name="SummaryPlayButton" Content="Play" Style="{StaticResource AccentButtonStyle}" Click="SpeakSummary_Click"/>
+         <Button x:Name="SummaryStopButton" Content="Stop" Click="StopSpeech_Click" IsEnabled="False"/>
+         <TextBlock Text="Summary readback" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+         <Button x:Name="SummaryEditToggle" Content="Edit" Click="SummaryEditToggle_Click" ToolTipService.ToolTip="Edit summary in notepad editor" AutomationProperties.Name="Edit summary"/>
+         <Button x:Name="SummarySaveButton" Content="Save" Style="{StaticResource AccentButtonStyle}" Click="SummarySave_Click" Visibility="Collapsed" ToolTipService.ToolTip="Save summary changes" AutomationProperties.Name="Save summary"/>
+         <Button x:Name="SummaryCancelButton" Content="Cancel" Click="SummaryCancel_Click" Visibility="Collapsed" ToolTipService.ToolTip="Discard changes" AutomationProperties.Name="Discard summary changes"/>
+        </StackPanel>
+       </Grid>
+       <Grid Grid.Row="1">
+        <ScrollViewer x:Name="SummaryPanel" DoubleTapped="SummaryPanel_DoubleTapped" ToolTipService.ToolTip="Double-click to edit summary">
+         <StackPanel Padding="14,0,14,16" Spacing="18">
+          <StackPanel x:Name="SummaryRichText" Spacing="8"/>
+          <TextBlock x:Name="SummaryText" Visibility="Collapsed"/>
+          <TextBlock x:Name="ReadbackSentence" TextWrapping="Wrap" FontStyle="Italic" Visibility="Collapsed"/>
+         </StackPanel>
+        </ScrollViewer>
+        <Grid x:Name="SummaryEditorPanel" Visibility="Collapsed" Padding="14,0,14,16" RowSpacing="10">
+         <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+         <TextBox x:Name="SummaryEditorBox"
+                  AcceptsReturn="True"
+                  TextWrapping="Wrap"
+                  IsSpellCheckEnabled="True"
+                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                  PlaceholderText="Type or edit your project summary here in plain text or Markdown..."
+                  FontFamily="Segoe UI, Consolas, sans-serif"
+                  FontSize="15"
+                  Padding="14,12"
+                  CornerRadius="6"
+                  TextChanged="SummaryEditorBox_TextChanged"
+                  AutomationProperties.Name="Project summary editor"/>
+         <Grid Grid.Row="1">
+          <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+           <TextBlock x:Name="SummaryWordCount" Text="0 words · 0 characters" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12"/>
+           <TextBlock x:Name="SummaryEditNotice" Text="" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontSize="12"/>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+           <Button Content="Discard changes" Click="SummaryCancel_Click"/>
+           <Button Content="Save Summary" Style="{StaticResource AccentButtonStyle}" Click="SummarySave_Click"/>
+          </StackPanel>
+         </Grid>
+        </Grid>
+       </Grid>
+      </Grid>
       <ScrollViewer x:Name="OverviewPanel" Visibility="Collapsed"><StackPanel Padding="14,24" Spacing="22"><Grid ColumnSpacing="20"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><StackPanel Spacing="10"><TextBlock Text="Audio description overview" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel x:Name="OverviewStatistics" Spacing="16"/></Border></StackPanel><StackPanel Grid.Column="1" Spacing="10"><TextBlock Text="Description origins" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel x:Name="OriginStatistics" Spacing="16"/></Border></StackPanel></Grid><TextBlock x:Name="Overview" Visibility="Collapsed"/><TextBlock Text="Create narration audio" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel Spacing="12"><TextBlock x:Name="OverviewVoice" TextWrapping="Wrap"/><StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Generate All AD Audio" Tag="synthesize-tts" Click="Command_Click"/><Button Content="Generate Missing or Changed Audio" Click="ChangedNarration_Click"/></StackPanel><Button Content="Voice and Narration Settings" Tag="Narration" Click="Settings_Click"/></StackPanel></Border></StackPanel></ScrollViewer>
       <ScrollViewer x:Name="ExportList" Visibility="Collapsed" AutomationProperties.Name="Created exports"><StackPanel x:Name="ExportGroups" Padding="14,18" Spacing="8"/></ScrollViewer>
      </Grid>

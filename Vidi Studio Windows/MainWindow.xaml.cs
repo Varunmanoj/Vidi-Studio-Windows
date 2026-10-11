@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System;
 using System.Collections.Generic;
@@ -218,7 +219,14 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex) { await ShowError(ex); }
     }
-    private void Section_Changed(object sender, SelectionChangedEventArgs e) { if (ready) RenderSection(); }
+    private async void Section_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (summaryEditMode && Model.Project != null)
+        {
+            await SaveSummaryChangesAsync();
+        }
+        if (ready) RenderSection();
+    }
     private void RenderTimelineThumbnails(StudioProject project)
     {
         Thumbnails.Children.Clear(); Thumbnails.ColumnDefinitions.Clear();
@@ -253,6 +261,11 @@ public sealed partial class MainWindow : Window
         Segments.ItemsSource = Section.SelectedIndex switch { 0 => p.Transcript, 2 => p.Cues, _ => p.Transcript.Concat(p.Cues).OrderBy(c => c.Start).ToList() };
         SummaryText.Text = p.Summary;
         RenderMarkdown(p.Summary);
+        if (!summaryEditMode)
+        {
+            SummaryEditorBox.Text = p.Summary ?? "";
+            UpdateSummaryWordCount();
+        }
         if (Section.SelectedIndex == 1 && readback.State is SummaryReadbackState.Playing or SummaryReadbackState.Paused)
             HighlightReadbackSentence(ReadbackSentence.Text);
         RenderTracks();
@@ -432,7 +445,16 @@ public sealed partial class MainWindow : Window
     }
     private void Rewind_Click(object sender, RoutedEventArgs e) => Seek(Position - 5);
     private void Forward_Click(object sender, RoutedEventArgs e) => Seek(Position + 5);
-    private void Segment_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e) { if (Segments.SelectedItem is Segment segment) Seek(segment.Start); }
+    private async void Segment_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if (Segments.SelectedItem is Segment segment)
+        {
+            if (editMode)
+                await EditSegment(segment);
+            else
+                Seek(segment.Start);
+        }
+    }
     private async void Command_Click(object sender, RoutedEventArgs e)
     {
         var command = (string)((FrameworkElement)sender).Tag;
@@ -463,38 +485,319 @@ public sealed partial class MainWindow : Window
     private void SelectAll_Click(object sender, RoutedEventArgs e) { if (!editMode) EditMode_Click(sender, e); Segments.SelectAll(); }
     private void Deselect_Click(object sender, RoutedEventArgs e) => Segments.SelectedItems.Clear();
     private async void Add_Click(object sender, RoutedEventArgs e) => await EditSegment(null);
+    private async void SegmentEditRow_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is Segment segment)
+            await EditSegment(segment);
+    }
     private async void Edit_Click(object sender, RoutedEventArgs e)
-    { foreach (var segment in Segments.SelectedItems.Cast<Segment>().ToList()) await EditSegment(segment); }
+    {
+        if ((sender as FrameworkElement)?.Tag is Segment tagged)
+        {
+            await EditSegment(tagged);
+            return;
+        }
+        if (Segments.SelectedItems.Count > 0)
+        {
+            foreach (var segment in Segments.SelectedItems.Cast<Segment>().ToList())
+                await EditSegment(segment);
+            return;
+        }
+        if (Segments.SelectedItem is Segment single)
+        {
+            await EditSegment(single);
+        }
+    }
     private async Task EditSegment(Segment? existing, string? initialText = null)
     {
         if (Model.Project is not { } p) return;
-        var isDescription = existing?.IsDescription ?? Section.SelectedIndex != 0;
-        var start = new NumberBox { Header = "Start (seconds)", Value = existing?.Start ?? Position, Minimum = 0, Maximum = p.Duration };
-        var end = new NumberBox { Header = "End (seconds)", Value = existing?.End ?? Math.Min(p.Duration, Position + 3), Minimum = 0, Maximum = p.Duration };
-        var text = new TextBox { Header = "Segment text", Text = initialText ?? existing?.Text ?? "", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 100 };
-        var hint = new TextBox { Header = "Optional hint for Gemini", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap };
-        var panel = new StackPanel { Width = 560, Spacing = 10 }; panel.Children.Add(start); panel.Children.Add(end); panel.Children.Add(text); panel.Children.Add(hint);
-        var dialog = Dialog(isDescription ? "Audio Description segment" : "Transcript segment", panel, "Save segment");
-        dialog.SecondaryButtonText = "Re-analyze range";
-        var result = await ShowDialogAsync(dialog, 700, 570);
+        var isDescription = existing?.IsDescription ?? (Section.SelectedIndex != 0);
+        var maxDuration = p.Duration;
+        var initialStart = existing?.Start ?? Position;
+        var initialEnd = existing?.End ?? Math.Min(maxDuration, initialStart + (isDescription ? 3.0 : 4.0));
+        if (initialEnd <= initialStart) initialEnd = Math.Min(maxDuration, initialStart + 1.0);
+
+        var title = existing == null
+            ? (isDescription ? "Add Audio Description Segment" : "Add Transcript Segment")
+            : $"Edit {(isDescription ? "Audio Description" : "Transcript")} Segment";
+
+        var startBox = new NumberBox
+        {
+            Header = "Start time (seconds)",
+            Value = initialStart,
+            Minimum = 0,
+            Maximum = maxDuration,
+            SmallChange = 0.1,
+            LargeChange = 1.0,
+            SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+
+        var durationText = new TextBlock
+        {
+            Text = $"Duration {(Math.Max(0, initialEnd - initialStart)):F3} seconds",
+            HorizontalAlignment = HorizontalAlignment.Right,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            FontSize = 13,
+            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush,
+            FontFamily = new FontFamily("Consolas, Segoe UI")
+        };
+
+        var endBox = new NumberBox
+        {
+            Header = "End time (seconds)",
+            Value = initialEnd,
+            Minimum = 0,
+            Maximum = maxDuration,
+            SmallChange = 0.1,
+            LargeChange = 1.0,
+            SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+
+        var errorIcon = new FontIcon
+        {
+            Glyph = "\uE783",
+            FontSize = 14,
+            Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 239, 68, 68))
+        };
+        var errorTitle = new TextBlock
+        {
+            Text = "Timing error",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            FontSize = 13,
+            Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 239, 68, 68))
+        };
+        var errorHeader = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Children = { errorIcon, errorTitle }
+        };
+        var errorList = new StackPanel { Spacing = 4 };
+        var errorFooter = new TextBlock
+        {
+            Text = isDescription
+                ? "Adjust the start or end time so the audio description plays only in a clear gap."
+                : "Adjust the start or end time so transcript and Audio Description segments do not overlap.",
+            FontSize = 12,
+            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush,
+            TextWrapping = TextWrapping.Wrap
+        };
+        var errorStack = new StackPanel { Spacing = 6, Children = { errorHeader, errorList, errorFooter } };
+        var validationBorder = new Border
+        {
+            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(30, 239, 68, 68)),
+            BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(160, 239, 68, 68)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(12, 10, 12, 10),
+            Visibility = Visibility.Collapsed,
+            Child = errorStack
+        };
+
+        var textBox = new TextBox
+        {
+            Header = isDescription ? "Audio description text" : "Transcript text",
+            Text = initialText ?? existing?.Text ?? "",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = isDescription ? 130 : 95,
+            PlaceholderText = isDescription ? "Describe visual events or details in this scene..." : "Spoken words or dialogue..."
+        };
+
+        var ocrPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 10 };
+        var ocrStatus = new TextBlock { FontSize = 12, Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
+        var ocrButton = new Button
+        {
+            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { new FontIcon { Glyph = "\uE7C8", FontSize = 13 }, new TextBlock { Text = "Read Frame Text at Start" } } }
+        };
+        ToolTipService.SetToolTip(ocrButton, "Read text from the video frame at the segment start time and use it as the description");
+        ocrPanel.Children.Add(ocrStatus);
+        ocrPanel.Children.Add(ocrButton);
+        ocrButton.Click += async (_, _) =>
+        {
+            ocrButton.IsEnabled = false;
+            ocrStatus.Visibility = Visibility.Visible;
+            ocrStatus.Text = "Reading frame text…";
+            try
+            {
+                var targetTime = double.IsFinite(startBox.Value) ? startBox.Value : Position;
+                var captureResult = await Model.RunAsync("capture-frame", new[] { "--timestamp", targetTime.ToString(CultureInfo.InvariantCulture) });
+                var evt = captureResult.FirstOrDefault(x => x.Data.TryGetProperty("screenText", out _));
+                var screenText = evt?.Data.GetProperty("screenText").GetString();
+                if (!string.IsNullOrWhiteSpace(screenText))
+                {
+                    textBox.Text = screenText;
+                    ocrStatus.Text = "Screen text added to the description.";
+                }
+                else
+                {
+                    ocrStatus.Text = "No readable text was found at the segment start time.";
+                }
+            }
+            catch (Exception ex)
+            {
+                ocrStatus.Text = "Could not read frame text: " + ex.Message;
+            }
+            finally
+            {
+                ocrButton.IsEnabled = true;
+            }
+        };
+
+        var hintDesc = new TextBlock
+        {
+            Text = isDescription
+                ? "Optionally tell Gemini what to examine more closely. It may adjust descriptions in this range and its immediate neighbors to fit around dialogue. You can undo the result."
+                : "Generate one or more transcript segments for this range and reconcile its immediate neighbors. All spoken languages and original scripts are preserved. Existing Audio Descriptions and narration are kept; conflicting speech timing is rejected. You can undo the result.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush,
+            FontSize = 12
+        };
+        var hintBox = new TextBox
+        {
+            Header = "Optional hint for Gemini",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 65,
+            PlaceholderText = isDescription
+                ? "e.g. Focus on the character's facial expression and the sign in the background..."
+                : "e.g. Dialogue is in French with English subtitles..."
+        };
+
+        var contentStack = new StackPanel { Width = 560, Spacing = 14 };
+        contentStack.Children.Add(new TextBlock { Text = "Timing", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15 });
+        contentStack.Children.Add(startBox);
+        contentStack.Children.Add(durationText);
+        contentStack.Children.Add(endBox);
+        contentStack.Children.Add(validationBorder);
+
+        contentStack.Children.Add(new TextBlock { Text = isDescription ? "Audio Description" : "Transcript", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15 });
+        contentStack.Children.Add(textBox);
+        if (isDescription) contentStack.Children.Add(ocrPanel);
+
+        contentStack.Children.Add(new TextBlock { Text = "Hint for Gemini (Optional)", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15 });
+        contentStack.Children.Add(hintDesc);
+        contentStack.Children.Add(hintBox);
+
+        var scrollViewer = new ScrollViewer
+        {
+            Content = contentStack,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            MaxHeight = 600
+        };
+
+        var dialog = Dialog(title, scrollViewer, "Save Segment");
+        dialog.SecondaryButtonText = "Re-Analyze This Segment";
+
+        string PreciseTimecode(double sec) => TimeSpan.FromSeconds(Math.Max(0, sec)).ToString(@"hh\:mm\:ss\.fff");
+        string SegmentExcerpt(string s)
+        {
+            var collapsed = System.Text.RegularExpressions.Regex.Replace(s?.Trim() ?? "", @"\s+", " ");
+            return collapsed.Length > 80 ? collapsed[..77] + "…" : collapsed;
+        }
+
+        List<string> ValidateTiming(double s, double e)
+        {
+            var errors = new List<string>();
+            if (!double.IsFinite(s) || !double.IsFinite(e))
+            {
+                errors.Add("Start and end times must be valid numbers.");
+                return errors;
+            }
+            if (s < 0 || e > maxDuration)
+            {
+                errors.Add("The segment must remain inside the video duration.");
+            }
+            if (e <= s)
+            {
+                errors.Add("End time must be after start time.");
+            }
+            if (s >= 0 && e > s && e <= maxDuration)
+            {
+                var allRows = p.Transcript.Concat(p.Cues);
+                var currentId = existing?.Id ?? "";
+                var overlaps = allRows
+                    .Where(other => other.Id != currentId && s < other.End && e > other.Start)
+                    .OrderBy(other => other.Start)
+                    .ToList();
+                foreach (var other in overlaps)
+                {
+                    var kind = other.IsDescription ? "audio description" : "transcript";
+                    errors.Add($"Overlaps {kind} {PreciseTimecode(other.Start)} to {PreciseTimecode(other.End)}: {SegmentExcerpt(other.Text)}");
+                }
+            }
+            return errors;
+        }
+
+        void UpdateDialogState()
+        {
+            var s = startBox.Value;
+            var e = endBox.Value;
+            var dur = (double.IsFinite(s) && double.IsFinite(e)) ? Math.Max(0, e - s) : 0;
+            durationText.Text = $"Duration {dur:F3} seconds";
+
+            var errors = ValidateTiming(s, e);
+            if (errors.Count > 0)
+            {
+                errorTitle.Text = errors.Count == 1 ? "Timing error" : $"{errors.Count} timing errors";
+                errorList.Children.Clear();
+                foreach (var err in errors)
+                    errorList.Children.Add(new TextBlock { Text = err, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+                validationBorder.Visibility = Visibility.Visible;
+                dialog.IsPrimaryButtonEnabled = false;
+            }
+            else
+            {
+                validationBorder.Visibility = Visibility.Collapsed;
+                dialog.IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(textBox.Text);
+            }
+
+            dialog.IsSecondaryButtonEnabled = Model.Idle && double.IsFinite(s) && double.IsFinite(e) && s >= 0 && e > s && e <= maxDuration;
+        }
+
+        startBox.ValueChanged += (_, _) => UpdateDialogState();
+        endBox.ValueChanged += (_, _) => UpdateDialogState();
+        textBox.TextChanged += (_, _) => UpdateDialogState();
+        UpdateDialogState();
+
+        var result = await ShowDialogAsync(dialog, 680, 720);
         if (result == ContentDialogResult.None) return;
-        if (!double.IsFinite(start.Value) || !double.IsFinite(end.Value) || start.Value < 0 || end.Value <= start.Value || end.Value > p.Duration)
-        { await Confirm("Invalid timing", "Choose a non-empty time range within the video.", "OK"); return; }
-        var draft = existing == null ? new Segment { Origin = "manual" } : JsonSerializer.Deserialize<Segment>(JsonSerializer.Serialize(existing, Json.Options), Json.Options)!;
-        draft.Start = start.Value; draft.End = end.Value; draft.Text = text.Text; draft.IsDescription = isDescription;
+
         if (result == ContentDialogResult.Secondary)
         {
             Directory.CreateDirectory(SettingsStore.DirectoryPath);
             var path = Path.Combine(SettingsStore.DirectoryPath, Guid.NewGuid() + ".json");
             try
             {
-                await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { id = draft.Id, start = draft.Start, end = draft.End, text = draft.Text, hint = hint.Text }));
+                await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new
+                {
+                    id = existing?.Id ?? Guid.NewGuid().ToString(),
+                    start = startBox.Value,
+                    end = endBox.Value,
+                    text = textBox.Text.Trim(),
+                    hint = hintBox.Text.Trim()
+                }));
                 await Model.RunAsync(isDescription ? "reanalyze-segment" : "reanalyze-transcript-segment", new[] { "--input", path });
             }
-            finally { File.Delete(path); }
+            finally { if (File.Exists(path)) File.Delete(path); }
             return;
         }
-        var transcript = p.Transcript.ToList(); var cues = p.Cues.ToList();
+
+        var draft = existing == null
+            ? new Segment { Origin = isDescription ? "manual" : "transcript" }
+            : JsonSerializer.Deserialize<Segment>(JsonSerializer.Serialize(existing, Json.Options), Json.Options)!;
+        draft.Start = startBox.Value;
+        draft.End = endBox.Value;
+        draft.Text = textBox.Text.Trim();
+        draft.IsDescription = isDescription;
+        if (isDescription && existing != null && draft.Origin == "ai" && draft.Text != existing.Text)
+            draft.Origin = "ai_modified";
+
+        var transcript = p.Transcript.ToList();
+        var cues = p.Cues.ToList();
         var target = isDescription ? cues : transcript;
         var index = target.FindIndex(c => c.Id == draft.Id);
         if (index >= 0) target[index] = draft; else target.Add(draft);
@@ -628,4 +931,88 @@ public sealed partial class MainWindow : Window
         catch (Exception ex) { await ShowError(ex); }
     }
     private void StopSpeech_Click(object sender, RoutedEventArgs e) { readback.Stop(); speech.Pause(); speech.Source = null; }
+
+    private bool summaryEditMode;
+
+    private void SetSummaryEditMode(bool edit)
+    {
+        summaryEditMode = edit;
+        SummaryEditorPanel.Visibility = edit ? Visibility.Visible : Visibility.Collapsed;
+        SummaryPanel.Visibility = edit ? Visibility.Collapsed : Visibility.Visible;
+        SummaryEditToggle.Content = edit ? "Preview" : "Edit";
+        SummarySaveButton.Visibility = edit ? Visibility.Visible : Visibility.Collapsed;
+        SummaryCancelButton.Visibility = edit ? Visibility.Visible : Visibility.Collapsed;
+        if (Section.SelectedIndex == 1)
+        {
+            EditModeButton.Content = edit ? "Done" : "Edit";
+        }
+        if (edit)
+        {
+            readback.Stop();
+            SummaryEditorBox.Text = Model.Project?.Summary ?? "";
+            UpdateSummaryWordCount();
+            SummaryEditNotice.Text = "";
+            SummaryEditorBox.Focus(FocusState.Programmatic);
+        }
+    }
+
+    private async void SummaryEditToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (summaryEditMode)
+        {
+            await SaveSummaryChangesAsync();
+            SetSummaryEditMode(false);
+        }
+        else
+        {
+            SetSummaryEditMode(true);
+        }
+    }
+
+    private async void SummarySave_Click(object sender, RoutedEventArgs e)
+    {
+        await SaveSummaryChangesAsync();
+        SetSummaryEditMode(false);
+    }
+
+    private void SummaryCancel_Click(object sender, RoutedEventArgs e)
+    {
+        SummaryEditorBox.Text = Model.Project?.Summary ?? "";
+        UpdateSummaryWordCount();
+        SetSummaryEditMode(false);
+    }
+
+    private void SummaryPanel_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        SetSummaryEditMode(true);
+    }
+
+    private void SummaryEditorBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateSummaryWordCount();
+        var original = Model.Project?.Summary ?? "";
+        var hasChanges = (SummaryEditorBox.Text ?? "") != original;
+        SummaryEditNotice.Text = hasChanges ? "• Unsaved changes" : "";
+    }
+
+    private void UpdateSummaryWordCount()
+    {
+        var text = SummaryEditorBox.Text ?? "";
+        var chars = text.Length;
+        var words = string.IsNullOrWhiteSpace(text) ? 0 : text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+        SummaryWordCount.Text = $"{words} {(words == 1 ? "word" : "words")} · {chars} {(chars == 1 ? "character" : "characters")}";
+    }
+
+    private async Task SaveSummaryChangesAsync()
+    {
+        if (Model.Project is not { } p) return;
+        var text = SummaryEditorBox.Text ?? "";
+        if (text != p.Summary)
+        {
+            await Model.SaveSummaryAsync(text);
+            SummaryEditNotice.Text = "";
+            SummaryText.Text = text;
+            RenderMarkdown(text);
+        }
+    }
 }

@@ -8,7 +8,7 @@ New-Item -ItemType Directory -Force $testRoot | Out-Null
 if (!$SkipBuild) {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
     $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
-    & $msbuild (Join-Path $projectRoot 'Vidi Studio Windows\Vidi Studio Windows.csproj') /restore /t:Build /p:Configuration=Debug /p:Platform=$Platform /p:WindowsPackageType=None /p:WindowsAppSDKSelfContained=true "/p:IntermediateOutputPath=obj\smoke-$Platform\" "/p:OutDir=$appRoot\" /verbosity:minimal
+    & $msbuild (Join-Path $projectRoot 'Vidi Studio Windows\Vidi Studio Windows.csproj') /restore /t:Build /p:Configuration=Debug /p:Platform=$Platform /p:WindowsPackageType=None /p:WindowsAppSDKSelfContained=true "/p:IntermediateOutputPath=obj\smoke-$Platform/" "/p:OutDir=$appRoot/" /verbosity:minimal
     if ($LASTEXITCODE -ne 0) { throw 'UI smoke build failed.' }
 }
 $folder = Join-Path $testRoot 'project'
@@ -18,7 +18,7 @@ $project = @{
     createdAt=0; updatedAt=0; thumbnails=@('thumbnail.jpg'); transcript=@(@{id='t1';start=0;end=1;text='Hello.'}); cues=@(@{id='a1';start=2;end=5;text='A blue screen appears.';origin='ai'})
     summary="# Smoke test`n`n- Native **Windows** summary.`n- Multilingual: नमस्ते"; exports=@(); status='Ready'
 }
-$project | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $folder 'project.json') -Encoding utf8NoBOM
+[System.IO.File]::WriteAllText((Join-Path $folder 'project.json'), ($project | ConvertTo-Json -Depth 8), [System.Text.UTF8Encoding]::new($false))
 & ffmpeg -y -v error -f lavfi -i 'color=c=blue:s=320x180:r=24' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 8 -c:v libx264 -c:a aac (Join-Path $folder 'source.mp4')
 if ($LASTEXITCODE -ne 0) { throw 'Test media creation failed.' }
 & ffmpeg -y -v error -i (Join-Path $folder 'source.mp4') -frames:v 1 (Join-Path $folder 'thumbnail.jpg')
@@ -32,7 +32,7 @@ if ($FrozenEngine) {
     $configuration.pythonPath = Join-Path $testRoot 'intentionally-missing-python.exe'
 }
 $configFile = Join-Path $testRoot 'config.json'
-$configuration | ConvertTo-Json | Set-Content $configFile -Encoding utf8NoBOM
+[System.IO.File]::WriteAllText($configFile, ($configuration | ConvertTo-Json), [System.Text.UTF8Encoding]::new($false))
 $report = Join-Path $testRoot ('report-' + [Guid]::NewGuid() + '.txt')
 $oldConfig = $env:VIDISTUDIO_CONFIG
 try {

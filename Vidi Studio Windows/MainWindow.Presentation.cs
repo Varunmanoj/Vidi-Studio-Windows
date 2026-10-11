@@ -55,6 +55,7 @@ public sealed partial class MainWindow
     private void ClearProject()
     {
         StopProjectPlayback();
+        SetSummaryEditMode(false);
         video.Source = speech.Source = narrationPlayer.Source = null;
         foreach (var active in activeSegmentRows) active.IsActive = false;
         activeSegmentRows.Clear();
@@ -92,8 +93,21 @@ public sealed partial class MainWindow
         var command = Section.SelectedIndex switch { 0 => "transcribe", 1 => "generate-summary", 2 => "generate-ad-cues", _ => "synthesize-tts" };
         Command_Click(new Button { Tag = command }, e);
     }
-    private void EditMode_Click(object sender, RoutedEventArgs e)
+    private async void EditMode_Click(object sender, RoutedEventArgs e)
     {
+        if (Section.SelectedIndex == 1)
+        {
+            if (summaryEditMode)
+            {
+                await SaveSummaryChangesAsync();
+                SetSummaryEditMode(false);
+            }
+            else
+            {
+                SetSummaryEditMode(true);
+            }
+            return;
+        }
         editMode = !editMode; EditModeButton.Content = editMode ? "Done" : "Edit";
         EditToolbar.Visibility = editMode ? Visibility.Visible : Visibility.Collapsed;
         Segments.SelectionMode = editMode ? ListViewSelectionMode.Multiple : ListViewSelectionMode.None;
@@ -118,7 +132,8 @@ public sealed partial class MainWindow
         NarrationActions.Visibility = index is 2 or 3 or 4 ? Visibility.Visible : Visibility.Collapsed;
         Narration.Visibility = index is 2 or 3 or 4 ? Visibility.Visible : Visibility.Collapsed;
         Follow.Visibility = index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
-        EditModeButton.Visibility = index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        EditModeButton.Visibility = index is 0 or 1 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        EditModeButton.Content = (index == 1 ? summaryEditMode : editMode) ? "Done" : "Edit";
         EditToolbar.Visibility = editMode && index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
         OverviewPanel.Visibility = index == 3 ? Visibility.Visible : Visibility.Collapsed;
         OverviewStatistics.Children.Clear(); OriginStatistics.Children.Clear();

@@ -87,6 +87,7 @@ public sealed partial class MainWindow
             if (highlightedSegment?.Id != "a1" || !highlightedSegment.IsActive)
                 throw new InvalidOperationException("Descriptions follow highlight did not synchronize with video time.");
             await VerifySegmentSelectionForSmokeTestAsync(report);
+            await VerifyTimecodePickerForSmokeTestAsync(report);
             PreviewTheme(originalTheme);
             Section.SelectedIndex = 4; Seek(2.5); await Task.Delay(100); UpdateActiveSegment(true);
             if (highlightedSegment?.Id != "a1" || !highlightedSegment.IsActive)
@@ -523,6 +524,174 @@ public sealed partial class MainWindow
             }
         }
         Section.SelectedIndex = 2;
+    }
+    private async Task VerifyTimecodePickerForSmokeTestAsync(string report)
+    {
+        // 1. Parsing verification
+        if (!Views.TimecodePicker.TryParseTimecode("01:23:45.678", out var s1) || Math.Abs(s1 - 5025.678) > 0.001)
+            throw new InvalidOperationException("TimecodePicker did not parse hh:mm:ss.fff timecode correctly.");
+        if (!Views.TimecodePicker.TryParseTimecode("02:15.500", out var s2) || Math.Abs(s2 - 135.5) > 0.001)
+            throw new InvalidOperationException("TimecodePicker did not parse mm:ss.fff timecode correctly.");
+        if (!Views.TimecodePicker.TryParseTimecode("45.250", out var s3) || Math.Abs(s3 - 45.25) > 0.001)
+            throw new InvalidOperationException("TimecodePicker did not parse seconds float correctly.");
+        if (!Views.TimecodePicker.TryParseTimecode("00:00:05", out var s4) || Math.Abs(s4 - 5.0) > 0.001)
+            throw new InvalidOperationException("TimecodePicker did not parse hh:mm:ss correctly.");
+
+        // 2. Picker state verification
+        var picker = new Views.TimecodePicker { Header = "Start time", Value = 3661.125, Maximum = 7200 };
+        if (picker.FormattedTimecode != "01:01:01.125")
+            throw new InvalidOperationException($"TimecodePicker formatted timecode was '{picker.FormattedTimecode}', expected '01:01:01.125'.");
+        if (Math.Abs(picker.TimeSpanValue.TotalSeconds - 3661.125) > 0.001)
+            throw new InvalidOperationException("TimecodePicker TimeSpanValue does not match Value.");
+
+        picker.Value = 75.5;
+        if (picker.FormattedTimecode != "00:01:15.500")
+            throw new InvalidOperationException($"TimecodePicker formatted timecode was '{picker.FormattedTimecode}', expected '00:01:15.500'.");
+
+        // 3. Visual rendering verification in dark and light themes
+        var testContainer = new Microsoft.UI.Xaml.Controls.Border
+        {
+            Width = 600,
+            Padding = new Thickness(16),
+            Background = Application.Current.Resources["LayerFillColorAltBrush"] as Microsoft.UI.Xaml.Media.Brush,
+            CornerRadius = new CornerRadius(8),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var startPicker = new Views.TimecodePicker { Header = "Start time", Value = 1.0, Maximum = 600 };
+        startPicker.SetCurrentPositionProvider(() => 1.5, "Set to playhead");
+        var endPicker = new Views.TimecodePicker { Header = "End time", Value = 3.0, Maximum = 600 };
+        endPicker.SetCurrentPositionProvider(() => 1.5, "Set to playhead");
+
+        var timingGrid = new Microsoft.UI.Xaml.Controls.Grid { ColumnSpacing = 16 };
+        timingGrid.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        timingGrid.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        Microsoft.UI.Xaml.Controls.Grid.SetColumn(startPicker, 0);
+        Microsoft.UI.Xaml.Controls.Grid.SetColumn(endPicker, 1);
+        timingGrid.Children.Add(startPicker);
+        timingGrid.Children.Add(endPicker);
+
+        testContainer.Child = timingGrid;
+        Root.Children.Add(testContainer);
+        try
+        {
+            foreach (var theme in new[] { "dark", "light" })
+            {
+                PreviewTheme(theme);
+                testContainer.RequestedTheme = theme == "dark" ? ElementTheme.Dark : ElementTheme.Light;
+                testContainer.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                    theme == "dark" ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 245, 245, 245));
+                await Task.Delay(100);
+                Root.UpdateLayout();
+                await CaptureSmokeImage(testContainer, Path.Combine(Path.GetDirectoryName(report)!, $"timing-pickers-{theme}.png"));
+            }
+
+            // Capture complete dialog layouts
+            var transcriptDialog = CreateSampleSegmentDialogContent(false, 1.0, 3.0, "I need you to tell me everything.", "e.g. Dialogue is in French with English subtitles...");
+            transcriptDialog.RequestedTheme = ElementTheme.Dark;
+            ((Microsoft.UI.Xaml.Controls.Border)transcriptDialog).Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 32, 32, 32));
+            Root.Children.Add(transcriptDialog);
+            await Task.Delay(100);
+            Root.UpdateLayout();
+            await CaptureSmokeImage(transcriptDialog, Path.Combine(Path.GetDirectoryName(report)!, "edit-transcript-dialog-dark.png"));
+            Root.Children.Remove(transcriptDialog);
+
+            var descriptionDialog = CreateSampleSegmentDialogContent(true, 2.0, 5.0, "A character turns slowly and looks around.", "e.g. Focus on facial expression...");
+            descriptionDialog.RequestedTheme = ElementTheme.Dark;
+            ((Microsoft.UI.Xaml.Controls.Border)descriptionDialog).Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 32, 32, 32));
+            Root.Children.Add(descriptionDialog);
+            await Task.Delay(100);
+            Root.UpdateLayout();
+            await CaptureSmokeImage(descriptionDialog, Path.Combine(Path.GetDirectoryName(report)!, "edit-description-dialog-dark.png"));
+            Root.Children.Remove(descriptionDialog);
+        }
+        finally
+        {
+            Root.Children.Remove(testContainer);
+        }
+    }
+    private FrameworkElement CreateSampleSegmentDialogContent(bool isDescription, double start, double end, string text, string hint)
+    {
+        var startPicker = new Views.TimecodePicker { Header = "Start time", Value = start, Maximum = 600 };
+        startPicker.SetCurrentPositionProvider(() => 1.5, "Set start time to current playhead position");
+
+        var dur = Math.Max(0, end - start);
+        var durTs = TimeSpan.FromSeconds(dur);
+        var durationText = new Microsoft.UI.Xaml.Controls.TextBlock
+        {
+            Text = $"Duration {durTs:hh\\:mm\\:ss\\.fff} ({dur:F3}s)",
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            FontSize = 13,
+            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Microsoft.UI.Xaml.Media.Brush,
+            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas, Segoe UI")
+        };
+
+        var endPicker = new Views.TimecodePicker { Header = "End time", Value = end, Maximum = 600 };
+        endPicker.SetCurrentPositionProvider(() => 1.5, "Set end time to current playhead position");
+
+        var timingHeader = new Microsoft.UI.Xaml.Controls.Grid();
+        timingHeader.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        timingHeader.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = GridLength.Auto });
+
+        var timingTitle = new Microsoft.UI.Xaml.Controls.TextBlock
+        {
+            Text = "Timing",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            FontSize = 15,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Microsoft.UI.Xaml.Controls.Grid.SetColumn(timingTitle, 0);
+        Microsoft.UI.Xaml.Controls.Grid.SetColumn(durationText, 1);
+        timingHeader.Children.Add(timingTitle);
+        timingHeader.Children.Add(durationText);
+
+        var timingGrid = new Microsoft.UI.Xaml.Controls.Grid { ColumnSpacing = 16 };
+        timingGrid.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        timingGrid.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        Microsoft.UI.Xaml.Controls.Grid.SetColumn(startPicker, 0);
+        Microsoft.UI.Xaml.Controls.Grid.SetColumn(endPicker, 1);
+        timingGrid.Children.Add(startPicker);
+        timingGrid.Children.Add(endPicker);
+
+        var textBox = new Microsoft.UI.Xaml.Controls.TextBox
+        {
+            Header = isDescription ? "Audio description text" : "Transcript text",
+            Text = text,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = isDescription ? 120 : 90
+        };
+
+        var hintBox = new Microsoft.UI.Xaml.Controls.TextBox
+        {
+            Header = "Optional hint for Gemini",
+            Text = hint,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 60
+        };
+
+        var contentStack = new Microsoft.UI.Xaml.Controls.StackPanel { Width = 580, Spacing = 14 };
+        contentStack.Children.Add(timingHeader);
+        contentStack.Children.Add(timingGrid);
+        contentStack.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = isDescription ? "Audio Description" : "Transcript", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15 });
+        contentStack.Children.Add(textBox);
+        contentStack.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = "Hint for Gemini (Optional)", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15 });
+        contentStack.Children.Add(hintBox);
+
+        var container = new Microsoft.UI.Xaml.Controls.Border
+        {
+            Width = 620,
+            Padding = new Thickness(20),
+            CornerRadius = new CornerRadius(8),
+            Child = contentStack
+        };
+        return container;
     }
     private static Microsoft.UI.Xaml.Controls.Primitives.ListViewItemPresenter? FindSelectionPresenter(DependencyObject element)
     {

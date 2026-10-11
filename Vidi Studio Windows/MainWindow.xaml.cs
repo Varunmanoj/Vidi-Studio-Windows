@@ -521,21 +521,18 @@ public sealed partial class MainWindow : Window
             ? (isDescription ? "Add Audio Description Segment" : "Add Transcript Segment")
             : $"Edit {(isDescription ? "Audio Description" : "Transcript")} Segment";
 
-        var startBox = new NumberBox
+        var startPicker = new Views.TimecodePicker
         {
-            Header = "Start time (seconds)",
+            Header = "Start time",
             Value = initialStart,
             Minimum = 0,
-            Maximum = maxDuration,
-            SmallChange = 0.1,
-            LargeChange = 1.0,
-            SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
-            HorizontalAlignment = HorizontalAlignment.Stretch
+            Maximum = maxDuration
         };
+        startPicker.SetCurrentPositionProvider(() => Position, "Set start time to current playhead position");
 
         var durationText = new TextBlock
         {
-            Text = $"Duration {(Math.Max(0, initialEnd - initialStart)):F3} seconds",
+            Text = $"Duration {TimeSpan.FromSeconds(Math.Max(0, initialEnd - initialStart)):hh\\:mm\\:ss\\.fff} ({(Math.Max(0, initialEnd - initialStart)):F3}s)",
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
@@ -544,17 +541,14 @@ public sealed partial class MainWindow : Window
             FontFamily = new FontFamily("Consolas, Segoe UI")
         };
 
-        var endBox = new NumberBox
+        var endPicker = new Views.TimecodePicker
         {
-            Header = "End time (seconds)",
+            Header = "End time",
             Value = initialEnd,
             Minimum = 0,
-            Maximum = maxDuration,
-            SmallChange = 0.1,
-            LargeChange = 1.0,
-            SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
-            HorizontalAlignment = HorizontalAlignment.Stretch
+            Maximum = maxDuration
         };
+        endPicker.SetCurrentPositionProvider(() => Position, "Set end time to current playhead position");
 
         var timingHeader = new Grid();
         timingHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -576,10 +570,10 @@ public sealed partial class MainWindow : Window
         timingGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         timingGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        Grid.SetColumn(startBox, 0);
-        Grid.SetColumn(endBox, 1);
-        timingGrid.Children.Add(startBox);
-        timingGrid.Children.Add(endBox);
+        Grid.SetColumn(startPicker, 0);
+        Grid.SetColumn(endPicker, 1);
+        timingGrid.Children.Add(startPicker);
+        timingGrid.Children.Add(endPicker);
 
         var errorIcon = new FontIcon
         {
@@ -648,7 +642,7 @@ public sealed partial class MainWindow : Window
             ocrStatus.Text = "Reading frame text…";
             try
             {
-                var targetTime = double.IsFinite(startBox.Value) ? startBox.Value : Position;
+                var targetTime = double.IsFinite(startPicker.Value) ? startPicker.Value : Position;
                 var captureResult = await Model.RunAsync("capture-frame", new[] { "--timestamp", targetTime.ToString(CultureInfo.InvariantCulture) });
                 var evt = captureResult.FirstOrDefault(x => x.Data.TryGetProperty("screenText", out _));
                 var screenText = evt?.Data.GetProperty("screenText").GetString();
@@ -692,7 +686,7 @@ public sealed partial class MainWindow : Window
                 : "e.g. Dialogue is in French with English subtitles..."
         };
 
-        var contentStack = new StackPanel { Width = 560, Spacing = 14 };
+        var contentStack = new StackPanel { Width = 580, Spacing = 14 };
         contentStack.Children.Add(timingHeader);
         contentStack.Children.Add(timingGrid);
         contentStack.Children.Add(validationBorder);
@@ -758,10 +752,11 @@ public sealed partial class MainWindow : Window
 
         void UpdateDialogState()
         {
-            var s = startBox.Value;
-            var e = endBox.Value;
+            var s = startPicker.Value;
+            var e = endPicker.Value;
             var dur = (double.IsFinite(s) && double.IsFinite(e)) ? Math.Max(0, e - s) : 0;
-            durationText.Text = $"Duration {dur:F3} seconds";
+            var durTs = TimeSpan.FromSeconds(dur);
+            durationText.Text = $"Duration {durTs:hh\\:mm\\:ss\\.fff} ({dur:F3}s)";
 
             var errors = ValidateTiming(s, e);
             if (errors.Count > 0)
@@ -782,8 +777,8 @@ public sealed partial class MainWindow : Window
             dialog.IsSecondaryButtonEnabled = Model.Idle && double.IsFinite(s) && double.IsFinite(e) && s >= 0 && e > s && e <= maxDuration;
         }
 
-        startBox.ValueChanged += (_, _) => UpdateDialogState();
-        endBox.ValueChanged += (_, _) => UpdateDialogState();
+        startPicker.ValueChanged += (_, _) => UpdateDialogState();
+        endPicker.ValueChanged += (_, _) => UpdateDialogState();
         textBox.TextChanged += (_, _) => UpdateDialogState();
         UpdateDialogState();
 
@@ -799,8 +794,8 @@ public sealed partial class MainWindow : Window
                 await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new
                 {
                     id = existing?.Id ?? Guid.NewGuid().ToString(),
-                    start = startBox.Value,
-                    end = endBox.Value,
+                    start = startPicker.Value,
+                    end = endPicker.Value,
                     text = textBox.Text.Trim(),
                     hint = hintBox.Text.Trim()
                 }));
@@ -813,8 +808,8 @@ public sealed partial class MainWindow : Window
         var draft = existing == null
             ? new Segment { Origin = isDescription ? "manual" : "transcript" }
             : JsonSerializer.Deserialize<Segment>(JsonSerializer.Serialize(existing, Json.Options), Json.Options)!;
-        draft.Start = startBox.Value;
-        draft.End = endBox.Value;
+        draft.Start = startPicker.Value;
+        draft.End = endPicker.Value;
         draft.Text = textBox.Text.Trim();
         draft.IsDescription = isDescription;
         if (isDescription && existing != null && draft.Origin == "ai" && draft.Text != existing.Text)

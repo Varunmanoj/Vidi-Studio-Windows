@@ -144,17 +144,11 @@
       </ListView>
       <Grid x:Name="SummaryView" Visibility="Collapsed">
        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-       <Grid Padding="14,12" ColumnSpacing="12">
-        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <Grid Padding="14,12">
         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
          <Button x:Name="SummaryPlayButton" Content="Play" Style="{StaticResource AccentButtonStyle}" Click="SpeakSummary_Click"/>
          <Button x:Name="SummaryStopButton" Content="Stop" Click="StopSpeech_Click" IsEnabled="False"/>
          <TextBlock Text="Summary readback" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-        </StackPanel>
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-         <Button x:Name="SummaryEditToggle" Content="Edit" Click="SummaryEditToggle_Click" ToolTipService.ToolTip="Edit summary in notepad editor" AutomationProperties.Name="Edit summary"/>
-         <Button x:Name="SummarySaveButton" Content="Save" Style="{StaticResource AccentButtonStyle}" Click="SummarySave_Click" Visibility="Collapsed" ToolTipService.ToolTip="Save summary changes" AutomationProperties.Name="Save summary"/>
-         <Button x:Name="SummaryCancelButton" Content="Cancel" Click="SummaryCancel_Click" Visibility="Collapsed" ToolTipService.ToolTip="Discard changes" AutomationProperties.Name="Discard summary changes"/>
         </StackPanel>
        </Grid>
        <Grid Grid.Row="1">

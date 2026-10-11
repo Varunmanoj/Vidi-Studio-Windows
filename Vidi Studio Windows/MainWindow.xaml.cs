@@ -537,6 +537,7 @@ public sealed partial class MainWindow : Window
         {
             Text = $"Duration {(Math.Max(0, initialEnd - initialStart)):F3} seconds",
             HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             FontSize = 13,
             Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush,
@@ -554,6 +555,31 @@ public sealed partial class MainWindow : Window
             SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
+
+        var timingHeader = new Grid();
+        timingHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        timingHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var timingTitle = new TextBlock
+        {
+            Text = "Timing",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            FontSize = 15,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(timingTitle, 0);
+        Grid.SetColumn(durationText, 1);
+        timingHeader.Children.Add(timingTitle);
+        timingHeader.Children.Add(durationText);
+
+        var timingGrid = new Grid { ColumnSpacing = 16 };
+        timingGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        timingGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        Grid.SetColumn(startBox, 0);
+        Grid.SetColumn(endBox, 1);
+        timingGrid.Children.Add(startBox);
+        timingGrid.Children.Add(endBox);
 
         var errorIcon = new FontIcon
         {
@@ -610,7 +636,7 @@ public sealed partial class MainWindow : Window
         var ocrStatus = new TextBlock { FontSize = 12, Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
         var ocrButton = new Button
         {
-            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { new FontIcon { Glyph = "\uE7C8", FontSize = 13 }, new TextBlock { Text = "Read Frame Text at Start" } } }
+            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { new FontIcon { Glyph = "\uE7BA", FontSize = 13 }, new TextBlock { Text = "Read Frame Text at Start" } } }
         };
         ToolTipService.SetToolTip(ocrButton, "Read text from the video frame at the segment start time and use it as the description");
         ocrPanel.Children.Add(ocrStatus);
@@ -667,10 +693,8 @@ public sealed partial class MainWindow : Window
         };
 
         var contentStack = new StackPanel { Width = 560, Spacing = 14 };
-        contentStack.Children.Add(new TextBlock { Text = "Timing", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15 });
-        contentStack.Children.Add(startBox);
-        contentStack.Children.Add(durationText);
-        contentStack.Children.Add(endBox);
+        contentStack.Children.Add(timingHeader);
+        contentStack.Children.Add(timingGrid);
         contentStack.Children.Add(validationBorder);
 
         contentStack.Children.Add(new TextBlock { Text = isDescription ? "Audio Description" : "Transcript", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15 });
@@ -939,9 +963,6 @@ public sealed partial class MainWindow : Window
         summaryEditMode = edit;
         SummaryEditorPanel.Visibility = edit ? Visibility.Visible : Visibility.Collapsed;
         SummaryPanel.Visibility = edit ? Visibility.Collapsed : Visibility.Visible;
-        SummaryEditToggle.Content = edit ? "Preview" : "Edit";
-        SummarySaveButton.Visibility = edit ? Visibility.Visible : Visibility.Collapsed;
-        SummaryCancelButton.Visibility = edit ? Visibility.Visible : Visibility.Collapsed;
         if (Section.SelectedIndex == 1)
         {
             EditModeButton.Content = edit ? "Done" : "Edit";
@@ -953,19 +974,6 @@ public sealed partial class MainWindow : Window
             UpdateSummaryWordCount();
             SummaryEditNotice.Text = "";
             SummaryEditorBox.Focus(FocusState.Programmatic);
-        }
-    }
-
-    private async void SummaryEditToggle_Click(object sender, RoutedEventArgs e)
-    {
-        if (summaryEditMode)
-        {
-            await SaveSummaryChangesAsync();
-            SetSummaryEditMode(false);
-        }
-        else
-        {
-            SetSummaryEditMode(true);
         }
     }
 

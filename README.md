@@ -2,6 +2,17 @@
 
 Native WinUI 3 / .NET 8 front end for the VidiStudio portable media engine. The Windows application targets **ARM64 and x64**. Project folders remain compatible with the macOS engine. The Mac checkout has not been modified.
 
+## Official Repositories & Live Website
+
+VidiStudio is maintained across dedicated desktop repositories and an online showcase:
+
+| Component | Platform / Role | Repository URL | Links |
+| :--- | :--- | :--- | :--- |
+| **Windows Application** | Native WinUI 3 / .NET 8 (ARM64 & x64) | `https://github.com/Varunmanoj/Vidi-Studio-Windows.git` | [GitHub Repo](https://github.com/Varunmanoj/Vidi-Studio-Windows) |
+| **macOS Application** | Native SwiftUI / AVKit (macOS 26+) | `https://github.com/Varunmanoj/VidiStudio-Mac.git` | [GitHub Repo](https://github.com/Varunmanoj/VidiStudio-Mac) |
+| **Online Showcase & Web** | React / Vite Landing Page & Documentation | `https://github.com/Varunmanoj/VidiStudio.git` | [GitHub Repo](https://github.com/Varunmanoj/VidiStudio) |
+| **Official Website** | Live Product Showcase & Feature Guide | — | [accessivideo.pages.dev](https://accessivideo.pages.dev/) |
+
 ## Build and run in Visual Studio on Windows ARM64
 
 1. Install Visual Studio with WinUI application development support, .NET desktop tools, and the Windows SDK. This project retains the template's Microsoft.WindowsAppSDK 2.5.1 and SDK BuildTools 10.0.28000.2705 references. NuGet restore needs network access.

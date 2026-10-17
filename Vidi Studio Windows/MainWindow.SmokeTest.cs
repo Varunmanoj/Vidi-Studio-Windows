@@ -453,20 +453,20 @@ public sealed partial class MainWindow
             if (video.PlaybackSession.PlaybackState != Windows.Media.Playback.MediaPlaybackState.Playing || narrationPlayer.Source == null) throw new InvalidOperationException("Native synchronized narration did not start during its cue.");
             UpdatePlaybackControls();
             if (VideoPlayPauseButton.Content as string != "\uE769" || videoPlayMenuItem?.Text != "Play or Pause" ||
-                videoPlayMenuItem.Icon is not Microsoft.UI.Xaml.Controls.FontIcon { Glyph: "\uE769" })
+                videoPlayMenuItem?.Icon is not Microsoft.UI.Xaml.Controls.FontIcon { Glyph: "\uE769" })
                 throw new InvalidOperationException("The video transport did not switch from Play to Pause.");
             await Task.Delay(150);
             if (Math.Abs(narrationPlayer.PlaybackSession.Position.TotalSeconds - (Position - 2)) > .5) throw new InvalidOperationException("Narration position did not align with the video cue.");
             video.Pause(); await Task.Delay(250);
             if (VideoPlayPauseButton.Content as string != "\uE768" || videoPlayMenuItem?.Text != "Play or Pause" ||
-                videoPlayMenuItem.Icon is not Microsoft.UI.Xaml.Controls.FontIcon { Glyph: "\uE768" })
+                videoPlayMenuItem?.Icon is not Microsoft.UI.Xaml.Controls.FontIcon { Glyph: "\uE768" })
                 throw new InvalidOperationException("The video transport did not switch from Pause to Play.");
             if (narrationPlayer.PlaybackSession.PlaybackState == Windows.Media.Playback.MediaPlaybackState.Playing) throw new InvalidOperationException("Narration kept playing while video was paused.");
             PlayPause_Click(this, new RoutedEventArgs());
             for (var attempt = 0; attempt < 20 && video.PlaybackSession.PlaybackState != Windows.Media.Playback.MediaPlaybackState.Playing; attempt++) await Task.Delay(50);
             UpdatePlaybackControls();
             if (VideoPlayPauseButton.Content as string != "\uE769" || videoPlayMenuItem?.Text != "Play or Pause" ||
-                videoPlayMenuItem.Icon is not Microsoft.UI.Xaml.Controls.FontIcon { Glyph: "\uE769" })
+                videoPlayMenuItem?.Icon is not Microsoft.UI.Xaml.Controls.FontIcon { Glyph: "\uE769" })
                 throw new InvalidOperationException("The video transport did not resume through its shared button.");
             Seek(6); video.Play(); await Task.Delay(250);
             if (narrationPlayer.PlaybackSession.PlaybackState == Windows.Media.Playback.MediaPlaybackState.Playing || activeCue != null) throw new InvalidOperationException("Narration remained active after seeking beyond its cue.");

@@ -156,6 +156,21 @@ public sealed partial class MainWindow
         var segments = Menu("Segments", ("Add segment", Add_Click), ("Edit selected", Edit_Click), ("Select all", SelectAll_Click), ("Deselect all", Deselect_Click),
             ("Delete selected", DeleteSegments_Click), ("Undo", Undo_Click), ("Redo", Redo_Click), ("Rewrite description to fit", Rewrite_Click),
             ("Generate all narration", Execute("synthesize-tts")), ("Generate changed narration", ChangedNarration_Click));
+        var projectMenu = Menu("Project");
+        var narrationMenu = new MenuFlyoutSubItem { Text = "Narration", Icon = Views.MenuIcons.Create("Narration") };
+        foreach (var entry in new (string Label, RoutedEventHandler Handler)[]
+        {
+            ("Generate all narration", Execute("synthesize-tts")),
+            ("Generate changed narration", ChangedNarration_Click),
+            ("Review Narration Issues…", ReviewNarrationIssues_Click)
+        })
+        {
+            var item = new MenuFlyoutItem { Text = entry.Label, Icon = Views.MenuIcons.Create(entry.Label) };
+            if (Shortcut(entry.Label) is { } shortcut) item.KeyboardAcceleratorTextOverride = shortcut;
+            item.Click += entry.Handler;
+            narrationMenu.Items.Add(item);
+        }
+        projectMenu.Items.Add(narrationMenu);
         var playback = Menu("Playback", ("Play video", PlayPause_Click), ("Rewind five seconds", Rewind_Click), ("Forward five seconds", Forward_Click),
             ("Follow active segment", (_, _) => Follow.IsOn = !Follow.IsOn), ("Narration on / off", (_, _) => Narration.IsOn = !Narration.IsOn),
             ("Play summary", SpeakSummary_Click), ("Stop summary", StopSpeech_Click));
@@ -164,7 +179,7 @@ public sealed partial class MainWindow
         videoPlayMenuItem = playback.Items.OfType<MenuFlyoutItem>().First(item => item.Text == "Play video");
         UpdateSummaryControls();
         UpdatePlaybackControls();
-        editorMenus.AddRange(new[] { editorFile, editorView, analysis, segments, playback, help });
+        editorMenus.AddRange(new[] { editorFile, editorView, projectMenu, analysis, segments, playback, help });
         UpdateMenuBar(false);
         Model.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(Model.Busy)) MainMenu.IsEnabled = Model.Idle; };
         AddShortcut(VirtualKey.Left, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, Rewind_Click);
@@ -190,6 +205,15 @@ public sealed partial class MainWindow
 
     private void UpdateMenuKeyStates(bool hasKey)
     {
+        static IEnumerable<MenuFlyoutItem> LeafItems(IEnumerable<MenuFlyoutItemBase> entries)
+        {
+            foreach (var entry in entries)
+            {
+                if (entry is MenuFlyoutItem item) yield return item;
+                else if (entry is MenuFlyoutSubItem submenu)
+                    foreach (var child in LeafItems(submenu.Items)) yield return child;
+            }
+        }
         var aiItems = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Import video",
@@ -207,8 +231,13 @@ public sealed partial class MainWindow
 
         foreach (var menu in galleryMenus.Concat(editorMenus))
         {
-            foreach (var item in menu.Items.OfType<MenuFlyoutItem>())
+            foreach (var item in LeafItems(menu.Items))
             {
+                if (item.Text == "Review Narration Issues…")
+                {
+                    item.IsEnabled = Model.Idle && Model.Project != null;
+                    continue;
+                }
                 if (aiItems.Contains(item.Text))
                 {
                     var available = item.Text.Equals("Generate changed narration", StringComparison.OrdinalIgnoreCase)

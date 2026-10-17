@@ -20,14 +20,19 @@ public sealed partial class MainWindow
             var folder = Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT");
             if (folder == null) throw new InvalidOperationException("Smoke project is required.");
             Model.Open(folder);
-            if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Analysis", "Segments", "Playback", "Help" }))
+            if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Project", "Analysis", "Segments", "Playback", "Help" }))
                 throw new InvalidOperationException("Editor menu set does not match the active page.");
             if (galleryMenus.Concat(editorMenus).SelectMany(menu => menu.Items).OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().Any(item => item.Icon == null) ||
                 SegmentMenu(Model.Project!.Cues[0]).Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().Any(item => item.Icon == null))
                 throw new InvalidOperationException("A menu or segment action has no icon.");
             if (editorMenus[0].Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().First(item => item.Text == "Export").KeyboardAcceleratorTextOverride != "Ctrl+Shift+E" ||
-                editorMenus[4].Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().First(item => item.Text == "Play video").KeyboardAcceleratorTextOverride != "Ctrl+Shift+Space")
+                editorMenus.First(menu => menu.Title == "Playback").Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().First(item => item.Text == "Play video").KeyboardAcceleratorTextOverride != "Ctrl+Shift+Space")
                 throw new InvalidOperationException("Menu commands do not show their keyboard shortcuts.");
+            var narrationMenu = editorMenus.First(menu => menu.Title == "Project").Items
+                .OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutSubItem>().Single(item => item.Text == "Narration");
+            if (!narrationMenu.Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>()
+                .Any(item => item.Text == "Review Narration Issues…" && item.IsEnabled && item.Icon != null))
+                throw new InvalidOperationException("Project → Narration is missing the narration issue review action.");
             var originalTheme = Model.Settings.Get("theme", "system");
             var thumbnailProject = Models.StudioProject.Load(folder);
             var thumbnail = File.Exists(Path.Combine(folder, "youtube-thumbnail.jpg")) ? "youtube-thumbnail.jpg" : thumbnailProject.Thumbnails[0];

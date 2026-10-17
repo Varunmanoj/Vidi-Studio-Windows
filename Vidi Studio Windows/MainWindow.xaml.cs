@@ -327,7 +327,7 @@ public sealed partial class MainWindow : Window
         if (Section.SelectedIndex == 1 && readback.State is SummaryReadbackState.Playing or SummaryReadbackState.Paused)
             HighlightReadbackSentence(ReadbackSentence.Text);
         RenderTracks();
-        var usable = p.Cues.Count(c => c.Audio != null && c.AudioText == c.Text && File.Exists(p.Resolve(c.Audio)));
+        var usable = p.Cues.Count(c => c.AudioReady);
         Overview.Text = $"Audio Description overview\n\n{p.Cues.Count} description segments\n{usable} narration files ready\n{p.Cues.Count - usable} missing or changed\n{p.Cues.Sum(c => c.End - c.Start):F1} seconds of description time";
         PopulateExportGroups(ExportGroups, p);
         foreach (var active in activeSegmentRows) active.IsActive = false;
@@ -378,7 +378,7 @@ public sealed partial class MainWindow : Window
             narrationPlayer.Pause(); narrationPlayer.Source = null; onDeviceNarrator.Stop();
             activeCue = cue.Id;
             if (Model.Settings.Get("narrationPlayback") == "ondevice") await onDeviceNarrator.SpeakAsync(cue.Text);
-            else if (cue.Audio is { } audio && cue.AudioText == cue.Text && File.Exists(Model.Project.Resolve(audio)))
+            else if (cue.AudioReady && cue.Audio is { } audio)
             { narrationPlayer.Source = MediaSource.CreateFromUri(new Uri(Model.Project.Resolve(audio))); narrationPlayer.PlaybackSession.Position = TimeSpan.FromSeconds(Math.Max(0, Position - cue.Start)); narrationPlayer.Play(); }
         }
         UpdateActiveSegment();
@@ -1171,6 +1171,11 @@ public sealed partial class MainWindow : Window
         var project = Model.Project;
         var hasChangedNarration = project?.HasChangedNarration == true;
         var hasMissingOrChangedNarration = project?.HasMissingOrChangedNarration == true;
+        if (OverviewReviewNarrationButton != null)
+        {
+            OverviewReviewNarrationButton.IsEnabled = Model.Idle && project != null;
+            ToolTipService.SetToolTip(OverviewReviewNarrationButton, "Review missing audio, generation failures, and text or timing changes without generating narration");
+        }
 
         void SetAiButton(Button? button, string normalTooltip = "", bool available = true, string? unavailableTooltip = null)
         {

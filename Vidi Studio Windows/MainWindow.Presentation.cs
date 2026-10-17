@@ -27,57 +27,76 @@ public sealed partial class MainWindow
         try { await ShowNarrationFailuresAsync(report); }
         catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
     }
+    private async void ReviewNarrationIssues_Click(object sender, RoutedEventArgs e)
+    {
+        if (Model.NarrationIssueReport() is not { } report) return;
+        try { await ShowNarrationFailuresAsync(report); }
+        catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
+    }
     private Task<ContentDialogResult> ShowNarrationFailuresAsync(NarrationFailureReport report)
     {
+        var healthy = report.Failures.Count == 0;
+        var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(0, 0, 0, 8) };
+        heading.Children.Add(new FontIcon { Glyph = healthy ? "\uE73E" : "\uE7BA" });
+        heading.Children.Add(new TextBlock { Text = report.Detail, TextWrapping = TextWrapping.Wrap, MaxWidth = 580 });
         var panel = new StackPanel { Spacing = 6 };
-        panel.Children.Add(new TextBlock
+        panel.Children.Add(heading);
+        if (!healthy)
         {
-            Text = $"Narration finished for {report.Generated} description{(report.Generated == 1 ? "" : "s")}. {report.Failures.Count} could not be created.",
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 8)
-        });
-        string Timecode(double seconds)
-        {
-            var total = Math.Max(0, seconds);
-            return $"{total / 60:00}:{total % 60:00.00}";
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Start and end: HH:MM:SS.mmm (hours:minutes:seconds.milliseconds). Duration is in seconds.",
+                FontSize = 12, TextWrapping = TextWrapping.Wrap, Opacity = 0.7
+            });
         }
-        Grid MakeRow(string start, string end, string duration, string reason, bool header)
+        Grid MakeRow(string index, string start, string end, string duration, string reason, bool header, NarrationFailure? failure = null)
         {
             var row = new Grid { ColumnSpacing = 18 };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(84) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(84) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(84) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            void Add(int column, string text)
+            void Add(int column, string text, string? accessibleName = null)
             {
                 var block = new TextBlock
                 {
                     Text = text,
                     TextWrapping = TextWrapping.Wrap,
+                    IsTextSelectionEnabled = !header && column == 4,
                     FontWeight = header ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
                     Opacity = header ? 0.7 : 1
                 };
-                if (column < 3) block.FontFamily = new FontFamily("Consolas");
-                Windows.UI.Xaml.Automation.AutomationProperties.SetName(block, text);
+                if (column < 4) block.FontFamily = new FontFamily("Consolas");
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(block, accessibleName ?? text);
                 Grid.SetColumn(block, column);
                 row.Children.Add(block);
             }
-            Add(0, start); Add(1, end); Add(2, duration); Add(3, reason);
+            Add(0, index);
+            Add(1, start, failure == null ? null : $"Start: {NarrationTimeFormat.SpokenTime(failure.Start)}");
+            Add(2, end, failure == null ? null : $"End: {NarrationTimeFormat.SpokenTime(failure.End)}");
+            Add(3, duration, failure == null ? null : $"Duration: {NarrationTimeFormat.SpokenDuration(failure.Duration)}");
+            Add(4, reason);
             return row;
         }
-        panel.Children.Add(MakeRow("Start", "End", "Duration", "Reason", true));
+        if (!healthy) panel.Children.Add(MakeRow("AD", "Start", "End", "Duration", "Reason", true));
         foreach (var failure in report.Failures)
-            panel.Children.Add(MakeRow(Timecode(failure.Start), Timecode(failure.End),
-                $"{failure.Duration:0.00}s", string.IsNullOrEmpty(failure.Reason) ? "Unknown error" : failure.Reason, false));
-        var scroll = new ScrollViewer { Content = panel, MaxHeight = 360, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto };
+            panel.Children.Add(MakeRow(failure.Index.ToString(), NarrationTimeFormat.Timestamp(failure.Start), NarrationTimeFormat.Timestamp(failure.End),
+                NarrationTimeFormat.Duration(failure.Duration), string.IsNullOrEmpty(failure.Reason) ? "Unknown error" : failure.Reason, false, failure));
+        var scroll = new ScrollViewer
+        {
+            Content = panel, MaxHeight = 420,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalScrollMode = ScrollMode.Disabled
+        };
         var dialog = new ContentDialog
         {
-            Title = "Some descriptions need attention",
+            Title = report.Title,
             Content = scroll,
             CloseButtonText = "Close",
             DefaultButton = ContentDialogButton.Close
         };
-        return ShowDialogAsync(dialog, 680, 420);
+        return ShowDialogAsync(dialog, 900, 540);
     }
     private void RefreshGalleryCount()
     {

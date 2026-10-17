@@ -1,5 +1,27 @@
 # Windows migration progress
 
+## 2026-10-17 — Project narration review command and complete failure reasons (1.0.68 / 1.0.68.0)
+
+Added **Project → Narration → Review Narration Issues…** alongside narration generation commands. Menu enablement now traverses nested narration items, while review remains independent of API-key availability. Updated the existing Windows UI smoke expectations for the Project menu and the review submenu item, and changed playback-menu lookup to use its title.
+
+Mirrors Mac's failure-reason priority: persisted generation errors, including actual audio duration versus available segment duration, are shown directly rather than hidden after a generic missing-audio state. Generic text is retained only when there is no saved failure. Reason cells are selectable and multiline; horizontal scrolling is disabled to constrain and wrap the reason column, and the dialog has more room for full explanations. Post-generation and on-demand reports use the same dialog.
+
+Validation on macOS: focused duration-error persistence/selective-retry regressions and the Python parity suite passed all 7 tests. `git diff --check` passed; versions are synchronized at 1.0.68 / 1.0.68.0 (Mac build 69), and the Mac Release build/launch passed. The C#/WinUI changes and updated smoke assertions were source-reviewed only; native Windows builds and ARM64/x64 smoke runs were not performed.
+
+## 2026-10-17 — Unambiguous narration table timecodes and spoken units (1.0.67 / 1.0.67.0)
+
+Mirrors Mac: narration issue start/end cells now display invariant `HH:MM:SS.mmm` with three millisecond digits, an explicit format explanation, wider columns/dialog, and durations in seconds (`2.500 s`). UI Automation names identify the start/end time in hours, minutes, seconds, and milliseconds and duration in seconds/milliseconds rather than exposing only the ambiguous numeric string. `Models/NarrationTimeFormat.cs` rounds total milliseconds before splitting components, so second/minute/hour boundaries carry correctly.
+
+Validation: C# source review and `git diff --check` passed. Version synchronization is 1.0.67 / 1.0.67.0 (Mac build 68). The Mac formatter's executable checks passed for screenshot examples, minute/hour rounding, duration precision, and spoken labels, and the Mac Release build/launch passed. Native Windows compilation, UI smoke tests, and screen-reader runtime checks were not run on this macOS host.
+
+## 2026-10-17 — On-demand narration issue review in AD Overview (1.0.66 / 1.0.66.0)
+
+Added **Review Narration Issues** to AD Overview, independently enabled from API-key-dependent generation controls. It opens the shared narration dialog from the current project without generating audio. The report includes AD segment number, start/end, available duration, missing/unavailable audio, text and timing changes, audio exceeding the available time, and saved generation failure reasons. Healthy and empty projects have explicit status messages. The report uses the current project and filesystem each time it is opened.
+
+Mirrors Mac's portable `audioStart`, `audioEnd`, and `audioError` metadata. The engine saves sanitized failure reasons, clears them on successful generation, snapshots generated timing, and preserves pre-edit timing for older files. `Segment.NarrationUpdateReasons` drives the report, synchronized audio state, changed-generation enablement, playback, and export readiness. Changed generation retries saved failures and timing-only changes, and narration deletion clears the associated metadata. The dialog's automation namespace and minute formatting were corrected while adding the on-demand entry point.
+
+Validation on this macOS host: Python engine/parity/segment-reanalysis/transcript-reanalysis suites passed all 82 tests, including persisted failures, selective retry, timing-only regeneration, and legacy timing migration. Version synchronization reports 1.0.66 / 1.0.66.0; `git diff --check` passed. The C#/XAML changes were source-reviewed; Windows builds and ARM64/x64 UI smoke tests require a Windows host and were not run. No live Gemini validation was performed.
+
 ## 2026-10-17 — Resilient narration generation with a failure table and changed-only enablement (1.0.65 / 1.0.65.0)
 
 Mirrors macOS. `synthesize` in `engine/vidistudio_engine.py` no longer aborts on the first description that cannot be synthesized: it deletes the partial output, records `{index,start,end,duration,reason}`, emits a warning line for that description, and continues with the rest; `ProcessingCancelled` is still re-raised so Cancel stops the run. The run ends with a summary event carrying `narrationFailures` and `narrationGenerated`.

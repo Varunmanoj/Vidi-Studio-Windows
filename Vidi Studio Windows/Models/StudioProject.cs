@@ -30,6 +30,9 @@ public sealed class Segment : INotifyPropertyChanged
     public string? AudioText { get; set; }
     public string? AudioSettings { get; set; }
     public double? AudioDuration { get; set; }
+    public double? AudioStart { get; set; }
+    public double? AudioEnd { get; set; }
+    public string? AudioError { get; set; }
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
     [JsonIgnore] public string Timing => $"{TimeSpan.FromSeconds(Start):hh\\:mm\\:ss\\.fff} – {TimeSpan.FromSeconds(End):hh\\:mm\\:ss\\.fff}";
     [JsonIgnore] public bool IsDescription { get; set; }
@@ -65,24 +68,33 @@ public sealed class Segment : INotifyPropertyChanged
     public string Origin { get; set; } = "unknown";
     [JsonIgnore] public string OriginLabel => Origin switch { "ai" => "AI-generated", "ai_modified" => "AI-generated · modified", "manual" => "Manually added", _ => "Origin unknown" };
     [JsonIgnore] public string OriginColor => Origin switch { "ai" => "#C832DE", "ai_modified" => "#D87919", "manual" => "#0078D4", _ => "#777777" };
-    [JsonIgnore] public bool AudioReady
+    [JsonIgnore] public List<string> NarrationUpdateReasons
     {
         get
         {
-            if (string.IsNullOrEmpty(Audio) || AudioText != Text || string.IsNullOrEmpty(ProjectFolder)) return false;
+            var reasons = new List<string>();
+            if (!string.IsNullOrEmpty(AudioError)) reasons.Add(AudioError);
+            if (AudioText != Text) reasons.Add("Description text changed since the narration was generated.");
+            if ((AudioStart is { } start && Math.Abs(start - Start) > 0.001) ||
+                (AudioEnd is { } end && Math.Abs(end - End) > 0.001))
+                reasons.Add("Segment timing changed since the narration was generated.");
+            if (AudioDuration is { } duration && duration > End - Start + 0.001)
+                reasons.Add($"Narration is {duration:0.00}s but the segment timing only allows {End - Start:0.00}s.");
+            return reasons;
+        }
+    }
+    [JsonIgnore] public bool HasAudioFile
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(Audio) || string.IsNullOrEmpty(ProjectFolder)) return false;
             try { return File.Exists(new StudioProject { Folder = ProjectFolder }.Resolve(Audio)); } catch (InvalidDataException) { return false; }
         }
     }
+    [JsonIgnore] public bool AudioReady => HasAudioFile && NarrationUpdateReasons.Count == 0;
     [JsonIgnore] public string AudioStatus => AudioReady ? "Synchronized audio generated" : AudioNeedsRegeneration ? "Narration needs updating" : "Narration not generated";
     [JsonIgnore] public string AudioStatusColor => AudioReady ? "#209447" : "#9B701B";
-    [JsonIgnore] public bool AudioNeedsRegeneration
-    {
-        get
-        {
-            if (string.IsNullOrEmpty(Audio) || AudioText == Text || string.IsNullOrEmpty(ProjectFolder)) return false;
-            try { return File.Exists(new StudioProject { Folder = ProjectFolder }.Resolve(Audio)); } catch (InvalidDataException) { return false; }
-        }
-    }
+    [JsonIgnore] public bool AudioNeedsRegeneration => HasAudioFile && NarrationUpdateReasons.Count > 0;
     public override string ToString() => $"{Timing}  {(IsDescription ? "AD: " : "")}{Text}";
 }
 
@@ -124,7 +136,7 @@ public sealed class StudioProject
     }
     [JsonIgnore] public bool HasCompleteExportNarration => double.IsFinite(Duration) && Duration > 0 && Cues.Count > 0 && Cues.All(c =>
     {
-        if (string.IsNullOrWhiteSpace(c.Text) || c.AudioText != c.Text || string.IsNullOrEmpty(c.Audio) ||
+        if (string.IsNullOrWhiteSpace(c.Text) || !c.AudioReady || string.IsNullOrEmpty(c.Audio) ||
             !double.IsFinite(c.Start) || !double.IsFinite(c.End) || c.Start < 0 || c.End <= c.Start || c.End > Duration) return false;
         try { return new FileInfo(Resolve(c.Audio)) is { Exists: true, Length: > 0 }; } catch (Exception) { return false; }
     });
@@ -192,9 +204,11 @@ public sealed class NarrationFailure
     public string Reason { get; set; } = "";
 }
 
-/// <summary>The summary shown after a narration run that skipped one or more descriptions.</summary>
+/// <summary>The summary shown for narration status, both after a run and on demand.</summary>
 public sealed class NarrationFailureReport
 {
+    public string Title { get; set; } = "Narration status";
+    public string Detail { get; set; } = "";
     public int Generated { get; set; }
     public List<NarrationFailure> Failures { get; set; } = new();
 }

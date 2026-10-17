@@ -109,6 +109,28 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         ProjectReloaded?.Invoke(this, EventArgs.Empty);
     }
     public void Cancel() => operation?.Cancel();
+    /// <summary>Builds the narration status report from the open project for on-demand review.</summary>
+    public NarrationFailureReport? NarrationIssueReport()
+    {
+        if (Project is not { } p) return null;
+        var report = new NarrationFailureReport { Title = "Narration status" };
+        for (var index = 0; index < p.Cues.Count; index++)
+        {
+            var cue = p.Cues[index];
+            var reasons = cue.HasAudioFile ? cue.NarrationUpdateReasons : new List<string>
+            {
+                !string.IsNullOrEmpty(cue.AudioError) ? cue.AudioError
+                    : string.IsNullOrEmpty(cue.Audio) ? "Narration audio has not been generated." : "The generated narration audio file is missing or unavailable."
+            };
+            if (reasons.Count == 0) report.Generated++;
+            else report.Failures.Add(new NarrationFailure { Index = index + 1, Start = cue.Start, End = cue.End, Duration = cue.End - cue.Start, Reason = string.Join("\n", reasons) });
+        }
+        var total = p.Cues.Count;
+        report.Detail = total == 0 ? "There are no audio description segments in this project yet." : report.Failures.Count == 0
+            ? $"All {total} audio description segments have current narration audio."
+            : $"{report.Failures.Count} of {total} description{(total == 1 ? "" : "s")} need attention.";
+        return report;
+    }
     public async Task<List<EngineEvent>> RunAsync(string command, IEnumerable<string>? extra = null, bool needsProject = true)
     {
         if (Busy) return new();
@@ -148,9 +170,11 @@ public sealed class StudioViewModel : INotifyPropertyChanged
                 exportSession?.Update(e.Message, fraction, hasFraction);
                 if (e.Data.TryGetProperty("narrationFailures", out var failures) && failures.ValueKind == System.Text.Json.JsonValueKind.Array)
                 {
+                    var generatedCount = e.Data.TryGetProperty("narrationGenerated", out var generated) && generated.ValueKind == System.Text.Json.JsonValueKind.Number ? generated.GetInt32() : 0;
                     var report = new NarrationFailureReport
                     {
-                        Generated = e.Data.TryGetProperty("narrationGenerated", out var generated) && generated.ValueKind == System.Text.Json.JsonValueKind.Number ? generated.GetInt32() : 0
+                        Title = "Some descriptions need attention",
+                        Generated = generatedCount
                     };
                     foreach (var item in failures.EnumerateArray())
                     {
@@ -163,7 +187,11 @@ public sealed class StudioViewModel : INotifyPropertyChanged
                             Reason = item.TryGetProperty("reason", out var reason) && reason.ValueKind == System.Text.Json.JsonValueKind.String ? reason.GetString() ?? "" : ""
                         });
                     }
-                    if (report.Failures.Count > 0) pendingNarrationFailures = report;
+                    if (report.Failures.Count > 0)
+                    {
+                        report.Detail = $"Narration finished for {generatedCount} description{(generatedCount == 1 ? "" : "s")}. {report.Failures.Count} could not be created.";
+                        pendingNarrationFailures = report;
+                    }
                 }
             }), operation.Token);
             var imported = result.LastOrDefault(e => e.Data.TryGetProperty("project", out _));

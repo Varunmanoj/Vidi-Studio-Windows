@@ -367,6 +367,15 @@ def save_segments(p, transcript, cues):
     """Atomically replace editable transcript and AD rows in one project update."""
     transcript = validate_transcript(transcript, p['duration'])
     cues = validate_cues(cues, p['duration'], transcript)
+    # Older narration has no timing snapshot. Preserve its pre-edit timing on
+    # the first save, so later status checks can detect a timing-only change.
+    previous_cues = {cue['id']: cue for cue in p.get('cues', [])}
+    for cue in cues:
+        previous = previous_cues.get(cue['id'], {})
+        if previous.get('audio') and cue.get('audio') == previous['audio']:
+            for key, field in (('audioStart', 'start'), ('audioEnd', 'end')):
+                if cue.get(key) is None:
+                    cue[key] = previous.get(key) if previous.get(key) is not None else previous[field]
     if cues != p.get('cues', []):
         parity.remember(p)
     if transcript != p.get('transcript', []):
@@ -706,7 +715,7 @@ def delete_description_narration(root, project):
     resolved = local(root, 'audio-description')
     if not resolved.exists():
         for cue in project.get('cues', []):
-            for key in ('audio', 'audioText', 'audioDuration', 'audioSettings'):
+            for key in ('audio', 'audioText', 'audioDuration', 'audioSettings', 'audioStart', 'audioEnd', 'audioError'):
                 cue.pop(key, None)
         return False
     removed = False
@@ -719,7 +728,7 @@ def delete_description_narration(root, project):
         else:
             path.unlink()
     for cue in project.get('cues', []):
-        for key in ('audio', 'audioText', 'audioDuration', 'audioSettings'):
+        for key in ('audio', 'audioText', 'audioDuration', 'audioSettings', 'audioStart', 'audioEnd', 'audioError'):
             removed = cue.pop(key, None) is not None or removed
     try:
         resolved.rmdir()
@@ -1257,7 +1266,7 @@ def synthesize(root,p,segment=None,changed=False):
     attempted = 0
     for i,c in enumerate(cues):
         if segment and c['id']!=segment: continue
-        if changed and c.get('audioText')==c['text'] and c.get('audioSettings')==signature and c.get('audio') and local(root,c['audio']).exists(): continue
+        if changed and not narration_audio_needs_regeneration(c) and c.get('audioSettings')==signature and c.get('audio') and local(root,c['audio']).is_file(): continue
         attempted += 1
         emit(f'Creating narration for description {i+1} of {len(cues)}', progress=(attempted-1)/max(1,len(cues)))
         name = 'audio-description/' + str(uuid.uuid4()) + '.wav'
@@ -1290,6 +1299,7 @@ def synthesize(root,p,segment=None,changed=False):
             if actual > c['end']-c['start']:
                 raise ValueError(narration_fit_error_message(i+1, actual, c['end']-c['start']))
             c['audio'] = name; c['audioText'] = c['text']; c['audioDuration'] = actual; c['audioSettings'] = signature
+            c['audioStart'] = c['start']; c['audioEnd'] = c['end']; c.pop('audioError', None)
             p['cues'] = cues; save(root,p)
             generated += 1
             if previous_audio and previous_audio != name and not any(item.get('audio') == previous_audio for item in cues):
@@ -1300,9 +1310,11 @@ def synthesize(root,p,segment=None,changed=False):
         except Exception as exc:
             # A single description must not stop the rest of the narration run.
             output.unlink(missing_ok=True)
+            c['audioError'] = safe_error(exc)
+            p['cues'] = cues; save(root,p)
             failures.append({'index': i+1, 'start': round(c['start'],3), 'end': round(c['end'],3),
-                             'duration': round(c['end']-c['start'],3), 'reason': safe_error(exc)})
-            emit(f'Description {i+1} needs attention: {safe_error(exc)}', warning=True)
+                             'duration': round(c['end']-c['start'],3), 'reason': c['audioError']})
+            emit(f"Description {i+1} needs attention: {c['audioError']}", warning=True)
         finally:
             textfile.unlink(missing_ok=True)
             if raw is not None: raw.unlink(missing_ok=True)
@@ -1313,9 +1325,18 @@ def synthesize(root,p,segment=None,changed=False):
         emit(f'Narration finished for {generated} description(s).', narrationGenerated=generated)
 
 
+def narration_audio_needs_regeneration(cue):
+    """Voice changes alone do not invalidate audio; content/timing issues do."""
+    return (cue.get('audioText') != cue.get('text') or bool(cue.get('audioError'))
+            or any(cue.get(key) is not None and abs(cue[key] - cue[field]) > .001
+                   for key, field in (('audioStart', 'start'), ('audioEnd', 'end')))
+            or (cue.get('audioDuration') is not None
+                and cue['audioDuration'] > cue['end'] - cue['start'] + .001))
+
+
 def narration_audio_is_usable(root, cue):
-    """A saved narration file stays usable until its segment text changes."""
-    return bool(cue.get('audio') and cue.get('audioText') == cue.get('text')
+    """Use saved narration only while its text/timing remain synchronized."""
+    return bool(cue.get('audio') and not narration_audio_needs_regeneration(cue)
                 and local(root, cue['audio']).is_file())
 
 
@@ -2649,7 +2670,7 @@ def delete_segment_audio(root, p, segment_id):
         if audio_path.is_dir() and not audio_path.is_symlink():
             raise ValueError('The segment audio path is not an audio file.')
         audio_path.unlink(missing_ok=True)
-    for key in ('audio', 'audioText', 'audioDuration', 'audioSettings'):
+    for key in ('audio', 'audioText', 'audioDuration', 'audioSettings', 'audioStart', 'audioEnd', 'audioError'):
         cue.pop(key, None)
     remove_empty_directory(audio_root)
 

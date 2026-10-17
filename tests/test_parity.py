@@ -95,4 +95,11 @@ class Parity(unittest.TestCase):
                 else:
                     engine.os.environ.pop('VIDISTUDIO_CONFIG', None)
 
+    def test_app_version_parity(self):
+        script = Path(__file__).resolve().parents[1] / 'script' / 'sync_version.py'
+        if script.exists():
+            import subprocess
+            res = subprocess.run([sys.executable, str(script), '--check'], capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, f"App versions are out of sync across Windows and macOS:\n{res.stdout}\n{res.stderr}")
+
 if __name__=='__main__':unittest.main()

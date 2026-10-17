@@ -1,6 +1,6 @@
 # Windows migration progress
 
-## 2026-10-17 — Red playhead styling and playback synchronization (1.0.6 / 1.0.6.0)
+## 2026-10-17 — Red playhead styling and playback synchronization (1.0.62 / 1.0.62.0)
 
 Enhanced timeline playhead visibility and video playback synchronization across timeline tracks:
 - High-contrast red playhead:
@@ -9,7 +9,7 @@ Enhanced timeline playhead visibility and video playback synchronization across 
   - Added XAML resource overrides to `Slider x:Name="Playhead"` (`SliderThumbBackground`, `SliderThumbBackgroundPointerOver`, `SliderThumbBackgroundPressed`, `SliderTrackValueFill`, etc.) in `MainWindow.xaml` so the timeline scrubber thumb and active progress track render in matching high-contrast red `#E52B32`, `#FF3B42`, and `#C02026`.
 - Smooth playback synchronization:
   - In `Timer_Tick`, dynamically sets `timer.Interval = playing ? TimeSpan.FromMilliseconds(40) : TimeSpan.FromMilliseconds(150);` so that video playback updates the playhead position smoothly at 25 fps without lag or stutter, while dropping back to 150ms when idle or paused.
-- App and package versions advanced to 1.0.6 / 1.0.6.0.
+- App and package versions synchronized to macOS version: 1.0.62 / 1.0.62.0.
 
 Validation: Visual and XAML review against Mac implementation; `git diff --check` passed.
 

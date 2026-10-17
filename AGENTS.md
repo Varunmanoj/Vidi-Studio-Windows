@@ -1,0 +1,13 @@
+# VidiStudio Windows agent guide
+
+Native WinUI 3 desktop application for Windows 10/11 (ARM64 and x64) in `Vidi Studio Windows.slnx`. `Vidi Studio Windows/` owns the native XAML UI, view models, and engine invocation. `engine/vidistudio_engine.py` owns all project processing, storage, and writes. `SpeechHost/` (`SpeechHost.csproj`) provides isolated speech synthesis across ARM64, x64, and x86. The sibling `VidiStudio Mac` repository is the reference desktop implementation; keep feature, export, and UI parity with Mac (`docs/FEATURE_PARITY.md`, `script/check-mac-export-parity.py`).
+
+Project data lives in portable local folders with relative paths. Credentials live only in the user config outside projects. No Firebase, Firestore, authentication, or embedded website. Gemini runs only in the Python engine; keep API keys out of argv, logs, and project JSON.
+
+Use Fluent Design System controls with theme-aware styling. Use high-contrast red (`#E52B32`) for the timeline scrubber thumb, active progress track, and thumbnail playhead handle. Maintain centered progress cards for active processing and exports. Preserve labels, keyboard shortcuts, visible focus, and UI Automation names for screen readers.
+
+Build using `powershell script/build-windows.ps1`. UI smoke tests run via `powershell script/test-windows-ui.ps1`. Package inspection runs via `python script/verify-windows-package.py`. Python parity and engine tests run via `python -m unittest discover -s tests`.
+
+App versioning between Windows (`Vidi-Studio-Windows`) and macOS (`VidiStudio Mac`) must always remain strictly in sync. Every app fix or new feature must automatically advance the app version across both platforms before build and validation; do not wait for a separate version-bump request. Run `python script/sync_version.py --bump` to atomically increment the patch version across both Windows (`<Version>` in `Vidi Studio Windows.csproj` and `Version` in `Package.appxmanifest`) and macOS (`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `VidiStudio.xcodeproj/project.pbxproj`). If editing versions manually, ensure both platforms are updated to the exact same version `1.0.X` (with Windows package `1.0.X.0` and Mac build number aligned). The build scripts (`script/build-windows.ps1`), pre-commit hooks, and parity tests (`tests/test_parity.py`) automatically run `sync_version.py --sync` to maintain version parity. Record the resulting user-visible version in `PROGRESS.md` with the change's validation evidence.
+
+Record progress and release evidence in `PROGRESS.md`. Do not claim live Gemini or Mac validation without actually running those paths.

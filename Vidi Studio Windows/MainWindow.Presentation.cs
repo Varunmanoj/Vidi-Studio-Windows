@@ -198,6 +198,10 @@ public sealed partial class MainWindow
         if (Segments.ItemsSource is IEnumerable<Segment> rows)
             foreach (var row in rows) row.IsEditing = editMode;
     }
+    // Older generated XAML can still reference the pre-rename handler during
+    // incremental builds. Route it through the current preserve-play-state action.
+    private void SegmentSeek_Click(object sender, RoutedEventArgs e) => SegmentPlay_Click(sender, e);
+
     private void SegmentPlay_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).Tag is not Segment segment) return;

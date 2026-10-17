@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-17 — Restore the legacy segment event-handler entry point (1.0.69 / 1.0.69.0)
+
+Fixed the reported Visual Studio missing-member error for `MainWindow.SegmentSeek_Click`. Current source XAML binds to `SegmentPlay_Click`, but older generated XAML can retain the previous handler name during incremental builds. Restored `SegmentSeek_Click` in `MainWindow.Presentation.cs` as a forwarding handler to `SegmentPlay_Click`, preserving the same seek-and-preserve-playback behavior for either binding without editing generated files.
+
+Validation: source review confirms both handler names resolve to the same implementation. The Windows Python parity suite passed all 5 tests; `xmllint` passed for `MainWindow.xaml`, the app project, and package manifest; `git diff --check` passed. Versions are synchronized at 1.0.69 / 1.0.69.0 (Mac build 70). A native Windows build/UI smoke test could not be run on this macOS host.
+
 ## 2026-10-17 — Project narration review command and complete failure reasons (1.0.68 / 1.0.68.0)
 
 Added **Project → Narration → Review Narration Issues…** alongside narration generation commands. Menu enablement now traverses nested narration items, while review remains independent of API-key availability. Updated the existing Windows UI smoke expectations for the Project menu and the review submenu item, and changed playback-menu lookup to use its title.

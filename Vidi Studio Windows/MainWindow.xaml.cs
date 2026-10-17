@@ -80,21 +80,10 @@ public sealed partial class MainWindow : Window
                 try { cleanup(); } catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
             }
         };
-        Root.Loaded += (_, _) => { ready = true; Model.Reload(); ApplyTheme(); if (Model.Settings.Get("showPreview", "true") == "false") PreviewPanel.Visibility = TimelinePanel.Visibility = Visibility.Collapsed; if (folder != null) Model.Open(folder); if (Model.Settings.Get("projectPresentation") == "grid") ToggleGrid_Click(this, new RoutedEventArgs()); UpdateApiKeyUi(); };
+        Root.Loaded += (_, _) => { ready = true; Model.Reload(); ApplyTheme(); if (Model.Settings.Get("showPreview", "true") == "false") PreviewPanel.Visibility = Visibility.Collapsed; if (folder != null) Model.Open(folder); if (Model.Settings.Get("projectPresentation") == "grid") ToggleGrid_Click(this, new RoutedEventArgs()); UpdateApiKeyUi(); };
 #if DEBUG
         Root.Loaded += async (_, _) => { if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_REPORT") is { } report && System.Threading.Interlocked.CompareExchange(ref smokeTestClaimed, 1, 0) == 0) await RunSmokeTestAsync(report); };
 #endif
-        AddShortcut(VirtualKey.N, VirtualKeyModifiers.Control, ImportVideo_Click);
-        AddShortcut(VirtualKey.O, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, OpenProject_Click);
-        AddShortcut(VirtualKey.E, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, Export_Click);
-        AddShortcut(VirtualKey.Space, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, PlayPause_Click);
-        for (var index = 0; index < 5; index++)
-        {
-            var section = index;
-            var shortcut = new KeyboardAccelerator { Key = (VirtualKey)((int)VirtualKey.Number1 + index), Modifiers = VirtualKeyModifiers.Control };
-            shortcut.Invoked += (_, e) => { Section.SelectedIndex = section; e.Handled = true; };
-            Root.KeyboardAccelerators.Add(shortcut);
-        }
     }
     private void AddShortcut(VirtualKey key, VirtualKeyModifiers modifiers, RoutedEventHandler handler)
     {
@@ -504,7 +493,7 @@ public sealed partial class MainWindow : Window
         VideoPlayPauseButton.Content = playing ? "\uE769" : "\uE768";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(VideoPlayPauseButton, playing ? "Pause video" : "Play video");
         ToolTipService.SetToolTip(VideoPlayPauseButton, playing ? "Pause video" : "Play video");
-        if (videoPlayMenuItem != null) { videoPlayMenuItem.Text = playing ? "Pause video" : "Play video"; videoPlayMenuItem.Icon = Views.MenuIcons.Create(videoPlayMenuItem.Text); }
+        UpdateDesktopPlaybackState();
     }
     private void Rewind_Click(object sender, RoutedEventArgs e) => Seek(Position - 5);
     private void Forward_Click(object sender, RoutedEventArgs e) => Seek(Position + 5);
@@ -954,7 +943,6 @@ public sealed partial class MainWindow : Window
     }
     private async void Export_Click(object sender, RoutedEventArgs e)
     {
-        if (!Model.HasApiKey) { await ShowSettingsSectionAsync(2); return; }
         if (Model.Project != null && Model.Idle) await ShowDialogAsync(new Views.ExportDialog(Model), 1040, 760);
     }
     private async void ExportOpen_Click(object sender, RoutedEventArgs e)
@@ -1007,7 +995,6 @@ public sealed partial class MainWindow : Window
     private void TogglePreview_Click(object sender, RoutedEventArgs e)
     {
         PreviewPanel.Visibility = PreviewPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
-        TimelinePanel.Visibility = PreviewPanel.Visibility;
         Model.Settings.Set("showPreview", PreviewPanel.Visibility == Visibility.Visible ? "true" : "false"); Model.Settings.Save();
     }
     private void ToggleTimeline_Click(object sender, RoutedEventArgs e) => TimelinePanel.Visibility = TimelinePanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
@@ -1200,7 +1187,8 @@ public sealed partial class MainWindow : Window
         SetAiButton(PrepareAnalysisButton, "Upload and prepare video on Gemini File API for full multimodal analysis");
         SetAiButton(RefreshAnalysisButton, "Refresh Gemini video analysis availability status");
         SetAiButton(OcrFrameButton, "Read on-screen text from current video frame using Gemini vision");
-        SetAiButton(InspectorExportButton, "Open export dialog to produce video, audio, or caption outputs");
+        InspectorExportButton.IsEnabled = Model.Idle && Model.Project != null;
+        ToolTipService.SetToolTip(InspectorExportButton, "Open export dialog to produce video, audio, or caption outputs");
 
         UpdateMenuKeyStates(hasKey);
     }

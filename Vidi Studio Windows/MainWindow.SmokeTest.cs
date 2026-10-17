@@ -20,19 +20,41 @@ public sealed partial class MainWindow
             var folder = Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT");
             if (folder == null) throw new InvalidOperationException("Smoke project is required.");
             Model.Open(folder);
-            if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Project", "Analysis", "Segments", "Playback", "Help" }))
+            if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Playback", "Project", "Help" }))
                 throw new InvalidOperationException("Editor menu set does not match the active page.");
             if (galleryMenus.Concat(editorMenus).SelectMany(menu => menu.Items).OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().Any(item => item.Icon == null) ||
                 SegmentMenu(Model.Project!.Cues[0]).Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().Any(item => item.Icon == null))
                 throw new InvalidOperationException("A menu or segment action has no icon.");
-            if (editorMenus[0].Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().First(item => item.Text == "Export").KeyboardAcceleratorTextOverride != "Ctrl+Shift+E" ||
-                editorMenus.First(menu => menu.Title == "Playback").Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().First(item => item.Text == "Play video").KeyboardAcceleratorTextOverride != "Ctrl+Shift+Space")
+            if (desktopMenuItems["export"].Last().KeyboardAcceleratorTextOverride != "Ctrl+Shift+E" ||
+                desktopMenuItems["play"].Last().KeyboardAcceleratorTextOverride != "Ctrl+Shift+Space")
                 throw new InvalidOperationException("Menu commands do not show their keyboard shortcuts.");
             var narrationMenu = editorMenus.First(menu => menu.Title == "Project").Items
                 .OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutSubItem>().Single(item => item.Text == "Narration");
             if (!narrationMenu.Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>()
                 .Any(item => item.Text == "Review Narration Issues…" && item.IsEnabled && item.Icon != null))
                 throw new InvalidOperationException("Project → Narration is missing the narration issue review action.");
+            var projectGroups = editorMenus.First(menu => menu.Title == "Project").Items
+                .OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutSubItem>().Select(item => item.Text);
+            if (!projectGroups.SequenceEqual(new[] { "Editor Sections", "Segments", "Analysis", "Narration" }))
+                throw new InvalidOperationException("Project submenu nesting/order drifted from Mac.");
+            if (desktopMenuItems.SelectMany(pair => pair.Value).Any(item => item.Icon == null))
+                throw new InvalidOperationException("A nested desktop menu command has no icon.");
+            var savedMenuKey = Model.Settings.Get("apiKey");
+            var savedMenuTts = Model.Settings.Get("ttsMode", "windows-core");
+            Model.Settings.Set("apiKey", ""); Model.Settings.Set("ttsMode", "windows-core");
+            UpdateDesktopMenuStates();
+            if (!desktopMenuItems["export"].Last().IsEnabled || !desktopMenuItems["synthesize-tts"].Last().IsEnabled ||
+                !desktopMenuItems["review-narration-issues"].Last().IsEnabled || desktopMenuItems["transcribe"].Last().IsEnabled)
+                throw new InvalidOperationException("Offline menu actions and AI prerequisites are not independently guarded.");
+            Model.Settings.Set("apiKey", savedMenuKey); Model.Settings.Set("ttsMode", savedMenuTts);
+            var oldOverlayMode = Model.Settings.Get("captionDisplayMode", "off");
+            await RunDesktopCommandAsync("caption-transcript");
+            if (Model.Settings.Get("captionDisplayMode") != "transcript")
+                throw new InvalidOperationException("Transcript overlay command is not connected.");
+            SetCaptionMode(oldOverlayMode);
+            if (desktopMenuItems["summary-play"].Last().IsEnabled)
+                throw new InvalidOperationException("Summary menu reading was enabled outside Summary.");
+            UpdateDesktopMenuStates();
             var originalTheme = Model.Settings.Get("theme", "system");
             var thumbnailProject = Models.StudioProject.Load(folder);
             var thumbnail = File.Exists(Path.Combine(folder, "youtube-thumbnail.jpg")) ? "youtube-thumbnail.jpg" : thumbnailProject.Thumbnails[0];
@@ -131,8 +153,10 @@ public sealed partial class MainWindow
             await Task.Delay(200);
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "editor-descriptions.png"));
             ShowGallery_Click(this, new RoutedEventArgs());
-            if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Help" }))
-                throw new InvalidOperationException("Gallery menu includes project-only commands.");
+            if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Playback", "Project", "Help" }))
+                throw new InvalidOperationException("Gallery menu hierarchy drifted from the shared desktop layout.");
+            if (desktopMenuItems["export"].Any(item => item.IsEnabled) || desktopMenuItems["review-narration-issues"].Any(item => item.IsEnabled))
+                throw new InvalidOperationException("Project-only menu commands remained enabled in the gallery.");
             if (TopOpenFolderButton.Visibility != Visibility.Collapsed)
                 throw new InvalidOperationException("All Projects still shows the editor's Open folder button.");
             PreviewTheme("dark"); await Task.Delay(80);
@@ -428,32 +452,36 @@ public sealed partial class MainWindow
             for (var attempt = 0; attempt < 30 && (video.PlaybackSession.PlaybackState != Windows.Media.Playback.MediaPlaybackState.Playing || narrationPlayer.Source == null); attempt++) await Task.Delay(100);
             if (video.PlaybackSession.PlaybackState != Windows.Media.Playback.MediaPlaybackState.Playing || narrationPlayer.Source == null) throw new InvalidOperationException("Native synchronized narration did not start during its cue.");
             UpdatePlaybackControls();
-            if (VideoPlayPauseButton.Content as string != "\uE769" || videoPlayMenuItem?.Text != "Pause video")
+            if (VideoPlayPauseButton.Content as string != "\uE769" || videoPlayMenuItem?.Text != "Play or Pause" ||
+                videoPlayMenuItem.Icon is not Microsoft.UI.Xaml.Controls.FontIcon { Glyph: "\uE769" })
                 throw new InvalidOperationException("The video transport did not switch from Play to Pause.");
             await Task.Delay(150);
             if (Math.Abs(narrationPlayer.PlaybackSession.Position.TotalSeconds - (Position - 2)) > .5) throw new InvalidOperationException("Narration position did not align with the video cue.");
             video.Pause(); await Task.Delay(250);
-            if (VideoPlayPauseButton.Content as string != "\uE768" || videoPlayMenuItem?.Text != "Play video")
+            if (VideoPlayPauseButton.Content as string != "\uE768" || videoPlayMenuItem?.Text != "Play or Pause" ||
+                videoPlayMenuItem.Icon is not Microsoft.UI.Xaml.Controls.FontIcon { Glyph: "\uE768" })
                 throw new InvalidOperationException("The video transport did not switch from Pause to Play.");
             if (narrationPlayer.PlaybackSession.PlaybackState == Windows.Media.Playback.MediaPlaybackState.Playing) throw new InvalidOperationException("Narration kept playing while video was paused.");
             PlayPause_Click(this, new RoutedEventArgs());
             for (var attempt = 0; attempt < 20 && video.PlaybackSession.PlaybackState != Windows.Media.Playback.MediaPlaybackState.Playing; attempt++) await Task.Delay(50);
             UpdatePlaybackControls();
-            if (VideoPlayPauseButton.Content as string != "\uE769" || videoPlayMenuItem?.Text != "Pause video")
+            if (VideoPlayPauseButton.Content as string != "\uE769" || videoPlayMenuItem?.Text != "Play or Pause" ||
+                videoPlayMenuItem.Icon is not Microsoft.UI.Xaml.Controls.FontIcon { Glyph: "\uE769" })
                 throw new InvalidOperationException("The video transport did not resume through its shared button.");
             Seek(6); video.Play(); await Task.Delay(250);
             if (narrationPlayer.PlaybackSession.PlaybackState == Windows.Media.Playback.MediaPlaybackState.Playing || activeCue != null) throw new InvalidOperationException("Narration remained active after seeking beyond its cue.");
             video.Pause(); Narration.IsOn = false;
             Model.Settings.Set("ttsMode", "windows-core");
+            Section.SelectedIndex = 1;
             var firstReadback = readback.SpeakAsync("This first summary is replaced immediately.");
             var nextReadback = readback.SpeakAsync("This replacement summary must be cancellable.");
             await Task.Delay(150);
             if (readback.State == Services.SummaryReadbackState.Playing)
             {
-                if (SummaryPlayButton.Content as string != "Pause" || summaryPlayMenuItem?.Text != "Pause summary")
+                if (SummaryPlayButton.Content as string != "Pause" || summaryPlayMenuItem?.IsEnabled != false || !desktopMenuItems["summary-pause"].Last().IsEnabled)
                     throw new InvalidOperationException("Summary Play did not become Pause in the view and menu.");
                 readback.Pause(); await Task.Delay(50);
-                if (SummaryPlayButton.Content as string != "Resume" || summaryPlayMenuItem?.Text != "Resume summary")
+                if (SummaryPlayButton.Content as string != "Resume" || summaryPlayMenuItem?.IsEnabled != true || desktopMenuItems["summary-pause"].Last().IsEnabled)
                     throw new InvalidOperationException("Summary Pause did not become Resume in the view and menu.");
                 readback.Resume();
             }

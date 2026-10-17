@@ -20,6 +20,7 @@ namespace Vidi_Studio_Windows.Views;
 public sealed partial class SettingsDialog : Window
 {
     private readonly TaskCompletionSource<bool> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly MainWindow? menuOwner;
     private readonly Grid layout;
     private bool saved;
     private ListView? sectionList;
@@ -102,6 +103,7 @@ public sealed partial class SettingsDialog : Window
     {
         if (initialSection < 0 || initialSection > 6) throw new ArgumentOutOfRangeException(nameof(initialSection));
         requestedSection = initialSection;
+        menuOwner = window as MainWindow;
         this.model = model; draft = model.Settings.Data.DeepClone().AsObject();
         originalTheme = App.ActiveTheme ?? model.Settings.Get("theme", "system");
         Title = "Vidi Studio Settings";
@@ -525,4 +527,3 @@ public sealed partial class SettingsDialog : Window
         finally { File.Delete(config); }
     }
 }
-

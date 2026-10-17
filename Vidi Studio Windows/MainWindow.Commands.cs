@@ -86,170 +86,11 @@ public sealed partial class MainWindow
     private void UpdateSummaryControls()
     {
         var state = readback.State;
-        var label = state switch { Services.SummaryReadbackState.Playing => "Pause summary", Services.SummaryReadbackState.Paused => "Resume summary",
-            Services.SummaryReadbackState.Preparing => "Preparing summary…", _ => "Play summary" };
         SummaryPlayButton.Content = state == Services.SummaryReadbackState.Stopped ? "Play" : state == Services.SummaryReadbackState.Preparing ? "Preparing…" : state == Services.SummaryReadbackState.Playing ? "Pause" : "Resume";
         SummaryPlayButton.IsEnabled = state != Services.SummaryReadbackState.Preparing;
         SummaryStopButton.IsEnabled = state != Services.SummaryReadbackState.Stopped;
-        if (summaryPlayMenuItem != null) { summaryPlayMenuItem.Text = label; summaryPlayMenuItem.Icon = Views.MenuIcons.Create(label); summaryPlayMenuItem.IsEnabled = state != Services.SummaryReadbackState.Preparing; }
-        if (summaryStopMenuItem != null) summaryStopMenuItem.IsEnabled = state != Services.SummaryReadbackState.Stopped;
+        UpdateDesktopMenuStates();
         if (state == Services.SummaryReadbackState.Stopped) ClearSummaryHighlight();
-    }
-    private void BuildMenus()
-    {
-        static string? Shortcut(string label) => label switch
-        {
-            "Import video" => "Ctrl+N",
-            "Open project folder" => "Ctrl+Shift+O",
-            "Export" => "Ctrl+Shift+E",
-            "Settings" => "Ctrl+,",
-            "Close window" => "Ctrl+W",
-            "Help and keyboard shortcuts" => "F1",
-            "Show / hide preview" => "Ctrl+Shift+V",
-            "Full-screen video" => "Ctrl+Alt+F",
-            "Transcript" => "Ctrl+1",
-            "Summary" => "Ctrl+2",
-            "Descriptions" => "Ctrl+3",
-            "AD Overview" => "Ctrl+4",
-            "AD Transcript" => "Ctrl+5",
-            "Add segment" => "Ctrl+Shift+N",
-            "Undo" => "Ctrl+Alt+Z",
-            "Redo" => "Ctrl+Alt+Shift+Z",
-            "Generate all narration" => "Ctrl+Shift+D",
-            "Play video" => "Ctrl+Shift+Space",
-            "Rewind five seconds" => "Ctrl+Alt+Left",
-            "Forward five seconds" => "Ctrl+Alt+Right",
-            "Follow active segment" => "Ctrl+Shift+F",
-            _ => null
-        };
-        MenuBarItem Menu(string title, params (string Label, RoutedEventHandler Handler)[] entries)
-        {
-            var menu = new MenuBarItem { Title = title };
-            foreach (var entry in entries)
-            {
-                var item = new MenuFlyoutItem { Text = entry.Label, Icon = Views.MenuIcons.Create(entry.Label) };
-                if (Shortcut(entry.Label) is { } shortcut) item.KeyboardAcceleratorTextOverride = shortcut;
-                item.Click += entry.Handler;
-                menu.Items.Add(item);
-            }
-            return menu;
-        }
-
-        var galleryFile = Menu("File", ("Import video", ImportVideo_Click), ("New YouTube project", YouTube_Click), ("Open project folder", OpenProject_Click),
-            ("Settings", Settings_Click), ("Close window", (_, _) => Close()));
-        var galleryView = Menu("View", ("List / Grid projects", GalleryLayout_Click));
-        var help = Menu("Help", ("Help and keyboard shortcuts", HelpSettings_Click), ("About Vidi Studio", AboutSettings_Click));
-        galleryMenus.AddRange(new[] { galleryFile, galleryView, help });
-
-        var editorFile = Menu("File", ("Import video", ImportVideo_Click), ("New YouTube project", YouTube_Click), ("Open project folder", OpenProject_Click),
-            ("Open editor in new window", OpenEditor_Click), ("Export", Export_Click), ("Settings", Settings_Click), ("Close window", (_, _) => Close()));
-        var editorView = Menu("View", ("List / Grid projects", ToggleGrid_Click), ("Show / hide projects", ToggleLibrary_Click), ("Show / hide inspector", ToggleInspector_Click),
-            ("Show / hide preview", TogglePreview_Click), ("Show / hide timeline", ToggleTimeline_Click), ("Full-screen video", FullScreen_Click),
-            ("Transcript", (_, _) => Section.SelectedIndex = 0), ("Summary", (_, _) => Section.SelectedIndex = 1), ("Descriptions", (_, _) => Section.SelectedIndex = 2),
-            ("AD Overview", (_, _) => Section.SelectedIndex = 3), ("AD Transcript", (_, _) => Section.SelectedIndex = 4));
-        RoutedEventHandler Execute(string command) => async (_, _) => { if (Model.Idle) await Model.RunAsync(command); };
-        var analysis = Menu("Analysis", ("Analyze video", (_, e) => Command_Click(new Button { Tag = "analyze" }, e)),
-            ("Generate transcript", (_, e) => Command_Click(new Button { Tag = "transcribe" }, e)),
-            ("Generate summary", (_, e) => Command_Click(new Button { Tag = "generate-summary" }, e)),
-            ("Generate descriptions", (_, e) => Command_Click(new Button { Tag = "generate-ad-cues" }, e)),
-            ("Refresh video details and timeline pictures", Execute("prepare-video")), ("Read frame text", Ocr_Click));
-        var segments = Menu("Segments", ("Add segment", Add_Click), ("Edit selected", Edit_Click), ("Select all", SelectAll_Click), ("Deselect all", Deselect_Click),
-            ("Delete selected", DeleteSegments_Click), ("Undo", Undo_Click), ("Redo", Redo_Click), ("Rewrite description to fit", Rewrite_Click),
-            ("Generate all narration", Execute("synthesize-tts")), ("Generate changed narration", ChangedNarration_Click));
-        var projectMenu = Menu("Project");
-        var narrationMenu = new MenuFlyoutSubItem { Text = "Narration", Icon = Views.MenuIcons.Create("Narration") };
-        foreach (var entry in new (string Label, RoutedEventHandler Handler)[]
-        {
-            ("Generate all narration", Execute("synthesize-tts")),
-            ("Generate changed narration", ChangedNarration_Click),
-            ("Review Narration Issues…", ReviewNarrationIssues_Click)
-        })
-        {
-            var item = new MenuFlyoutItem { Text = entry.Label, Icon = Views.MenuIcons.Create(entry.Label) };
-            if (Shortcut(entry.Label) is { } shortcut) item.KeyboardAcceleratorTextOverride = shortcut;
-            item.Click += entry.Handler;
-            narrationMenu.Items.Add(item);
-        }
-        projectMenu.Items.Add(narrationMenu);
-        var playback = Menu("Playback", ("Play video", PlayPause_Click), ("Rewind five seconds", Rewind_Click), ("Forward five seconds", Forward_Click),
-            ("Follow active segment", (_, _) => Follow.IsOn = !Follow.IsOn), ("Narration on / off", (_, _) => Narration.IsOn = !Narration.IsOn),
-            ("Play summary", SpeakSummary_Click), ("Stop summary", StopSpeech_Click));
-        summaryPlayMenuItem = playback.Items.OfType<MenuFlyoutItem>().First(item => item.Text == "Play summary");
-        summaryStopMenuItem = playback.Items.OfType<MenuFlyoutItem>().First(item => item.Text == "Stop summary");
-        videoPlayMenuItem = playback.Items.OfType<MenuFlyoutItem>().First(item => item.Text == "Play video");
-        UpdateSummaryControls();
-        UpdatePlaybackControls();
-        editorMenus.AddRange(new[] { editorFile, editorView, projectMenu, analysis, segments, playback, help });
-        UpdateMenuBar(false);
-        Model.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(Model.Busy)) MainMenu.IsEnabled = Model.Idle; };
-        AddShortcut(VirtualKey.Left, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, Rewind_Click);
-        AddShortcut(VirtualKey.Right, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, Forward_Click);
-        AddShortcut(VirtualKey.N, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, Add_Click);
-        AddShortcut(VirtualKey.F, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, (_, _) => Follow.IsOn = !Follow.IsOn);
-        AddShortcut(VirtualKey.D, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, async (_, _) => await Model.RunAsync("synthesize-tts"));
-        AddShortcut(VirtualKey.Z, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, Undo_Click);
-        AddShortcut(VirtualKey.Z, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, Redo_Click);
-        AddShortcut(VirtualKey.V, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, TogglePreview_Click);
-        AddShortcut(VirtualKey.F, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, FullScreen_Click);
-        AddShortcut((VirtualKey)188, VirtualKeyModifiers.Control, Settings_Click);
-        AddShortcut(VirtualKey.W, VirtualKeyModifiers.Control, (_, _) => Close());
-        AddShortcut(VirtualKey.F1, VirtualKeyModifiers.None, HelpSettings_Click);
-    }
-
-    private void UpdateMenuBar(bool editor)
-    {
-        MainMenu.Items.Clear();
-        foreach (var menu in editor ? editorMenus : galleryMenus) MainMenu.Items.Add(menu);
-        UpdateMenuKeyStates(Model.HasApiKey);
-    }
-
-    private void UpdateMenuKeyStates(bool hasKey)
-    {
-        static IEnumerable<MenuFlyoutItem> LeafItems(IEnumerable<MenuFlyoutItemBase> entries)
-        {
-            foreach (var entry in entries)
-            {
-                if (entry is MenuFlyoutItem item) yield return item;
-                else if (entry is MenuFlyoutSubItem submenu)
-                    foreach (var child in LeafItems(submenu.Items)) yield return child;
-            }
-        }
-        var aiItems = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "Import video",
-            "New YouTube project",
-            "Export",
-            "Analyze video",
-            "Generate transcript",
-            "Generate summary",
-            "Generate descriptions",
-            "Read frame text",
-            "Rewrite description to fit",
-            "Generate all narration",
-            "Generate changed narration"
-        };
-
-        foreach (var menu in galleryMenus.Concat(editorMenus))
-        {
-            foreach (var item in LeafItems(menu.Items))
-            {
-                if (item.Text == "Review Narration Issues…")
-                {
-                    item.IsEnabled = Model.Idle && Model.Project != null;
-                    continue;
-                }
-                if (aiItems.Contains(item.Text))
-                {
-                    var available = item.Text.Equals("Generate changed narration", StringComparison.OrdinalIgnoreCase)
-                        ? Model.Project?.HasChangedNarration == true
-                        : true;
-                    item.IsEnabled = hasKey && Model.Idle && available;
-                    ToolTipService.SetToolTip(item, !hasKey
-                        ? "Enter your Gemini API key in Settings (Gemini API tab) to enable."
-                        : available ? null : "Edit a description after its narration is generated to enable this.");
-                }
-            }
-        }
     }
     private void OpenEditor_Click(object sender, RoutedEventArgs e) { if (Model.Project is { } p) App.OpenWindow(p.Folder); }
     private void ProjectGrid_Changed(object sender, SelectionChangedEventArgs e) { if (ProjectGrid.SelectedItem is StudioProject p) Model.Open(p.Folder); }
@@ -383,6 +224,7 @@ public sealed partial class MainWindow
             }
             paragraph.Inlines.Add(new Run { Text = value[offset..] });
             SummaryRichText.Children.Add(paragraph);
+            paragraph.SelectionChanged += (_, _) => UpdateDesktopMenuStates();
             summaryLines.Add((paragraph, Regex.Replace(value, @"\*\*(.+?)\*\*|`([^`]+)`", m => m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value)));
         }
     }

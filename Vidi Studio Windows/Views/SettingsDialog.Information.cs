@@ -23,19 +23,9 @@ public sealed partial class SettingsDialog
     {
         panel.Children.Add(new TextBlock { Text = "Keyboard shortcuts", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         panel.Children.Add(new TextBlock { Text = "Project editor shortcuts work when a project is open and processing is idle. Timed segments can also be opened with the keyboard.", TextWrapping = TextWrapping.Wrap });
-        AddInformationRow(panel, "Import video", "Ctrl + N");
-        AddInformationRow(panel, "Open project folder", "Ctrl + Shift + O");
-        AddInformationRow(panel, "Export project", "Ctrl + Shift + E");
-        AddInformationRow(panel, "Play or pause", "Ctrl + Shift + Space");
-        AddInformationRow(panel, "Editor sections", "Ctrl + 1 through Ctrl + 5");
-        AddInformationRow(panel, "Add segment", "Ctrl + Shift + N");
-        AddInformationRow(panel, "Follow active segment", "Ctrl + Shift + F");
-        AddInformationRow(panel, "Generate narration", "Ctrl + Shift + D");
-        AddInformationRow(panel, "Undo / redo segment", "Ctrl + Alt + Z / Ctrl + Alt + Shift + Z");
-        AddInformationRow(panel, "Show or hide preview", "Ctrl + Shift + V");
-        AddInformationRow(panel, "Rewind / forward five seconds", "Ctrl + Alt + Left / Right");
-        AddInformationRow(panel, "Full-screen video", "Ctrl + Alt + F");
-        panel.Children.Add(new TextBlock { Text = "You can also use the File, View, Analysis, Segments and Playback menus in an open project. All Projects shows only its own File, View and Help menus.", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
+        if (menuOwner != null)
+            foreach (var (label, shortcut) in menuOwner.DesktopShortcutReference) AddInformationRow(panel, label, shortcut);
+        panel.Children.Add(new TextBlock { Text = "Menus follow the Mac desktop layout: File, View, Playback, Project, Help. Project contains Editor Sections, Segments, Analysis, and Narration. Playback contains Transcript Overlay and Summary Reading. Project actions are disabled when no editor is open; summary reading requires the Summary section. Read from Selection and Read Selected Text use the selected summary paragraph. Ctrl+Shift+D toggles narration; use Project → Narration to synthesize audio. Settings is in File, and About is in Help. Local exports and on-device narration do not require a Gemini API key.", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
     }
 
     private void BuildAbout(StackPanel panel)

@@ -37,9 +37,16 @@
     </Grid>
    </DataTemplate>
   </Grid.Resources>
-  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
   <MenuBar x:Name="MainMenu"/>
-  <Grid Grid.Row="1" Padding="20,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" MinHeight="54">
+  <InfoBar x:Name="ApiKeyWarningBar" Grid.Row="1" Severity="Warning" IsOpen="False" IsClosable="False" Margin="16,8,16,8"
+           Title="Gemini API Key Required"
+           Message="Application features are disabled until a personal Gemini API key is configured. Please enter your API key in Settings (Gemini API tab) to enable project creation, transcription, video analysis, summaries, descriptions, narration, and exports.">
+   <InfoBar.ActionButton>
+    <Button Content="Enter API Key" Style="{StaticResource AccentButtonStyle}" Click="OpenGeminiSettings_Click"/>
+   </InfoBar.ActionButton>
+  </InfoBar>
+  <Grid Grid.Row="2" Padding="20,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" MinHeight="54">
    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="1.6*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
    <TextBlock x:Name="ProjectTitle" Grid.ColumnSpan="2" Text="All Projects" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
    <Grid x:Name="GallerySearchHost" Grid.Column="1" HorizontalAlignment="Stretch" MaxWidth="520" Margin="8,0">
@@ -53,7 +60,7 @@
     <Button Content="&#xE713;" FontFamily="Segoe Fluent Icons" Click="Settings_Click" AutomationProperties.Name="Settings"/>
    </StackPanel>
   </Grid>
-  <Grid x:Name="GalleryPanel" Grid.Row="2" Padding="28,24" RowSpacing="22">
+  <Grid x:Name="GalleryPanel" Grid.Row="3" Padding="28,24" RowSpacing="22">
    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <StackPanel Spacing="4"><TextBlock Text="All Projects" Style="{ThemeResource TitleLargeTextBlockStyle}"/><TextBlock x:Name="ProjectCount" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
@@ -91,10 +98,10 @@
       </DataTemplate></ListView.ItemTemplate>
      </ListView>
     </Grid>
-    <StackPanel x:Name="GalleryEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12"><SymbolIcon Symbol="Video"/><TextBlock Text="Your projects live here" Style="{ThemeResource SubtitleTextBlockStyle}"/><TextBlock Text="Import a video or add a public YouTube link to begin." Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><Button Content="New project" HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}" Click="NewProject_Click"/></StackPanel>
+    <StackPanel x:Name="GalleryEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12"><SymbolIcon Symbol="Video"/><TextBlock Text="Your projects live here" Style="{ThemeResource SubtitleTextBlockStyle}"/><TextBlock x:Name="GalleryEmptySubtitle" Text="Import a video or add a public YouTube link to begin." Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><Button x:Name="GalleryEmptyButton" Content="New project" HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}" Click="NewProject_Click"/></StackPanel>
    </Grid>
   </Grid>
-  <ContentControl x:Name="EditorWorkspace" Grid.Row="2" Visibility="Collapsed" IsEnabled="{x:Bind Model.Idle, Mode=OneWay}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+  <ContentControl x:Name="EditorWorkspace" Grid.Row="3" Visibility="Collapsed" IsEnabled="{x:Bind Model.Idle, Mode=OneWay}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
    <Grid><Grid.ColumnDefinitions><ColumnDefinition x:Name="LibraryColumn" Width="0"/><ColumnDefinition Width="*"/><ColumnDefinition x:Name="InspectorColumn" Width="310"/></Grid.ColumnDefinitions>
     <Grid x:Name="LibraryPanel" Visibility="Collapsed" Padding="12" RowSpacing="10" Background="{ThemeResource LayerFillColorAltBrush}">
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -187,7 +194,7 @@
         </Grid>
        </Grid>
       </Grid>
-      <ScrollViewer x:Name="OverviewPanel" Visibility="Collapsed"><StackPanel Padding="14,24" Spacing="22"><Grid ColumnSpacing="20"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><StackPanel Spacing="10"><TextBlock Text="Audio description overview" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel x:Name="OverviewStatistics" Spacing="16"/></Border></StackPanel><StackPanel Grid.Column="1" Spacing="10"><TextBlock Text="Description origins" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel x:Name="OriginStatistics" Spacing="16"/></Border></StackPanel></Grid><TextBlock x:Name="Overview" Visibility="Collapsed"/><TextBlock Text="Create narration audio" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel Spacing="12"><TextBlock x:Name="OverviewVoice" TextWrapping="Wrap"/><StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Generate All AD Audio" Tag="synthesize-tts" Click="Command_Click"/><Button Content="Generate Missing or Changed Audio" Click="ChangedNarration_Click"/></StackPanel><Button Content="Voice and Narration Settings" Tag="Narration" Click="Settings_Click"/></StackPanel></Border></StackPanel></ScrollViewer>
+      <ScrollViewer x:Name="OverviewPanel" Visibility="Collapsed"><StackPanel Padding="14,24" Spacing="22"><Grid ColumnSpacing="20"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><StackPanel Spacing="10"><TextBlock Text="Audio description overview" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel x:Name="OverviewStatistics" Spacing="16"/></Border></StackPanel><StackPanel Grid.Column="1" Spacing="10"><TextBlock Text="Description origins" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel x:Name="OriginStatistics" Spacing="16"/></Border></StackPanel></Grid><TextBlock x:Name="Overview" Visibility="Collapsed"/><TextBlock Text="Create narration audio" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel Spacing="12"><TextBlock x:Name="OverviewVoice" TextWrapping="Wrap"/><StackPanel Orientation="Horizontal" Spacing="8"><Button x:Name="OverviewGenerateAllAudioButton" Content="Generate All AD Audio" Tag="synthesize-tts" Click="Command_Click"/><Button x:Name="OverviewGenerateChangedAudioButton" Content="Generate Missing or Changed Audio" Click="ChangedNarration_Click"/></StackPanel><Button Content="Voice and Narration Settings" Tag="Narration" Click="Settings_Click"/></StackPanel></Border></StackPanel></ScrollViewer>
       <ScrollViewer x:Name="ExportList" Visibility="Collapsed" AutomationProperties.Name="Created exports"><StackPanel x:Name="ExportGroups" Padding="14,18" Spacing="8"/></ScrollViewer>
      </Grid>
      <ScrollViewer x:Name="EditToolbar" Grid.Row="4" Visibility="Collapsed" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"><StackPanel Orientation="Horizontal" Spacing="6" Padding="14,8"><Button Content="Add segment" Click="Add_Click"/><Button Content="Edit selected" Click="Edit_Click"/><Button Content="Delete selected" Click="DeleteSegments_Click"/><Button Content="Select all" Click="SelectAll_Click"/><Button Content="Deselect" Click="Deselect_Click"/><Button Content="Undo" Click="Undo_Click"/><Button Content="Redo" Click="Redo_Click"/></StackPanel></ScrollViewer>
@@ -197,17 +204,17 @@
      <ScrollViewer><StackPanel Padding="18,22" Spacing="18">
       <StackPanel Spacing="8"><TextBlock Text="Project Information" FontWeight="SemiBold"/><Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10"><StackPanel x:Name="ProjectDetails" Spacing="8"/></Border><TextBlock x:Name="ProjectInformation" Visibility="Collapsed"/></StackPanel>
       <StackPanel Spacing="8"><TextBlock Text="Video Information" FontWeight="SemiBold"/><Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10"><StackPanel x:Name="VideoDetails" Spacing="8"/></Border></StackPanel>
-      <StackPanel x:Name="ContextActions" Spacing="8"><TextBlock x:Name="InspectorSectionTitle" Text="Transcript" FontWeight="SemiBold"/><Button x:Name="InspectorGenerate" Content="Generate Transcript" Style="{StaticResource InspectorButton}" Click="GenerateCurrent_Click"/><StackPanel x:Name="NarrationActions" Spacing="6" Visibility="Collapsed"><Button Content="Synthesize Narration" Style="{StaticResource InspectorButton}" Tag="synthesize-tts" Click="Command_Click"/><Button Content="Synthesize Changed Segments" Style="{StaticResource InspectorButton}" Click="ChangedNarration_Click"/><Button Content="Narrate selected segment" Style="{StaticResource InspectorButton}" Click="NarrateSelected_Click"/><Button Content="Rewrite selected to fit" Style="{StaticResource InspectorButton}" Click="Rewrite_Click"/><Button Content="Delete selected narration" Style="{StaticResource InspectorButton}" Click="DeleteNarration_Click"/></StackPanel><Button Content="Choose content to delete" Style="{StaticResource InspectorButton}" Click="DeleteGenerated_Click"/></StackPanel>
-      <StackPanel Spacing="8"><TextBlock Text="Video Analysis Availability" FontWeight="SemiBold"/><TextBlock x:Name="AnalysisAvailability" Text="Not checked" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Prepare" Tag="prepare-analysis-video" Click="Command_Click"/><Button Content="Refresh" Tag="check-video-availability" Click="Command_Click"/><Button Content="Read frame" Click="Ocr_Click"/></StackPanel></StackPanel>
-      <StackPanel Spacing="8"><TextBlock Text="Export" FontWeight="SemiBold"/><Button Content="Export…" Style="{StaticResource InspectorButton}" Click="Export_Click"/><TextBlock Text="Created Exports" FontWeight="SemiBold"/><StackPanel x:Name="InspectorExports" Spacing="6"/></StackPanel>
+      <StackPanel x:Name="ContextActions" Spacing="8"><TextBlock x:Name="InspectorSectionTitle" Text="Transcript" FontWeight="SemiBold"/><Button x:Name="InspectorGenerate" Content="Generate Transcript" Style="{StaticResource InspectorButton}" Click="GenerateCurrent_Click"/><StackPanel x:Name="NarrationActions" Spacing="6" Visibility="Collapsed"><Button x:Name="InspectorSynthesizeNarrationButton" Content="Synthesize Narration" Style="{StaticResource InspectorButton}" Tag="synthesize-tts" Click="Command_Click"/><Button x:Name="InspectorSynthesizeChangedButton" Content="Synthesize Changed Segments" Style="{StaticResource InspectorButton}" Click="ChangedNarration_Click"/><Button x:Name="InspectorNarrateSelectedButton" Content="Narrate selected segment" Style="{StaticResource InspectorButton}" Click="NarrateSelected_Click"/><Button x:Name="InspectorRewriteButton" Content="Rewrite selected to fit" Style="{StaticResource InspectorButton}" Click="Rewrite_Click"/><Button Content="Delete selected narration" Style="{StaticResource InspectorButton}" Click="DeleteNarration_Click"/></StackPanel><Button Content="Choose content to delete" Style="{StaticResource InspectorButton}" Click="DeleteGenerated_Click"/></StackPanel>
+      <StackPanel Spacing="8"><TextBlock Text="Video Analysis Availability" FontWeight="SemiBold"/><TextBlock x:Name="AnalysisAvailability" Text="Not checked" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><StackPanel Orientation="Horizontal" Spacing="8"><Button x:Name="PrepareAnalysisButton" Content="Prepare" Tag="prepare-analysis-video" Click="Command_Click"/><Button x:Name="RefreshAnalysisButton" Content="Refresh" Tag="check-video-availability" Click="Command_Click"/><Button x:Name="OcrFrameButton" Content="Read frame" Click="Ocr_Click"/></StackPanel></StackPanel>
+      <StackPanel Spacing="8"><TextBlock Text="Export" FontWeight="SemiBold"/><Button x:Name="InspectorExportButton" Content="Export…" Style="{StaticResource InspectorButton}" Click="Export_Click"/><TextBlock Text="Created Exports" FontWeight="SemiBold"/><StackPanel x:Name="InspectorExports" Spacing="6"/></StackPanel>
      </StackPanel></ScrollViewer>
      <Grid Grid.Row="1" Padding="14,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><Button Content="&#xE8B7;" FontFamily="Segoe Fluent Icons" Click="Reveal_Click" AutomationProperties.Name="Open project folder"/><Button Content="&#xE713;" FontFamily="Segoe Fluent Icons" Click="Settings_Click" HorizontalAlignment="Right" AutomationProperties.Name="Settings"/></Grid>
     </Grid>
    </Grid>
   </ContentControl>
-  <Border x:Name="StatusFooter" Grid.Row="3" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="14,7">
+  <Border x:Name="StatusFooter" Grid.Row="4" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="14,7">
    <TextBlock Text="{x:Bind Model.Status, Mode=OneWay}" TextWrapping="Wrap" FontSize="12"/>
   </Border>
-  <views:ProgressOverlay x:Name="ActiveExports" Grid.RowSpan="4"/>
+  <views:ProgressOverlay x:Name="ActiveExports" Grid.RowSpan="5"/>
  </Grid>
 </Window>

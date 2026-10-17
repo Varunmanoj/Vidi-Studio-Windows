@@ -56,6 +56,7 @@ public sealed partial class MainWindow : Window
         BuildMenus();
         video.PlaybackSession.PlaybackStateChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdatePlaybackControls);
         InitializePresentation();
+        UpdateApiKeyUi();
         Root.ActualThemeChanged += (_, _) => UpdateTitleBarTheme(Root.ActualTheme);
         readback.SentenceChanged += sentence => DispatcherQueue.TryEnqueue(() => { ReadbackSentence.Text = sentence; HighlightReadbackSentence(sentence); });
         readback.WordChanged += (start, length) => DispatcherQueue.TryEnqueue(() => HighlightReadbackWord(start, length));
@@ -77,7 +78,7 @@ public sealed partial class MainWindow : Window
                 try { cleanup(); } catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
             }
         };
-        Root.Loaded += (_, _) => { ready = true; Model.Reload(); ApplyTheme(); if (Model.Settings.Get("showPreview", "true") == "false") PreviewPanel.Visibility = TimelinePanel.Visibility = Visibility.Collapsed; if (folder != null) Model.Open(folder); if (Model.Settings.Get("projectPresentation") == "grid") ToggleGrid_Click(this, new RoutedEventArgs()); };
+        Root.Loaded += (_, _) => { ready = true; Model.Reload(); ApplyTheme(); if (Model.Settings.Get("showPreview", "true") == "false") PreviewPanel.Visibility = TimelinePanel.Visibility = Visibility.Collapsed; if (folder != null) Model.Open(folder); if (Model.Settings.Get("projectPresentation") == "grid") ToggleGrid_Click(this, new RoutedEventArgs()); UpdateApiKeyUi(); };
 #if DEBUG
         Root.Loaded += async (_, _) => { if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_REPORT") is { } report && System.Threading.Interlocked.CompareExchange(ref smokeTestClaimed, 1, 0) == 0) await RunSmokeTestAsync(report); };
 #endif
@@ -100,7 +101,10 @@ public sealed partial class MainWindow : Window
         Root.KeyboardAccelerators.Add(shortcut);
     }
     private void UpdateStatusFooter(object? sender, PropertyChangedEventArgs e)
-    { if (e.PropertyName == nameof(Model.Busy)) StatusFooter.Visibility = Model.Idle ? Visibility.Visible : Visibility.Collapsed; }
+    {
+        if (e.PropertyName == nameof(Model.Busy)) StatusFooter.Visibility = Model.Idle ? Visibility.Visible : Visibility.Collapsed;
+        if (e.PropertyName is nameof(Model.Busy) or nameof(Model.HasApiKey) or nameof(Model.Idle)) UpdateApiKeyUi();
+    }
     private void ApplyTheme()
     {
         if (App.ActiveTheme is { } active) ApplyThemeFromApp(active);
@@ -167,6 +171,11 @@ public sealed partial class MainWindow : Window
     private async Task ShowNewProjectDialogAsync(bool youtube)
     {
         if (Model.Busy) return;
+        if (!Model.HasApiKey)
+        {
+            await ShowSettingsSectionAsync(2);
+            return;
+        }
         try
         {
             var dialog = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings, youtube);
@@ -187,6 +196,7 @@ public sealed partial class MainWindow : Window
         if (Model.Project is not { } p) return;
         ShowEditor();
         UpdateInspector(p);
+        UpdateApiKeyUi();
         ProjectTitle.Text = p.Name;
         ProjectInformation.Text = $"{(p.IsYouTube ? "YouTube" : "Local video")}\n{p.Width} × {p.Height}\n{TimeSpan.FromSeconds(p.Duration):hh\\:mm\\:ss}\n{p.Folder}";
         Playhead.Maximum = Math.Max(1, p.Duration);
@@ -459,6 +469,11 @@ public sealed partial class MainWindow : Window
     {
         var command = (string)((FrameworkElement)sender).Tag;
         if (Model.Project == null) return;
+        if (!Model.HasApiKey && command != "prepare-video")
+        {
+            await ShowSettingsSectionAsync(2);
+            return;
+        }
         if (command is "analyze" or "transcribe" or "generate-summary" or "generate-ad-cues")
             if (!await Confirm("Generate content", "This replaces existing content for the selected stages and may remove superseded narration or exports. Manual edits in those stages will be replaced. Continue?")) return;
         await Model.RunAsync(command);
@@ -630,13 +645,19 @@ public sealed partial class MainWindow : Window
         var ocrStatus = new TextBlock { FontSize = 12, Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
         var ocrButton = new Button
         {
-            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { new FontIcon { Glyph = "\uE7BA", FontSize = 13 }, new TextBlock { Text = "Read Frame Text at Start" } } }
+            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { new FontIcon { Glyph = "\uE7BA", FontSize = 13 }, new TextBlock { Text = "Read Frame Text at Start" } } },
+            IsEnabled = Model.HasApiKey
         };
-        ToolTipService.SetToolTip(ocrButton, "Read text from the video frame at the segment start time and use it as the description");
+        ToolTipService.SetToolTip(ocrButton, Model.HasApiKey ? "Read text from the video frame at the segment start time and use it as the description" : "Configure your Gemini API key in Settings (Gemini API tab) to enable frame OCR");
         ocrPanel.Children.Add(ocrStatus);
         ocrPanel.Children.Add(ocrButton);
         ocrButton.Click += async (_, _) =>
         {
+            if (!Model.HasApiKey)
+            {
+                await ShowSettingsSectionAsync(2);
+                return;
+            }
             ocrButton.IsEnabled = false;
             ocrStatus.Visibility = Visibility.Visible;
             ocrStatus.Text = "Reading frame text…";
@@ -832,15 +853,28 @@ public sealed partial class MainWindow : Window
     }
     private async void Undo_Click(object sender, RoutedEventArgs e) => await Model.RunAsync(Section.SelectedIndex == 0 ? "undo-transcript" : "undo-cues");
     private async void Redo_Click(object sender, RoutedEventArgs e) => await Model.RunAsync(Section.SelectedIndex == 0 ? "redo-transcript" : "redo-cues");
-    private async void ChangedNarration_Click(object sender, RoutedEventArgs e) => await Model.RunAsync("synthesize-tts", new[] { "--changed" });
-    private async void NarrateSelected_Click(object sender, RoutedEventArgs e) { if (Segments.SelectedItem is Segment { IsDescription: true } c) await Model.RunAsync("synthesize-tts", new[] { "--segment", c.Id }); }
-    private async void Rewrite_Click(object sender, RoutedEventArgs e) { if (Segments.SelectedItem is Segment { IsDescription: true } c) await Model.RunAsync("rewrite-cue", new[] { "--segment", c.Id }); }
+    private async void ChangedNarration_Click(object sender, RoutedEventArgs e)
+    {
+        if (!Model.HasApiKey) { await ShowSettingsSectionAsync(2); return; }
+        await Model.RunAsync("synthesize-tts", new[] { "--changed" });
+    }
+    private async void NarrateSelected_Click(object sender, RoutedEventArgs e)
+    {
+        if (!Model.HasApiKey) { await ShowSettingsSectionAsync(2); return; }
+        if (Segments.SelectedItem is Segment { IsDescription: true } c) await Model.RunAsync("synthesize-tts", new[] { "--segment", c.Id });
+    }
+    private async void Rewrite_Click(object sender, RoutedEventArgs e)
+    {
+        if (!Model.HasApiKey) { await ShowSettingsSectionAsync(2); return; }
+        if (Segments.SelectedItem is Segment { IsDescription: true } c) await Model.RunAsync("rewrite-cue", new[] { "--segment", c.Id });
+    }
     private void PreviewNarration_Click(object sender, RoutedEventArgs e)
     { if (Segments.SelectedItem is Segment { Audio: { } audio } && Model.Project is { } p) { speech.Source = MediaSource.CreateFromUri(new Uri(p.Resolve(audio))); speech.Play(); } }
     private async void DeleteNarration_Click(object sender, RoutedEventArgs e)
     { if (Segments.SelectedItem is Segment { IsDescription: true } c && await Confirm("Delete narration", "Remove this segment's saved audio?", "Delete")) { speech.Source = null; await Model.RunAsync("delete-segment-audio", new[] { "--segment", c.Id }); } }
     private async void Ocr_Click(object sender, RoutedEventArgs e)
     {
+        if (!Model.HasApiKey) { await ShowSettingsSectionAsync(2); return; }
         video.Pause();
         var result = await Model.RunAsync("capture-frame", new[] { "--timestamp", Position.ToString(CultureInfo.InvariantCulture) });
         var evt = result.FirstOrDefault(x => x.Data.TryGetProperty("screenText", out _));
@@ -857,7 +891,10 @@ public sealed partial class MainWindow : Window
         { speech.Source = null; await Model.RunAsync("delete-generated", boxes.Where(b => b.IsChecked == true).SelectMany(b => new[] { "--component", (string)b.Tag })); }
     }
     private async void Export_Click(object sender, RoutedEventArgs e)
-    { if (Model.Project != null && Model.Idle) await ShowDialogAsync(new Views.ExportDialog(Model), 1040, 760); }
+    {
+        if (!Model.HasApiKey) { await ShowSettingsSectionAsync(2); return; }
+        if (Model.Project != null && Model.Idle) await ShowDialogAsync(new Views.ExportDialog(Model), 1040, 760);
+    }
     private async void ExportOpen_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not string path || Model.Project is not { } p || !p.Exports.Contains(path)) return;
@@ -923,7 +960,7 @@ public sealed partial class MainWindow : Window
         var settings = new Views.SettingsDialog(Model, this, section);
         openSettings = settings;
         try { await settings.ShowAsync(); }
-        finally { openSettings = null; ApplyTheme(); Model.Reload(); }
+        finally { openSettings = null; ApplyTheme(); Model.Reload(); UpdateApiKeyUi(); }
     }
     private async void Settings_Click(object sender, RoutedEventArgs e)
     {
@@ -1017,5 +1054,78 @@ public sealed partial class MainWindow : Window
             SummaryText.Text = text;
             RenderMarkdown(text);
         }
+    }
+
+    private async void OpenGeminiSettings_Click(object sender, RoutedEventArgs e) => await ShowSettingsSectionAsync(2);
+
+    private void UpdateApiKeyUi()
+    {
+        var hasKey = Model.HasApiKey;
+        var isInvalid = Model.IsApiKeyInvalid;
+        var canUseAi = hasKey && Model.Idle;
+
+        if (ApiKeyWarningBar != null)
+        {
+            ApiKeyWarningBar.IsOpen = !hasKey;
+            if (isInvalid)
+            {
+                ApiKeyWarningBar.Severity = InfoBarSeverity.Error;
+                ApiKeyWarningBar.Title = "Gemini API Key Invalid";
+                ApiKeyWarningBar.Message = "Your Gemini API key was rejected by Google as invalid. Enter a valid API key in Settings to enable AI features.";
+            }
+            else
+            {
+                ApiKeyWarningBar.Severity = InfoBarSeverity.Warning;
+                ApiKeyWarningBar.Title = "Gemini API Key Required";
+                ApiKeyWarningBar.Message = "Enter your personal Gemini API key in Settings to generate transcripts, summaries, audio descriptions, and narration.";
+            }
+        }
+
+        if (GalleryImport != null)
+        {
+            GalleryImport.IsEnabled = canUseAi;
+            ToolTipService.SetToolTip(GalleryImport, hasKey ? "Create a new local video or YouTube project" : (isInvalid ? "Your Gemini API key is invalid. Update your API key in Settings to create new projects." : "Configure your Gemini API key in Settings to create new projects."));
+        }
+
+        if (GalleryEmptyButton != null)
+        {
+            GalleryEmptyButton.IsEnabled = canUseAi;
+            ToolTipService.SetToolTip(GalleryEmptyButton, hasKey ? "Create a new project" : (isInvalid ? "Your Gemini API key is invalid. Update your API key in Settings to create new projects." : "Configure your Gemini API key in Settings to create new projects."));
+        }
+
+        if (GalleryEmptySubtitle != null)
+        {
+            GalleryEmptySubtitle.Text = hasKey
+                ? "Import a video or add a public YouTube link to begin."
+                : (isInvalid
+                    ? "Your Gemini API key is invalid or rejected by Google. Enter a valid API key in Settings (Gemini API tab) to enable features."
+                    : "A Gemini API key is required to create projects and enable AI features. Enter your API key in Settings (Gemini API tab).");
+        }
+
+        var missingKeyTooltip = isInvalid
+            ? "Your Gemini API key is invalid. Enter a valid API key in Settings (Gemini API tab) to enable this feature."
+            : "Configure your Gemini API key in Settings (Gemini API tab) to enable this feature.";
+
+        void SetAiButton(Button? button, string normalTooltip = "")
+        {
+            if (button == null) return;
+            button.IsEnabled = canUseAi;
+            ToolTipService.SetToolTip(button, hasKey ? (string.IsNullOrEmpty(normalTooltip) ? null : normalTooltip) : missingKeyTooltip);
+        }
+
+        SetAiButton(GenerateCurrent);
+        SetAiButton(InspectorGenerate);
+        SetAiButton(OverviewGenerateAllAudioButton, "Generate narration audio for all Audio Description cues using configured TTS");
+        SetAiButton(OverviewGenerateChangedAudioButton, "Generate narration audio only for missing or modified cues");
+        SetAiButton(InspectorSynthesizeNarrationButton, "Synthesize narration audio for all cues");
+        SetAiButton(InspectorSynthesizeChangedButton, "Synthesize narration audio for modified cues");
+        SetAiButton(InspectorNarrateSelectedButton, "Synthesize narration audio for the selected description segment");
+        SetAiButton(InspectorRewriteButton, "Rewrite description text to fit available gap duration");
+        SetAiButton(PrepareAnalysisButton, "Upload and prepare video on Gemini File API for full multimodal analysis");
+        SetAiButton(RefreshAnalysisButton, "Refresh Gemini video analysis availability status");
+        SetAiButton(OcrFrameButton, "Read on-screen text from current video frame using Gemini vision");
+        SetAiButton(InspectorExportButton, "Open export dialog to produce video, audio, or caption outputs");
+
+        UpdateMenuKeyStates(hasKey);
     }
 }

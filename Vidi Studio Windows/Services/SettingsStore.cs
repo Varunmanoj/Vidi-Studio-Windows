@@ -23,6 +23,17 @@ public sealed class SettingsStore
             if (item.Value is JsonObject child && target[item.Key] is JsonObject existing) Merge(existing, child);
             else target[item.Key] = item.Value?.DeepClone();
     }
+    public bool HasApiKey => !string.IsNullOrWhiteSpace(Get("apiKey")) && Get("apiKeyValid", "true") != "false" && Get("apiPlan", "") != "invalid";
+    public bool IsApiKeyInvalid => !string.IsNullOrWhiteSpace(Get("apiKey")) && (Get("apiKeyValid", "") == "false" || Get("apiPlan", "") == "invalid");
+    public string ApiPlan => Get("apiPlan", "auto");
+    public void Reload()
+    {
+        var defaultsPath = Path.Combine(AppContext.BaseDirectory, "engine", "ai-defaults.json");
+        Data = File.Exists(defaultsPath) ? JsonNode.Parse(File.ReadAllText(defaultsPath))!.AsObject() : new();
+        if (File.Exists(ConfigPath)) Merge(Data, JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject());
+        if (Data["ttsMode"] == null || Get("ttsMode") == "system") Set("ttsMode", "windows-core");
+        if (Data["libraryPath"] == null) Set("libraryPath", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VidiStudio Projects"));
+    }
     public string Get(string key, string fallback = "") => Data[key]?.GetValue<string>() ?? fallback;
     public void Set(string key, string value) => Data[key] = value;
     public double Number(string key, double fallback = 1) => Data[key]?.GetValue<double>() ?? fallback;

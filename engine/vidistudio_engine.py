@@ -481,25 +481,198 @@ def client_and_model(kind, project=None):
     return gemini_client(), model
 
 
-def list_models():
-    client = gemini_client()
+def check_api_key():
+    try:
+        client = gemini_client()
+    except Exception as exc:
+        err_msg = safe_error(exc)
+        emit('Gemini API key is invalid',
+             keyValid=False,
+             plan='invalid',
+             detectedPlan='invalid',
+             error=err_msg,
+             modelCount=0,
+             models=[])
+        return
+
     try:
         available = []
-        for model in client.models.list():
-            name = str(getattr(model, 'name', '') or '').removeprefix('models/')
-            actions = [str(action) for action in (getattr(model, 'supported_actions', None) or [])]
-            normalized_actions = {action.replace('_', '').lower() for action in actions}
-            if not name.startswith('gemini-') or 'generatecontent' not in normalized_actions:
-                continue
-            available.append({
-                'name': name,
-                'displayName': str(getattr(model, 'display_name', '') or name),
-                'supportedActions': actions,
-            })
+        has_pro = False
+        try:
+            for model in client.models.list():
+                name = str(getattr(model, 'name', '') or '').removeprefix('models/')
+                actions = [str(action) for action in (getattr(model, 'supported_actions', None) or [])]
+                normalized_actions = {action.replace('_', '').lower() for action in actions}
+                if not name.startswith('gemini-') or 'generatecontent' not in normalized_actions:
+                    continue
+                available.append({
+                    'name': name,
+                    'displayName': str(getattr(model, 'display_name', '') or name),
+                    'supportedActions': actions,
+                })
+                if 'pro' in name.lower():
+                    has_pro = True
+        except Exception as exc:
+            err_text = safe_error(exc)
+            is_invalid = any(token in err_text.upper() for token in ('API_KEY_INVALID', 'API KEY NOT VALID', 'INVALID_ARGUMENT', 'PERMISSION_DENIED', 'UNAUTHENTICATED', 'FORBIDDEN'))
+            user_msg = 'The provided Gemini API key is invalid or rejected by Google.' if is_invalid else f'Could not verify API key: {err_text}'
+            cfg_file = Path(os.environ.get('VIDISTUDIO_CONFIG', config_path()))
+            if cfg_file.exists():
+                try:
+                    current_cfg = json.loads(cfg_file.read_text(encoding='utf-8'))
+                    current_cfg['apiKeyValid'] = False
+                    current_cfg['apiPlan'] = 'invalid'
+                    atomic_json(cfg_file, current_cfg)
+                except Exception:
+                    pass
+            emit('Gemini API key is invalid',
+                 keyValid=False,
+                 plan='invalid',
+                 detectedPlan='invalid',
+                 error=user_msg,
+                 modelCount=0,
+                 models=[])
+            return
+
         available.sort(key=lambda model: (model['displayName'].lower(), model['name']))
         if not available:
-            raise ValueError('No compatible Gemini models are available for this API key.')
-        emit('Available Gemini models loaded', models=available)
+            emit('No compatible Gemini models are available for this API key.',
+                 keyValid=False,
+                 plan='invalid',
+                 detectedPlan='invalid',
+                 error='No compatible Gemini models are available for this API key.',
+                 modelCount=0,
+                 models=[])
+            return
+
+        detected_plan = 'paid' if has_pro else 'free'
+        plan = detected_plan
+
+        # Automatically select the optimal values based on the detected plan without requiring user to choose:
+        transcribe_model = 'gemini-3.5-transcribe' if any(m['name'] == 'gemini-3.5-transcribe' for m in available) else 'gemini-3.8-flash'
+        tts_model = 'gemini-3.8-flash-lite-tts' if any(m['name'] == 'gemini-3.8-flash-lite-tts' for m in available) else 'gemini-3.8-flash'
+        summary_model = ('gemini-3.8-pro' if any(m['name'] == 'gemini-3.8-pro' for m in available) else 'gemini-3.8-flash') if plan == 'paid' else 'gemini-3.8-flash'
+        ad_model = ('gemini-3.8-pro' if any(m['name'] == 'gemini-3.8-pro' for m in available) else 'gemini-3.8-flash') if plan == 'paid' else 'gemini-3.8-flash'
+        video_processing = 'agentic' if plan == 'paid' else 'standard'
+
+        selected_models = {
+            'transcript': transcribe_model,
+            'summary': summary_model,
+            'audio_descriptions': ad_model,
+            'text_rewrite': 'gemini-3.8-flash',
+            'tts_audio': tts_model,
+            'screen_text': 'gemini-3.8-flash',
+            'youtube_transcript': 'gemini-3.8-flash',
+        }
+
+        cfg_file = Path(os.environ.get('VIDISTUDIO_CONFIG', config_path()))
+        if cfg_file.exists():
+            try:
+                current_cfg = json.loads(cfg_file.read_text(encoding='utf-8'))
+                current_cfg['apiPlan'] = plan
+                current_cfg['apiKeyValid'] = True
+                current_cfg['videoProcessing'] = video_processing
+                current_cfg.setdefault('models', {}).update(selected_models)
+                atomic_json(cfg_file, current_cfg)
+            except Exception:
+                pass
+
+        emit('Gemini API key check succeeded',
+             keyValid=True,
+             plan=plan,
+             detectedPlan=detected_plan,
+             hasPro=has_pro,
+             modelCount=len(available),
+             selectedModels=selected_models,
+             selectedVideoProcessing=video_processing,
+             models=available)
+    finally:
+        client.close()
+
+
+def list_models():
+    try:
+        client = gemini_client()
+    except Exception as exc:
+        err_msg = safe_error(exc)
+        emit('Gemini API key is invalid',
+             keyValid=False,
+             plan='invalid',
+             detectedPlan='invalid',
+             error=err_msg,
+             modelCount=0,
+             models=[])
+        return
+
+    try:
+        available = []
+        has_pro = False
+        try:
+            for model in client.models.list():
+                name = str(getattr(model, 'name', '') or '').removeprefix('models/')
+                actions = [str(action) for action in (getattr(model, 'supported_actions', None) or [])]
+                normalized_actions = {action.replace('_', '').lower() for action in actions}
+                if not name.startswith('gemini-') or 'generatecontent' not in normalized_actions:
+                    continue
+                available.append({
+                    'name': name,
+                    'displayName': str(getattr(model, 'display_name', '') or name),
+                    'supportedActions': actions,
+                })
+                if 'pro' in name.lower():
+                    has_pro = True
+        except Exception as exc:
+            err_text = safe_error(exc)
+            is_invalid = any(token in err_text.upper() for token in ('API_KEY_INVALID', 'API KEY NOT VALID', 'INVALID_ARGUMENT', 'PERMISSION_DENIED', 'UNAUTHENTICATED', 'FORBIDDEN'))
+            user_msg = 'The provided Gemini API key is invalid or rejected by Google.' if is_invalid else f'Could not list Gemini models: {err_text}'
+            emit('Gemini API key is invalid',
+                 keyValid=False,
+                 plan='invalid',
+                 detectedPlan='invalid',
+                 error=user_msg,
+                 modelCount=0,
+                 models=[])
+            return
+
+        available.sort(key=lambda model: (model['displayName'].lower(), model['name']))
+        if not available:
+            emit('No compatible Gemini models are available for this API key.',
+                 keyValid=False,
+                 plan='invalid',
+                 detectedPlan='invalid',
+                 error='No compatible Gemini models are available for this API key.',
+                 modelCount=0,
+                 models=[])
+            return
+
+        detected_plan = 'paid' if has_pro else 'free'
+        plan = detected_plan
+
+        transcribe_model = 'gemini-3.5-transcribe' if any(m['name'] == 'gemini-3.5-transcribe' for m in available) else 'gemini-3.8-flash'
+        tts_model = 'gemini-3.8-flash-lite-tts' if any(m['name'] == 'gemini-3.8-flash-lite-tts' for m in available) else 'gemini-3.8-flash'
+        summary_model = ('gemini-3.8-pro' if any(m['name'] == 'gemini-3.8-pro' for m in available) else 'gemini-3.8-flash') if plan == 'paid' else 'gemini-3.8-flash'
+        ad_model = ('gemini-3.8-pro' if any(m['name'] == 'gemini-3.8-pro' for m in available) else 'gemini-3.8-flash') if plan == 'paid' else 'gemini-3.8-flash'
+        video_processing = 'agentic' if plan == 'paid' else 'standard'
+
+        selected_models = {
+            'transcript': transcribe_model,
+            'summary': summary_model,
+            'audio_descriptions': ad_model,
+            'text_rewrite': 'gemini-3.8-flash',
+            'tts_audio': tts_model,
+            'screen_text': 'gemini-3.8-flash',
+            'youtube_transcript': 'gemini-3.8-flash',
+        }
+
+        emit('Available Gemini models loaded',
+             models=available,
+             keyValid=True,
+             plan=plan,
+             detectedPlan=detected_plan,
+             hasPro=has_pro,
+             modelCount=len(available),
+             selectedModels=selected_models,
+             selectedVideoProcessing=video_processing)
     finally:
         client.close()
 
@@ -2490,7 +2663,7 @@ def export_original_video(root, project, replace_existing=False):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command',choices=['reanalyze-transcript-segment','undo-transcript','redo-transcript','reanalyze-segment','prepare-analysis-video','check-video-availability','cleanup-project','clear-generated','delete-generated','delete-segment-audio','list-models','list-voices','preview-tts','import-video','probe-video','generate-thumbnails','transcribe','generate-summary','generate-ad-cues','synthesize-tts','export-final-video','export-selectable-video','export-original-video','export-closed-audio-description-video','export-open-audio-description-video','export-closed-caption-video','export-dual-closed-caption-video','export-open-caption-video','export-original-audio','export-described-audio','export-youtube-described-audio','export-youtube-original-audio','download-youtube-audio','export-hls','save-cues','save-segments','save-summary','doctor',*parity.COMMANDS])
+    parser.add_argument('command',choices=['check-api-key','reanalyze-transcript-segment','undo-transcript','redo-transcript','reanalyze-segment','prepare-analysis-video','check-video-availability','cleanup-project','clear-generated','delete-generated','delete-segment-audio','list-models','list-voices','preview-tts','import-video','probe-video','generate-thumbnails','transcribe','generate-summary','generate-ad-cues','synthesize-tts','export-final-video','export-selectable-video','export-original-video','export-closed-audio-description-video','export-open-audio-description-video','export-closed-caption-video','export-dual-closed-caption-video','export-open-caption-video','export-original-audio','export-described-audio','export-youtube-described-audio','export-youtube-original-audio','download-youtube-audio','export-hls','save-cues','save-segments','save-summary','doctor',*parity.COMMANDS])
     parser.add_argument('--project',type=Path); parser.add_argument('--video',type=Path); parser.add_argument('--library',type=Path); parser.add_argument('--input',type=Path)
     parser.add_argument('--media-format', choices=VIDEO_EXPORT_FORMATS + AUDIO_EXPORT_FORMATS)
     parser.add_argument('--content',choices=['transcript','summary','descriptions','combined'],default='descriptions'); parser.add_argument('--url'); parser.add_argument('--name'); parser.add_argument('--timestamp',type=float,default=0); parser.add_argument('--duration',type=float); parser.add_argument('--segment'); parser.add_argument('--format',choices=['srt','vtt','txt','json','md'],default='srt'); parser.add_argument('--changed',action='store_true'); parser.add_argument('--start-stage',default='transcribe')
@@ -2509,6 +2682,8 @@ def main():
         except Exception as error:
             raise youtube_audio.write_worker_error(args.output, error) from None
         return
+    if args.command == 'check-api-key':
+        check_api_key(); return
     if args.command == 'preview-tts':
         preview_tts(args.output, args.text); return
     if args.command == 'list-models':

@@ -69,4 +69,30 @@ class Parity(unittest.TestCase):
             self.assertNotIn(deleted,project['exports'])
             self.assertFalse((root/deleted).exists())
             self.assertFalse((root/'metadata/trash').exists())
+
+    def test_invalid_api_key_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / 'config.json'
+            cfg.write_text(json.dumps({'apiKey': 'invalid_test_key_12345'}), encoding='utf-8')
+            old_cfg = engine.os.environ.get('VIDISTUDIO_CONFIG')
+            engine.os.environ['VIDISTUDIO_CONFIG'] = str(cfg)
+            events = []
+            old_emit = engine.emit
+            engine.emit = lambda msg, **kwargs: events.append((msg, kwargs))
+            try:
+                engine.check_api_key()
+                self.assertTrue(len(events) > 0)
+                msg, data = events[-1]
+                self.assertFalse(data.get('keyValid'))
+                self.assertEqual(data.get('plan'), 'invalid')
+                saved = json.loads(cfg.read_text(encoding='utf-8'))
+                self.assertFalse(saved.get('apiKeyValid'))
+                self.assertEqual(saved.get('apiPlan'), 'invalid')
+            finally:
+                engine.emit = old_emit
+                if old_cfg is not None:
+                    engine.os.environ['VIDISTUDIO_CONFIG'] = old_cfg
+                else:
+                    engine.os.environ.pop('VIDISTUDIO_CONFIG', None)
+
 if __name__=='__main__':unittest.main()

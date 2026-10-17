@@ -24,6 +24,9 @@ public sealed class ProcessingException : Exception
             "YouTube audio duration does not match this project. The video may have been edited. Refresh its transcript and descriptions, or import the matching original video.",
             "No edit history in this direction.", "No summary available to export.", "No text available to export."
         }) if (diagnostic == message) return message;
+        if (diagnostic.Contains("API_KEY_INVALID", StringComparison.OrdinalIgnoreCase) ||
+            (diagnostic.Contains("invalid", StringComparison.OrdinalIgnoreCase) && diagnostic.Contains("API key", StringComparison.OrdinalIgnoreCase)))
+            return "The Gemini API key is invalid or rejected by Google. Please enter a valid API key in Settings.";
         if (diagnostic.Contains("API key", StringComparison.OrdinalIgnoreCase)) return "Check your Gemini API key in Settings, save it, and retry. Existing results remain saved.";
         if (diagnostic.Contains("already", StringComparison.OrdinalIgnoreCase) && diagnostic.Contains("export", StringComparison.OrdinalIgnoreCase))
             return "An export of this type already exists. Select Replace existing in the Export dialog to replace it.";

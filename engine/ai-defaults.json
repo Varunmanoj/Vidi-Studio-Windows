@@ -48,5 +48,6 @@
     }
   },
   "apiVersion": "v1beta",
-  "videoProcessing": "agentic"
+  "videoProcessing": "agentic",
+  "apiPlan": "auto"
 }

@@ -185,6 +185,37 @@ public sealed partial class MainWindow
     {
         MainMenu.Items.Clear();
         foreach (var menu in editor ? editorMenus : galleryMenus) MainMenu.Items.Add(menu);
+        UpdateMenuKeyStates(Model.HasApiKey);
+    }
+
+    private void UpdateMenuKeyStates(bool hasKey)
+    {
+        var aiItems = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Import video",
+            "New YouTube project",
+            "Export",
+            "Analyze video",
+            "Generate transcript",
+            "Generate summary",
+            "Generate descriptions",
+            "Read frame text",
+            "Rewrite description to fit",
+            "Generate all narration",
+            "Generate changed narration"
+        };
+
+        foreach (var menu in galleryMenus.Concat(editorMenus))
+        {
+            foreach (var item in menu.Items.OfType<MenuFlyoutItem>())
+            {
+                if (aiItems.Contains(item.Text))
+                {
+                    item.IsEnabled = hasKey && Model.Idle;
+                    ToolTipService.SetToolTip(item, hasKey ? null : "Enter your Gemini API key in Settings (Gemini API tab) to enable.");
+                }
+            }
+        }
     }
     private void OpenEditor_Click(object sender, RoutedEventArgs e) { if (Model.Project is { } p) App.OpenWindow(p.Folder); }
     private void ProjectGrid_Changed(object sender, SelectionChangedEventArgs e) { if (ProjectGrid.SelectedItem is StudioProject p) Model.Open(p.Folder); }
@@ -209,14 +240,15 @@ public sealed partial class MainWindow
         var project = element?.DataContext as StudioProject ?? (sender as ListViewBase)?.SelectedItem as StudioProject;
         if (project == null) return;
         var menu = new MenuFlyout();
-        void Item(string label, RoutedEventHandler handler)
+        void Item(string label, RoutedEventHandler handler, bool enabled = true)
         {
-            var item = new MenuFlyoutItem { Text = label, Icon = Views.MenuIcons.Create(label) };
+            var item = new MenuFlyoutItem { Text = label, Icon = Views.MenuIcons.Create(label), IsEnabled = Model.Idle && enabled };
             item.Click += (s, args) => { Model.Open(project.Folder); handler(s, args); }; menu.Items.Add(item);
         }
-        Item("Open editor in new window", OpenEditor_Click); Item("Export", Export_Click); Item("Open project folder", Reveal_Click);
-        foreach (var pair in new[] { ("Analyze video", "analyze"), ("Generate transcript", "transcribe"), ("Generate summary", "generate-summary"), ("Generate descriptions", "generate-ad-cues"), ("Refresh video details", "prepare-video") })
-            Item(pair.Item1, (_, args) => Command_Click(new Button { Tag = pair.Item2 }, args));
+        Item("Open editor in new window", OpenEditor_Click); Item("Export", Export_Click, Model.HasApiKey); Item("Open project folder", Reveal_Click);
+        foreach (var pair in new[] { ("Analyze video", "analyze"), ("Generate transcript", "transcribe"), ("Generate summary", "generate-summary"), ("Generate descriptions", "generate-ad-cues") })
+            Item(pair.Item1, (_, args) => Command_Click(new Button { Tag = pair.Item2 }, args), Model.HasApiKey);
+        Item("Refresh video details", (_, args) => Command_Click(new Button { Tag = "prepare-video" }, args));
         Item("Rename", Rename_Click); Item("Move to Recycle Bin", DeleteProject_Click);
         if (pointerRequest) menu.ShowAt((FrameworkElement)sender, point);
         else menu.ShowAt(element ?? (FrameworkElement)sender);
@@ -246,8 +278,8 @@ public sealed partial class MainWindow
             if (segment.IsDescription)
             {
                 Item("Preview narration", PreviewNarration_Click, segment.AudioReady);
-                Item("Generate narration", NarrateSelected_Click);
-                Item("Rewrite description to fit", Rewrite_Click);
+                Item("Generate narration", NarrateSelected_Click, Model.HasApiKey);
+                Item("Rewrite description to fit", Rewrite_Click, Model.HasApiKey);
                 Item("Delete narration", DeleteNarration_Click, segment.Audio != null);
             }
             Item("Delete segment", async (_, _) =>
@@ -268,8 +300,8 @@ public sealed partial class MainWindow
             Item("Delete selected", DeleteSegments_Click, timedSection && Segments.SelectedItems.Count > 0);
             Item("Undo", Undo_Click, timedSection);
             Item("Redo", Redo_Click, timedSection);
-            Item("Generate all narration", (_, args) => Command_Click(new Button { Tag = "synthesize-tts" }, args), Model.Project?.Cues.Count > 0);
-            Item("Generate changed narration", ChangedNarration_Click, Model.Project?.Cues.Count > 0);
+            Item("Generate all narration", (_, args) => Command_Click(new Button { Tag = "synthesize-tts" }, args), Model.HasApiKey && Model.Project?.Cues.Count > 0);
+            Item("Generate changed narration", ChangedNarration_Click, Model.HasApiKey && Model.Project?.Cues.Count > 0);
         }
         return menu;
     }

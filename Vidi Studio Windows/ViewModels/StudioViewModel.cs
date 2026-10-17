@@ -27,6 +27,9 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public bool IsExporting { get; private set; }
     private string status = "Import a video or open an existing project to begin.";
     public string Status { get => status; private set { status = value; Changed(); } }
+    public bool HasApiKey => Settings.HasApiKey;
+    public bool IsApiKeyInvalid => Settings.IsApiKeyInvalid;
+    public string ApiPlan => Settings.ApiPlan;
     private CancellationTokenSource? operation;
     public event PropertyChangedEventHandler? PropertyChanged;
     public event EventHandler? ProjectReloaded;
@@ -35,6 +38,10 @@ public sealed class StudioViewModel : INotifyPropertyChanged
 
     public void Reload(string search = "", string source = "all")
     {
+        Settings.Reload();
+        Changed(nameof(HasApiKey));
+        Changed(nameof(IsApiKeyInvalid));
+        Changed(nameof(ApiPlan));
         var library = Settings.Get("libraryPath");
         Directory.CreateDirectory(library);
         var folders = Directory.EnumerateDirectories(library).Concat(externalFolders).Distinct(StringComparer.OrdinalIgnoreCase);

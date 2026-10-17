@@ -25,6 +25,7 @@ public sealed partial class MainWindow
         if (ProjectCount == null) return;
         ProjectCount.Text = $"{Model.Projects.Count} projects";
         GalleryEmpty.Visibility = Model.Projects.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateApiKeyUi();
     }
     private void ShowGallery_Click(object sender, RoutedEventArgs e)
     {
@@ -147,6 +148,7 @@ public sealed partial class MainWindow
             AddInfo(OriginStatistics, origin.Item2, p.Cues.Count(c => c.Origin == origin.Item1).ToString());
         OriginStatistics.Children.Add(new TextBlock { Text = "AI-generated and modified segments are counted separately. Manual descriptions stay manual when edited.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
         OverviewVoice.Text = "Speech engine: " + Model.Settings.Get("ttsMode", "windows-core") + "\nVoice: " + (Model.Settings.Get("ttsMode") == "gemini" ? Model.Settings.Get("geminiVoice", "Kore") : string.IsNullOrEmpty(Model.Settings.Get("systemVoice")) ? "System default" : Model.Settings.Get("systemVoice").Split('\\').Last());
+        UpdateApiKeyUi();
     }
     private static void AddInfo(StackPanel panel, string label, string value)
     {

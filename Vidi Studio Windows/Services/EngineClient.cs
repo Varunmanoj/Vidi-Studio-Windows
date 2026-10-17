@@ -69,8 +69,12 @@ public sealed class EngineClient
             cancellation.ThrowIfCancellationRequested();
             if (process.ExitCode != 0)
             {
-                Log(string.Join(Environment.NewLine, events.ConvertAll(e => e.Message)) + Environment.NewLine + await errors);
-                throw new ProcessingException(events.Count > 0 ? events[^1].Message : "");
+                var stderr = await errors;
+                Log(string.Join(Environment.NewLine, events.ConvertAll(e => e.Message)) + Environment.NewLine + stderr);
+                var errDiagnostic = events.Count > 0 && !string.IsNullOrWhiteSpace(events[^1].Message)
+                    ? events[^1].Message
+                    : (!string.IsNullOrWhiteSpace(stderr) ? stderr : "");
+                throw new ProcessingException(errDiagnostic);
             }
             return events;
         }

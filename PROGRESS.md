@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-18 — Readable, compact narration issue table (1.0.71 / 1.0.71.0)
+
+Fixed the extremely narrow Reason column in the Windows narration dialog. Widening the host window alone had left WinUI's inner ContentDialog at its default width cap, consuming almost all available content width with the four fixed columns. The issue dialog now overrides the inner width/resource cap (up to 960 XAML pixels, bounded by the owner window) and uses a 1040-pixel host. The table has a finite viewport-driven width, a 760-pixel minimum, tighter column gaps, compact non-wrapping numeric columns, and at least 300 pixels for Reason. Reasons retain full selectable/wrapped text; smaller windows can horizontally scroll instead of collapsing words into a vertical strip. The summary heading also uses a wrapping grid rather than an unconstrained horizontal stack. Healthy/empty reports retain a smaller dialog.
+
+Validation: source review against the existing Export dialog width-resource pattern; combined-workspace menu checker passed, Windows Python menu/parity suites passed all 11 tests, version synchronization reports 1.0.71 / 1.0.71.0 (Mac build 72), and `git diff --check` passed. Native WinUI compilation and visual/DPI/resizing checks require Windows and were not run on this macOS host. No processing or menu behavior changed.
+
 ## 2026-10-18 — Mac-reference desktop menus and enforced future parity (1.0.70 / 1.0.70.0)
 
 Replaced the old flat menu builder with `MainWindow.Menus.cs`. Windows now mirrors Mac's File/View/Playback/Project/Help layout. Project owns Editor Sections, Segments, Analysis, and Narration; Playback owns Transcript Overlay and Summary Reading. Includes Stop Video, caption cycling and explicit modes, summary play/resume/pause/stop and read-from-start/selection actions, section-specific editing/add/delete/history operations, narration issue review and deletion. Titles reflect visible panels, current section, generation status, and edit mode; narration/follow/overlay modes expose checked icons. Keyboard accelerators and menu clicks share the same guarded dispatcher, rather than separate handlers that could bypass availability checks.

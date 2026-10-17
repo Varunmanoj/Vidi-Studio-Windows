@@ -36,10 +36,13 @@ public sealed partial class MainWindow
     private Task<ContentDialogResult> ShowNarrationFailuresAsync(NarrationFailureReport report)
     {
         var healthy = report.Failures.Count == 0;
-        var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(0, 0, 0, 8) };
-        heading.Children.Add(new FontIcon { Glyph = healthy ? "\uE73E" : "\uE7BA" });
-        heading.Children.Add(new TextBlock { Text = report.Detail, TextWrapping = TextWrapping.Wrap, MaxWidth = 580 });
-        var panel = new StackPanel { Spacing = 6 };
+        var heading = new Grid { ColumnSpacing = 10, Margin = new Thickness(0, 0, 0, 8) };
+        heading.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        heading.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        heading.Children.Add(new FontIcon { Glyph = healthy ? "\uE73E" : "\uE7BA", VerticalAlignment = VerticalAlignment.Top });
+        var detail = new TextBlock { Text = report.Detail, TextWrapping = TextWrapping.Wrap };
+        Grid.SetColumn(detail, 1); heading.Children.Add(detail);
+        var panel = new StackPanel { Spacing = 6, MinWidth = healthy ? 0 : 760 };
         panel.Children.Add(heading);
         if (!healthy)
         {
@@ -51,18 +54,19 @@ public sealed partial class MainWindow
         }
         Grid MakeRow(string index, string start, string end, string duration, string reason, bool header, NarrationFailure? failure = null)
         {
-            var row = new Grid { ColumnSpacing = 18 };
+            var row = new Grid { ColumnSpacing = 12 };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(124) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(124) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(88) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 300 });
             void Add(int column, string text, string? accessibleName = null)
             {
                 var block = new TextBlock
                 {
                     Text = text,
-                    TextWrapping = TextWrapping.Wrap,
+                    TextWrapping = column == 4 ? TextWrapping.Wrap : TextWrapping.NoWrap,
+                    VerticalAlignment = VerticalAlignment.Top,
                     IsTextSelectionEnabled = !header && column == 4,
                     FontWeight = header ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
                     Opacity = header ? 0.7 : 1
@@ -86,9 +90,18 @@ public sealed partial class MainWindow
         var scroll = new ScrollViewer
         {
             Content = panel, MaxHeight = 420,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            HorizontalScrollMode = ScrollMode.Disabled
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollMode = ScrollMode.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto
         };
+        if (!healthy)
+        {
+            // A finite table width makes the star-sized Reason column wrap at
+            // the viewport width. Preserve a readable table on smaller windows
+            // via horizontal scrolling instead of squeezing reasons into a sliver.
+            panel.Width = 760;
+            scroll.SizeChanged += (_, args) => panel.Width = Math.Max(760, args.NewSize.Width - 16);
+        }
         var dialog = new ContentDialog
         {
             Title = report.Title,
@@ -96,7 +109,18 @@ public sealed partial class MainWindow
             CloseButtonText = "Close",
             DefaultButton = ContentDialogButton.Close
         };
-        return ShowDialogAsync(dialog, 900, 540);
+        if (!healthy)
+        {
+            // The default ContentDialog cap applies even inside a wider host
+            // window. Override the inner dialog too, as the Export dialog does.
+            dialog.Width = Math.Min(960, Math.Max(0, (Root.XamlRoot?.Size.Width ?? 1060) - 100));
+            dialog.MinWidth = 0;
+            dialog.MaxWidth = 960;
+            dialog.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            dialog.Resources["ContentDialogMinWidth"] = 0.0;
+            dialog.Resources["ContentDialogMaxWidth"] = 960.0;
+        }
+        return ShowDialogAsync(dialog, healthy ? 680 : 1040, healthy ? 420 : 580);
     }
     private void RefreshGalleryCount()
     {

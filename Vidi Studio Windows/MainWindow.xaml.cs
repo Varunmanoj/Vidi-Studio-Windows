@@ -318,6 +318,8 @@ public sealed partial class MainWindow : Window
         readback.TickWordProgress();
         TimeLabel.Text = $"{TimeSpan.FromSeconds(Position):hh\\:mm\\:ss\\.fff}";
         var playing = Model.Project.IsYouTube ? youtubePlaying : video.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
+        var targetInterval = playing ? TimeSpan.FromMilliseconds(40) : TimeSpan.FromMilliseconds(150);
+        if (timer.Interval != targetInterval) timer.Interval = targetInterval;
         UpdatePlaybackControls();
         var cue = Model.Project.Cues.FirstOrDefault(c => c.Start <= Position && Position < c.End);
         UpdateCaptions();
@@ -362,12 +364,14 @@ public sealed partial class MainWindow : Window
     private void UpdateTimelineCursor()
     {
         var duration = Model.Project?.Duration ?? 0;
-        ThumbnailCursor.Visibility = double.IsFinite(duration) && duration > 0 ? Visibility.Visible : Visibility.Collapsed;
-        if (double.IsFinite(duration) && duration > 0 && ThumbnailScrubSurface.ActualWidth > 0)
+        var hasDuration = double.IsFinite(duration) && duration > 0;
+        ThumbnailCursor.Visibility = hasDuration ? Visibility.Visible : Visibility.Collapsed;
+        TimelineCursor.Visibility = hasDuration ? Visibility.Visible : Visibility.Collapsed;
+        if (hasDuration && ThumbnailScrubSurface.ActualWidth > 0)
             Canvas.SetLeft(ThumbnailCursor, Math.Clamp(Position / duration * ThumbnailScrubSurface.ActualWidth - ThumbnailCursor.Width / 2,
                 0, Math.Max(0, ThumbnailScrubSurface.ActualWidth - ThumbnailCursor.Width)));
         var width = TimelineScrubSurface.ActualWidth;
-        if (duration <= 0 || width <= 0) return;
+        if (!hasDuration || width <= 0) return;
         Microsoft.UI.Xaml.Controls.Canvas.SetLeft(TimelineCursor, Math.Clamp(Math.Clamp(Position / duration, 0, 1) * width - TimelineCursor.Width / 2, 0, Math.Max(0, width - TimelineCursor.Width)));
     }
     private void ScrubTimeline(FrameworkElement surface, PointerRoutedEventArgs e)

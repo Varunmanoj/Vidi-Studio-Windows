@@ -1,5 +1,18 @@
 # Windows migration progress
 
+## 2026-10-17 — Red playhead styling and playback synchronization (1.0.6 / 1.0.6.0)
+
+Enhanced timeline playhead visibility and video playback synchronization across timeline tracks:
+- High-contrast red playhead:
+  - Updated `ThumbnailCursor` to 12px width with a 3px red `#E52B32` border and 12×12 ellipse handle with a 2.5px red stroke, matching the Mac thumbnail playhead.
+  - Aligned `TimelineCursor` visibility with `ThumbnailCursor` visibility in `MainWindow.xaml.cs` so both cursor elements stay in lockstep with video duration readiness.
+  - Added XAML resource overrides to `Slider x:Name="Playhead"` (`SliderThumbBackground`, `SliderThumbBackgroundPointerOver`, `SliderThumbBackgroundPressed`, `SliderTrackValueFill`, etc.) in `MainWindow.xaml` so the timeline scrubber thumb and active progress track render in matching high-contrast red `#E52B32`, `#FF3B42`, and `#C02026`.
+- Smooth playback synchronization:
+  - In `Timer_Tick`, dynamically sets `timer.Interval = playing ? TimeSpan.FromMilliseconds(40) : TimeSpan.FromMilliseconds(150);` so that video playback updates the playhead position smoothly at 25 fps without lag or stutter, while dropping back to 150ms when idle or paused.
+- App and package versions advanced to 1.0.6 / 1.0.6.0.
+
+Validation: Visual and XAML review against Mac implementation; `git diff --check` passed.
+
 ## 2026-10-04 — Timeline thumbnail parity (1.0.5 / 1.0.5.0)
 
 Compared the actual Mac `thumbnailTrack` in ContentView.swift with Windows. Windows used fixed 88×50 thumbnail buttons in a scrolling row, leaving a YouTube project's single cover image at the left. Replaced that row with a full-width 42-pixel strip, equal-width cells, 2-pixel gaps, and centered image-fill cropping, matching Mac. Image brushes keep the crop inside each cell rather than letting WinUI Image content overflow its viewport. The strip resizes with the editor/inspector and aligns with transcript/description tracks. Added the synchronized thumbnail playhead and pointer click/drag seeking across the entire strip; the existing video-position slider remains available for keyboard seeking. Empty or missing thumbnails show a placeholder.

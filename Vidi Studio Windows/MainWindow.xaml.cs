@@ -39,6 +39,7 @@ public sealed partial class MainWindow : Window
     private bool youtubeMetadataUpdating;
     private bool ready;
     private Segment? highlightedSegment;
+    private Segment? previewingSegment;
     private readonly HashSet<Segment> activeSegmentRows = new();
     private bool timelineScrubbing;
     private bool playheadDragging;
@@ -55,6 +56,7 @@ public sealed partial class MainWindow : Window
         App.ThemeChanged += ApplyThemeFromApp;
         BuildMenus();
         video.PlaybackSession.PlaybackStateChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdatePlaybackControls);
+        speech.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(ClearSegmentPreview);
         InitializePresentation();
         UpdateApiKeyUi();
         Root.ActualThemeChanged += (_, _) => UpdateTitleBarTheme(Root.ActualTheme);
@@ -249,7 +251,7 @@ public sealed partial class MainWindow : Window
         RenderSection();
         RenderTimelineThumbnails(p);
         if (loadedProject == p.Folder) return;
-        loadedProject = p.Folder; activeCue = null; speech.Pause(); narrationPlayer.Pause(); video.Pause(); onDeviceNarrator.Stop(); readback.Stop();
+        loadedProject = p.Folder; activeCue = null; previewingSegment = null; speech.Pause(); narrationPlayer.Pause(); video.Pause(); onDeviceNarrator.Stop(); readback.Stop();
         Player.Visibility = p.IsYouTube ? Visibility.Collapsed : Visibility.Visible;
         YouTubePlayer.Visibility = p.IsYouTube ? Visibility.Visible : Visibility.Collapsed;
         try
@@ -314,6 +316,7 @@ public sealed partial class MainWindow : Window
         Overview.Visibility = Visibility.Collapsed;
         ExportList.Visibility = Section.SelectedIndex == 5 ? Visibility.Visible : Visibility.Collapsed;
         Segments.ItemsSource = Section.SelectedIndex switch { 0 => p.Transcript, 2 => p.Cues, _ => p.Transcript.Concat(p.Cues).OrderBy(c => c.Start).ToList() };
+        RefreshEditingRows();
         SummaryText.Text = p.Summary;
         RenderMarkdown(p.Summary);
         if (!summaryEditMode)
@@ -493,10 +496,11 @@ public sealed partial class MainWindow : Window
         else if (video.PlaybackSession.PlaybackState == MediaPlaybackState.Playing) video.Pause(); else video.Play();
         UpdatePlaybackControls();
     }
+    private bool IsVideoPlaying() => Model.Project?.IsYouTube == true ? youtubePlaying
+        : Model.Project != null && video.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
     private void UpdatePlaybackControls()
     {
-        var playing = Model.Project?.IsYouTube == true ? youtubePlaying :
-            Model.Project != null && video.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
+        var playing = IsVideoPlaying();
         VideoPlayPauseButton.Content = playing ? "\uE769" : "\uE768";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(VideoPlayPauseButton, playing ? "Pause video" : "Play video");
         ToolTipService.SetToolTip(VideoPlayPauseButton, playing ? "Pause video" : "Play video");
@@ -897,7 +901,7 @@ public sealed partial class MainWindow : Window
         if (Model.Project is not { } p || Segments.SelectedItems.Count == 0) return;
         if (!await Confirm("Delete selected segments", "Selected text and associated narration are permanently removed. Existing exports are invalidated.", "Delete")) return;
         var selected = Segments.SelectedItems.Cast<Segment>().Select(c => c.Id).ToHashSet();
-        speech.Source = null;
+        StopSegmentPreview();
         await Model.SaveSegmentsAsync(p.Transcript.Where(c => !selected.Contains(c.Id)), p.Cues.Where(c => !selected.Contains(c.Id)));
     }
     private async void Undo_Click(object sender, RoutedEventArgs e) => await Model.RunAsync(Section.SelectedIndex == 0 ? "undo-transcript" : "undo-cues");
@@ -918,9 +922,18 @@ public sealed partial class MainWindow : Window
         if (Segments.SelectedItem is Segment { IsDescription: true } c) await Model.RunAsync("rewrite-cue", new[] { "--segment", c.Id });
     }
     private void PreviewNarration_Click(object sender, RoutedEventArgs e)
-    { if (Segments.SelectedItem is Segment { Audio: { } audio } && Model.Project is { } p) { speech.Source = MediaSource.CreateFromUri(new Uri(p.Resolve(audio))); speech.Play(); } }
+    {
+        if (Segments.SelectedItem is Segment { Audio: { } audio } segment && Model.Project is { } p)
+        {
+            StopSegmentPreview();
+            previewingSegment = segment;
+            segment.IsPreviewing = true;
+            speech.Source = MediaSource.CreateFromUri(new Uri(p.Resolve(audio)));
+            speech.Play();
+        }
+    }
     private async void DeleteNarration_Click(object sender, RoutedEventArgs e)
-    { if (Segments.SelectedItem is Segment { IsDescription: true } c && await Confirm("Delete narration", "Remove this segment's saved audio?", "Delete")) { speech.Source = null; await Model.RunAsync("delete-segment-audio", new[] { "--segment", c.Id }); } }
+    { if (Segments.SelectedItem is Segment { IsDescription: true } c && await Confirm("Delete narration", "Remove this segment's saved audio?", "Delete")) { StopSegmentPreview(); await Model.RunAsync("delete-segment-audio", new[] { "--segment", c.Id }); } }
     private async void Ocr_Click(object sender, RoutedEventArgs e)
     {
         if (!Model.HasApiKey) { await ShowSettingsSectionAsync(2); return; }
@@ -937,7 +950,7 @@ public sealed partial class MainWindow : Window
         boxes[2].Checked += (_, _) => { boxes[3].IsChecked = true; boxes[3].IsEnabled = false; };
         boxes[2].Unchecked += (_, _) => boxes[3].IsEnabled = true;
         if (await ShowDialogAsync(Dialog("Permanently delete generated content", panel, "Delete selected")) == ContentDialogResult.Primary)
-        { speech.Source = null; await Model.RunAsync("delete-generated", boxes.Where(b => b.IsChecked == true).SelectMany(b => new[] { "--component", (string)b.Tag })); }
+        { StopSegmentPreview(); await Model.RunAsync("delete-generated", boxes.Where(b => b.IsChecked == true).SelectMany(b => new[] { "--component", (string)b.Tag })); }
     }
     private async void Export_Click(object sender, RoutedEventArgs e)
     {
@@ -1035,7 +1048,7 @@ public sealed partial class MainWindow : Window
         catch (OperationCanceledException) { }
         catch (Exception ex) { await ShowError(ex); }
     }
-    private void StopSpeech_Click(object sender, RoutedEventArgs e) { readback.Stop(); speech.Pause(); speech.Source = null; }
+    private void StopSpeech_Click(object sender, RoutedEventArgs e) { readback.Stop(); StopSegmentPreview(); }
 
     private bool summaryEditMode;
 
@@ -1155,19 +1168,28 @@ public sealed partial class MainWindow : Window
             ? "Your Gemini API key is invalid. Enter a valid API key in Settings (Gemini API tab) to enable this feature."
             : "Configure your Gemini API key in Settings (Gemini API tab) to enable this feature.";
 
-        void SetAiButton(Button? button, string normalTooltip = "")
+        var project = Model.Project;
+        var hasChangedNarration = project?.HasChangedNarration == true;
+        var hasMissingOrChangedNarration = project?.HasMissingOrChangedNarration == true;
+
+        void SetAiButton(Button? button, string normalTooltip = "", bool available = true, string? unavailableTooltip = null)
         {
             if (button == null) return;
-            button.IsEnabled = canUseAi;
-            ToolTipService.SetToolTip(button, hasKey ? (string.IsNullOrEmpty(normalTooltip) ? null : normalTooltip) : missingKeyTooltip);
+            button.IsEnabled = canUseAi && available;
+            var tooltip = !hasKey ? missingKeyTooltip
+                : !available ? (unavailableTooltip ?? normalTooltip)
+                : normalTooltip;
+            ToolTipService.SetToolTip(button, string.IsNullOrEmpty(tooltip) ? null : tooltip);
         }
 
         SetAiButton(GenerateCurrent);
         SetAiButton(InspectorGenerate);
         SetAiButton(OverviewGenerateAllAudioButton, "Generate narration audio for all Audio Description cues using configured TTS");
-        SetAiButton(OverviewGenerateChangedAudioButton, "Generate narration audio only for missing or modified cues");
+        SetAiButton(OverviewGenerateChangedAudioButton, "Generate narration audio only for missing or modified cues",
+            hasMissingOrChangedNarration, "Every description already has current narration audio.");
         SetAiButton(InspectorSynthesizeNarrationButton, "Synthesize narration audio for all cues");
-        SetAiButton(InspectorSynthesizeChangedButton, "Synthesize narration audio for modified cues");
+        SetAiButton(InspectorSynthesizeChangedButton, "Synthesize narration audio for modified cues",
+            hasChangedNarration, "Edit a description after its narration is generated to enable this.");
         SetAiButton(InspectorNarrateSelectedButton, "Synthesize narration audio for the selected description segment");
         SetAiButton(InspectorRewriteButton, "Rewrite description text to fit available gap duration");
         SetAiButton(PrepareAnalysisButton, "Upload and prepare video on Gemini File API for full multimodal analysis");

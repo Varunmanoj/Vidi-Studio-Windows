@@ -1252,10 +1252,14 @@ def synthesize(root,p,segment=None,changed=False):
     cfg = config()
     signature = narration_signature(cfg,p)
     (root/'audio-description').mkdir(parents=True, exist_ok=True)
+    failures = []
+    generated = 0
+    attempted = 0
     for i,c in enumerate(cues):
         if segment and c['id']!=segment: continue
         if changed and c.get('audioText')==c['text'] and c.get('audioSettings')==signature and c.get('audio') and local(root,c['audio']).exists(): continue
-        emit(f'Creating narration for description {i+1} of {len(cues)}', progress=i/len(cues))
+        attempted += 1
+        emit(f'Creating narration for description {i+1} of {len(cues)}', progress=(attempted-1)/max(1,len(cues)))
         name = 'audio-description/' + str(uuid.uuid4()) + '.wav'
         output = root/name
         previous_audio = c.get('audio')
@@ -1287,14 +1291,26 @@ def synthesize(root,p,segment=None,changed=False):
                 raise ValueError(narration_fit_error_message(i+1, actual, c['end']-c['start']))
             c['audio'] = name; c['audioText'] = c['text']; c['audioDuration'] = actual; c['audioSettings'] = signature
             p['cues'] = cues; save(root,p)
+            generated += 1
             if previous_audio and previous_audio != name and not any(item.get('audio') == previous_audio for item in cues):
                 local(root, previous_audio).unlink(missing_ok=True)
-        except Exception:
+        except ProcessingCancelled:
             output.unlink(missing_ok=True)
             raise
+        except Exception as exc:
+            # A single description must not stop the rest of the narration run.
+            output.unlink(missing_ok=True)
+            failures.append({'index': i+1, 'start': round(c['start'],3), 'end': round(c['end'],3),
+                             'duration': round(c['end']-c['start'],3), 'reason': safe_error(exc)})
+            emit(f'Description {i+1} needs attention: {safe_error(exc)}', warning=True)
         finally:
             textfile.unlink(missing_ok=True)
             if raw is not None: raw.unlink(missing_ok=True)
+    if failures:
+        emit(f'Narration finished. {len(failures)} of {attempted} description(s) need attention.',
+             narrationFailures=failures, narrationGenerated=generated)
+    else:
+        emit(f'Narration finished for {generated} description(s).', narrationGenerated=generated)
 
 
 def narration_audio_is_usable(root, cue):

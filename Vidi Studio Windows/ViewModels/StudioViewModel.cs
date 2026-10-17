@@ -71,8 +71,11 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public bool IsApiKeyInvalid => Settings.IsApiKeyInvalid;
     public string ApiPlan => Settings.ApiPlan;
     private CancellationTokenSource? operation;
+    private NarrationFailureReport? pendingNarrationFailures;
     public event PropertyChangedEventHandler? PropertyChanged;
     public event EventHandler? ProjectReloaded;
+    /// <summary>Raised after a narration run finished with one or more skipped descriptions.</summary>
+    public event EventHandler<NarrationFailureReport>? NarrationFailures;
     public StudioViewModel() { Engine = new(Settings); }
     private void Changed([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
 
@@ -143,10 +146,30 @@ public sealed class StudioViewModel : INotifyPropertyChanged
                 var hasFraction = e.Data.TryGetProperty("exportProgress", out var progress);
                 double? fraction = hasFraction && progress.ValueKind == System.Text.Json.JsonValueKind.Number && progress.TryGetDouble(out var number) ? number : null;
                 exportSession?.Update(e.Message, fraction, hasFraction);
+                if (e.Data.TryGetProperty("narrationFailures", out var failures) && failures.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    var report = new NarrationFailureReport
+                    {
+                        Generated = e.Data.TryGetProperty("narrationGenerated", out var generated) && generated.ValueKind == System.Text.Json.JsonValueKind.Number ? generated.GetInt32() : 0
+                    };
+                    foreach (var item in failures.EnumerateArray())
+                    {
+                        report.Failures.Add(new NarrationFailure
+                        {
+                            Index = item.TryGetProperty("index", out var index) && index.ValueKind == System.Text.Json.JsonValueKind.Number ? index.GetInt32() : 0,
+                            Start = item.TryGetProperty("start", out var start) && start.ValueKind == System.Text.Json.JsonValueKind.Number ? start.GetDouble() : 0,
+                            End = item.TryGetProperty("end", out var end) && end.ValueKind == System.Text.Json.JsonValueKind.Number ? end.GetDouble() : 0,
+                            Duration = item.TryGetProperty("duration", out var duration) && duration.ValueKind == System.Text.Json.JsonValueKind.Number ? duration.GetDouble() : 0,
+                            Reason = item.TryGetProperty("reason", out var reason) && reason.ValueKind == System.Text.Json.JsonValueKind.String ? reason.GetString() ?? "" : ""
+                        });
+                    }
+                    if (report.Failures.Count > 0) pendingNarrationFailures = report;
+                }
             }), operation.Token);
             var imported = result.LastOrDefault(e => e.Data.TryGetProperty("project", out _));
             var folder = imported?.Data.GetProperty("project").GetString() ?? Project?.Folder;
             if (folder != null && File.Exists(Path.Combine(folder, "project.json"))) Open(folder);
+            if (pendingNarrationFailures is { } narrationReport) { pendingNarrationFailures = null; NarrationFailures?.Invoke(this, narrationReport); }
             Status = "Complete";
             return result;
         }

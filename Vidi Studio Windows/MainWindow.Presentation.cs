@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -18,7 +19,65 @@ public sealed partial class MainWindow
     private void InitializePresentation()
     {
         Model.Projects.CollectionChanged += (_, _) => RefreshGalleryCount();
+        Model.NarrationFailures += OnNarrationFailures;
         Root.Loaded += (_, _) => { galleryReady = true; RefreshGalleryCount(); };
+    }
+    private async void OnNarrationFailures(object? sender, NarrationFailureReport report)
+    {
+        try { await ShowNarrationFailuresAsync(report); }
+        catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
+    }
+    private Task<ContentDialogResult> ShowNarrationFailuresAsync(NarrationFailureReport report)
+    {
+        var panel = new StackPanel { Spacing = 6 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"Narration finished for {report.Generated} description{(report.Generated == 1 ? "" : "s")}. {report.Failures.Count} could not be created.",
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 8)
+        });
+        string Timecode(double seconds)
+        {
+            var total = Math.Max(0, seconds);
+            return $"{total / 60:00}:{total % 60:00.00}";
+        }
+        Grid MakeRow(string start, string end, string duration, string reason, bool header)
+        {
+            var row = new Grid { ColumnSpacing = 18 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(84) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(84) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(84) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            void Add(int column, string text)
+            {
+                var block = new TextBlock
+                {
+                    Text = text,
+                    TextWrapping = TextWrapping.Wrap,
+                    FontWeight = header ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
+                    Opacity = header ? 0.7 : 1
+                };
+                if (column < 3) block.FontFamily = new FontFamily("Consolas");
+                Windows.UI.Xaml.Automation.AutomationProperties.SetName(block, text);
+                Grid.SetColumn(block, column);
+                row.Children.Add(block);
+            }
+            Add(0, start); Add(1, end); Add(2, duration); Add(3, reason);
+            return row;
+        }
+        panel.Children.Add(MakeRow("Start", "End", "Duration", "Reason", true));
+        foreach (var failure in report.Failures)
+            panel.Children.Add(MakeRow(Timecode(failure.Start), Timecode(failure.End),
+                $"{failure.Duration:0.00}s", string.IsNullOrEmpty(failure.Reason) ? "Unknown error" : failure.Reason, false));
+        var scroll = new ScrollViewer { Content = panel, MaxHeight = 360, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto };
+        var dialog = new ContentDialog
+        {
+            Title = "Some descriptions need attention",
+            Content = scroll,
+            CloseButtonText = "Close",
+            DefaultButton = ContentDialogButton.Close
+        };
+        return ShowDialogAsync(dialog, 680, 420);
     }
     private void RefreshGalleryCount()
     {
@@ -41,6 +100,7 @@ public sealed partial class MainWindow
     private void StopProjectPlayback()
     {
         video.Pause(); speech.Pause(); narrationPlayer.Pause(); onDeviceNarrator.Stop(); readback.Stop();
+        ClearSegmentPreview();
         activeCue = null;
         _ = PauseYouTubeAsync();
         UpdatePlaybackControls();
@@ -112,12 +172,44 @@ public sealed partial class MainWindow
         editMode = !editMode; EditModeButton.Content = editMode ? "Done" : "Edit";
         EditToolbar.Visibility = editMode ? Visibility.Visible : Visibility.Collapsed;
         Segments.SelectionMode = editMode ? ListViewSelectionMode.Multiple : ListViewSelectionMode.None;
+        RefreshEditingRows();
     }
-    private void SegmentSeek_Click(object sender, RoutedEventArgs e) { if (((FrameworkElement)sender).Tag is Segment segment) Seek(segment.Start); }
+    private void RefreshEditingRows()
+    {
+        if (Segments.ItemsSource is IEnumerable<Segment> rows)
+            foreach (var row in rows) row.IsEditing = editMode;
+    }
+    private void SegmentPlay_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).Tag is not Segment segment) return;
+        // Preserve the play state: keep playing when the video was already
+        // playing, otherwise just move the playhead to the segment start.
+        var resume = IsVideoPlaying();
+        Seek(segment.Start);
+        if (resume) StartVideoPlayback();
+    }
     private void SegmentPreview_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).Tag is not Segment segment || Model.Project is not { } p) return;
-        if (segment.AudioReady && segment.Audio != null) { speech.Source = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(p.Resolve(segment.Audio))); speech.Play(); }
+        if (segment.IsPreviewing) { StopSegmentPreview(); return; }
+        if (!segment.AudioReady || segment.Audio == null) return;
+        StopSegmentPreview();
+        previewingSegment = segment;
+        segment.IsPreviewing = true;
+        speech.Source = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(p.Resolve(segment.Audio)));
+        speech.Play();
+    }
+    private void StopSegmentPreview()
+    {
+        speech.Pause();
+        speech.Source = null;
+        ClearSegmentPreview();
+    }
+    private void ClearSegmentPreview()
+    {
+        if (previewingSegment is not { } previous) return;
+        previous.IsPreviewing = false;
+        previewingSegment = null;
     }
     private void UpdateSectionPresentation()
     {
@@ -140,8 +232,8 @@ public sealed partial class MainWindow
         OverviewStatistics.Children.Clear(); OriginStatistics.Children.Clear();
         AddInfo(OverviewStatistics, "Description segments", p.Cues.Count.ToString());
         AddInfo(OverviewStatistics, "Narration audio ready", p.Cues.Count(c => c.AudioReady).ToString());
-        AddInfo(OverviewStatistics, "Audio needs updating", p.Cues.Count(c => c.Audio != null && c.AudioText != c.Text).ToString());
-        AddInfo(OverviewStatistics, "Audio missing", p.Cues.Count(c => !c.AudioReady && (c.Audio == null || c.AudioText == c.Text)).ToString());
+        AddInfo(OverviewStatistics, "Audio needs updating", p.Cues.Count(c => c.AudioNeedsRegeneration).ToString());
+        AddInfo(OverviewStatistics, "Audio missing", p.Cues.Count(c => !c.AudioReady && !c.AudioNeedsRegeneration).ToString());
         AddInfo(OverviewStatistics, "Description time", TimeSpan.FromSeconds(p.Cues.Sum(c => c.End - c.Start)).ToString(@"mm\:ss"));
         AddInfo(OverviewStatistics, "Spoken transcript segments", p.Transcript.Count.ToString());
         foreach (var origin in new[] { ("ai", "AI-generated"), ("ai_modified", "AI-generated · modified"), ("manual", "Manually added"), ("unknown", "Origin unknown") })

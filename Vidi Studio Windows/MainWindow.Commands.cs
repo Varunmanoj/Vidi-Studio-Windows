@@ -211,8 +211,13 @@ public sealed partial class MainWindow
             {
                 if (aiItems.Contains(item.Text))
                 {
-                    item.IsEnabled = hasKey && Model.Idle;
-                    ToolTipService.SetToolTip(item, hasKey ? null : "Enter your Gemini API key in Settings (Gemini API tab) to enable.");
+                    var available = item.Text.Equals("Generate changed narration", StringComparison.OrdinalIgnoreCase)
+                        ? Model.Project?.HasChangedNarration == true
+                        : true;
+                    item.IsEnabled = hasKey && Model.Idle && available;
+                    ToolTipService.SetToolTip(item, !hasKey
+                        ? "Enter your Gemini API key in Settings (Gemini API tab) to enable."
+                        : available ? null : "Edit a description after its narration is generated to enable this.");
                 }
             }
         }
@@ -301,7 +306,7 @@ public sealed partial class MainWindow
             Item("Undo", Undo_Click, timedSection);
             Item("Redo", Redo_Click, timedSection);
             Item("Generate all narration", (_, args) => Command_Click(new Button { Tag = "synthesize-tts" }, args), Model.HasApiKey && Model.Project?.Cues.Count > 0);
-            Item("Generate changed narration", ChangedNarration_Click, Model.HasApiKey && Model.Project?.Cues.Count > 0);
+            Item("Generate changed narration", ChangedNarration_Click, Model.HasApiKey && Model.Project?.HasChangedNarration == true);
         }
         return menu;
     }

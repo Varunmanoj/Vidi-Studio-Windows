@@ -270,6 +270,43 @@ class Validation(unittest.TestCase):
             'AD segment 1 takes 14.8s but has 10.4s. Shorten its text or extend its gap.',
         )
 
+    def test_one_failing_description_does_not_stop_the_rest(self):
+        with tempfile.TemporaryDirectory(prefix='vidistudio-test-') as temp:
+            root = Path(temp)
+            project = {
+                'id': 'narration', 'name': 'Narration sample', 'duration': 30,
+                'source': 'source.mp4', 'transcript': [],
+                'cues': [
+                    {'id': 'a', 'start': 1, 'end': 4, 'text': 'First description.'},
+                    {'id': 'b', 'start': 5, 'end': 6, 'text': 'This one fails.'},
+                    {'id': 'c', 'start': 7, 'end': 10, 'text': 'Third description.'},
+                ],
+            }
+            engine.save(root, project)
+            (root/'source.mp4').write_bytes(b'placeholder')
+            events = []
+            def fake_speech(output, text, proj):
+                if text == 'This one fails.':
+                    raise ValueError('Gemini returned no audio. Check the TTS model and selected voice in Settings.')
+                output.write_bytes(b'RIFF\x00\x00\x00\x00WAVE')
+            with patch.object(engine, 'emit', lambda message, **values: events.append(dict(message=message, **values))), \
+                 patch.object(engine, 'config', lambda: {'ttsMode': 'gemini', 'geminiVoice': 'Kore'}), \
+                 patch.object(engine, 'gemini_speech', fake_speech), \
+                 patch.object(engine, 'probe', lambda path: {'format': {'duration': 2.0}}):
+                engine.synthesize(root, project)
+            saved = json.loads((root/'project.json').read_text())
+            by_id = {c['id']: c for c in saved['cues']}
+            self.assertTrue(by_id['a'].get('audio') and by_id['c'].get('audio'))
+            self.assertNotIn('audio', by_id['b'])
+            report = next((e for e in events if 'narrationFailures' in e), None)
+            self.assertIsNotNone(report)
+            self.assertEqual(report['narrationGenerated'], 2)
+            self.assertEqual(len(report['narrationFailures']), 1)
+            failure = report['narrationFailures'][0]
+            self.assertEqual(failure['index'], 2)
+            self.assertEqual((failure['start'], failure['end'], failure['duration']), (5.0, 6.0, 1.0))
+            self.assertIn('no audio', failure['reason'].lower())
+
     def test_description_generation_requires_transcript_and_summary(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

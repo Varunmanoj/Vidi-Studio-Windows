@@ -23,7 +23,7 @@
      <Border Background="#550078D4" CornerRadius="6" Visibility="{Binding IsActive, Converter={StaticResource VisibleWhenTrue}}" IsHitTestVisible="False"/>
     <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Padding="8,16,8,16">
      <Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="72"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions>
-      <Button Content="&#xE768;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" Padding="4" VerticalAlignment="Top" Tag="{Binding}" Click="SegmentSeek_Click" AutomationProperties.Name="{Binding SeekLabel}"/>
+      <Button Content="&#xE768;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" Padding="4" VerticalAlignment="Top" Tag="{Binding}" Click="SegmentPlay_Click" AutomationProperties.Name="{Binding PlayLabel}" ToolTipService.ToolTip="{Binding PlayLabel}"/>
       <StackPanel Grid.Column="1"><TextBlock Text="{Binding StartLabel}"/><TextBlock Text="{Binding EndLabel}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
       <StackPanel Grid.Column="2" Spacing="8">
        <TextBlock Text="{Binding KindLabel}" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Visibility="{Binding ShowKind, Converter={StaticResource VisibleWhenTrue}}"/>
@@ -31,7 +31,7 @@
        <TextBlock Text="{Binding AudioStatus}" FontWeight="SemiBold" Visibility="{Binding IsDescription, Converter={StaticResource VisibleWhenTrue}}"><TextBlock.Foreground><SolidColorBrush Color="{Binding AudioStatusColor}"/></TextBlock.Foreground></TextBlock>
        <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="16"/>
       </StackPanel>
-      <StackPanel Grid.Column="3" Spacing="6" VerticalAlignment="Top"><Button Content="&#xE70F;" FontFamily="Segoe Fluent Icons" Tag="{Binding}" Click="SegmentEditRow_Click" Padding="7" AutomationProperties.Name="Edit segment" ToolTipService.ToolTip="Edit segment"/><Button Content="&#xE768;" FontFamily="Segoe Fluent Icons" Tag="{Binding}" Click="SegmentPreview_Click" Padding="7" Visibility="{Binding IsDescription, Converter={StaticResource VisibleWhenTrue}}" AutomationProperties.Name="{Binding PreviewLabel}" IsEnabled="{Binding AudioReady}"/><Button Content="&#xE712;" FontFamily="Segoe Fluent Icons" Tag="{Binding}" Click="SegmentMore_Click" Padding="7" AutomationProperties.Name="More segment options" ToolTipService.ToolTip="More segment options"/></StackPanel>
+      <StackPanel Grid.Column="3" Spacing="6" VerticalAlignment="Top"><Button Content="&#xE70F;" FontFamily="Segoe Fluent Icons" Tag="{Binding}" Click="SegmentEditRow_Click" Padding="7" Visibility="{Binding IsEditing, Converter={StaticResource VisibleWhenTrue}}" AutomationProperties.Name="Edit segment" ToolTipService.ToolTip="Edit segment"/><Button Content="{Binding PreviewGlyph}" FontFamily="Segoe Fluent Icons" Tag="{Binding}" Click="SegmentPreview_Click" Padding="7" Visibility="{Binding IsDescription, Converter={StaticResource VisibleWhenTrue}}" AutomationProperties.Name="{Binding PreviewLabel}" ToolTipService.ToolTip="{Binding PreviewLabel}" IsEnabled="{Binding AudioReady}"/><Button Content="&#xE712;" FontFamily="Segoe Fluent Icons" Tag="{Binding}" Click="SegmentMore_Click" Padding="7" AutomationProperties.Name="More segment options" ToolTipService.ToolTip="More segment options"/></StackPanel>
      </Grid>
     </Border>
     </Grid>

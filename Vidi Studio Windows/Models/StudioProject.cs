@@ -34,11 +34,33 @@ public sealed class Segment : INotifyPropertyChanged
     [JsonIgnore] public string Timing => $"{TimeSpan.FromSeconds(Start):hh\\:mm\\:ss\\.fff} – {TimeSpan.FromSeconds(End):hh\\:mm\\:ss\\.fff}";
     [JsonIgnore] public bool IsDescription { get; set; }
     [JsonIgnore] public bool ShowKind { get; set; }
+    private bool isEditing;
+    [JsonIgnore]
+    public bool IsEditing
+    {
+        get => isEditing;
+        set { if (isEditing == value) return; isEditing = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEditing))); }
+    }
+    private bool isPreviewing;
+    [JsonIgnore]
+    public bool IsPreviewing
+    {
+        get => isPreviewing;
+        set
+        {
+            if (isPreviewing == value) return;
+            isPreviewing = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsPreviewing)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PreviewGlyph)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PreviewLabel)));
+        }
+    }
     [JsonIgnore] public string ProjectFolder { get; set; } = "";
     [JsonIgnore] public string StartLabel => TimeSpan.FromSeconds(Start).ToString(Start >= 3600 ? @"hh\:mm\:ss" : @"mm\:ss");
     [JsonIgnore] public string EndLabel => TimeSpan.FromSeconds(End).ToString(End >= 3600 ? @"hh\:mm\:ss" : @"mm\:ss");
-    [JsonIgnore] public string SeekLabel => $"Seek to {StartLabel}: {Text}";
-    [JsonIgnore] public string PreviewLabel => $"Preview narration at {StartLabel}: {Text}";
+    [JsonIgnore] public string PlayLabel => $"Play video from {StartLabel}: {Text}";
+    [JsonIgnore] public string PreviewLabel => isPreviewing ? $"Stop narration at {StartLabel}: {Text}" : $"Preview narration at {StartLabel}: {Text}";
+    [JsonIgnore] public string PreviewGlyph => isPreviewing ? "\uE769" : "\uE767";
     [JsonIgnore] public string KindLabel => IsDescription ? "Audio description" : "Transcript";
     public string Origin { get; set; } = "unknown";
     [JsonIgnore] public string OriginLabel => Origin switch { "ai" => "AI-generated", "ai_modified" => "AI-generated · modified", "manual" => "Manually added", _ => "Origin unknown" };
@@ -51,8 +73,16 @@ public sealed class Segment : INotifyPropertyChanged
             try { return File.Exists(new StudioProject { Folder = ProjectFolder }.Resolve(Audio)); } catch (InvalidDataException) { return false; }
         }
     }
-    [JsonIgnore] public string AudioStatus => AudioReady ? "Synchronized audio generated" : Audio != null && AudioText != Text ? "Narration needs updating" : "Narration not generated";
+    [JsonIgnore] public string AudioStatus => AudioReady ? "Synchronized audio generated" : AudioNeedsRegeneration ? "Narration needs updating" : "Narration not generated";
     [JsonIgnore] public string AudioStatusColor => AudioReady ? "#209447" : "#9B701B";
+    [JsonIgnore] public bool AudioNeedsRegeneration
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(Audio) || AudioText == Text || string.IsNullOrEmpty(ProjectFolder)) return false;
+            try { return File.Exists(new StudioProject { Folder = ProjectFolder }.Resolve(Audio)); } catch (InvalidDataException) { return false; }
+        }
+    }
     public override string ToString() => $"{Timing}  {(IsDescription ? "AD: " : "")}{Text}";
 }
 
@@ -86,6 +116,8 @@ public sealed class StudioProject
     [JsonIgnore] public bool HasTranscript => Transcript.Count > 0;
     [JsonIgnore] public bool HasSummary => !string.IsNullOrWhiteSpace(Summary);
     [JsonIgnore] public bool HasNarration => Cues.Any(c => c.AudioReady);
+    [JsonIgnore] public bool HasChangedNarration => Cues.Any(c => c.AudioNeedsRegeneration);
+    [JsonIgnore] public bool HasMissingOrChangedNarration => Cues.Any(c => c.AudioNeedsRegeneration || !c.AudioReady);
     [JsonIgnore] public bool HasLocalSource
     {
         get { try { return !IsYouTube && !string.IsNullOrEmpty(Source) && File.Exists(Resolve(Source)); } catch (Exception) { return false; } }
@@ -148,4 +180,21 @@ public sealed class StudioProject
 public static class Json
 {
     public static readonly JsonSerializerOptions Options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true, WriteIndented = true };
+}
+
+/// <summary>A description the engine could not narrate during a generation run.</summary>
+public sealed class NarrationFailure
+{
+    public int Index { get; set; }
+    public double Start { get; set; }
+    public double End { get; set; }
+    public double Duration { get; set; }
+    public string Reason { get; set; } = "";
+}
+
+/// <summary>The summary shown after a narration run that skipped one or more descriptions.</summary>
+public sealed class NarrationFailureReport
+{
+    public int Generated { get; set; }
+    public List<NarrationFailure> Failures { get; set; } = new();
 }

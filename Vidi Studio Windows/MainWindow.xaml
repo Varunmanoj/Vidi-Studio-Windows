@@ -101,7 +101,7 @@
     <StackPanel x:Name="GalleryEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12"><SymbolIcon Symbol="Video"/><TextBlock Text="Your projects live here" Style="{ThemeResource SubtitleTextBlockStyle}"/><TextBlock x:Name="GalleryEmptySubtitle" Text="Import a video or add a public YouTube link to begin." Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><Button x:Name="GalleryEmptyButton" Content="New project" HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}" Click="NewProject_Click"/></StackPanel>
    </Grid>
   </Grid>
-  <ContentControl x:Name="EditorWorkspace" Grid.Row="3" Visibility="Collapsed" IsEnabled="{x:Bind Model.Idle, Mode=OneWay}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+  <ContentControl x:Name="EditorWorkspace" Grid.Row="3" Visibility="Collapsed" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
    <Grid><Grid.ColumnDefinitions><ColumnDefinition x:Name="LibraryColumn" Width="0"/><ColumnDefinition Width="*"/><ColumnDefinition x:Name="InspectorColumn" Width="310"/></Grid.ColumnDefinitions>
     <Grid x:Name="LibraryPanel" Visibility="Collapsed" Padding="12" RowSpacing="10" Background="{ThemeResource LayerFillColorAltBrush}">
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -195,8 +195,15 @@
        </Grid>
       </Grid>
       <ScrollViewer x:Name="OverviewPanel" Visibility="Collapsed"><StackPanel Padding="14,24" Spacing="22"><Grid ColumnSpacing="20"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><StackPanel Spacing="10"><TextBlock Text="Audio description overview" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel x:Name="OverviewStatistics" Spacing="16"/></Border></StackPanel><StackPanel Grid.Column="1" Spacing="10"><TextBlock Text="Description origins" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel x:Name="OriginStatistics" Spacing="16"/></Border></StackPanel></Grid><TextBlock x:Name="Overview" Visibility="Collapsed"/><TextBlock Text="Create narration audio" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel Spacing="12"><TextBlock x:Name="OverviewVoice" TextWrapping="Wrap"/><StackPanel Orientation="Horizontal" Spacing="8"><Button x:Name="OverviewGenerateAllAudioButton" Content="Generate All AD Audio" Tag="synthesize-tts" Click="Command_Click"/><Button x:Name="OverviewGenerateChangedAudioButton" Content="Generate Missing or Changed Audio" Click="ChangedNarration_Click"/></StackPanel><Button Content="Voice and Narration Settings" Tag="Narration" Click="Settings_Click"/></StackPanel></Border></StackPanel></ScrollViewer>
-      <ScrollViewer x:Name="ExportList" Visibility="Collapsed" AutomationProperties.Name="Created exports"><StackPanel x:Name="ExportGroups" Padding="14,18" Spacing="8"/></ScrollViewer>
-     </Grid>
+       <ScrollViewer x:Name="ExportList" Visibility="Collapsed" AutomationProperties.Name="Created exports"><StackPanel x:Name="ExportGroups" Padding="14,18" Spacing="8"/></ScrollViewer>
+       <Grid x:Name="SectionProcessingOverlay" Visibility="Collapsed" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Canvas.ZIndex="10">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14" MaxWidth="420">
+         <ProgressRing x:Name="SectionProcessingRing" Width="52" Height="52" IsActive="False" HorizontalAlignment="Center" AutomationProperties.Name="Section processing"/>
+         <TextBlock x:Name="SectionProcessingTitle" FontWeight="SemiBold" FontSize="16" TextAlignment="Center" HorizontalAlignment="Center" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+         <TextBlock x:Name="SectionProcessingStatus" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="13" TextAlignment="Center" HorizontalAlignment="Center" TextWrapping="Wrap"/>
+        </StackPanel>
+       </Grid>
+      </Grid>
      <ScrollViewer x:Name="EditToolbar" Grid.Row="4" Visibility="Collapsed" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"><StackPanel Orientation="Horizontal" Spacing="6" Padding="14,8"><Button Content="Add segment" Click="Add_Click"/><Button Content="Edit selected" Click="Edit_Click"/><Button Content="Delete selected" Click="DeleteSegments_Click"/><Button Content="Select all" Click="SelectAll_Click"/><Button Content="Deselect" Click="Deselect_Click"/><Button Content="Undo" Click="Undo_Click"/><Button Content="Redo" Click="Redo_Click"/></StackPanel></ScrollViewer>
     </Grid>
     <Grid Grid.Column="2" x:Name="InspectorPanel" Background="{ThemeResource LayerFillColorAltBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
@@ -212,9 +219,17 @@
     </Grid>
    </Grid>
   </ContentControl>
-  <Border x:Name="StatusFooter" Grid.Row="4" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="14,7">
-   <TextBlock Text="{x:Bind Model.Status, Mode=OneWay}" TextWrapping="Wrap" FontSize="12"/>
-  </Border>
+   <Border x:Name="StatusFooter" Grid.Row="4" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="14,7">
+    <Grid ColumnSpacing="10">
+     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <ProgressRing x:Name="StatusRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" VerticalAlignment="Center" AutomationProperties.Name="Processing"/>
+     <StackPanel Grid.Column="1" VerticalAlignment="Center">
+      <TextBlock x:Name="StatusStageTitle" FontWeight="SemiBold" FontSize="12" Visibility="Collapsed"/>
+      <TextBlock x:Name="StatusText" Text="{x:Bind Model.Status, Mode=OneWay}" TextWrapping="Wrap" FontSize="12"/>
+     </StackPanel>
+     <Button x:Name="CancelProcessingButton" Grid.Column="2" Content="Cancel processing" Click="Cancel_Click" Visibility="Collapsed" VerticalAlignment="Center"/>
+    </Grid>
+   </Border>
   <views:ProgressOverlay x:Name="ActiveExports" Grid.RowSpan="5"/>
  </Grid>
 </Window>

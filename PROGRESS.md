@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-17 — In-project processing indicators for Transcript, Summary, and Descriptions (1.0.63 / 1.0.63.0)
+
+Mirrors the macOS change. The centered progress card is no longer used for section analysis: `ProgressOverlay` keeps its card for narration and export runs (so those paths and their smoke checks are unchanged) and stays hidden while an analysis stage runs. Each editor section now shows progress in place. `StudioViewModel` tracks the active `ProcessingSection`, a `VideoPreparation` upload state, and an ordered `ProcessingPlan` derived from the command and `--start-stage`; `IsAnalyzing` and a short `ProcessingStageTitle` drive the chrome. A `SectionProcessingOverlay` in the editor shows a spinner with the stage title over the running section and a "Waiting to generate…" spinner over sections still queued, and the footer status bar (ring, stage title, live message, Cancel processing) appears only for analysis. Section keys are derived from the editor selector: Transcript = transcript, Summary = summary, Descriptions and AD Overview = descriptions, and AD Transcript = transcript + descriptions. The editor stays navigable during analysis (`EditorWorkspace.IsEnabled = Model.Idle || analyzing`) while other long operations keep the previous workspace lock. The footer Cancel button reuses the existing `Cancel_Click`.
+
+Validation: source review only. The C#/XAML changes were reviewed against the WinUI controls and existing handlers. No Windows build, UI smoke test, or engine run was performed in this macOS environment, so compilation and the ARM64/x64 native workflows remain outstanding and no parity claim is made. `git diff --check` passed and `python3 script/sync_version.py --check` reports 1.0.63 / 1.0.63.0.
+
 ## 2026-10-17 — Red playhead styling and playback synchronization (1.0.62 / 1.0.62.0)
 
 Enhanced timeline playhead visibility and video playback synchronization across timeline tracks:

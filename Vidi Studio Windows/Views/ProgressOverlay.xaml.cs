@@ -44,7 +44,9 @@ public sealed partial class ProgressOverlay : UserControl
     private void ExportsChanged(object? sender, NotifyCollectionChangedEventArgs e) => Update();
     private void Update()
     {
-        var processing = model?.Busy == true && !model.IsExporting;
+        // Analysis stages use inline per-section spinners and the status bar
+        // rather than this centered card; exports and other processing keep it.
+        var processing = model?.Busy == true && !model.IsExporting && model?.IsAnalyzing != true;
         var exporting = ExportSession.Active.Count > 0;
         Visibility = processing || exporting ? Visibility.Visible : Visibility.Collapsed;
         Heading.Text = processing && exporting ? "Processing and exports" : exporting ? "Export progress" : "Processing";

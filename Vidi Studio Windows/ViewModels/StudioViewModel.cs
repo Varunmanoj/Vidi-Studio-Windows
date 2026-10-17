@@ -12,6 +12,14 @@ using Vidi_Studio_Windows.Services;
 
 namespace Vidi_Studio_Windows.ViewModels;
 
+/// <summary>Per-section processing state for the Transcript, Summary, and Audio Description sections.</summary>
+public enum SectionProcessingState
+{
+    Idle,
+    Queued,
+    Processing
+}
+
 public sealed class StudioViewModel : INotifyPropertyChanged
 {
     public SettingsStore Settings { get; } = new();
@@ -22,11 +30,43 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     private StudioProject? project;
     public StudioProject? Project { get => project; set { project = value; Changed(); } }
     private bool busy;
-    public bool Busy { get => busy; private set { busy = value; Changed(); Changed(nameof(Idle)); } }
+    public bool Busy { get => busy; private set { busy = value; Changed(); Changed(nameof(Idle)); Changed(nameof(IsAnalyzing)); Changed(nameof(ProcessingStageTitle)); } }
     public bool Idle => !Busy;
     public bool IsExporting { get; private set; }
     private string status = "Import a video or open an existing project to begin.";
     public string Status { get => status; private set { status = value; Changed(); } }
+    private string? processingSection;
+    public string? ProcessingSection
+    {
+        get => processingSection;
+        private set { processingSection = value; Changed(); Changed(nameof(ProcessingStageTitle)); }
+    }
+    private string? videoPreparation;
+    public string? VideoPreparation
+    {
+        get => videoPreparation;
+        private set { videoPreparation = value; Changed(); Changed(nameof(ProcessingStageTitle)); }
+    }
+    private readonly List<string> processingPlan = new();
+    public IReadOnlyList<string> ProcessingPlan => processingPlan;
+    /// <summary>True while an analysis stage that belongs to a section is running.</summary>
+    public bool IsAnalyzing => Busy && !IsExporting && processingPlan.Count > 0;
+    /// <summary>Short, user-facing stage label for the status bar; the Files API upload step takes precedence.</summary>
+    public string ProcessingStageTitle
+    {
+        get
+        {
+            if (videoPreparation == "uploading") return "Uploading video";
+            if (videoPreparation == "processing") return "Preparing video";
+            return processingSection switch
+            {
+                "transcript" => "Generating transcript",
+                "summary" => "Generating summary",
+                "descriptions" => "Generating audio descriptions",
+                _ => processingPlan.Count > 0 ? "Processing" : "Processing project"
+            };
+        }
+    }
     public bool HasApiKey => Settings.HasApiKey;
     public bool IsApiKeyInvalid => Settings.IsApiKeyInvalid;
     public string ApiPlan => Settings.ApiPlan;
@@ -71,6 +111,10 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         if (Busy) return new();
         if (needsProject && Project == null) { Status = "Open a project first."; return new(); }
         IsExporting = command.StartsWith("export-", StringComparison.Ordinal) && Project != null;
+        processingPlan.Clear();
+        processingPlan.AddRange(AnalysisPlan(command, extra));
+        ProcessingSection = InitialProcessingSection(command);
+        VideoPreparation = null;
         Busy = true;
         operation = new();
         Status = "Starting…";
@@ -89,6 +133,13 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             var result = await Engine.RunAsync(args, new Progress<EngineEvent>(e =>
             {
                 Status = e.Message;
+                if (e.Data.TryGetProperty("processingSection", out var section) && section.ValueKind == System.Text.Json.JsonValueKind.String)
+                    ProcessingSection = section.GetString();
+                if (e.Data.TryGetProperty("videoPreparation", out var preparation) && preparation.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    var state = preparation.GetString();
+                    VideoPreparation = state == "ready" ? null : state;
+                }
                 var hasFraction = e.Data.TryGetProperty("exportProgress", out var progress);
                 double? fraction = hasFraction && progress.ValueKind == System.Text.Json.JsonValueKind.Number && progress.TryGetDouble(out var number) ? number : null;
                 exportSession?.Update(e.Message, fraction, hasFraction);
@@ -110,10 +161,60 @@ public sealed class StudioViewModel : INotifyPropertyChanged
                 catch (Exception ex) { Engine.Log(ex.ToString()); Status = "Could not reload the project. Reopen its folder to retry."; }
             }
             if (exportSession != null) ExportSessions.Remove(exportSession);
+            ProcessingSection = null; VideoPreparation = null; processingPlan.Clear();
             operation.Dispose(); operation = null; IsExporting = false; Busy = false;
         }
         return new();
     }
+    /// <summary>Combined processing state for a group of section keys (a tab can surface more than one stage).</summary>
+    public SectionProcessingState StateFor(IReadOnlyList<string> sections)
+    {
+        if (!IsAnalyzing || sections.Count == 0) return SectionProcessingState.Idle;
+        var current = processingSection ?? (processingPlan.Count > 0 ? processingPlan[0] : "");
+        var currentIndex = processingPlan.IndexOf(current);
+        if (currentIndex < 0) return SectionProcessingState.Idle;
+        if (sections.Contains(current)) return SectionProcessingState.Processing;
+        foreach (var section in sections)
+        {
+            var index = processingPlan.IndexOf(section);
+            if (index > currentIndex) return SectionProcessingState.Queued;
+        }
+        return SectionProcessingState.Idle;
+    }
+
+    private static string? InitialProcessingSection(string command) => command switch
+    {
+        "transcribe" or "reanalyze-transcript-segment" => "transcript",
+        "generate-summary" => "summary",
+        "generate-ad-cues" or "reanalyze-segment" or "prepare-analysis-video" => "descriptions",
+        "analyze" or "regenerate-all" => "transcript",
+        _ => null
+    };
+
+    /// <summary>Ordered analysis stages for a command, respecting --start-stage.</summary>
+    private static List<string> AnalysisPlan(string command, IEnumerable<string>? extra)
+    {
+        var stages = command switch
+        {
+            "analyze" or "regenerate-all" => new List<string> { "transcript", "summary", "descriptions" },
+            "transcribe" or "reanalyze-transcript-segment" => new List<string> { "transcript" },
+            "generate-summary" => new List<string> { "summary" },
+            "generate-ad-cues" or "reanalyze-segment" or "prepare-analysis-video" => new List<string> { "descriptions" },
+            _ => new List<string>()
+        };
+        if (stages.Count > 1 && extra != null)
+        {
+            var list = extra.ToList();
+            var flag = list.IndexOf("--start-stage");
+            if (flag >= 0 && flag + 1 < list.Count)
+            {
+                var startIndex = stages.IndexOf(list[flag + 1]);
+                if (startIndex > 0) stages = stages.GetRange(startIndex, stages.Count - startIndex);
+            }
+        }
+        return stages;
+    }
+
     public async Task SaveSegmentsAsync(IEnumerable<Segment> transcript, IEnumerable<Segment> cues)
     {
         var temporary = Path.Combine(SettingsStore.DirectoryPath, Guid.NewGuid() + ".json");

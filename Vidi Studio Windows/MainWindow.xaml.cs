@@ -102,8 +102,52 @@ public sealed partial class MainWindow : Window
     }
     private void UpdateStatusFooter(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(Model.Busy)) StatusFooter.Visibility = Model.Idle ? Visibility.Visible : Visibility.Collapsed;
+        if (e.PropertyName is nameof(Model.Busy) or nameof(Model.Idle) or nameof(Model.IsAnalyzing)
+            or nameof(Model.ProcessingSection) or nameof(Model.VideoPreparation) or nameof(Model.Status))
+            UpdateProcessingChrome();
         if (e.PropertyName is nameof(Model.Busy) or nameof(Model.HasApiKey) or nameof(Model.Idle)) UpdateApiKeyUi();
+    }
+    private void UpdateProcessingChrome()
+    {
+        var analyzing = Model.IsAnalyzing;
+        StatusRing.IsActive = analyzing;
+        StatusRing.Visibility = analyzing ? Visibility.Visible : Visibility.Collapsed;
+        StatusStageTitle.Text = analyzing ? Model.ProcessingStageTitle : "";
+        StatusStageTitle.Visibility = analyzing ? Visibility.Visible : Visibility.Collapsed;
+        CancelProcessingButton.Visibility = analyzing ? Visibility.Visible : Visibility.Collapsed;
+        // Keep the editor navigable while an analysis stage runs; other long
+        // operations keep the previous workspace lock.
+        EditorWorkspace.IsEnabled = Model.Idle || analyzing;
+        UpdateSectionOverlay(analyzing);
+    }
+    private void UpdateSectionOverlay(bool analyzing)
+    {
+        var state = analyzing ? CurrentSectionState() : SectionProcessingState.Idle;
+        if (state == SectionProcessingState.Idle)
+        {
+            SectionProcessingRing.IsActive = false;
+            SectionProcessingOverlay.Visibility = Visibility.Collapsed;
+            return;
+        }
+        SectionProcessingRing.IsActive = true;
+        SectionProcessingTitle.Text = state == SectionProcessingState.Queued ? "Waiting to generate…" : Model.ProcessingStageTitle;
+        SectionProcessingStatus.Text = state == SectionProcessingState.Queued
+            ? "This section updates automatically when its turn arrives. You can keep working in other sections."
+            : Model.Status;
+        SectionProcessingOverlay.Visibility = Visibility.Visible;
+    }
+    private SectionProcessingState CurrentSectionState()
+    {
+        IReadOnlyList<string> keys = Section.SelectedIndex switch
+        {
+            0 => new[] { "transcript" },
+            1 => new[] { "summary" },
+            2 => new[] { "descriptions" },
+            3 => new[] { "descriptions" },
+            4 => new[] { "transcript", "descriptions" },
+            _ => Array.Empty<string>()
+        };
+        return Model.StateFor(keys);
     }
     private void ApplyTheme()
     {
@@ -236,6 +280,7 @@ public sealed partial class MainWindow : Window
             await SaveSummaryChangesAsync();
         }
         if (ready) RenderSection();
+        UpdateSectionOverlay(Model.IsAnalyzing);
     }
     private void RenderTimelineThumbnails(StudioProject project)
     {

@@ -121,7 +121,7 @@ public sealed partial class MainWindow : Window
         {
             InspectorSynthesizeNarrationLabel.Text = synthesizing
                 ? (Model.NarratingSegmentIndex is { } idx ? $"Synthesizing AD {idx}…" : "Synthesizing…")
-                : "Synthesize Narration";
+                : Model.Project?.AllADAudioTitle ?? "Generate All AD Audio";
         }
         if (OverviewNarrationProgressPanel != null)
         {
@@ -538,11 +538,6 @@ public sealed partial class MainWindow : Window
         if (command == "synthesize-tts")
         {
             await SynthesizeNarrationWithConfirmationAsync();
-            return;
-        }
-        if (command == "regenerate-all-narration")
-        {
-            await RunDesktopCommandAsync(command);
             return;
         }
         if (!Model.HasApiKey && command != "prepare-video")
@@ -964,21 +959,23 @@ public sealed partial class MainWindow : Window
     private async Task SynthesizeNarrationWithConfirmationAsync(IEnumerable<string>? extra = null)
     {
         if (Model.Project == null) return;
+        var flags = extra?.ToList() ?? new List<string>();
+        if (!flags.Contains("--segment") && !flags.Contains("--changed") && !flags.Contains("--regenerate-all")) flags.Add("--regenerate-all");
         if (Model.CurrentNarrationEngine() == "gemini" && !Model.HasApiKey)
         {
             await ShowSettingsSectionAsync(2);
             return;
         }
         var hadPriorNarration = Model.Project.Cues.Any(c => c.HasAudioFile);
-        if (extra?.Contains("--regenerate-all") == true)
+        if (flags.Contains("--regenerate-all"))
         {
-            if (!await Confirm("Regenerate all narration?",
-                $"All generated narration audio will be replaced by newly generated audio for every Audio Description segment using the currently selected voice: {Model.CurrentNarrationSummary()}. This becomes the project's primary narration voice as soon as regeneration starts. Description text and timing will be kept. Existing audio is replaced only after each segment is generated successfully; if generation fails or is canceled, some old audio may remain. Do you want to continue?",
-                "Regenerate All Narration")) return;
+            if (Model.Project.HasNarrationAudio && !await Confirm("Regenerate all AD audio?",
+                $"All generated narration audio will be replaced by newly generated audio for every Audio Description segment using the currently selected voice: {Model.CurrentNarrationSummary()}. This becomes the project's primary narration voice as soon as generation starts. Description text and timing will be kept. Existing audio is replaced only after each segment is generated successfully; if generation fails or is canceled, some old audio may remain. Do you want to continue?",
+                "Regenerate All AD Audio")) return;
         }
         else if (!await ConfirmNarrationVoiceChangeAsync()) return;
-        await Model.RunAsync("synthesize-tts", extra);
-        if (extra?.Contains("--regenerate-all") != true && hadPriorNarration && Model.NarrationVoiceUsageReport() is { HasDifferentVoices: true } voiceReport)
+        await Model.RunAsync("synthesize-tts", flags);
+        if (!flags.Contains("--regenerate-all") && hadPriorNarration && Model.NarrationVoiceUsageReport() is { HasDifferentVoices: true } voiceReport)
         {
             try { await ShowNarrationVoicesAsync(voiceReport); }
             catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
@@ -1245,8 +1242,6 @@ public sealed partial class MainWindow : Window
             : "Configure your Gemini API key in Settings (Gemini API tab) to enable this feature.";
 
         var project = Model.Project;
-        var hasChangedNarration = project?.HasChangedNarration == true;
-        var hasMissingOrChangedNarration = project?.HasMissingOrChangedNarration == true;
         if (OverviewReviewNarrationButton != null)
         {
             OverviewReviewNarrationButton.IsEnabled = Model.Idle && project != null;
@@ -1270,15 +1265,19 @@ public sealed partial class MainWindow : Window
 
         SetAiButton(GenerateCurrent);
         SetAiButton(InspectorGenerate);
-        SetAiButton(OverviewGenerateAllAudioButton, "Generate narration audio for all Audio Description cues using configured TTS");
-        SetAiButton(OverviewGenerateChangedAudioButton, "Generate narration audio only for missing or modified cues",
-            hasMissingOrChangedNarration, "Every description already has current narration audio.");
-        SetAiButton(InspectorSynthesizeNarrationButton, "Synthesize narration audio for all cues");
-        InspectorRegenerateAllNarrationButton.IsEnabled = CanRunDesktopCommand("regenerate-all-narration");
-        ToolTipService.SetToolTip(InspectorRegenerateAllNarrationButton, "Replace narration audio for every segment using the currently selected voice");
-        SetAiButton(InspectorSynthesizeChangedButton, "Synthesize narration audio for modified cues",
-            hasChangedNarration, "Edit a description after its narration is generated to enable this.");
-        SetAiButton(InspectorNarrateSelectedButton, "Synthesize narration audio for the selected description segment");
+        OverviewGenerateAllAudioButton.Content = project?.AllADAudioTitle ?? "Generate All AD Audio";
+        OverviewGenerateChangedAudioButton.Content = "Generate Missing or Changed AD Audio";
+        InspectorSynthesizeNarrationLabel.Text = Model.IsSynthesizingNarration ? Model.ActiveNarrationStatusText : project?.AllADAudioTitle ?? "Generate All AD Audio";
+        foreach (var button in new[] { OverviewGenerateAllAudioButton, InspectorSynthesizeNarrationButton })
+        {
+            button.IsEnabled = CanRunDesktopCommand("synthesize-tts");
+            ToolTipService.SetToolTip(button, "Generate audio for every AD segment using the selected voice and set it as the primary voice");
+        }
+        foreach (var button in new[] { OverviewGenerateChangedAudioButton, InspectorSynthesizeChangedButton })
+        {
+            button.IsEnabled = CanRunDesktopCommand("synthesize-changed");
+            ToolTipService.SetToolTip(button, "After audio has been generated, repair missing or changed audio while keeping current audio");
+        }
         SetAiButton(InspectorRewriteButton, "Rewrite description text to fit available gap duration");
         SetAiButton(PrepareAnalysisButton, "Upload and prepare video on Gemini File API for full multimodal analysis");
         SetAiButton(RefreshAnalysisButton, "Refresh Gemini video analysis availability status");

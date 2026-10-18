@@ -50,10 +50,10 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Review Narration Voices must follow Review Narration Issues.");
             var projectGroups = editorMenus.First(menu => menu.Title == "Project").Items
                 .OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutSubItem>().Select(item => item.Text);
-            if (!audioMenu.Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>()
-                .Any(item => item.Text == "Regenerate All Narration…" && item.Icon != null) ||
-                (string)InspectorRegenerateAllNarrationButton.Tag != "regenerate-all-narration")
-                throw new InvalidOperationException("Regenerate All Narration is missing from the menu or Inspector.");
+            if (!narrationReviewItems.Select(item => (string)item.Tag).SequenceEqual(new[] {
+                "synthesize-tts", "synthesize-changed", "review-narration-issues", "review-narration-voices", "delete-narration" }) ||
+                (string)InspectorSynthesizeNarrationButton.Tag != "synthesize-tts")
+                throw new InvalidOperationException("Narration Audio must have exactly two bulk generation actions.");
             if (!projectGroups.SequenceEqual(new[] { "Editor Sections", "Segments", "Analysis", "Narration" }))
                 throw new InvalidOperationException("Project submenu nesting/order drifted from Mac.");
             if (desktopMenuItems.SelectMany(pair => pair.Value).Any(item => item.Icon == null))
@@ -63,9 +63,27 @@ public sealed partial class MainWindow
             Model.Settings.Set("apiKey", ""); Model.Settings.Set("ttsMode", "windows-core");
             UpdateDesktopMenuStates();
             if (!desktopMenuItems["export"].Last().IsEnabled || !desktopMenuItems["synthesize-tts"].Last().IsEnabled ||
-                !desktopMenuItems["regenerate-all-narration"].Last().IsEnabled ||
                 !desktopMenuItems["review-narration-issues"].Last().IsEnabled || !desktopMenuItems["review-narration-voices"].Last().IsEnabled || desktopMenuItems["transcribe"].Last().IsEnabled)
                 throw new InvalidOperationException("Offline menu actions and AI prerequisites are not independently guarded.");
+            var originalAudio = Model.Project!.Cues.Select(c => (Cue: c, Audio: c.Audio)).ToList();
+            try
+            {
+                foreach (var entry in originalAudio) entry.Cue.Audio = null;
+                UpdateApiKeyUi();
+                if (DesktopCommandTitle("synthesize-tts") != "Generate All AD Audio" ||
+                    CanRunDesktopCommand("synthesize-changed") || OverviewGenerateChangedAudioButton.IsEnabled || InspectorSynthesizeChangedButton.IsEnabled)
+                    throw new InvalidOperationException("A new project must offer Generate All and disable partial repair.");
+                Model.Project.Cues[0].Audio = "audio-description/smoke-missing.mp3";
+                UpdateApiKeyUi();
+                if (DesktopCommandTitle("synthesize-tts") != "Regenerate All AD Audio…" ||
+                    !CanRunDesktopCommand("synthesize-changed") || !OverviewGenerateChangedAudioButton.IsEnabled || !InspectorSynthesizeChangedButton.IsEnabled)
+                    throw new InvalidOperationException("Existing audio must switch all controls to Regenerate All and allow missing audio repair.");
+            }
+            finally
+            {
+                foreach (var entry in originalAudio) entry.Cue.Audio = entry.Audio;
+                UpdateApiKeyUi();
+            }
             Model.Settings.Set("apiKey", savedMenuKey); Model.Settings.Set("ttsMode", savedMenuTts);
             var oldOverlayMode = Model.Settings.Get("captionDisplayMode", "off");
             await RunDesktopCommandAsync("caption-transcript");

@@ -202,6 +202,9 @@ public sealed class StudioProject
     [JsonIgnore] public bool HasTranscript => Transcript.Count > 0;
     [JsonIgnore] public bool HasSummary => !string.IsNullOrWhiteSpace(Summary);
     [JsonIgnore] public bool HasNarration => Cues.Any(c => c.AudioReady);
+    [JsonIgnore] public bool HasNarrationAudio => Cues.Any(c => c.Audio != null);
+    [JsonIgnore] public string AllADAudioTitle => HasNarrationAudio ? "Regenerate All AD Audio…" : "Generate All AD Audio";
+    [JsonIgnore] public bool CanGenerateMissingOrChangedAudio => HasNarrationAudio && HasMissingOrChangedNarration;
     [JsonIgnore] public bool HasChangedNarration => Cues.Any(c => c.AudioNeedsRegeneration);
     [JsonIgnore] public bool HasMissingOrChangedNarration => Cues.Any(c => c.AudioNeedsRegeneration || !c.AudioReady);
     [JsonIgnore] public bool HasLocalSource

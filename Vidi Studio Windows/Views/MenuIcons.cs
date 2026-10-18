@@ -45,6 +45,7 @@ public static class MenuIcons
             "Generate all narration" or "Generate changed narration" or "Generate narration" or "Synthesize this segment" or "Regenerate segment narration" or "Narration on / off" or "Narration" => "\uE767",
             "Review Narration Issues…" => "\uE9D9",
             "Review Narration Voices…" => "\uE77B",
+            "Generate All AD Audio" or "Regenerate All AD Audio…" or "Generate Missing or Changed AD Audio" => "\uE767",
             "Preview narration" or "Play from segment" or "Play summary" or "Resume summary" => "\uE768",
             "Pause video" or "Pause summary" => "\uE769",
             "Stop summary" => "\uE71A",

@@ -148,7 +148,6 @@ public sealed partial class MainWindow
         }
         if (segment != null)
         {
-            var canSynthesize = Model.CurrentNarrationEngine() != "gemini" || Model.HasApiKey;
             Item("Edit segment", async (_, _) => await EditSegment(segment));
             Item("Play from segment", (_, _) =>
             {
@@ -163,6 +162,7 @@ public sealed partial class MainWindow
             });
             if (segment.IsDescription)
             {
+                var canSynthesize = Model.CurrentNarrationEngine() != "gemini" || (Model.HasApiKey && !Model.IsApiKeyInvalid);
                 var synthLabel = segment.IsNarrating
                     ? $"Generating audio for AD segment {segment.AdNumber}…"
                     : segment.IsQueuedForNarration
@@ -191,7 +191,6 @@ public sealed partial class MainWindow
         else
         {
             var timedSection = Section.SelectedIndex is 0 or 2 or 4;
-            var canSynthesize = Model.CurrentNarrationEngine() != "gemini" || Model.HasApiKey;
             Item("Add segment", Add_Click, timedSection);
             Item("Edit selected", Edit_Click, timedSection && Segments.SelectedItems.Count > 0);
             Item("Select all", SelectAll_Click, timedSection);
@@ -199,8 +198,8 @@ public sealed partial class MainWindow
             Item("Delete selected", DeleteSegments_Click, timedSection && Segments.SelectedItems.Count > 0);
             Item("Undo", Undo_Click, timedSection);
             Item("Redo", Redo_Click, timedSection);
-            Item("Generate all narration", (_, args) => Command_Click(new Button { Tag = "synthesize-tts" }, args), canSynthesize && Model.Project?.Cues.Count > 0);
-            Item("Generate changed narration", ChangedNarration_Click, canSynthesize && Model.Project?.HasChangedNarration == true);
+            Item(Model.Project?.AllADAudioTitle ?? "Generate All AD Audio", (_, args) => Command_Click(new Button { Tag = "synthesize-tts" }, args), CanRunDesktopCommand("synthesize-tts"));
+            Item("Generate Missing or Changed AD Audio", ChangedNarration_Click, CanRunDesktopCommand("synthesize-changed"));
         }
         return menu;
     }

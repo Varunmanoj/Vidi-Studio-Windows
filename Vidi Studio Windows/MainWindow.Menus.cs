@@ -78,7 +78,7 @@ public sealed partial class MainWindow
                 Submenu("Analysis", Command("analyze"), Separator(), Command("prepare-video"), Command("transcribe"), Command("generate-summary")),
                 Submenu("Narration",
                     Submenu("AD Segment Generation", Command("generate-ad-cues"), Separator(), Command("delete-descriptions")),
-                    Submenu("Narration Audio", Command("synthesize-tts"), Command("synthesize-changed"), Command("regenerate-all-narration"), Command("review-narration-issues"), Command("review-narration-voices"), Separator(), Command("delete-narration"))),
+                    Submenu("Narration Audio", Command("synthesize-tts"), Command("synthesize-changed"), Command("review-narration-issues"), Command("review-narration-voices"), Separator(), Command("delete-narration"))),
                 Command("delete-current"), Separator(), Command("show-in-finder")),
             Menu("Help", Command("help"), Command("about"))
         };
@@ -233,8 +233,8 @@ public sealed partial class MainWindow
             case "caption-off": return timed;
             case "analyze": case "transcribe": case "generate-summary": return ai;
             case "generate-ad-cues": return ai && canDescribe;
-            case "synthesize-tts": case "regenerate-all-narration": return tts && p.Cues.Count > 0;
-            case "synthesize-changed": return tts && p.HasChangedNarration;
+            case "synthesize-tts": return tts && p.Cues.Count > 0;
+            case "synthesize-changed": return tts && p.CanGenerateMissingOrChangedAudio;
             case "delete-narration": return p.Cues.Any(c => c.Audio != null);
             case "delete-descriptions": return p.Cues.Count > 0 || ExtraFlag(p, "descriptionsGenerated");
             case "delete-current": return Section.SelectedIndex switch
@@ -290,9 +290,8 @@ public sealed partial class MainWindow
             "generate-ad-cues" => p != null && (p.Cues.Count > 0 || ExtraFlag(p, "descriptionsGenerated")) ? "Regenerate Audio Descriptions…" : "Generate Audio Descriptions",
             "synthesize-tts" => Model.IsSynthesizingNarration
                 ? (Model.NarratingSegmentIndex is { } idx && p != null ? $"Synthesizing AD Segment {idx} of {p.Cues.Count}…" : "Synthesizing Narration…")
-                : "Synthesize Narration",
-            "synthesize-changed" => "Synthesize Changed Segments",
-            "regenerate-all-narration" => "Regenerate All Narration…",
+                : p?.AllADAudioTitle ?? "Generate All AD Audio",
+            "synthesize-changed" => "Generate Missing or Changed AD Audio",
             "review-narration-issues" => "Review Narration Issues…", "delete-narration" => "Delete All Narration Audio…",
             "review-narration-voices" => "Review Narration Voices…",
             "delete-descriptions" => "Delete Descriptions…",
@@ -328,7 +327,6 @@ public sealed partial class MainWindow
             "AD Segment Generation" => "Generate descriptions", "delete-descriptions" => "Delete selected",
             "review-narration-issues" => "Review Narration Issues…", "delete-narration" or "delete-current" or "segment-delete-selected" => "Delete narration",
             "review-narration-voices" => "Review Narration Voices…",
-            "regenerate-all-narration" => "Refresh video details",
             "segment-edit-mode" or "segment-edit-selected" => "Edit selected", "segment-select-all" => "Select all", "segment-deselect-all" => "Deselect all",
             "undo" => "Undo", "redo" => "Redo", "analyze" or "Analysis" or "reanalyze-selection" => "Analyze video",
             "prepare-video" => "Refresh video details", "transcribe" or "transcript" => "Transcript", "generate-summary" or "summary" => "Summary",
@@ -410,7 +408,6 @@ public sealed partial class MainWindow
             case "analyze": case "transcribe": case "generate-summary": case "generate-ad-cues": case "prepare-video":
                 Command_Click(new Button { Tag = id }, e); break;
             case "synthesize-tts": await SynthesizeNarrationWithConfirmationAsync(); break;
-            case "regenerate-all-narration": await SynthesizeNarrationWithConfirmationAsync(new[] { "--regenerate-all" }); break;
             case "synthesize-changed": await SynthesizeNarrationWithConfirmationAsync(new[] { "--changed" }); break;
             case "review-narration-issues": ReviewNarrationIssues_Click(this, e); break;
             case "review-narration-voices":

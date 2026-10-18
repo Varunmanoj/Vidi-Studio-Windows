@@ -37,17 +37,26 @@ For x64, rerun setup with `-Platform x64`, then select **x64** in Visual Studio.
 ```
 
 If Visual Studio reports missing controls that were removed from XAML (for example,
-`InspectorRegenerateAllNarrationButton` or `InspectorNarrateSelectedButton`), first
-confirm that the entire checkout is current, including `MainWindow.xaml`, all
-`MainWindow*.cs` partial classes, and `MainWindow.SmokeTest.cs`. Close Visual Studio
-and regenerate the WinUI build output for the same platform/configuration:
+`InspectorRegenerateAllNarrationButton` or `InspectorNarrateSelectedButton`), run this
+diagnostic inside the checkout being built:
+
+```powershell
+python script\check_xaml_references.py --deep
+```
+
+It scans every file — including ignored build output such as `obj/` and `bin/` — and
+lists the exact file and line still containing a retired name. Delete the folders it
+reports (MSBuild regenerates them), or update the checkout so every listed file matches
+the current commit. A clean scan result means the failing project lives in a different
+folder than the one you scanned.
 
 ```powershell
 .\script\build-windows.ps1 -Platform ARM64 -Configuration Debug -Rebuild
 ```
 
 Use `-Platform x64` or `-Configuration Release` when appropriate. `-Rebuild` invokes
-MSBuild's standard Rebuild target instead of reusing incremental XAML output; it
+MSBuild's standard Rebuild target and clears the persistent XAML compiler cache
+(`%LOCALAPPDATA%\Temp\XamlCompiler`) instead of reusing incremental XAML output; it
 does not restore the removed duplicate buttons. The build script also checks
 production inspector field references against the current XAML before building.
 If the error persists after a current-checkout rebuild, report the exact file path

@@ -3,12 +3,20 @@
 
 Only production partial classes are checked. WinUI-generated bin/obj output is
 not source; use build-windows.ps1 -Rebuild to regenerate stale connector files.
+Stale compiler state can reference retired controls even after Rebuild. Use
+`--deep` (run inside the failing Windows checkout) to locate every file —
+including ignored build output — that still contains a retired name.
 """
 from pathlib import Path
 import re
+import sys
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
+RETIRED_INSPECTOR_NAMES = (
+    'InspectorRegenerateAllNarrationButton',
+    'InspectorNarrateSelectedButton',
+)
 
 
 def missing_inspector_references(xaml, sources):
@@ -22,7 +30,42 @@ def missing_inspector_references(xaml, sources):
     return sorted(missing)
 
 
-def main():
+def deep_retired_identifier_hits(root, names=RETIRED_INSPECTOR_NAMES):
+    """Return file/line hits in `root` (any file, including ignored output) that contain `names`."""
+    self_referential = {'README.md', 'PROGRESS.md', 'check_xaml_references.py'}
+    hits = []
+    for path in sorted(root.rglob('*')):
+        if not path.is_file() or path.suffix == '.pyc':
+            continue
+        relative = path.relative_to(root)
+        if any(part == '__pycache__' or part == 'tests' for part in relative.parts):
+            continue
+        if path.name in self_referential:
+            continue
+        try:
+            blob = path.read_bytes()
+        except OSError:
+            continue
+        for name in names:
+            if name.encode('utf-8') not in blob:
+                continue
+            text = blob.decode('utf-8', 'ignore')
+            for number, line in enumerate(text.splitlines(), 1):
+                if name in line:
+                    hits.append(f'{path}: {number}: {name}')
+    return hits
+
+
+def main(argv=None):
+    if '--deep' in (argv if argv is not None else sys.argv[1:]):
+        report = deep_retired_identifier_hits(Path.cwd())
+        if report:
+            print('Retired inspector identifiers are still present in this checkout or its local build output:')
+            print('\n'.join(report))
+            print('Delete the containing folders (for example any obj/ or bin/ directories that MSBuild will not rebuild), or update the checkout so every listed file matches the current commit.')
+            raise SystemExit(1)
+        print('PASS: this checkout and all of its local build output contain no retired inspector identifiers. If Visual Studio still reports these names, the failing project lives in a different folder — run this scan there, or close Visual Studio, delete %LOCALAPPDATA%\\Temp\\XamlCompiler, and rebuild.')
+        return
     project = ROOT/'Vidi Studio Windows'
     errors = missing_inspector_references(
         (project/'MainWindow.xaml').read_text(encoding='utf-8'),
@@ -34,4 +77,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1:])

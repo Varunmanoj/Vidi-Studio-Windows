@@ -22,5 +22,10 @@ if (!$msbuild) { throw 'Install Visual Studio with WinUI application development
 $packageOptions = @()
 if ($Package) { $packageOptions = @('/p:GenerateAppxPackageOnBuild=true', '/p:AppxBundle=Never', '/p:UapAppxPackageBuildMode=SideloadOnly') }
 $target = if ($Rebuild) { '/t:Rebuild' } else { '/t:Build' }
+if ($Rebuild) {
+    foreach ($cache in @((Join-Path $env:LOCALAPPDATA 'Temp\XamlCompiler'), (Join-Path $env:TEMP 'XamlCompiler'))) {
+        if ($cache -and (Test-Path $cache)) { Remove-Item $cache -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
 & $msbuild (Join-Path $projectRoot 'Vidi Studio Windows\Vidi Studio Windows.csproj') /restore $target /p:Configuration=$Configuration /p:Platform=$Platform /p:AppxPackageSigningEnabled=false /verbosity:minimal @packageOptions
 if ($LASTEXITCODE -ne 0) { throw 'Windows build failed.' }

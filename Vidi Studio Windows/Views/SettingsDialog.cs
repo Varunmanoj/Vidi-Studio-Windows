@@ -109,8 +109,8 @@ public sealed partial class SettingsDialog : Window
     private sealed record PlaybackOption(string Id, string Label) { public override string ToString() => Label; }
     private readonly ComboBox mode = new() { Header = "Speech engine", HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly ComboBox voice = new() { Header = "Installed voice", HorizontalAlignment = HorizontalAlignment.Stretch };
-    private readonly TextBox search = new() { Header = "Filter voices by name, language or region" };
-    private readonly TextBox sapiHost = new() { Header = "Optional SAPI host executable (match your legacy voice architecture)" };
+    private readonly TextBox search = new() { Header = "Filter voices" };
+    private readonly TextBox sapiHost = new() { Header = "Optional SAPI host executable" };
     private readonly StackPanel localSpeechControls = new() { Spacing = 14 };
     private List<Voice> voices = new();
     public SettingsDialog(StudioViewModel model, Window window, int initialSection = 0)
@@ -203,12 +203,12 @@ public sealed partial class SettingsDialog : Window
                     break;
                 case 4:
                     AddText(panel, "Project library", "libraryPath");
-                    AddText(panel, "Python executable (with engine dependencies)", "pythonPath", "python.exe");
-                    AddExecutablePicker(panel, "FFmpeg executable (blank uses PATH)", "ffmpegPath");
-                    AddExecutablePicker(panel, "FFprobe executable (blank uses PATH)", "ffprobePath");
-                    var doctor = new Button { Content = "Check saved engine and media tool settings" };
+                    AddText(panel, "Python executable", "pythonPath", "python.exe");
+                    AddExecutablePicker(panel, "FFmpeg executable", "ffmpegPath");
+                    AddExecutablePicker(panel, "FFprobe executable", "ffprobePath");
+                    var doctor = new Button { Content = "Check engine and media tools" };
                     doctor.Click += async (_, _) => { await model.RunAsync("doctor", needsProject: false); status.Text = model.Status; }; panel.Children.Add(doctor);
-                    var logs = new Button { Content = "Open settings and diagnostic folder" };
+                    var logs = new Button { Content = "Open diagnostics folder" };
                     logs.Click += async (_, _) => { Directory.CreateDirectory(SettingsStore.DirectoryPath); await Windows.System.Launcher.LaunchFolderPathAsync(SettingsStore.DirectoryPath); }; panel.Children.Add(logs);
                     break;
                 case 5: BuildHelp(panel); break;
@@ -369,13 +369,13 @@ public sealed partial class SettingsDialog : Window
         }
         panel.Children.Add(mode); panel.Children.Add(search); panel.Children.Add(voice); panel.Children.Add(sapiHost);
         AddPlaybackChoice(panel);
-        panel.Children.Add(new TextBlock { Text = "The speech engine selects the voice used when generating saved narration audio; Gemini Voices stays selected in either playback mode. On-device preview speaks segment text live with local Windows speech and does not create audio files; with Gemini selected, preview uses the default Windows OneCore voice. Play saved narration audio to hear each saved file with the voice it was created with. SAPI 5 samples and live playback use rate and volume; pitch is applied when generating saved audio.", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = "The selected engine generates saved narration audio; Gemini Voices stays selected in either playback mode.", TextWrapping = TextWrapping.Wrap });
         var refresh = new Button { Content = "Refresh installed voices" }; refresh.Click += async (_, _) => await RefreshVoices(); localSpeechControls.Children.Add(refresh);
         AddSpeechSlider(localSpeechControls, "Speech rate", "systemSpeechRate", 1, .5, 2);
         AddSpeechSlider(localSpeechControls, "Speech pitch", "systemSpeechPitch", 1, .5, 2);
         AddSpeechSlider(localSpeechControls, "Speech volume", "systemSpeechVolume", 1, 0, 1);
         panel.Children.Add(localSpeechControls);
-        var sample = new TextBox { Header = "Voice sample (up to 500 characters)", Text = "Welcome to Vidi Studio. Create accessible video with clear audio descriptions.", MaxLength = 500, TextWrapping = TextWrapping.Wrap };
+        var sample = new TextBox { Header = "Voice sample", Text = "Welcome to Vidi Studio. Create accessible video with clear audio descriptions.", MaxLength = 500, TextWrapping = TextWrapping.Wrap };
         panel.Children.Add(sample);
         var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         samplePlayButton = new Button();

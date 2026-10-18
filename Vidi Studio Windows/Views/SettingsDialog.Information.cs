@@ -22,10 +22,10 @@ public sealed partial class SettingsDialog
     private void BuildHelp(StackPanel panel)
     {
         panel.Children.Add(new TextBlock { Text = "Keyboard shortcuts", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-        panel.Children.Add(new TextBlock { Text = "Project editor shortcuts work when a project is open and processing is idle. Timed segments can also be opened with the keyboard.", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = "Shortcuts work when a project is open and processing is idle.", TextWrapping = TextWrapping.Wrap });
         if (menuOwner != null)
             foreach (var (label, shortcut) in menuOwner.DesktopShortcutReference) AddInformationRow(panel, label, shortcut);
-        panel.Children.Add(new TextBlock { Text = "Menus follow the Mac desktop layout: File, View, Playback, Project, Help. Project contains Editor Sections, Segments, Analysis, and Narration. Playback contains Transcript Overlay and Summary Reading. Project actions are disabled when no editor is open; summary reading requires the Summary section. Read from Selection and Read Selected Text use the selected summary paragraph. Ctrl+Shift+D toggles narration; use Project → Narration to synthesize audio. Settings is in File, and About is in Help. Local exports and on-device narration do not require a Gemini API key.", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
+        panel.Children.Add(new TextBlock { Text = "Menus follow the Mac layout: File, View, Playback, Project, Help. Local exports and on-device narration do not require a Gemini API key.", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
     }
 
     private void BuildAbout(StackPanel panel)
@@ -40,7 +40,7 @@ public sealed partial class SettingsDialog
         catch { version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "Unknown"; }
         AddInformationRow(panel, "App version", version);
         panel.Children.Add(new TextBlock { Text = "Media tools", FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 18, 0, 0) });
-        panel.Children.Add(new TextBlock { Text = "Vidi Studio launches the FFmpeg and FFprobe executables installed on this computer or configured under Storage and tools. They are separate processes and are not bundled in this Windows package.", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = "Vidi Studio uses the FFmpeg and FFprobe executables installed on this computer or set under Storage and tools.", TextWrapping = TextWrapping.Wrap });
         var ffmpegDetails = new TextBlock { Text = "Checking installed FFmpeg…", TextWrapping = TextWrapping.Wrap, Opacity = .7 };
         panel.Children.Add(ffmpegDetails);
         _ = ShowFfmpegDetailsAsync(ffmpegDetails);

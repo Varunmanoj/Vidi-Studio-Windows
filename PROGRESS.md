@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-18 — Concise settings copy (1.0.88 / 1.0.88.0, Mac build 89)
+
+Trimmed the verbose explanatory paragraphs from every Settings section, matching the macOS cleanup. Narration, transcript-overlay, Help, and About notes are now one short line each; voice-filter, SAPI-host, voice-sample, storage, and diagnostics labels were shortened; and the redundant Gemini key note, "Summary, description, rewrite…" note, and long YouTube note were removed (the YouTube note is now a single line). Controls, keys, accessibility names, and behavior are unchanged.
+
+Validation on macOS: Windows reference/Inspector/menu/parity suite passed 29 tests; Mac narration-controls harness and 20-test settings/menu/parity suite passed; Mac packaged build and launch passed (`script/build_and_run.sh --verify`, PID 97835, 13 Help pages verified). Menu parity checkers, `git diff --check`, and version sync passed at 1.0.88 / Windows package 1.0.88.0 / Mac build 89. Native Windows compilation/UI smoke and live Gemini execution were not run on this macOS host.
+
 ## 2026-10-18 — Engine labels, Gemini voice names, and offline-only speech sliders (1.0.87 / 1.0.87.0, Mac build 88)
 
 Standardized speech-engine option and display labels across both desktop apps (`Windows OneCore`, `Windows SAPI 5`, and `Gemini Voices` on Windows; `Apple Voices` and `Gemini Voices` on macOS). Windows Gemini voice dropdown now lists only the nine voice names (`Aoede`, `Callirrhoe`, `Charon`, `Fenrir`, `Kore`, `Leda`, `Orus`, `Puck`, `Zephyr`) matching macOS, without language/gender suffixes (`— en-GB (male)`) or overwriting the list from the raw `list-voices` catalog, and defaults cleanly to `Kore` while preserving any custom saved voice. Speech rate, pitch, and volume sliders (along with the installed-voice filter and refresh button) are now shown only when a built-in offline engine (`Windows OneCore` or `Windows SAPI 5` on Windows; `Apple Voices` on macOS) is selected and hidden under `Gemini Voices`, which does not support those controls. The Windows sample play button now also requires a valid API key when `Gemini Voices` is selected.

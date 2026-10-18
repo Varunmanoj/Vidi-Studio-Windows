@@ -35,7 +35,7 @@ public sealed partial class SettingsDialog
         }
         Choice("Appearance", "theme", new[] { "system", "light", "dark" }, new[] { "System", "Light", "Dark" });
         Choice("Transcript overlay", "captionDisplayMode", new[] { "off", "transcript", "combined", "descriptions" }, new[] { "Off", "Transcript", "AD Transcript", "Descriptions" });
-        card.Children.Add(new TextBlock { Text = "The overlay uses transcript and description segments saved in the project. YouTube's own captions remain available in its player.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
+        card.Children.Add(new TextBlock { Text = "Uses transcript and description segments saved in the project.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
         var dialogue = new TextBlock { Text = "Dialogue caption preview", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap };
         var description = new TextBlock { Text = "Audio description: A person enters the room.", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap };
         var dialogueBox = new Border { Child = dialogue, CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 6, 10, 6), HorizontalAlignment = HorizontalAlignment.Center };

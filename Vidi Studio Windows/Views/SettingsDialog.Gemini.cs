@@ -124,15 +124,6 @@ public sealed partial class SettingsDialog
         };
         topStack.Children.Add(openKeysLink);
 
-        var noteText = new TextBlock
-        {
-            Text = "Your key lets VidiStudio create transcripts, summaries, descriptions, and online narration.",
-            FontSize = 12,
-            Opacity = 0.75,
-            TextWrapping = TextWrapping.Wrap
-        };
-        topStack.Children.Add(noteText);
-
         checkPlanButton = new Button
         {
             Content = new StackPanel
@@ -263,12 +254,11 @@ public sealed partial class SettingsDialog
         AddModelSelector(local, "screen_text", "On-screen text");
         AddModelSelector(local, "text_rewrite", "Description rewrites");
         AddModelSelector(local, "tts_audio", "Gemini narration");
-        AddGeminiNote(panel, "Summary, description, rewrite, and narration selections are also used for YouTube projects.");
 
         // YouTube video group matching Mac
         var youtube = AddGeminiGroup(panel, "YouTube video");
         AddModelSelector(youtube, "youtube_transcript", "YouTube transcription");
-        AddGeminiNote(panel, "YouTube transcription uses a video model, such as Gemini Flash, to process the online video source. The dedicated speech transcription model is only for local videos.");
+        AddGeminiNote(panel, "YouTube transcription uses a video model such as Gemini Flash.");
 
         // Advanced group
         var advanced = new StackPanel { Spacing = 12 };
@@ -286,7 +276,7 @@ public sealed partial class SettingsDialog
             var isInvalid = draft["apiKeyValid"]?.GetValue<bool>() == false || draft["apiPlan"]?.GetValue<string>() == "invalid";
             if (isInvalid)
             {
-                UpdatePlanDisplay(false, "invalid", 0, "The provided Gemini API key is invalid or rejected by Google.");
+                UpdatePlanDisplay(false, "invalid", 0, "The API key is invalid or was rejected by Google.");
             }
             else
             {
@@ -317,7 +307,7 @@ public sealed partial class SettingsDialog
             apiStatusTitle.Text = $"API Key Verified ({planName})";
             apiStatusTitle.Foreground = new SolidColorBrush(Color.FromArgb(255, 16, 124, 65));
             var countLabel = modelCount > 0 ? $"{modelCount} models available." : "Models loaded.";
-            apiStatusDescription.Text = $"API key verified and active ({planName}). {countLabel}";
+            apiStatusDescription.Text = $"Key verified ({planName}). {countLabel}";
 
             // Account Plan pill:
             var pillColor = isPaid ? Color.FromArgb(255, 0, 120, 212) : Color.FromArgb(255, 16, 124, 65);
@@ -330,8 +320,8 @@ public sealed partial class SettingsDialog
             planPillText.Foreground = new SolidColorBrush(pillColor);
 
             planDetailsSubtitle.Text = isPaid
-                ? "Detected Paid Plan: Higher rate limits and enterprise data privacy."
-                : "Detected Free Plan: Standard rate limits and usage quota.";
+                ? "Paid plan: higher limits and enterprise data privacy."
+                : "Free plan: standard limits and quota.";
         }
         else if (valid == false)
         {
@@ -343,7 +333,7 @@ public sealed partial class SettingsDialog
             apiStatusIcon.Foreground = new SolidColorBrush(Color.FromArgb(255, 230, 80, 40));
             apiStatusTitle.Text = "API Key Verification Failed";
             apiStatusTitle.Foreground = new SolidColorBrush(Color.FromArgb(255, 230, 80, 40));
-            apiStatusDescription.Text = string.IsNullOrEmpty(errorMsg) ? "The provided Gemini API key is invalid or rejected by Google. Please check your key." : errorMsg;
+            apiStatusDescription.Text = string.IsNullOrEmpty(errorMsg) ? "The API key is invalid or was rejected by Google." : errorMsg;
 
             // Account Plan pill:
             planPillBadge.Background = new SolidColorBrush(Color.FromArgb(30, 230, 80, 40));
@@ -353,7 +343,7 @@ public sealed partial class SettingsDialog
             planDot.Foreground = new SolidColorBrush(Color.FromArgb(255, 230, 80, 40));
             planPillText.Text = "Invalid key";
             planPillText.Foreground = new SolidColorBrush(Color.FromArgb(255, 230, 80, 40));
-            planDetailsSubtitle.Text = "The entered API key was rejected by Google. Enter a valid API key to enable AI features.";
+            planDetailsSubtitle.Text = "Enter a valid API key to enable AI features.";
         }
         else
         {
@@ -369,7 +359,7 @@ public sealed partial class SettingsDialog
                 apiStatusIcon.Foreground = (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
                 apiStatusTitle.Text = "Checking API key…";
                 apiStatusTitle.Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
-                apiStatusDescription.Text = "Connecting to Google Gemini API to verify key and detect plan tier…";
+                apiStatusDescription.Text = "Verifying key and plan tier…";
             }
             else
             {
@@ -383,7 +373,7 @@ public sealed partial class SettingsDialog
             planDot.Foreground = new SolidColorBrush(Color.FromArgb(255, 160, 160, 160));
             planPillText.Text = "No API key";
             planPillText.Foreground = new SolidColorBrush(Color.FromArgb(255, 180, 180, 180));
-            planDetailsSubtitle.Text = "Enter a Gemini API key to detect plan tier and rate limits.";
+            planDetailsSubtitle.Text = "Enter a Gemini API key to detect your plan.";
         }
     }
 
@@ -422,7 +412,7 @@ public sealed partial class SettingsDialog
             if (found.Data.TryGetProperty("keyValid", out var kvElem) && kvElem.GetBoolean() == false)
             {
                 var errMsg = found.Data.TryGetProperty("error", out var eElem) ? eElem.GetString() ?? "" : "";
-                if (string.IsNullOrEmpty(errMsg)) errMsg = "The provided Gemini API key is invalid or rejected by Google.";
+                if (string.IsNullOrEmpty(errMsg)) errMsg = "The API key is invalid or was rejected by Google.";
                 draft["apiKeyValid"] = false;
                 draft["apiPlan"] = "invalid";
                 availableModels.Clear();
@@ -497,7 +487,7 @@ public sealed partial class SettingsDialog
                 || exMsg.Contains("UNAUTHENTICATED", StringComparison.OrdinalIgnoreCase)
                 || exMsg.Contains("invalid", StringComparison.OrdinalIgnoreCase)
                 || exMsg.Contains("API key", StringComparison.OrdinalIgnoreCase);
-            var msg = isInvalid ? "The provided Gemini API key is invalid or rejected by Google." : "Could not reach Gemini API. Check your key and network connection.";
+            var msg = isInvalid ? "The API key is invalid or was rejected by Google." : "Could not reach Gemini. Check the key and connection.";
             UpdatePlanDisplay(false, "invalid", 0, msg);
             status.Text = "API key check failed: " + msg;
         }

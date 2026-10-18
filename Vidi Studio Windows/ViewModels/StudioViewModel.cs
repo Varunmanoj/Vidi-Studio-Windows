@@ -109,6 +109,124 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         ProjectReloaded?.Invoke(this, EventArgs.Empty);
     }
     public void Cancel() => operation?.Cancel();
+    public string CurrentNarrationEngine()
+    {
+        var mode = Settings.Get("ttsMode", "windows-core").Trim();
+        if (string.IsNullOrEmpty(mode) || mode == "system") return "windows-core";
+        return mode;
+    }
+    public string CurrentNarrationVoice()
+    {
+        var engine = CurrentNarrationEngine();
+        if (engine == "gemini")
+        {
+            var gv = Settings.Get("geminiVoice", "Kore").Trim();
+            return string.IsNullOrEmpty(gv) ? "Kore" : gv;
+        }
+        var sv = Settings.Get("systemVoice", "").Trim();
+        return string.IsNullOrEmpty(sv) ? "System default" : sv;
+    }
+    public string CurrentNarrationSummary() =>
+        NarrationVoiceFormatting.CombinedLabel(CurrentNarrationVoice(), CurrentNarrationEngine());
+
+    /// <summary>Builds a detailed report of narration voice and engine usage across segments.</summary>
+    public NarrationVoiceReport? NarrationVoiceUsageReport()
+    {
+        if (Project is not { } p) return null;
+        var narratedEntries = new List<(int Index, Segment Cue, string Engine, string Voice, string Path)>();
+        for (var i = 0; i < p.Cues.Count; i++)
+        {
+            var cue = p.Cues[i];
+            if (!cue.HasAudioFile || string.IsNullOrEmpty(cue.Audio)) continue;
+            var engine = cue.ResolvedAudioEngine ?? "windows-core";
+            var voice = cue.ResolvedAudioVoice ?? "System default";
+            narratedEntries.Add((i + 1, cue, engine, voice, cue.Audio));
+        }
+        if (narratedEntries.Count == 0)
+        {
+            return new NarrationVoiceReport
+            {
+                Title = "Narration voice details",
+                Detail = "No narration audio has been generated for this project yet.",
+                HasDifferentVoices = false
+            };
+        }
+        string primaryEngine;
+        string primaryVoice;
+        if (!string.IsNullOrWhiteSpace(p.NarrationEngine) && !string.IsNullOrWhiteSpace(p.NarrationVoice))
+        {
+            primaryEngine = p.NarrationEngine.Trim();
+            primaryVoice = p.NarrationVoice.Trim();
+        }
+        else
+        {
+            primaryEngine = narratedEntries[0].Engine;
+            primaryVoice = narratedEntries[0].Voice;
+        }
+        var primaryLabel = NarrationVoiceFormatting.CombinedLabel(primaryVoice, primaryEngine);
+        var allSegments = new List<NarrationVoiceSegmentEntry>();
+        var differentSegments = new List<NarrationVoiceSegmentEntry>();
+        var grouped = new List<(string Engine, string Voice, bool IsDifferent, List<int> Numbers)>();
+
+        foreach (var item in narratedEntries)
+        {
+            var matchesPrimary = NarrationVoiceFormatting.VoicesMatch(item.Engine, item.Voice, primaryEngine, primaryVoice);
+            var engineDisplay = NarrationVoiceFormatting.EngineDisplayName(item.Engine);
+            var voiceDisplay = NarrationVoiceFormatting.VoiceDisplayName(item.Voice);
+            var reason = matchesPrimary
+                ? $"Uses primary voice {voiceDisplay} ({engineDisplay})"
+                : $"Different voice: uses {voiceDisplay} ({engineDisplay}) instead of {primaryLabel}";
+            var entry = new NarrationVoiceSegmentEntry
+            {
+                Index = item.Index,
+                Start = item.Cue.Start,
+                End = item.Cue.End,
+                Duration = Math.Max(0, item.Cue.End - item.Cue.Start),
+                Engine = item.Engine,
+                EngineDisplayName = engineDisplay,
+                Voice = item.Voice,
+                VoiceDisplayName = voiceDisplay,
+                AudioFile = item.Path,
+                UsesDifferentVoice = !matchesPrimary,
+                Reason = reason
+            };
+            allSegments.Add(entry);
+            if (!matchesPrimary) differentSegments.Add(entry);
+            var existingIdx = grouped.FindIndex(g => NarrationVoiceFormatting.VoicesMatch(g.Engine, g.Voice, item.Engine, item.Voice));
+            if (existingIdx >= 0) grouped[existingIdx].Numbers.Add(item.Index);
+            else grouped.Add((item.Engine, item.Voice, !matchesPrimary, new List<int> { item.Index }));
+        }
+        if (!grouped.Any(g => NarrationVoiceFormatting.VoicesMatch(g.Engine, g.Voice, primaryEngine, primaryVoice)))
+            grouped.Insert(0, (primaryEngine, primaryVoice, false, new List<int>()));
+
+        var summaries = grouped.Select(g => new NarrationVoiceSummary
+        {
+            Id = $"{g.Engine}|{g.Voice}",
+            Engine = g.Engine,
+            EngineDisplayName = NarrationVoiceFormatting.EngineDisplayName(g.Engine),
+            Voice = g.Voice,
+            VoiceDisplayName = NarrationVoiceFormatting.VoiceDisplayName(g.Voice),
+            Count = g.Numbers.Count,
+            SegmentNumbers = g.Numbers,
+            IsDifferentVoice = g.IsDifferent
+        }).ToList();
+
+        var hasDifferent = differentSegments.Count > 0 || summaries.Count(s => s.Count > 0) > 1;
+        var detail = hasDifferent
+            ? $"{differentSegments.Count} of {allSegments.Count} narrated segment{(allSegments.Count == 1 ? "" : "s")} use a different voice from {primaryLabel}. ({string.Join("; ", summaries.Select(s => $"{s.CombinedLabel}: {s.Count} segment{(s.Count == 1 ? "" : "s")}"))})"
+            : $"All {allSegments.Count} narrated audio description segment{(allSegments.Count == 1 ? "" : "s")} use {primaryLabel}.";
+
+        return new NarrationVoiceReport
+        {
+            Title = hasDifferent ? "Different narration voices in project" : "Narration voice details",
+            Detail = detail,
+            PrimaryVoiceLabel = primaryLabel,
+            HasDifferentVoices = hasDifferent,
+            VoiceSummaries = summaries,
+            DifferentSegments = differentSegments,
+            AllSegments = allSegments
+        };
+    }
     /// <summary>Builds the narration status report from the open project for on-demand review.</summary>
     public NarrationFailureReport? NarrationIssueReport()
     {

@@ -395,8 +395,8 @@ public sealed partial class MainWindow
             case "redo": Redo_Click(this, e); break;
             case "analyze": case "transcribe": case "generate-summary": case "generate-ad-cues": case "prepare-video":
                 Command_Click(new Button { Tag = id }, e); break;
-            case "synthesize-tts": await Model.RunAsync("synthesize-tts"); break;
-            case "synthesize-changed": await Model.RunAsync("synthesize-tts", new[] { "--changed" }); break;
+            case "synthesize-tts": await SynthesizeNarrationWithConfirmationAsync(); break;
+            case "synthesize-changed": await SynthesizeNarrationWithConfirmationAsync(new[] { "--changed" }); break;
             case "review-narration-issues": ReviewNarrationIssues_Click(this, e); break;
             case "delete-narration": await DeleteMenuContentAsync("narration"); break;
             case "delete-current": await DeleteMenuContentAsync(Section.SelectedIndex switch { 0 => "transcript", 1 => "summary", _ => "descriptions" }); break;

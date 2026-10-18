@@ -29,10 +29,38 @@ public sealed class Segment : INotifyPropertyChanged
     public string? Audio { get; set; }
     public string? AudioText { get; set; }
     public string? AudioSettings { get; set; }
+    public string? AudioEngine { get; set; }
+    public string? AudioVoice { get; set; }
     public double? AudioDuration { get; set; }
     public double? AudioStart { get; set; }
     public double? AudioEnd { get; set; }
     public string? AudioError { get; set; }
+    [JsonIgnore] public string? ResolvedAudioEngine
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(AudioEngine)) return AudioEngine.Trim();
+            if (string.IsNullOrWhiteSpace(AudioSettings)) return null;
+            var first = AudioSettings.Split('|')[0].Trim();
+            return string.IsNullOrEmpty(first) ? null : first;
+        }
+    }
+    [JsonIgnore] public string? ResolvedAudioVoice
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(AudioVoice)) return AudioVoice.Trim();
+            if (string.IsNullOrWhiteSpace(AudioSettings)) return null;
+            var parts = AudioSettings.Split('|');
+            if (parts.Length < 2) return null;
+            var raw = parts[1].Trim();
+            if (string.IsNullOrEmpty(raw)) return null;
+            return raw.StartsWith("default:", StringComparison.OrdinalIgnoreCase) ? "System default" : raw;
+        }
+    }
+    [JsonIgnore] public string? NarrationVoiceSummary => string.IsNullOrEmpty(Audio)
+        ? null
+        : NarrationVoiceFormatting.CombinedLabel(ResolvedAudioVoice ?? "System default", ResolvedAudioEngine ?? "windows-core");
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
     [JsonIgnore] public string Timing => $"{TimeSpan.FromSeconds(Start):hh\\:mm\\:ss\\.fff} – {TimeSpan.FromSeconds(End):hh\\:mm\\:ss\\.fff}";
     [JsonIgnore] public bool IsDescription { get; set; }
@@ -92,7 +120,9 @@ public sealed class Segment : INotifyPropertyChanged
         }
     }
     [JsonIgnore] public bool AudioReady => HasAudioFile && NarrationUpdateReasons.Count == 0;
-    [JsonIgnore] public string AudioStatus => AudioReady ? "Synchronized audio generated" : AudioNeedsRegeneration ? "Narration needs updating" : "Narration not generated";
+    [JsonIgnore] public string AudioStatus => AudioReady
+        ? (string.IsNullOrEmpty(NarrationVoiceSummary) ? "Synchronized audio generated" : $"Synchronized audio generated · {NarrationVoiceSummary}")
+        : AudioNeedsRegeneration ? "Narration needs updating" : "Narration not generated";
     [JsonIgnore] public string AudioStatusColor => AudioReady ? "#209447" : "#9B701B";
     [JsonIgnore] public bool AudioNeedsRegeneration => HasAudioFile && NarrationUpdateReasons.Count > 0;
     public override string ToString() => $"{Timing}  {(IsDescription ? "AD: " : "")}{Text}";
@@ -111,6 +141,8 @@ public sealed class StudioProject
     public bool HasAudio { get; set; }
     public string Summary { get; set; } = "";
     public string Status { get; set; } = "";
+    public string? NarrationEngine { get; set; }
+    public string? NarrationVoice { get; set; }
     public List<string> Thumbnails { get; set; } = new();
     public List<Segment> Transcript { get; set; } = new();
     public List<Segment> Cues { get; set; } = new();
@@ -211,4 +243,105 @@ public sealed class NarrationFailureReport
     public string Detail { get; set; } = "";
     public int Generated { get; set; }
     public List<NarrationFailure> Failures { get; set; } = new();
+}
+
+public static class NarrationVoiceFormatting
+{
+    public static string EngineDisplayName(string? engine) => (engine ?? "").Trim().ToLowerInvariant() switch
+    {
+        "gemini" => "Gemini TTS",
+        "system" => "Apple on-device",
+        "windows-core" => "Windows OneCore",
+        "sapi5" => "SAPI 5",
+        _ => "Windows OneCore"
+    };
+
+    public static string VoiceDisplayName(string? voice)
+    {
+        var trimmed = (voice ?? "").Trim();
+        if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("default:", StringComparison.OrdinalIgnoreCase))
+            return "System default";
+        if (trimmed.Contains('\\'))
+            return trimmed.Split('\\').Last();
+        return trimmed;
+    }
+
+    public static string CombinedLabel(string? voice, string? engine) =>
+        $"{VoiceDisplayName(voice)} ({EngineDisplayName(engine)})";
+
+    public static bool IsSystemDefaultVoice(string voice)
+    {
+        var lower = (voice ?? "").Trim().ToLowerInvariant();
+        return lower == "system default" || lower.StartsWith("system default (") || lower.StartsWith("default:");
+    }
+
+    public static string? SystemDefaultInnerVoice(string voice)
+    {
+        var trimmed = (voice ?? "").Trim();
+        if (!trimmed.StartsWith("System default (", StringComparison.OrdinalIgnoreCase) || !trimmed.EndsWith(")"))
+            return null;
+        var inner = trimmed.Substring("System default (".Length, trimmed.Length - "System default (".Length - 1).Trim();
+        return string.IsNullOrEmpty(inner) ? null : inner;
+    }
+
+    public static string EffectiveVoiceName(string voice) =>
+        SystemDefaultInnerVoice(voice) ?? VoiceDisplayName(voice);
+
+    public static bool VoicesMatch(string? engineA, string? voiceA, string? engineB, string? voiceB)
+    {
+        var normEngineA = (engineA ?? "").Trim().ToLowerInvariant();
+        var normEngineB = (engineB ?? "").Trim().ToLowerInvariant();
+        if (normEngineA != normEngineB) return false;
+        var trimA = (voiceA ?? "").Trim();
+        var trimB = (voiceB ?? "").Trim();
+        if (IsSystemDefaultVoice(trimA) && IsSystemDefaultVoice(trimB))
+        {
+            var innerA = SystemDefaultInnerVoice(trimA);
+            var innerB = SystemDefaultInnerVoice(trimB);
+            if (innerA != null && innerB != null)
+                return string.Equals(innerA, innerB, StringComparison.OrdinalIgnoreCase);
+            return true;
+        }
+        return string.Equals(EffectiveVoiceName(trimA), EffectiveVoiceName(trimB), StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+public sealed class NarrationVoiceSummary
+{
+    public string Id { get; set; } = "";
+    public string Engine { get; set; } = "";
+    public string EngineDisplayName { get; set; } = "";
+    public string Voice { get; set; } = "";
+    public string VoiceDisplayName { get; set; } = "";
+    public int Count { get; set; }
+    public List<int> SegmentNumbers { get; set; } = new();
+    public bool IsDifferentVoice { get; set; }
+    public string CombinedLabel => $"{VoiceDisplayName} ({EngineDisplayName})";
+}
+
+public sealed class NarrationVoiceSegmentEntry
+{
+    public int Index { get; set; }
+    public double Start { get; set; }
+    public double End { get; set; }
+    public double Duration { get; set; }
+    public string Engine { get; set; } = "";
+    public string EngineDisplayName { get; set; } = "";
+    public string Voice { get; set; } = "";
+    public string VoiceDisplayName { get; set; } = "";
+    public string AudioFile { get; set; } = "";
+    public bool UsesDifferentVoice { get; set; }
+    public string Reason { get; set; } = "";
+    public string CombinedLabel => $"{VoiceDisplayName} ({EngineDisplayName})";
+}
+
+public sealed class NarrationVoiceReport
+{
+    public string Title { get; set; } = "Narration voice details";
+    public string Detail { get; set; } = "";
+    public string? PrimaryVoiceLabel { get; set; }
+    public bool HasDifferentVoices { get; set; }
+    public List<NarrationVoiceSummary> VoiceSummaries { get; set; } = new();
+    public List<NarrationVoiceSegmentEntry> DifferentSegments { get; set; } = new();
+    public List<NarrationVoiceSegmentEntry> AllSegments { get; set; } = new();
 }

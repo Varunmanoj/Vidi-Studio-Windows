@@ -153,7 +153,7 @@ public sealed partial class MainWindow
             if (segment.IsDescription)
             {
                 Item("Preview narration", PreviewNarration_Click, segment.AudioReady);
-                Item("Generate narration", NarrateSelected_Click, Model.HasApiKey);
+                Item(segment.Audio == null ? "Synthesize this segment" : "Regenerate segment narration", NarrateSelected_Click, Model.CurrentNarrationEngine() != "gemini" || Model.HasApiKey);
                 Item("Rewrite description to fit", Rewrite_Click, Model.HasApiKey);
                 Item("Delete narration", DeleteNarration_Click, segment.Audio != null);
             }
@@ -182,6 +182,19 @@ public sealed partial class MainWindow
     }
     private void SegmentMore_Click(object sender, RoutedEventArgs e)
     { if (sender is FrameworkElement element) SegmentMenu(element.Tag as Segment).ShowAt(element); }
+    private void SegmentContext_Requested(UIElement sender, ContextRequestedEventArgs e)
+    {
+        if (!Model.Idle) return;
+        var pointerRequest = e.TryGetPosition(sender, out var point);
+        var element = (pointerRequest ? e.OriginalSource : FocusManager.GetFocusedElement(Root.XamlRoot)) as FrameworkElement;
+        while (element != null && element.DataContext is not Segment) element = VisualTreeHelper.GetParent(element) as FrameworkElement;
+        var segment = element?.DataContext as Segment ?? (sender as ListViewBase)?.SelectedItem as Segment;
+        if (segment == null) return;
+        var menu = SegmentMenu(segment);
+        if (pointerRequest) menu.ShowAt((FrameworkElement)sender, point);
+        else menu.ShowAt(element ?? (FrameworkElement)sender);
+        e.Handled = true;
+    }
     private void Track_SizeChanged(object sender, SizeChangedEventArgs e) => RenderTracks();
     private void RenderTracks()
     {

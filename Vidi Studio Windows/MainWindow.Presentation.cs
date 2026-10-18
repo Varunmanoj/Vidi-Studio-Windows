@@ -33,6 +33,125 @@ public sealed partial class MainWindow
         try { await ShowNarrationFailuresAsync(report); }
         catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
     }
+    private async void ReviewNarrationVoices_Click(object sender, RoutedEventArgs e)
+    {
+        if (Model.NarrationVoiceUsageReport() is not { } report) return;
+        try { await ShowNarrationVoicesAsync(report); }
+        catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
+    }
+    private Task<ContentDialogResult> ShowNarrationVoicesAsync(NarrationVoiceReport report)
+    {
+        var hasSegments = report.AllSegments.Count > 0;
+        var heading = new Grid { ColumnSpacing = 10, Margin = new Thickness(0, 0, 0, 8) };
+        heading.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        heading.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        heading.Children.Add(new FontIcon { Glyph = report.HasDifferentVoices ? "\uE7BA" : "\uE73E", VerticalAlignment = VerticalAlignment.Top });
+        var detail = new TextBlock { Text = report.Detail, TextWrapping = TextWrapping.Wrap };
+        Grid.SetColumn(detail, 1); heading.Children.Add(detail);
+        var panel = new StackPanel { Spacing = 8, MinWidth = hasSegments ? 820 : 0 };
+        panel.Children.Add(heading);
+        if (report.VoiceSummaries.Count > 0)
+        {
+            panel.Children.Add(new TextBlock { Text = "Voice usage by segment count", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 13 });
+            foreach (var summary in report.VoiceSummaries)
+            {
+                var segmentText = summary.SegmentNumbers.Count == 0
+                    ? "0 segments"
+                    : $"{summary.Count} segment{(summary.Count == 1 ? "" : "s")} (AD {string.Join(", ", summary.SegmentNumbers)})";
+                var summaryRow = new TextBlock
+                {
+                    Text = $"• {summary.CombinedLabel}{(summary.IsDifferentVoice ? " · Different voice" : " · Primary voice")}: {segmentText}",
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 12,
+                    FontWeight = summary.IsDifferentVoice ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal
+                };
+                panel.Children.Add(summaryRow);
+            }
+        }
+        if (report.DifferentSegments.Count > 0)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"Segments using a different voice: AD {string.Join(", ", report.DifferentSegments.Select(s => s.Index))}",
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                FontSize = 13
+            });
+        }
+        if (hasSegments)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Start and end: HH:MM:SS.mmm (hours:minutes:seconds.milliseconds). Duration is in seconds.",
+                FontSize = 12, TextWrapping = TextWrapping.Wrap, Opacity = 0.7
+            });
+        }
+        Grid MakeVoiceRow(string index, string start, string end, string duration, string voiceEngine, string reason, bool header, NarrationVoiceSegmentEntry? entry = null)
+        {
+            var row = new Grid { ColumnSpacing = 12 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(86) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(180) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 240 });
+            void Add(int column, string text, string? accessibleName = null)
+            {
+                var block = new TextBlock
+                {
+                    Text = text,
+                    TextWrapping = column >= 4 ? TextWrapping.Wrap : TextWrapping.NoWrap,
+                    VerticalAlignment = VerticalAlignment.Top,
+                    IsTextSelectionEnabled = !header && column >= 4,
+                    FontWeight = header || (entry?.UsesDifferentVoice == true && column >= 4) ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
+                    Opacity = header ? 0.7 : 1
+                };
+                if (column < 4) block.FontFamily = new FontFamily("Consolas");
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(block, accessibleName ?? text);
+                Grid.SetColumn(block, column);
+                row.Children.Add(block);
+            }
+            Add(0, index);
+            Add(1, start, entry == null ? null : $"Start: {NarrationTimeFormat.SpokenTime(entry.Start)}");
+            Add(2, end, entry == null ? null : $"End: {NarrationTimeFormat.SpokenTime(entry.End)}");
+            Add(3, duration, entry == null ? null : $"Duration: {NarrationTimeFormat.SpokenDuration(entry.Duration)}");
+            Add(4, voiceEngine);
+            Add(5, reason);
+            return row;
+        }
+        if (hasSegments) panel.Children.Add(MakeVoiceRow("AD", "Start", "End", "Duration", "Voice & Engine", "Details", true));
+        foreach (var entry in report.AllSegments)
+            panel.Children.Add(MakeVoiceRow(entry.Index.ToString(), NarrationTimeFormat.Timestamp(entry.Start), NarrationTimeFormat.Timestamp(entry.End),
+                NarrationTimeFormat.Duration(entry.Duration), entry.CombinedLabel, entry.Reason, false, entry));
+        var scroll = new ScrollViewer
+        {
+            Content = panel, MaxHeight = 420,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollMode = ScrollMode.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+        };
+        if (hasSegments)
+        {
+            panel.Width = 820;
+            scroll.SizeChanged += (_, args) => panel.Width = Math.Max(820, args.NewSize.Width - 16);
+        }
+        var dialog = new ContentDialog
+        {
+            Title = report.Title,
+            Content = scroll,
+            CloseButtonText = "Close",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (hasSegments)
+        {
+            dialog.Width = Math.Min(980, Math.Max(0, (Root.XamlRoot?.Size.Width ?? 1080) - 80));
+            dialog.MinWidth = 0;
+            dialog.MaxWidth = 980;
+            dialog.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            dialog.Resources["ContentDialogMinWidth"] = 0.0;
+            dialog.Resources["ContentDialogMaxWidth"] = 980.0;
+        }
+        return ShowDialogAsync(dialog, hasSegments ? 1060 : 680, hasSegments ? 600 : 420);
+    }
     private Task<ContentDialogResult> ShowNarrationFailuresAsync(NarrationFailureReport report)
     {
         var healthy = report.Failures.Count == 0;
@@ -283,10 +402,36 @@ public sealed partial class MainWindow
         AddInfo(OverviewStatistics, "Audio missing", p.Cues.Count(c => !c.AudioReady && !c.AudioNeedsRegeneration).ToString());
         AddInfo(OverviewStatistics, "Description time", TimeSpan.FromSeconds(p.Cues.Sum(c => c.End - c.Start)).ToString(@"mm\:ss"));
         AddInfo(OverviewStatistics, "Spoken transcript segments", p.Transcript.Count.ToString());
+        var voiceReport = Model.NarrationVoiceUsageReport();
+        var voiceStat = voiceReport == null || voiceReport.AllSegments.Count == 0
+            ? "None"
+            : voiceReport.HasDifferentVoices
+                ? $"{voiceReport.VoiceSummaries.Count(s => s.Count > 0)} voices ({voiceReport.DifferentSegments.Count} different)"
+                : voiceReport.PrimaryVoiceLabel ?? Model.CurrentNarrationSummary();
+        AddInfo(OverviewStatistics, "Narration voices", voiceStat);
         foreach (var origin in new[] { ("ai", "AI-generated"), ("ai_modified", "AI-generated · modified"), ("manual", "Manually added"), ("unknown", "Origin unknown") })
             AddInfo(OriginStatistics, origin.Item2, p.Cues.Count(c => c.Origin == origin.Item1).ToString());
         OriginStatistics.Children.Add(new TextBlock { Text = "AI-generated and modified segments are counted separately. Manual descriptions stay manual when edited.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
         OverviewVoice.Text = "Speech engine: " + Model.Settings.Get("ttsMode", "windows-core") + "\nVoice: " + (Model.Settings.Get("ttsMode") == "gemini" ? Model.Settings.Get("geminiVoice", "Kore") : string.IsNullOrEmpty(Model.Settings.Get("systemVoice")) ? "System default" : Model.Settings.Get("systemVoice").Split('\\').Last());
+        if (OverviewVoiceWarningBorder != null && OverviewVoiceWarningText != null)
+        {
+            if (voiceReport is { HasDifferentVoices: true })
+            {
+                var lines = new List<string> { "Different narration voices are used in this project", voiceReport.Detail };
+                foreach (var summary in voiceReport.VoiceSummaries)
+                {
+                    var segs = summary.SegmentNumbers.Count == 0 ? "0 segments" : $"{summary.Count} segment{(summary.Count == 1 ? "" : "s")} (AD {string.Join(", ", summary.SegmentNumbers)})";
+                    lines.Add($"• {summary.CombinedLabel}{(summary.IsDifferentVoice ? " — Different voice" : " — Primary voice")}: {segs}");
+                }
+                OverviewVoiceWarningText.Text = string.Join("\n", lines);
+                OverviewVoiceWarningBorder.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                OverviewVoiceWarningText.Text = "";
+                OverviewVoiceWarningBorder.Visibility = Visibility.Collapsed;
+            }
+        }
         UpdateApiKeyUi();
     }
     private static void AddInfo(StackPanel panel, string label, string value)

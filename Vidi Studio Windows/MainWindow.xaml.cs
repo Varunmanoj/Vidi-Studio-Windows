@@ -511,6 +511,11 @@ public sealed partial class MainWindow : Window
     {
         var command = (string)((FrameworkElement)sender).Tag;
         if (Model.Project == null) return;
+        if (command == "synthesize-tts")
+        {
+            await SynthesizeNarrationWithConfirmationAsync();
+            return;
+        }
         if (!Model.HasApiKey && command != "prepare-video")
         {
             await ShowSettingsSectionAsync(2);
@@ -895,15 +900,64 @@ public sealed partial class MainWindow : Window
     }
     private async void Undo_Click(object sender, RoutedEventArgs e) => await Model.RunAsync(Section.SelectedIndex == 0 ? "undo-transcript" : "undo-cues");
     private async void Redo_Click(object sender, RoutedEventArgs e) => await Model.RunAsync(Section.SelectedIndex == 0 ? "redo-transcript" : "redo-cues");
+    private async Task<bool> ConfirmNarrationVoiceChangeAsync()
+    {
+        if (Model.Project is not { } p) return false;
+        var narratedCues = p.Cues.Where(c => c.HasAudioFile || !string.IsNullOrEmpty(c.Audio) || !string.IsNullOrEmpty(c.ResolvedAudioVoice)).ToList();
+        if (narratedCues.Count == 0) return true;
+        var selectedEngine = Model.CurrentNarrationEngine();
+        var selectedVoice = Model.CurrentNarrationVoice();
+        var existingLabels = new List<string>();
+        var hasDifferentVoice = false;
+        foreach (var cue in narratedCues)
+        {
+            var cueEngine = cue.ResolvedAudioEngine ?? p.NarrationEngine ?? "windows-core";
+            var cueVoice = cue.ResolvedAudioVoice ?? p.NarrationVoice ?? "System default";
+            var label = NarrationVoiceFormatting.CombinedLabel(cueVoice, cueEngine);
+            if (!existingLabels.Contains(label)) existingLabels.Add(label);
+            if (!NarrationVoiceFormatting.VoicesMatch(cueEngine, cueVoice, selectedEngine, selectedVoice))
+                hasDifferentVoice = true;
+        }
+        if (!string.IsNullOrWhiteSpace(p.NarrationEngine) && !string.IsNullOrWhiteSpace(p.NarrationVoice) &&
+            !NarrationVoiceFormatting.VoicesMatch(p.NarrationEngine, p.NarrationVoice, selectedEngine, selectedVoice))
+        {
+            hasDifferentVoice = true;
+            var label = NarrationVoiceFormatting.CombinedLabel(p.NarrationVoice, p.NarrationEngine);
+            if (!existingLabels.Contains(label)) existingLabels.Insert(0, label);
+        }
+        if (!hasDifferentVoice) return true;
+        return await Confirm(
+            "Generate narration with a different voice?",
+            $"This project already contains narration generated using {string.Join(", ", existingLabels)}. You have selected {Model.CurrentNarrationSummary()}. Proceeding will result in different narration voices across the project, which will be detailed in AD Overview. Do you want to proceed with generating narration?",
+            "Proceed");
+    }
+
+    private async Task SynthesizeNarrationWithConfirmationAsync(IEnumerable<string>? extra = null)
+    {
+        if (Model.Project == null) return;
+        if (Model.CurrentNarrationEngine() == "gemini" && !Model.HasApiKey)
+        {
+            await ShowSettingsSectionAsync(2);
+            return;
+        }
+        var hadPriorNarration = Model.Project.Cues.Any(c => c.HasAudioFile);
+        if (!await ConfirmNarrationVoiceChangeAsync()) return;
+        await Model.RunAsync("synthesize-tts", extra);
+        if (hadPriorNarration && Model.NarrationVoiceUsageReport() is { HasDifferentVoices: true } voiceReport)
+        {
+            try { await ShowNarrationVoicesAsync(voiceReport); }
+            catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
+        }
+    }
+
     private async void ChangedNarration_Click(object sender, RoutedEventArgs e)
     {
-        if (!Model.HasApiKey) { await ShowSettingsSectionAsync(2); return; }
-        await Model.RunAsync("synthesize-tts", new[] { "--changed" });
+        await SynthesizeNarrationWithConfirmationAsync(new[] { "--changed" });
     }
     private async void NarrateSelected_Click(object sender, RoutedEventArgs e)
     {
-        if (!Model.HasApiKey) { await ShowSettingsSectionAsync(2); return; }
-        if (Segments.SelectedItem is Segment { IsDescription: true } c) await Model.RunAsync("synthesize-tts", new[] { "--segment", c.Id });
+        if (Segments.SelectedItem is Segment { IsDescription: true } c)
+            await SynthesizeNarrationWithConfirmationAsync(new[] { "--segment", c.Id });
     }
     private async void Rewrite_Click(object sender, RoutedEventArgs e)
     {
@@ -1162,6 +1216,11 @@ public sealed partial class MainWindow : Window
         {
             OverviewReviewNarrationButton.IsEnabled = Model.Idle && project != null;
             ToolTipService.SetToolTip(OverviewReviewNarrationButton, "Review missing audio, generation failures, and text or timing changes without generating narration");
+        }
+        if (OverviewReviewNarrationVoicesButton != null)
+        {
+            OverviewReviewNarrationVoicesButton.IsEnabled = Model.Idle && project != null;
+            ToolTipService.SetToolTip(OverviewReviewNarrationVoicesButton, "Review how many segments use each voice, which segments use a different voice, and segment timing details");
         }
 
         void SetAiButton(Button? button, string normalTooltip = "", bool available = true, string? unavailableTooltip = null)

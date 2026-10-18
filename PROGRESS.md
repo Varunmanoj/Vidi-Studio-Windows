@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-18 — Narration voice-change warning, per-segment MP3/voice/engine metadata, and AD Overview voice dialog (1.0.72 / 1.0.72.0)
+
+Mirrors Mac: each synthesized narration segment now stores `audioEngine`, `audioVoice`, and an actual `.mp3` file in `audio-description/` inside the project folder, alongside the project's initial narration voice (`narrationEngine` / `narrationVoice`). When the project already contains narration generated with a different voice or engine, attempting to generate narration displays a confirmation dialog warning that voices in the project will differ. Proceeding with a different voice updates the AD Overview tab with a warning summary and **Review Narration Voices** dialog detailing how many segments use each voice, which segments use a different voice, the AD segment number, start time, end time, and duration.
+
+Validation: combined-workspace menu parity checker passed, Windows Python test suites passed 132 tests (1 skipped), Mac Python test suites passed 121 tests, `xmllint` on `MainWindow.xaml` and `git diff --check` passed, and versions are synchronized at 1.0.72 / 1.0.72.0 (Mac build 73). Native WinUI compilation and Windows runtime UI checks require a Windows host and were not run on this macOS host.
+
 ## 2026-10-18 — Readable, compact narration issue table (1.0.71 / 1.0.71.0)
 
 Fixed the extremely narrow Reason column in the Windows narration dialog. Widening the host window alone had left WinUI's inner ContentDialog at its default width cap, consuming almost all available content width with the four fixed columns. The issue dialog now overrides the inner width/resource cap (up to 960 XAML pixels, bounded by the owner window) and uses a 1040-pixel host. The table has a finite viewport-driven width, a 760-pixel minimum, tighter column gaps, compact non-wrapping numeric columns, and at least 300 pixels for Reason. Reasons retain full selectable/wrapped text; smaller windows can horizontally scroll instead of collapsing words into a vertical strip. The summary heading also uses a wrapping grid rather than an unconstrained horizontal stack. Healthy/empty reports retain a smaller dialog.

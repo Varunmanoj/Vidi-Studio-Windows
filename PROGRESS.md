@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-18 — Removed-control build diagnostics and rebuild recovery (1.0.83 / 1.0.83.0, Mac build 84)
+
+Investigated compiler reports referencing the removed duplicate Inspector generation buttons. Current production MainWindow partial classes and XAML contain neither `InspectorRegenerateAllNarrationButton` nor `InspectorNarrateSelectedButton`; ignored local output was also checked. Added `-Rebuild` to `script/build-windows.ps1` to invoke MSBuild's standard Rebuild target rather than incremental Build for the chosen platform/configuration. Added `script/check_xaml_references.py`, invoked before building, to catch production Inspector identifiers absent from current XAML and report source files/lines. Mutation tests verify both reported stale identifiers are rejected. README documents updating all partial classes, closing Visual Studio, rebuilding, and reporting exact source/generated error locations if failures persist. No obsolete buttons were reintroduced.
+
+Validation on macOS: reference preflight passed; Windows reference/Inspector/menu/parity suite passed 21 tests; Mac menu/parity suite passed 14 tests. Both `git diff --check` checks and version synchronization passed at 1.0.83 / Windows package 1.0.83.0 / Mac build 84. Native Windows compilation and the Rebuild target were not executable on this host; the reported compiler error was not reproduced in current sources, so recovery requires validation on the user's Windows checkout. No Mac application behavior changed or Mac rebuild was performed.
+
 ## 2026-10-18 — Preview-only native voice selection (1.0.82 / 1.0.82.0, Mac build 83)
 
 On-device preview now offers only Windows OneCore/SAPI 5 voices; Gemini is available only with saved narration playback. Changing to preview automatically switches Gemini to OneCore, restores the saved local voice/default, stops voice samples, and refreshes the voice list. Returning to saved playback restores Gemini eligibility without overwriting the saved Gemini voice. SettingsStore enforces the rule on load/reload/save/programmatic changes and persists normalization of incompatible saved settings; `device` is normalized to Windows' `ondevice` playback mode. Mac applies the equivalent Apple-only rule in Settings/AD Overview. No existing project audio is changed.

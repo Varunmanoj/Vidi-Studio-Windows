@@ -36,6 +36,24 @@ For x64, rerun setup with `-Platform x64`, then select **x64** in Visual Studio.
 .\script\build-windows.ps1 -Platform x64 -Configuration Release
 ```
 
+If Visual Studio reports missing controls that were removed from XAML (for example,
+`InspectorRegenerateAllNarrationButton` or `InspectorNarrateSelectedButton`), first
+confirm that the entire checkout is current, including `MainWindow.xaml`, all
+`MainWindow*.cs` partial classes, and `MainWindow.SmokeTest.cs`. Close Visual Studio
+and regenerate the WinUI build output for the same platform/configuration:
+
+```powershell
+.\script\build-windows.ps1 -Platform ARM64 -Configuration Debug -Rebuild
+```
+
+Use `-Platform x64` or `-Configuration Release` when appropriate. `-Rebuild` invokes
+MSBuild's standard Rebuild target instead of reusing incremental XAML output; it
+does not restore the removed duplicate buttons. The build script also checks
+production inspector field references against the current XAML before building.
+If the error persists after a current-checkout rebuild, report the exact file path
+and line number from the build output to distinguish stale generated code from an
+out-of-date source partial class.
+
 ## Engine distribution and CPU architecture
 
 The WinUI process and default speech helper use the selected platform. Python and FFmpeg are separate processes: x64 builds can run under Windows ARM64 emulation without loading x64 DLLs into the ARM64 UI. For an entirely native ARM64 distribution, use ARM64 Python and ARM64 media tools and verify dependency wheels on that machine.

@@ -75,8 +75,10 @@ public sealed partial class MainWindow
                 Submenu("Segments", Command("segment-edit-mode"), Command("add"), Separator(), Command("reanalyze-selection"),
                     Command("segment-select-all"), Command("segment-deselect-all"), Command("segment-edit-selected"), Command("segment-delete-selected"), Separator(),
                     Command("follow"), Command("undo"), Command("redo")),
-                Submenu("Analysis", Command("analyze"), Separator(), Command("prepare-video"), Command("transcribe"), Command("generate-summary"), Command("generate-ad-cues")),
-                Submenu("Narration", Command("synthesize-tts"), Command("synthesize-changed"), Command("review-narration-issues"), Separator(), Command("delete-narration")),
+                Submenu("Analysis", Command("analyze"), Separator(), Command("prepare-video"), Command("transcribe"), Command("generate-summary")),
+                Submenu("Narration",
+                    Submenu("AD Segment Generation", Command("generate-ad-cues"), Separator(), Command("delete-descriptions")),
+                    Submenu("Narration Audio", Command("synthesize-tts"), Command("synthesize-changed"), Command("regenerate-all-narration"), Command("review-narration-issues"), Command("review-narration-voices"), Separator(), Command("delete-narration"))),
                 Command("delete-current"), Separator(), Command("show-in-finder")),
             Menu("Help", Command("help"), Command("about"))
         };
@@ -179,7 +181,7 @@ public sealed partial class MainWindow
             }
         foreach (var (name, group) in desktopMenuGroups)
         {
-            group.IsEnabled = desktopEditorVisible && Model.Project != null && (Model.Idle || (name == "Narration" && Model.IsSynthesizingNarration));
+            group.IsEnabled = desktopEditorVisible && Model.Project != null && (Model.Idle || ((name is "Narration" or "Narration Audio") && Model.IsSynthesizingNarration));
             if (name == "Summary Reading") group.IsEnabled &= Section.SelectedIndex == 1 && !summaryEditMode;
             if (name == "Transcript Overlay")
             {
@@ -231,9 +233,10 @@ public sealed partial class MainWindow
             case "caption-off": return timed;
             case "analyze": case "transcribe": case "generate-summary": return ai;
             case "generate-ad-cues": return ai && canDescribe;
-            case "synthesize-tts": return tts && p.Cues.Count > 0;
+            case "synthesize-tts": case "regenerate-all-narration": return tts && p.Cues.Count > 0;
             case "synthesize-changed": return tts && p.HasChangedNarration;
             case "delete-narration": return p.Cues.Any(c => c.Audio != null);
+            case "delete-descriptions": return p.Cues.Count > 0 || ExtraFlag(p, "descriptionsGenerated");
             case "delete-current": return Section.SelectedIndex switch
                 { 0 => hasTranscript, 1 => p.HasSummary || ExtraFlag(p, "summaryGenerated"), 2 => p.Cues.Count > 0 || ExtraFlag(p, "descriptionsGenerated"), _ => false };
             case "fullscreen": return !p.IsYouTube;
@@ -289,7 +292,10 @@ public sealed partial class MainWindow
                 ? (Model.NarratingSegmentIndex is { } idx && p != null ? $"Synthesizing AD Segment {idx} of {p.Cues.Count}…" : "Synthesizing Narration…")
                 : "Synthesize Narration",
             "synthesize-changed" => "Synthesize Changed Segments",
+            "regenerate-all-narration" => "Regenerate All Narration…",
             "review-narration-issues" => "Review Narration Issues…", "delete-narration" => "Delete All Narration Audio…",
+            "review-narration-voices" => "Review Narration Voices…",
+            "delete-descriptions" => "Delete Descriptions…",
             "delete-current" => Section.SelectedIndex switch { 0 => "Delete Transcript…", 1 => "Delete Summary…", 2 => "Delete Descriptions…", _ => "Delete Current Page…" },
             "show-in-finder" => "Show Project in File Explorer", _ => id
         };
@@ -318,8 +324,11 @@ public sealed partial class MainWindow
             "close-window" => "Close window", "help" => "Help and keyboard shortcuts", "about" => "About Vidi Studio",
             "back" => "Rewind five seconds", "forward" => "Forward five seconds", "follow" => "Follow active segment",
             "summary-play" or "summary-from-start" or "summary-from-selection" or "summary-read-selection" => "Play summary",
-            "summary-pause" => "Pause summary", "Summary Reading" or "Narration" or "narration" or "synthesize-tts" or "synthesize-changed" => "Narration",
+            "summary-pause" => "Pause summary", "Summary Reading" or "Narration" or "Narration Audio" or "narration" or "synthesize-tts" or "synthesize-changed" => "Narration",
+            "AD Segment Generation" => "Generate descriptions", "delete-descriptions" => "Delete selected",
             "review-narration-issues" => "Review Narration Issues…", "delete-narration" or "delete-current" or "segment-delete-selected" => "Delete narration",
+            "review-narration-voices" => "Review Narration Voices…",
+            "regenerate-all-narration" => "Refresh video details",
             "segment-edit-mode" or "segment-edit-selected" => "Edit selected", "segment-select-all" => "Select all", "segment-deselect-all" => "Deselect all",
             "undo" => "Undo", "redo" => "Redo", "analyze" or "Analysis" or "reanalyze-selection" => "Analyze video",
             "prepare-video" => "Refresh video details", "transcribe" or "transcript" => "Transcript", "generate-summary" or "summary" => "Summary",
@@ -401,9 +410,14 @@ public sealed partial class MainWindow
             case "analyze": case "transcribe": case "generate-summary": case "generate-ad-cues": case "prepare-video":
                 Command_Click(new Button { Tag = id }, e); break;
             case "synthesize-tts": await SynthesizeNarrationWithConfirmationAsync(); break;
+            case "regenerate-all-narration": await SynthesizeNarrationWithConfirmationAsync(new[] { "--regenerate-all" }); break;
             case "synthesize-changed": await SynthesizeNarrationWithConfirmationAsync(new[] { "--changed" }); break;
             case "review-narration-issues": ReviewNarrationIssues_Click(this, e); break;
+            case "review-narration-voices":
+                if (Model.NarrationVoiceUsageReport() is { } voiceReport) await ShowNarrationVoicesAsync(voiceReport);
+                break;
             case "delete-narration": await DeleteMenuContentAsync("narration"); break;
+            case "delete-descriptions": await DeleteMenuContentAsync("descriptions"); break;
             case "delete-current": await DeleteMenuContentAsync(Section.SelectedIndex switch { 0 => "transcript", 1 => "summary", _ => "descriptions" }); break;
             case "show-in-finder": Reveal_Click(this, e); break;
             case "summary-play": if (readback.State == SummaryReadbackState.Paused) readback.Resume(); else await readback.SpeakAsync(Model.Project!.Summary); break;

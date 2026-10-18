@@ -44,6 +44,7 @@ public static class MenuIcons
             "Rewrite description to fit" => "\uE8AC",
             "Generate all narration" or "Generate changed narration" or "Generate narration" or "Synthesize this segment" or "Regenerate segment narration" or "Narration on / off" or "Narration" => "\uE767",
             "Review Narration Issues…" => "\uE9D9",
+            "Review Narration Voices…" => "\uE77B",
             "Preview narration" or "Play from segment" or "Play summary" or "Resume summary" => "\uE768",
             "Pause video" or "Pause summary" => "\uE769",
             "Stop summary" => "\uE71A",

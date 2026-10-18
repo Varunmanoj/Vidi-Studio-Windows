@@ -1,5 +1,29 @@
 # Windows migration progress
 
+## 2026-10-18 — Narration menu generation/audio grouping (1.0.78 / 1.0.78.0, Mac build 79)
+
+Matched the Inspector with **Project → Narration → AD Segment Generation** and **Narration Audio** submenus. AD generation moved from Analysis, retaining its dynamic label, Ctrl+Alt+Shift+D shortcut, and prerequisites. The generation group also includes guarded Delete Descriptions, independent of the selected editor section. All existing audio synthesis, regeneration, review, and deletion commands now sit in Narration Audio; Review Narration Voices still directly follows Review Narration Issues. Updated native group icons, smoke expectations, documentation, and mirrored structural/mutation menu tests. Existing parity parser supports this nested submenu construct without modification.
+
+Validation: root and both desktop menu checkers passed; Mac menu/parity/Inspector suite passed 16 tests and Windows equivalent passed 17 tests using the existing Mac virtual environment. Both `git diff --check` checks and version synchronization passed. Mac `script/build_and_run.sh --verify` passed, including all 13 packaged Help pages, and launched PID 73347 at 1.0.78/build 79. Native Windows build/UI smoke was not run on this macOS host.
+
+## 2026-10-18 — Separate Inspector generation and narration groups (1.0.77 / 1.0.77.0, Mac build 78)
+
+Split description generation and audio controls into separately headed, theme-aware **AD Segment Generation** and **Narration Audio** groups. Generation and selected-description rewriting stay in the first group; synthesis, changed-segment synthesis, full regeneration, selected narration/deletion, and narration progress stay in the audio group. AD Overview/AD Transcript hide the generation-only group. Existing menu/command behavior is unchanged. Added mirrored structural regression tests and Windows native smoke expectations for separate visible groups on Descriptions.
+
+Validation: Mac inspector/menu/parity suite passed 15 tests; Windows equivalent passed 16 tests using the existing Mac virtual environment; Windows XAML passed `xmllint`. Both structural-test reruns and `git diff --check` checks passed. Version synchronization confirms 1.0.77 / Mac build 78 / Windows package 1.0.77.0. Mac `script/build_and_run.sh --verify` passed, including menu parity and all 13 packaged Help pages, and launched PID 73047. Native Windows build/UI smoke was not run on this macOS host.
+
+## 2026-10-18 — Narration voice review menu entry (1.0.76 / 1.0.76.0, Mac build 77)
+
+Added **Review Narration Voices…** directly after **Review Narration Issues…** in **Project → Narration**, matching Mac's stable `review-narration-voices` command. Opens the existing voice report dialog, available offline while an idle project is open. Added a voice/person menu icon, mirrored regression/mutation checks, native smoke expectations for ordering and offline/gallery availability, and desktop menu documentation.
+
+Validation: root and both desktop menu checkers passed; Mac menu/parity suite passed 13 tests and Windows menu/parity suite passed 14 tests using the existing Mac virtual environment. Version check and both `git diff --check` checks passed. Mac `script/build_and_run.sh --verify` passed and launched PID 72695 at 1.0.76/build 77. Native Windows compilation/UI smoke was not run on this macOS host; no engine changes or live Gemini requests were needed.
+
+## 2026-10-18 — Regenerate All Narration (1.0.75 / 1.0.75.0, Mac build 76)
+
+Mirrors Mac: added **Regenerate All Narration…** to the right Inspector and **Project → Narration**, using the same guarded command with local-speech/API-key prerequisites. Confirmation identifies the selected voice and warns that all segments' narration audio will be replaced, preserving description text/timing. The engine's explicit `--regenerate-all` mode bypasses repair-only skipping, keeps old files until successful replacement, and updates the primary project voice only after full success. Progress queues include every segment. Added matching engine/menu regressions, desktop menu documentation, and native UI smoke expectations.
+
+Validation: Windows Python source suite passed 136 tests (one skipped) on macOS using the Mac checkout's existing virtual environment; Mac source suite passed 125 tests. Combined workspace and both desktop menu checkers, both seven-test menu suites, Windows XAML XML validation, version synchronization, and both `git diff --check` checks passed. Mac packaged build/launch and packaged-engine pipeline (including full narration replacement) passed at 1.0.75/build 76. Initial system Python engine/parity imports lacked `certifi`; virtual-environment reruns passed. Native Windows compilation/UI smoke and live Gemini were not run and require their respective environments.
+
 ## 2026-10-18 — Per-segment narration progress spinners and icons across rows, Inspector, AD Overview, menu bar, and context menus (1.0.74 / 1.0.74.0)
 
 Mirrors Mac: `vidistudio_engine.py` emits per-segment `narratingSegment`, `narratingIndex`, `narratingTotal`, `narratingQueue`, and `narratedSegment` events during `synthesize`. `StudioViewModel` and `Segment` track `IsNarrating`, `IsQueuedForNarration`, and `AdNumber`, displaying `OriginGlyph`, `AudioStatusGlyph`, and spinning `ProgressRing` indicators directly on each AD segment row (`MainWindow.xaml`), in the right-hand Inspector (`InspectorNarrationProgressPanel` + icons on all Inspector buttons), in `AD Overview` (`OverviewNarrationProgressPanel`), in the `Project → Narration` menu bar (`Synthesizing AD Segment X of Y…`), and in the right-click segment context menu (`SegmentMenu`).

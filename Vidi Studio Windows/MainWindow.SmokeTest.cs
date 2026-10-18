@@ -30,11 +30,30 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Menu commands do not show their keyboard shortcuts.");
             var narrationMenu = editorMenus.First(menu => menu.Title == "Project").Items
                 .OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutSubItem>().Single(item => item.Text == "Narration");
-            if (!narrationMenu.Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>()
+            var narrationGroups = narrationMenu.Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutSubItem>().ToList();
+            if (!narrationGroups.Select(item => item.Text).SequenceEqual(new[] { "AD Segment Generation", "Narration Audio" }) ||
+                narrationGroups.Any(item => item.Icon == null))
+                throw new InvalidOperationException("Narration menu groups must match the Inspector groups.");
+            var generationMenu = narrationGroups[0];
+            var audioMenu = narrationGroups[1];
+            if (!generationMenu.Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().Select(item => (string)item.Tag)
+                .SequenceEqual(new[] { "generate-ad-cues", "delete-descriptions" }))
+                throw new InvalidOperationException("AD generation and deletion must be grouped separately from narration audio.");
+            if (!audioMenu.Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>()
                 .Any(item => item.Text == "Review Narration Issues…" && item.IsEnabled && item.Icon != null))
                 throw new InvalidOperationException("Project → Narration is missing the narration issue review action.");
+            var narrationReviewItems = audioMenu.Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().ToList();
+            var issuesIndex = narrationReviewItems.FindIndex(item => (string)item.Tag == "review-narration-issues");
+            if (issuesIndex < 0 || issuesIndex + 1 >= narrationReviewItems.Count ||
+                narrationReviewItems[issuesIndex + 1].Text != "Review Narration Voices…" ||
+                !narrationReviewItems[issuesIndex + 1].IsEnabled || narrationReviewItems[issuesIndex + 1].Icon == null)
+                throw new InvalidOperationException("Review Narration Voices must follow Review Narration Issues.");
             var projectGroups = editorMenus.First(menu => menu.Title == "Project").Items
                 .OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutSubItem>().Select(item => item.Text);
+            if (!audioMenu.Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>()
+                .Any(item => item.Text == "Regenerate All Narration…" && item.Icon != null) ||
+                (string)InspectorRegenerateAllNarrationButton.Tag != "regenerate-all-narration")
+                throw new InvalidOperationException("Regenerate All Narration is missing from the menu or Inspector.");
             if (!projectGroups.SequenceEqual(new[] { "Editor Sections", "Segments", "Analysis", "Narration" }))
                 throw new InvalidOperationException("Project submenu nesting/order drifted from Mac.");
             if (desktopMenuItems.SelectMany(pair => pair.Value).Any(item => item.Icon == null))
@@ -44,7 +63,8 @@ public sealed partial class MainWindow
             Model.Settings.Set("apiKey", ""); Model.Settings.Set("ttsMode", "windows-core");
             UpdateDesktopMenuStates();
             if (!desktopMenuItems["export"].Last().IsEnabled || !desktopMenuItems["synthesize-tts"].Last().IsEnabled ||
-                !desktopMenuItems["review-narration-issues"].Last().IsEnabled || desktopMenuItems["transcribe"].Last().IsEnabled)
+                !desktopMenuItems["regenerate-all-narration"].Last().IsEnabled ||
+                !desktopMenuItems["review-narration-issues"].Last().IsEnabled || !desktopMenuItems["review-narration-voices"].Last().IsEnabled || desktopMenuItems["transcribe"].Last().IsEnabled)
                 throw new InvalidOperationException("Offline menu actions and AI prerequisites are not independently guarded.");
             Model.Settings.Set("apiKey", savedMenuKey); Model.Settings.Set("ttsMode", savedMenuTts);
             var oldOverlayMode = Model.Settings.Get("captionDisplayMode", "off");
@@ -150,12 +170,16 @@ public sealed partial class MainWindow
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "editor-transcript.png"));
             Section.SelectedIndex = 2;
             TogglePreview_Click(this, new RoutedEventArgs());
+            if (InspectorSectionTitle.Text != "AD Segment Generation" ||
+                ContextActions.Visibility != Visibility.Visible || NarrationActions.Visibility != Visibility.Visible ||
+                ContextActions.Parent != NarrationActions.Parent)
+                throw new InvalidOperationException("AD generation and Narration Audio must be separate Inspector groups.");
             await Task.Delay(200);
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "editor-descriptions.png"));
             ShowGallery_Click(this, new RoutedEventArgs());
             if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Playback", "Project", "Help" }))
                 throw new InvalidOperationException("Gallery menu hierarchy drifted from the shared desktop layout.");
-            if (desktopMenuItems["export"].Any(item => item.IsEnabled) || desktopMenuItems["review-narration-issues"].Any(item => item.IsEnabled))
+            if (desktopMenuItems["export"].Any(item => item.IsEnabled) || desktopMenuItems["review-narration-issues"].Any(item => item.IsEnabled) || desktopMenuItems["review-narration-voices"].Any(item => item.IsEnabled))
                 throw new InvalidOperationException("Project-only menu commands remained enabled in the gallery.");
             if (TopOpenFolderButton.Visibility != Visibility.Collapsed)
                 throw new InvalidOperationException("All Projects still shows the editor's Open folder button.");

@@ -387,7 +387,9 @@ public sealed partial class MainWindow
         var existing = index switch { 0 => p.Transcript.Count > 0, 1 => p.Summary.Length > 0, 2 => p.Cues.Count > 0, _ => false };
         GenerateCurrent.Content = InspectorGenerate.Content = (existing ? "Regenerate " : "Generate ") + name + "…";
         GenerateCurrent.Visibility = InspectorGenerate.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
-        InspectorSectionTitle.Text = name;
+        InspectorSectionTitle.Text = index == 2 ? "AD Segment Generation" : name;
+        ContextActions.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
+        InspectorRewriteButton.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
         NarrationActions.Visibility = index is 2 or 3 or 4 ? Visibility.Visible : Visibility.Collapsed;
         Narration.Visibility = index is 2 or 3 or 4 ? Visibility.Visible : Visibility.Collapsed;
         Follow.Visibility = index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;

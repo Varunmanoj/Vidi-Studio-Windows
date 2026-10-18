@@ -299,7 +299,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
                 var changedOnly = extraList.Contains("--changed");
                 var hasUsable = synthProject.Cues.Any(c => c.AudioReady);
                 var hasUnusable = synthProject.Cues.Any(c => !c.AudioReady);
-                var preserveUsable = changedOnly || (hasUsable && hasUnusable);
+                var preserveUsable = !extraList.Contains("--regenerate-all") && (changedOnly || (hasUsable && hasUnusable));
                 for (var i = 0; i < synthProject.Cues.Count; i++)
                 {
                     if (!preserveUsable || !synthProject.Cues[i].AudioReady)

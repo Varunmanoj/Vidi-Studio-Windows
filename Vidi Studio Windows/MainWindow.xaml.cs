@@ -540,6 +540,11 @@ public sealed partial class MainWindow : Window
             await SynthesizeNarrationWithConfirmationAsync();
             return;
         }
+        if (command == "regenerate-all-narration")
+        {
+            await RunDesktopCommandAsync(command);
+            return;
+        }
         if (!Model.HasApiKey && command != "prepare-video")
         {
             await ShowSettingsSectionAsync(2);
@@ -965,7 +970,13 @@ public sealed partial class MainWindow : Window
             return;
         }
         var hadPriorNarration = Model.Project.Cues.Any(c => c.HasAudioFile);
-        if (!await ConfirmNarrationVoiceChangeAsync()) return;
+        if (extra?.Contains("--regenerate-all") == true)
+        {
+            if (!await Confirm("Regenerate all narration?",
+                $"All generated narration audio will be replaced by newly generated audio for every Audio Description segment using the currently selected voice: {Model.CurrentNarrationSummary()}. Description text and timing will be kept. Existing audio is replaced only after each segment is generated successfully; if generation fails or is canceled, some old audio may remain. Do you want to continue?",
+                "Regenerate All Narration")) return;
+        }
+        else if (!await ConfirmNarrationVoiceChangeAsync()) return;
         await Model.RunAsync("synthesize-tts", extra);
         if (hadPriorNarration && Model.NarrationVoiceUsageReport() is { HasDifferentVoices: true } voiceReport)
         {
@@ -1263,6 +1274,8 @@ public sealed partial class MainWindow : Window
         SetAiButton(OverviewGenerateChangedAudioButton, "Generate narration audio only for missing or modified cues",
             hasMissingOrChangedNarration, "Every description already has current narration audio.");
         SetAiButton(InspectorSynthesizeNarrationButton, "Synthesize narration audio for all cues");
+        InspectorRegenerateAllNarrationButton.IsEnabled = CanRunDesktopCommand("regenerate-all-narration");
+        ToolTipService.SetToolTip(InspectorRegenerateAllNarrationButton, "Replace narration audio for every segment using the currently selected voice");
         SetAiButton(InspectorSynthesizeChangedButton, "Synthesize narration audio for modified cues",
             hasChangedNarration, "Edit a description after its narration is generated to enable this.");
         SetAiButton(InspectorNarrateSelectedButton, "Synthesize narration audio for the selected description segment");

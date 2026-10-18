@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-18 — Segment right-click narration regeneration, context menu icons, and voice table alignment (1.0.73 / 1.0.73.0)
+
+Mirrors Mac: added right-click `ContextRequested` segment menu support on `Segments` (`MainWindow.xaml`, `MainWindow.Commands.cs`), with **Edit segment**, **Play from segment**, **Skip to segment**, **Synthesize this segment** / **Regenerate segment narration**, **Rewrite description to fit**, **Delete narration**, **Re-Analyze this segment**, and **Delete segment**, all with matching Segoe Fluent Icons (`Views/MenuIcons.cs`) and the voice/engine mismatch confirmation guard. Removed the raw UUID audio filename from the voice details table.
+
+Validation: combined-workspace menu parity checker, Mac and Windows Python parity/menu suites, `xmllint` on `MainWindow.xaml`, `sync_version.py --check`, and `git diff --check` passed at 1.0.73 / 1.0.73.0 (Mac build 74).
+
 ## 2026-10-18 — Narration voice-change warning, per-segment MP3/voice/engine metadata, and AD Overview voice dialog (1.0.72 / 1.0.72.0)
 
 Mirrors Mac: each synthesized narration segment now stores `audioEngine`, `audioVoice`, and an actual `.mp3` file in `audio-description/` inside the project folder, alongside the project's initial narration voice (`narrationEngine` / `narrationVoice`). When the project already contains narration generated with a different voice or engine, attempting to generate narration displays a confirmation dialog warning that voices in the project will differ. Proceeding with a different voice updates the AD Overview tab with a warning summary and **Review Narration Voices** dialog detailing how many segments use each voice, which segments use a different voice, the AD segment number, start time, end time, and duration.

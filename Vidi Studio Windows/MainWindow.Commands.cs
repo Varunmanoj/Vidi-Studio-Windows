@@ -148,15 +148,31 @@ public sealed partial class MainWindow
         }
         if (segment != null)
         {
-            Item("Seek to segment", (_, _) => Seek(segment.Start));
+            var canSynthesize = Model.CurrentNarrationEngine() != "gemini" || Model.HasApiKey;
             Item("Edit segment", async (_, _) => await EditSegment(segment));
+            Item("Play from segment", (_, _) =>
+            {
+                if (segment.IsDescription) Narration.IsOn = true;
+                Seek(segment.Start);
+                StartVideoPlayback();
+            });
+            Item("Skip to segment", (_, _) =>
+            {
+                StopProjectPlayback();
+                Seek(segment.Start);
+            });
             if (segment.IsDescription)
             {
                 Item("Preview narration", PreviewNarration_Click, segment.AudioReady);
-                Item(segment.Audio == null ? "Synthesize this segment" : "Regenerate segment narration", NarrateSelected_Click, Model.CurrentNarrationEngine() != "gemini" || Model.HasApiKey);
+                Item(segment.Audio == null ? "Synthesize this segment" : "Regenerate segment narration", NarrateSelected_Click, canSynthesize);
                 Item("Rewrite description to fit", Rewrite_Click, Model.HasApiKey);
                 Item("Delete narration", DeleteNarration_Click, segment.Audio != null);
             }
+            else
+            {
+                Item("Re-Analyze this segment", async (_, _) => await EditSegment(segment), Model.HasApiKey);
+            }
+            menu.Items.Add(new MenuFlyoutSeparator());
             Item("Delete segment", async (_, _) =>
             {
                 if (Model.Project is not { } p) return;
@@ -168,6 +184,7 @@ public sealed partial class MainWindow
         else
         {
             var timedSection = Section.SelectedIndex is 0 or 2 or 4;
+            var canSynthesize = Model.CurrentNarrationEngine() != "gemini" || Model.HasApiKey;
             Item("Add segment", Add_Click, timedSection);
             Item("Edit selected", Edit_Click, timedSection && Segments.SelectedItems.Count > 0);
             Item("Select all", SelectAll_Click, timedSection);
@@ -175,8 +192,8 @@ public sealed partial class MainWindow
             Item("Delete selected", DeleteSegments_Click, timedSection && Segments.SelectedItems.Count > 0);
             Item("Undo", Undo_Click, timedSection);
             Item("Redo", Redo_Click, timedSection);
-            Item("Generate all narration", (_, args) => Command_Click(new Button { Tag = "synthesize-tts" }, args), Model.HasApiKey && Model.Project?.Cues.Count > 0);
-            Item("Generate changed narration", ChangedNarration_Click, Model.HasApiKey && Model.Project?.HasChangedNarration == true);
+            Item("Generate all narration", (_, args) => Command_Click(new Button { Tag = "synthesize-tts" }, args), canSynthesize && Model.Project?.Cues.Count > 0);
+            Item("Generate changed narration", ChangedNarration_Click, canSynthesize && Model.Project?.HasChangedNarration == true);
         }
         return menu;
     }

@@ -163,8 +163,15 @@ public sealed partial class MainWindow
             });
             if (segment.IsDescription)
             {
+                var synthLabel = segment.IsNarrating
+                    ? $"Generating audio for AD segment {segment.AdNumber}…"
+                    : segment.IsQueuedForNarration
+                        ? $"Queued for audio generation (AD {segment.AdNumber})…"
+                        : (segment.Audio == null ? "Synthesize this segment" : "Regenerate segment narration");
                 Item("Preview narration", PreviewNarration_Click, segment.AudioReady);
-                Item(segment.Audio == null ? "Synthesize this segment" : "Regenerate segment narration", NarrateSelected_Click, canSynthesize);
+                Item(synthLabel, NarrateSelected_Click, canSynthesize);
+                if (Model.IsSynthesizingNarration && !segment.IsNarrating && Model.NarratingSegmentIndex is { } activeIdx)
+                    Item($"Currently generating AD segment {activeIdx}…", (_, _) => { }, false);
                 Item("Rewrite description to fit", Rewrite_Click, Model.HasApiKey);
                 Item("Delete narration", DeleteNarration_Click, segment.Audio != null);
             }
@@ -201,7 +208,7 @@ public sealed partial class MainWindow
     { if (sender is FrameworkElement element) SegmentMenu(element.Tag as Segment).ShowAt(element); }
     private void SegmentContext_Requested(UIElement sender, ContextRequestedEventArgs e)
     {
-        if (!Model.Idle) return;
+        if (!Model.Idle && !Model.IsSynthesizingNarration) return;
         var pointerRequest = e.TryGetPosition(sender, out var point);
         var element = (pointerRequest ? e.OriginalSource : FocusManager.GetFocusedElement(Root.XamlRoot)) as FrameworkElement;
         while (element != null && element.DataContext is not Segment) element = VisualTreeHelper.GetParent(element) as FrameworkElement;

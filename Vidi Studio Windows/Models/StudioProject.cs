@@ -65,6 +65,39 @@ public sealed class Segment : INotifyPropertyChanged
     [JsonIgnore] public string Timing => $"{TimeSpan.FromSeconds(Start):hh\\:mm\\:ss\\.fff} – {TimeSpan.FromSeconds(End):hh\\:mm\\:ss\\.fff}";
     [JsonIgnore] public bool IsDescription { get; set; }
     [JsonIgnore] public bool ShowKind { get; set; }
+    [JsonIgnore] public int AdNumber { get; set; }
+    private bool isNarrating;
+    [JsonIgnore]
+    public bool IsNarrating
+    {
+        get => isNarrating;
+        set
+        {
+            if (isNarrating == value) return;
+            isNarrating = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsNarrating)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowAudioSpinner)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AudioStatus)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AudioStatusColor)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AudioStatusGlyph)));
+        }
+    }
+    private bool isQueuedForNarration;
+    [JsonIgnore]
+    public bool IsQueuedForNarration
+    {
+        get => isQueuedForNarration;
+        set
+        {
+            if (isQueuedForNarration == value) return;
+            isQueuedForNarration = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsQueuedForNarration)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AudioStatus)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AudioStatusColor)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AudioStatusGlyph)));
+        }
+    }
+    [JsonIgnore] public bool ShowAudioSpinner => isNarrating;
     private bool isEditing;
     [JsonIgnore]
     public bool IsEditing
@@ -94,6 +127,7 @@ public sealed class Segment : INotifyPropertyChanged
     [JsonIgnore] public string PreviewGlyph => isPreviewing ? "\uE769" : "\uE767";
     [JsonIgnore] public string KindLabel => IsDescription ? "Audio description" : "Transcript";
     public string Origin { get; set; } = "unknown";
+    [JsonIgnore] public string OriginGlyph => Origin switch { "ai" => "\uE734", "ai_modified" => "\uE70F", "manual" => "\uE77B", _ => "\uE9CE" };
     [JsonIgnore] public string OriginLabel => Origin switch { "ai" => "AI-generated", "ai_modified" => "AI-generated · modified", "manual" => "Manually added", _ => "Origin unknown" };
     [JsonIgnore] public string OriginColor => Origin switch { "ai" => "#C832DE", "ai_modified" => "#D87919", "manual" => "#0078D4", _ => "#777777" };
     [JsonIgnore] public List<string> NarrationUpdateReasons
@@ -120,10 +154,18 @@ public sealed class Segment : INotifyPropertyChanged
         }
     }
     [JsonIgnore] public bool AudioReady => HasAudioFile && NarrationUpdateReasons.Count == 0;
-    [JsonIgnore] public string AudioStatus => AudioReady
-        ? (string.IsNullOrEmpty(NarrationVoiceSummary) ? "Synchronized audio generated" : $"Synchronized audio generated · {NarrationVoiceSummary}")
-        : AudioNeedsRegeneration ? "Narration needs updating" : "Narration not generated";
-    [JsonIgnore] public string AudioStatusColor => AudioReady ? "#209447" : "#9B701B";
+    [JsonIgnore] public string AdPrefix => AdNumber > 0 ? $"AD {AdNumber} · " : "";
+    [JsonIgnore] public string AudioStatusGlyph => IsNarrating ? "\uE767" : IsQueuedForNarration ? "\uE823" : AudioReady ? "\uE73E" : AudioNeedsRegeneration ? "\uE72C" : "\uE767";
+    [JsonIgnore] public string AudioStatus => IsNarrating
+        ? $"{AdPrefix}Generating narration audio…" + (string.IsNullOrEmpty(NarrationVoiceSummary) ? "" : $" · {NarrationVoiceSummary}")
+        : IsQueuedForNarration
+            ? $"{AdPrefix}Queued for narration generation…"
+            : AudioReady
+                ? $"{AdPrefix}Synchronized audio generated" + (string.IsNullOrEmpty(NarrationVoiceSummary) ? "" : $" · {NarrationVoiceSummary}")
+                : AudioNeedsRegeneration
+                    ? $"{AdPrefix}Narration needs updating" + (string.IsNullOrEmpty(NarrationVoiceSummary) ? "" : $" · {NarrationVoiceSummary}")
+                    : $"{AdPrefix}Narration not generated";
+    [JsonIgnore] public string AudioStatusColor => IsNarrating ? "#0078D4" : AudioReady ? "#209447" : "#9B701B";
     [JsonIgnore] public bool AudioNeedsRegeneration => HasAudioFile && NarrationUpdateReasons.Count > 0;
     public override string ToString() => $"{Timing}  {(IsDescription ? "AD: " : "")}{Text}";
 }
@@ -214,7 +256,7 @@ public sealed class StudioProject
         var project = JsonSerializer.Deserialize<StudioProject>(File.ReadAllText(Path.Combine(folder, "project.json")), Json.Options)
             ?? throw new InvalidDataException("Invalid project.");
         project.Folder = Path.GetFullPath(folder);
-        foreach (var cue in project.Cues) { cue.IsDescription = true; cue.ProjectFolder = project.Folder; }
+        for (var i = 0; i < project.Cues.Count; i++) { var cue = project.Cues[i]; cue.IsDescription = true; cue.AdNumber = i + 1; cue.ProjectFolder = project.Folder; }
         foreach (var item in project.Transcript) { item.IsDescription = false; item.ProjectFolder = project.Folder; }
         return project;
     }

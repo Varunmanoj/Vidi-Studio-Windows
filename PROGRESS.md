@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-18 — Per-segment narration progress spinners and icons across rows, Inspector, AD Overview, menu bar, and context menus (1.0.74 / 1.0.74.0)
+
+Mirrors Mac: `vidistudio_engine.py` emits per-segment `narratingSegment`, `narratingIndex`, `narratingTotal`, `narratingQueue`, and `narratedSegment` events during `synthesize`. `StudioViewModel` and `Segment` track `IsNarrating`, `IsQueuedForNarration`, and `AdNumber`, displaying `OriginGlyph`, `AudioStatusGlyph`, and spinning `ProgressRing` indicators directly on each AD segment row (`MainWindow.xaml`), in the right-hand Inspector (`InspectorNarrationProgressPanel` + icons on all Inspector buttons), in `AD Overview` (`OverviewNarrationProgressPanel`), in the `Project → Narration` menu bar (`Synthesizing AD Segment X of Y…`), and in the right-click segment context menu (`SegmentMenu`).
+
+Validation: combined-workspace menu parity checker, Mac and Windows Python test suites, `xmllint` on `MainWindow.xaml`, `sync_version.py --check`, and `git diff --check` passed at 1.0.74 / 1.0.74.0 (Mac build 75).
+
 ## 2026-10-18 — Segment right-click narration regeneration, context menu icons, and voice table alignment (1.0.73 / 1.0.73.0)
 
 Mirrors Mac: added right-click `ContextRequested` segment menu support on `Segments` (`MainWindow.xaml`, `MainWindow.Commands.cs`), with **Edit segment**, **Play from segment**, **Skip to segment**, **Synthesize this segment** / **Regenerate segment narration**, **Rewrite description to fit**, **Delete narration**, **Re-Analyze this segment**, and **Delete segment**, all with matching Segoe Fluent Icons (`Views/MenuIcons.cs`) and the voice/engine mismatch confirmation guard. Removed the raw UUID audio filename from the voice details table.

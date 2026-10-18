@@ -94,22 +94,46 @@ public sealed partial class MainWindow : Window
     private void UpdateStatusFooter(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(Model.Busy) or nameof(Model.Idle) or nameof(Model.IsAnalyzing)
+            or nameof(Model.IsSynthesizingNarration) or nameof(Model.NarratingSegmentId)
+            or nameof(Model.NarratingSegmentIndex) or nameof(Model.ActiveNarrationStatusText)
             or nameof(Model.ProcessingSection) or nameof(Model.VideoPreparation) or nameof(Model.Status))
             UpdateProcessingChrome();
-        if (e.PropertyName is nameof(Model.Busy) or nameof(Model.HasApiKey) or nameof(Model.Idle)) UpdateApiKeyUi();
+        if (e.PropertyName is nameof(Model.Busy) or nameof(Model.HasApiKey) or nameof(Model.Idle) or nameof(Model.IsSynthesizingNarration))
+            UpdateApiKeyUi();
     }
     private void UpdateProcessingChrome()
     {
         var analyzing = Model.IsAnalyzing;
-        StatusRing.IsActive = analyzing;
-        StatusRing.Visibility = analyzing ? Visibility.Visible : Visibility.Collapsed;
-        StatusStageTitle.Text = analyzing ? Model.ProcessingStageTitle : "";
-        StatusStageTitle.Visibility = analyzing ? Visibility.Visible : Visibility.Collapsed;
-        CancelProcessingButton.Visibility = analyzing ? Visibility.Visible : Visibility.Collapsed;
-        // Keep the editor navigable while an analysis stage runs; other long
-        // operations keep the previous workspace lock.
-        EditorWorkspace.IsEnabled = Model.Idle || analyzing;
+        var synthesizing = Model.IsSynthesizingNarration;
+        var activeStage = analyzing || synthesizing;
+        StatusRing.IsActive = activeStage;
+        StatusRing.Visibility = activeStage ? Visibility.Visible : Visibility.Collapsed;
+        StatusStageTitle.Text = activeStage ? Model.ProcessingStageTitle : "";
+        StatusStageTitle.Visibility = activeStage ? Visibility.Visible : Visibility.Collapsed;
+        CancelProcessingButton.Visibility = activeStage ? Visibility.Visible : Visibility.Collapsed;
+        if (InspectorNarrationProgressPanel != null)
+        {
+            InspectorNarrationProgressPanel.Visibility = synthesizing ? Visibility.Visible : Visibility.Collapsed;
+            InspectorNarrationRing.IsActive = synthesizing;
+            InspectorNarrationStatusText.Text = synthesizing ? Model.ActiveNarrationStatusText : "";
+        }
+        if (InspectorSynthesizeNarrationLabel != null)
+        {
+            InspectorSynthesizeNarrationLabel.Text = synthesizing
+                ? (Model.NarratingSegmentIndex is { } idx ? $"Synthesizing AD {idx}…" : "Synthesizing…")
+                : "Synthesize Narration";
+        }
+        if (OverviewNarrationProgressPanel != null)
+        {
+            OverviewNarrationProgressPanel.Visibility = synthesizing ? Visibility.Visible : Visibility.Collapsed;
+            OverviewNarrationRing.IsActive = synthesizing;
+            OverviewNarrationStatusText.Text = synthesizing ? Model.ActiveNarrationStatusText : "";
+        }
+        // Keep the editor navigable while an analysis or narration stage runs;
+        // other long operations keep the previous workspace lock.
+        EditorWorkspace.IsEnabled = Model.Idle || analyzing || synthesizing;
         UpdateSectionOverlay(analyzing);
+        UpdateDesktopMenuStates();
     }
     private void UpdateSectionOverlay(bool analyzing)
     {

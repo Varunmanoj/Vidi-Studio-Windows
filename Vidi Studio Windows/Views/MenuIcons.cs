@@ -50,6 +50,10 @@ public static class MenuIcons
             "Rewind five seconds" => "\uE892",
             "Follow active segment" => "\uE81D",
             "Preparing summary…" => "\uE895",
+            var s when s.StartsWith("Generating audio", System.StringComparison.OrdinalIgnoreCase)
+                || s.StartsWith("Currently generating AD", System.StringComparison.OrdinalIgnoreCase)
+                || s.StartsWith("Synthesizing", System.StringComparison.OrdinalIgnoreCase) => "\uE895",
+            var s when s.StartsWith("Queued for audio", System.StringComparison.OrdinalIgnoreCase) => "\uE823",
             _ => "\uE712"
         }
     };

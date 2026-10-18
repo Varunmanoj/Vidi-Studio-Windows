@@ -51,6 +51,15 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public IReadOnlyList<string> ProcessingPlan => processingPlan;
     /// <summary>True while an analysis stage that belongs to a section is running.</summary>
     public bool IsAnalyzing => Busy && !IsExporting && processingPlan.Count > 0;
+    public bool IsSynthesizingNarration { get; private set; }
+    public string? NarratingSegmentId { get; private set; }
+    public int? NarratingSegmentIndex { get; private set; }
+    public int NarratingTotalCount { get; private set; }
+    private readonly HashSet<string> narratingQueueIds = new(StringComparer.Ordinal);
+    public IReadOnlyCollection<string> NarratingQueueIds => narratingQueueIds;
+    public string ActiveNarrationStatusText => NarratingSegmentIndex is { } idx && NarratingTotalCount > 0
+        ? $"Generating audio for AD segment {idx} of {NarratingTotalCount}…"
+        : "Generating narration audio…";
     /// <summary>Short, user-facing stage label for the status bar; the Files API upload step takes precedence.</summary>
     public string ProcessingStageTitle
     {
@@ -58,6 +67,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         {
             if (videoPreparation == "uploading") return "Uploading video";
             if (videoPreparation == "processing") return "Preparing video";
+            if (IsSynthesizingNarration) return ActiveNarrationStatusText;
             return processingSection switch
             {
                 "transcript" => "Generating transcript",
@@ -65,6 +75,17 @@ public sealed class StudioViewModel : INotifyPropertyChanged
                 "descriptions" => "Generating audio descriptions",
                 _ => processingPlan.Count > 0 ? "Processing" : "Processing project"
             };
+        }
+    }
+    private void ApplyNarrationStateToProject()
+    {
+        if (Project is not { } p) return;
+        for (var i = 0; i < p.Cues.Count; i++)
+        {
+            var cue = p.Cues[i];
+            cue.AdNumber = i + 1;
+            cue.IsNarrating = IsSynthesizingNarration && NarratingSegmentId == cue.Id;
+            cue.IsQueuedForNarration = IsSynthesizingNarration && NarratingSegmentId != cue.Id && narratingQueueIds.Contains(cue.Id);
         }
     }
     public bool HasApiKey => Settings.HasApiKey;
@@ -258,6 +279,46 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         processingPlan.AddRange(AnalysisPlan(command, extra));
         ProcessingSection = InitialProcessingSection(command);
         VideoPreparation = null;
+        if (command == "synthesize-tts" && Project is { } synthProject)
+        {
+            IsSynthesizingNarration = true;
+            NarratingTotalCount = synthProject.Cues.Count;
+            narratingQueueIds.Clear();
+            var extraList = extra?.ToList() ?? new List<string>();
+            var segFlag = extraList.IndexOf("--segment");
+            if (segFlag >= 0 && segFlag + 1 < extraList.Count)
+            {
+                var segId = extraList[segFlag + 1];
+                narratingQueueIds.Add(segId);
+                NarratingSegmentId = segId;
+                var cueIdx = synthProject.Cues.FindIndex(c => c.Id == segId);
+                NarratingSegmentIndex = cueIdx >= 0 ? cueIdx + 1 : null;
+            }
+            else
+            {
+                var changedOnly = extraList.Contains("--changed");
+                var hasUsable = synthProject.Cues.Any(c => c.AudioReady);
+                var hasUnusable = synthProject.Cues.Any(c => !c.AudioReady);
+                var preserveUsable = changedOnly || (hasUsable && hasUnusable);
+                for (var i = 0; i < synthProject.Cues.Count; i++)
+                {
+                    if (!preserveUsable || !synthProject.Cues[i].AudioReady)
+                    {
+                        narratingQueueIds.Add(synthProject.Cues[i].Id);
+                        if (NarratingSegmentId == null)
+                        {
+                            NarratingSegmentId = synthProject.Cues[i].Id;
+                            NarratingSegmentIndex = i + 1;
+                        }
+                    }
+                }
+            }
+            ApplyNarrationStateToProject();
+            Changed(nameof(IsSynthesizingNarration));
+            Changed(nameof(NarratingSegmentId));
+            Changed(nameof(NarratingSegmentIndex));
+            Changed(nameof(ActiveNarrationStatusText));
+        }
         Busy = true;
         operation = new();
         Status = "Starting…";
@@ -278,6 +339,50 @@ public sealed class StudioViewModel : INotifyPropertyChanged
                 Status = e.Message;
                 if (e.Data.TryGetProperty("processingSection", out var section) && section.ValueKind == System.Text.Json.JsonValueKind.String)
                     ProcessingSection = section.GetString();
+                if (e.Data.TryGetProperty("narratingTotal", out var nTotal) && nTotal.ValueKind == System.Text.Json.JsonValueKind.Number && nTotal.TryGetInt32(out var totalVal))
+                    NarratingTotalCount = totalVal;
+                if (e.Data.TryGetProperty("narratingQueue", out var nQueue) && nQueue.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    narratingQueueIds.Clear();
+                    foreach (var q in nQueue.EnumerateArray())
+                        if (q.ValueKind == System.Text.Json.JsonValueKind.String && q.GetString() is { } qId)
+                            narratingQueueIds.Add(qId);
+                }
+                if (e.Data.TryGetProperty("narratingSegment", out var nSeg) && nSeg.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    NarratingSegmentId = nSeg.GetString();
+                    if (e.Data.TryGetProperty("narratingIndex", out var nIdx) && nIdx.ValueKind == System.Text.Json.JsonValueKind.Number && nIdx.TryGetInt32(out var idxVal))
+                        NarratingSegmentIndex = idxVal;
+                    ApplyNarrationStateToProject();
+                    Changed(nameof(NarratingSegmentId));
+                    Changed(nameof(NarratingSegmentIndex));
+                    Changed(nameof(ActiveNarrationStatusText));
+                    Changed(nameof(ProcessingStageTitle));
+                }
+                else if (e.Data.TryGetProperty("narratedSegment", out var doneSeg) && doneSeg.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    NarratingSegmentId = narratingQueueIds.FirstOrDefault();
+                    if (Project != null && File.Exists(Path.Combine(Project.Folder, "project.json")))
+                    {
+                        try
+                        {
+                            Project = StudioProject.Load(Project.Folder);
+                            if (NarratingSegmentId != null)
+                            {
+                                var nextIdx = Project.Cues.FindIndex(c => c.Id == NarratingSegmentId);
+                                NarratingSegmentIndex = nextIdx >= 0 ? nextIdx + 1 : null;
+                            }
+                            else NarratingSegmentIndex = null;
+                            ApplyNarrationStateToProject();
+                            ProjectReloaded?.Invoke(this, EventArgs.Empty);
+                        }
+                        catch (Exception ex) { Engine.Log(ex.ToString()); }
+                    }
+                    Changed(nameof(NarratingSegmentId));
+                    Changed(nameof(NarratingSegmentIndex));
+                    Changed(nameof(ActiveNarrationStatusText));
+                    Changed(nameof(ProcessingStageTitle));
+                }
                 if (e.Data.TryGetProperty("videoPreparation", out var preparation) && preparation.ValueKind == System.Text.Json.JsonValueKind.String)
                 {
                     var state = preparation.GetString();
@@ -330,6 +435,9 @@ public sealed class StudioViewModel : INotifyPropertyChanged
                 catch (Exception ex) { Engine.Log(ex.ToString()); Status = "Could not reload the project. Reopen its folder to retry."; }
             }
             if (exportSession != null) ExportSessions.Remove(exportSession);
+            IsSynthesizingNarration = false; NarratingSegmentId = null; NarratingSegmentIndex = null; NarratingTotalCount = 0; narratingQueueIds.Clear();
+            ApplyNarrationStateToProject();
+            Changed(nameof(IsSynthesizingNarration)); Changed(nameof(NarratingSegmentId)); Changed(nameof(NarratingSegmentIndex)); Changed(nameof(ActiveNarrationStatusText));
             ProcessingSection = null; VideoPreparation = null; processingPlan.Clear();
             operation.Dispose(); operation = null; IsExporting = false; Busy = false;
         }

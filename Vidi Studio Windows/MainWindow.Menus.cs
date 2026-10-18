@@ -179,7 +179,7 @@ public sealed partial class MainWindow
             }
         foreach (var (name, group) in desktopMenuGroups)
         {
-            group.IsEnabled = desktopEditorVisible && Model.Project != null && Model.Idle;
+            group.IsEnabled = desktopEditorVisible && Model.Project != null && (Model.Idle || (name == "Narration" && Model.IsSynthesizingNarration));
             if (name == "Summary Reading") group.IsEnabled &= Section.SelectedIndex == 1 && !summaryEditMode;
             if (name == "Transcript Overlay")
             {
@@ -285,7 +285,10 @@ public sealed partial class MainWindow
             "transcribe" => p != null && (p.HasTranscript || ExtraFlag(p, "transcriptGenerated")) ? "Regenerate Transcript…" : "Generate Transcript",
             "generate-summary" => p != null && (p.HasSummary || ExtraFlag(p, "summaryGenerated")) ? "Regenerate Summary…" : "Generate Summary",
             "generate-ad-cues" => p != null && (p.Cues.Count > 0 || ExtraFlag(p, "descriptionsGenerated")) ? "Regenerate Audio Descriptions…" : "Generate Audio Descriptions",
-            "synthesize-tts" => "Synthesize Narration", "synthesize-changed" => "Synthesize Changed Segments",
+            "synthesize-tts" => Model.IsSynthesizingNarration
+                ? (Model.NarratingSegmentIndex is { } idx && p != null ? $"Synthesizing AD Segment {idx} of {p.Cues.Count}…" : "Synthesizing Narration…")
+                : "Synthesize Narration",
+            "synthesize-changed" => "Synthesize Changed Segments",
             "review-narration-issues" => "Review Narration Issues…", "delete-narration" => "Delete All Narration Audio…",
             "delete-current" => Section.SelectedIndex switch { 0 => "Delete Transcript…", 1 => "Delete Summary…", 2 => "Delete Descriptions…", _ => "Delete Current Page…" },
             "show-in-finder" => "Show Project in File Explorer", _ => id
@@ -295,6 +298,8 @@ public sealed partial class MainWindow
     private IconElement DesktopCommandIcon(string id)
     {
         if (id == "play") return new FontIcon { Glyph = IsVideoPlaying() ? "\uE769" : "\uE768" };
+        if (id is "synthesize-tts" or "Narration" && Model.IsSynthesizingNarration)
+            return Views.MenuIcons.Create("Preparing summary…");
         var checkedItem = id switch
         {
             "narration" => Narration.IsOn, "follow" => Follow.IsOn,

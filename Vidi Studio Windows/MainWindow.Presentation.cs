@@ -338,8 +338,14 @@ public sealed partial class MainWindow
     }
     private void RefreshEditingRows()
     {
+        UpdateSegmentMoreVisibility();
         if (Segments.ItemsSource is IEnumerable<Segment> rows)
             foreach (var row in rows) row.IsEditing = editMode;
+    }
+    private void UpdateSegmentMoreVisibility()
+    {
+        var timedSection = Section.SelectedIndex is 0 or 2 or 4;
+        EditorMoreButton.Visibility = !timedSection || editMode ? Visibility.Visible : Visibility.Collapsed;
     }
     // Older generated XAML can still reference the pre-rename handler during
     // incremental builds. Route it through the current preserve-play-state action.
@@ -388,6 +394,7 @@ public sealed partial class MainWindow
         GenerateCurrent.Content = InspectorGenerate.Content = (existing ? "Regenerate " : "Generate ") + name + "…";
         GenerateCurrent.Visibility = InspectorGenerate.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
         InspectorSectionTitle.Text = index == 2 ? "AD Segment Generation" : name;
+        UpdateSegmentMoreVisibility();
         ContextActions.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
         InspectorRewriteButton.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
         NarrationActions.Visibility = index is 2 or 3 or 4 ? Visibility.Visible : Visibility.Collapsed;

@@ -204,7 +204,10 @@ public sealed partial class MainWindow
         return menu;
     }
     private void SegmentMore_Click(object sender, RoutedEventArgs e)
-    { if (sender is FrameworkElement element) SegmentMenu(element.Tag as Segment).ShowAt(element); }
+    {
+        if (Section.SelectedIndex is 0 or 2 or 4 && !editMode) return;
+        if (sender is FrameworkElement element) SegmentMenu(element.Tag as Segment).ShowAt(element);
+    }
     private void SegmentContext_Requested(UIElement sender, ContextRequestedEventArgs e)
     {
         if (!Model.Idle && !Model.IsSynthesizingNarration) return;

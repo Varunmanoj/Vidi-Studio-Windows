@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-18 — Edit-only More action buttons (1.0.81 / 1.0.81.0, Mac build 82)
+
+In Transcript, Descriptions, and AD Transcript, row More buttons now bind visibility to `IsEditing`, matching the existing Edit button and Mac behavior. The editor-header More button starts collapsed and refreshes on tab/mode changes, appearing only in Edit mode for those sections. Hidden More-button activation is guarded; View-mode right-click/context menus and narration preview remain unchanged. Other editor sections retain their existing header behavior. Added source regressions and native smoke checks covering View → Edit → View in each timed section, including realized row/header visibility.
+
+Validation on macOS: Windows targeted edit-mode/menu/parity suite passed 18 tests; Mac menu/parity suite passed 14 tests using the existing virtual environment. Root/both-desktop menu checks, Windows XAML XML validation, version synchronization, and both `git diff --check` checks passed. Versions are synchronized at 1.0.81 / Mac build 82 / Windows package 1.0.81.0. Native Windows compilation/UI smoke was not run because this host is macOS; Mac source behavior was unchanged and no Mac rebuild was performed.
+
 ## 2026-10-18 — Unified AD audio generation controls and primary-voice routing (1.0.80 / 1.0.80.0, Mac build 81)
 
 Mirrors Mac with exactly two bulk commands across AD Overview, Inspector, and Narration Audio menus: **Generate All AD Audio** changes to **Regenerate All AD Audio…** once any segment has recorded audio, and **Generate Missing or Changed AD Audio** is disabled before initial generation and whenever all audio is current. Both Overview and Inspector now use the guarded TTS command eligibility instead of generic API-key-only guards, allowing offline voices. Removed the duplicate full-regeneration menu/Inspector entry and Inspector single-segment generation button; per-segment context actions remain available.

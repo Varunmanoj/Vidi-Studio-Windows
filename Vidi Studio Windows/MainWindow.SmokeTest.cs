@@ -85,6 +85,22 @@ public sealed partial class MainWindow
                 UpdateApiKeyUi();
             }
             Model.Settings.Set("apiKey", savedMenuKey); Model.Settings.Set("ttsMode", savedMenuTts);
+            var originalSection = Section.SelectedIndex;
+            foreach (var sectionIndex in new[] { 0, 2, 4 })
+            {
+                Section.SelectedIndex = sectionIndex;
+                if (editMode) EditMode_Click(this, new RoutedEventArgs());
+                RenderSection();
+                await Task.Delay(80);
+                VerifySegmentMoreButtonsForSmokeTest(false);
+                EditMode_Click(this, new RoutedEventArgs());
+                await Task.Delay(80);
+                VerifySegmentMoreButtonsForSmokeTest(true);
+                EditMode_Click(this, new RoutedEventArgs());
+                await Task.Delay(80);
+                VerifySegmentMoreButtonsForSmokeTest(false);
+            }
+            Section.SelectedIndex = originalSection;
             var oldOverlayMode = Model.Settings.Get("captionDisplayMode", "off");
             await RunDesktopCommandAsync("caption-transcript");
             if (Model.Settings.Get("captionDisplayMode") != "transcript")
@@ -767,6 +783,22 @@ public sealed partial class MainWindow
             Child = contentStack
         };
         return container;
+    }
+    private void VerifySegmentMoreButtonsForSmokeTest(bool editing)
+    {
+        Root.UpdateLayout();
+        var expected = editing ? Visibility.Visible : Visibility.Collapsed;
+        if (EditorMoreButton.Visibility != expected || Segments.Items.OfType<Models.Segment>().Any(row => row.IsEditing != editing))
+            throw new InvalidOperationException("More actions did not follow segment Edit/View mode.");
+        void CheckRows(DependencyObject element)
+        {
+            if (element is Microsoft.UI.Xaml.Controls.Button button &&
+                Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(button) == "More segment options" && button.Visibility != expected)
+                throw new InvalidOperationException("A segment More button has the wrong Edit/View visibility.");
+            for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(element); i++)
+                CheckRows(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(element, i));
+        }
+        CheckRows(Segments);
     }
     private static Microsoft.UI.Xaml.Controls.Primitives.ListViewItemPresenter? FindSelectionPresenter(DependencyObject element)
     {

@@ -619,6 +619,7 @@ public sealed partial class SettingsDialog
         status.Text = "Selected the newest available version in each model category. Review choices before saving.";
     }
 
+#if DEBUG
     internal void VerifyGeminiModelFiltering()
     {
         var originalModels = draft["models"]!.DeepClone();
@@ -658,4 +659,5 @@ public sealed partial class SettingsDialog
             status.Text = originalStatus;
         }
     }
+#endif
 }

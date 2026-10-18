@@ -93,8 +93,36 @@ public sealed partial class SettingsDialog
         catch (Exception ex) { model.Engine.Log(ex.ToString()); status.Text = "Gemini voice catalog unavailable. Featured voices remain selectable."; return new(); }
     }
 
+    private static void DetachFromVisualParent(FrameworkElement? element)
+    {
+        if (element == null) return;
+        if (element.Parent is Panel panel)
+        {
+            panel.Children.Remove(element);
+        }
+        else if (element.Parent is ContentControl cc)
+        {
+            cc.Content = null;
+        }
+        else if (element.Parent is Border b)
+        {
+            b.Child = null;
+        }
+    }
+
     private void BuildGemini(StackPanel panel)
     {
+        DetachFromVisualParent(apiStatusCard);
+        DetachFromVisualParent(apiStatusIcon);
+        DetachFromVisualParent(apiStatusTitle);
+        DetachFromVisualParent(apiStatusDescription);
+        DetachFromVisualParent(planPillBadge);
+        DetachFromVisualParent(planDot);
+        DetachFromVisualParent(planPillText);
+        DetachFromVisualParent(planDetailsSubtitle);
+        apiStatusCard.Child = null;
+        planPillBadge.Child = null;
+
         panel.Children.Add(new TextBlock { Text = "Gemini API", FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) });
 
         var topStack = new StackPanel { Spacing = 10 };

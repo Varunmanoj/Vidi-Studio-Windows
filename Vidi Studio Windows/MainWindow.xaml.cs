@@ -80,7 +80,7 @@ public sealed partial class MainWindow : Window
                 try { cleanup(); } catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
             }
         };
-        Root.Loaded += (_, _) => { ready = true; Model.Reload(); ApplyTheme(); if (Model.Settings.Get("showPreview", "true") == "false") PreviewPanel.Visibility = Visibility.Collapsed; if (folder != null) Model.Open(folder); if (Model.Settings.Get("projectPresentation") == "grid") ToggleGrid_Click(this, new RoutedEventArgs()); UpdateApiKeyUi(); };
+        Root.Loaded += (_, _) => { ready = true; Model.Reload(); ApplyTheme(); if (Model.Settings.Get("showPreview", "true") == "false") PreviewPanel.Visibility = Visibility.Collapsed; if (folder != null) Model.Open(folder); if (Model.Settings.Get("projectPresentation") == "grid") ToggleGrid_Click(this, new RoutedEventArgs()); UpdateApiKeyUi(); UpdateSectionOverlay(Model.IsAnalyzing); };
 #if DEBUG
         Root.Loaded += async (_, _) => { if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_REPORT") is { } report && System.Threading.Interlocked.CompareExchange(ref smokeTestClaimed, 1, 0) == 0) await RunSmokeTestAsync(report); };
 #endif
@@ -106,11 +106,20 @@ public sealed partial class MainWindow : Window
         var analyzing = Model.IsAnalyzing;
         var synthesizing = Model.IsSynthesizingNarration;
         var activeStage = analyzing || synthesizing;
-        StatusRing.IsActive = activeStage;
-        StatusRing.Visibility = activeStage ? Visibility.Visible : Visibility.Collapsed;
-        StatusStageTitle.Text = activeStage ? Model.ProcessingStageTitle : "";
-        StatusStageTitle.Visibility = activeStage ? Visibility.Visible : Visibility.Collapsed;
-        CancelProcessingButton.Visibility = activeStage ? Visibility.Visible : Visibility.Collapsed;
+        if (StatusRing != null)
+        {
+            StatusRing.IsActive = activeStage;
+            StatusRing.Visibility = activeStage ? Visibility.Visible : Visibility.Collapsed;
+        }
+        if (StatusStageTitle != null)
+        {
+            StatusStageTitle.Text = activeStage ? Model.ProcessingStageTitle : "";
+            StatusStageTitle.Visibility = activeStage ? Visibility.Visible : Visibility.Collapsed;
+        }
+        if (CancelProcessingButton != null)
+        {
+            CancelProcessingButton.Visibility = activeStage ? Visibility.Visible : Visibility.Collapsed;
+        }
         if (InspectorNarrationProgressPanel != null)
         {
             InspectorNarrationProgressPanel.Visibility = synthesizing ? Visibility.Visible : Visibility.Collapsed;
@@ -131,12 +140,16 @@ public sealed partial class MainWindow : Window
         }
         // Keep the editor navigable while an analysis or narration stage runs;
         // other long operations keep the previous workspace lock.
-        EditorWorkspace.IsEnabled = Model.Idle || analyzing || synthesizing;
+        if (EditorWorkspace != null)
+        {
+            EditorWorkspace.IsEnabled = Model.Idle || analyzing || synthesizing;
+        }
         UpdateSectionOverlay(analyzing);
         UpdateDesktopMenuStates();
     }
     private void UpdateSectionOverlay(bool analyzing)
     {
+        if (!ready || SectionProcessingRing == null || SectionProcessingOverlay == null) return;
         var state = analyzing ? CurrentSectionState() : SectionProcessingState.Idle;
         if (state == SectionProcessingState.Idle)
         {
@@ -290,11 +303,12 @@ public sealed partial class MainWindow : Window
     }
     private async void Section_Changed(object sender, SelectionChangedEventArgs e)
     {
+        if (!ready) return;
         if (summaryEditMode && Model.Project != null)
         {
             await SaveSummaryChangesAsync();
         }
-        if (ready) RenderSection();
+        RenderSection();
         UpdateSectionOverlay(Model.IsAnalyzing);
     }
     private void RenderTimelineThumbnails(StudioProject project)

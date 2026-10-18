@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-18 — Startup crash fix and Settings tab re-entry safety (1.0.89 / 1.0.89.0, Mac build 90)
+
+Fixed an unhandled NullReferenceException on Windows application startup that caused WinUI 3 (`Microsoft.UI.Xaml.dll`, exception code `0xc000027b`) to crash immediately upon launching from Visual Studio or the Start Menu. During `InitializeComponent()`, setting `SelectedIndex="0"` on the `Section` ComboBox triggered `Section_Changed` before the full visual tree had loaded and while `SectionProcessingRing` and `SectionProcessingOverlay` were still null. `Section_Changed` now early-exits if the window is not yet ready, `UpdateSectionOverlay` guards against uninitialized overlay controls, and `Root.Loaded` updates the overlay once the window is ready. In `SettingsDialog.Gemini.cs`, fixed a `COMException (0x800F1000)` on tab re-entry where retained verification and account plan controls were being added to new visual containers without first detaching from their previous visual parents.
+
+Validation on Windows: Native Windows ARM64 build succeeded via `script/build-windows.ps1`; packaged app activation and full UI smoke test passed (`script/test-windows-ui.ps1 -Platform ARM64 -RequirePackage`) with app-wide theme switching, timeline playhead, section navigation, Settings dialog navigation, and engine invocation verified; Python parity tests passed.
+
 ## 2026-10-18 — Concise settings copy (1.0.88 / 1.0.88.0, Mac build 89)
 
 Trimmed the verbose explanatory paragraphs from every Settings section, matching the macOS cleanup. Narration, transcript-overlay, Help, and About notes are now one short line each; voice-filter, SAPI-host, voice-sample, storage, and diagnostics labels were shortened; and the redundant Gemini key note, "Summary, description, rewrite…" note, and long YouTube note were removed (the YouTube note is now a single line). Controls, keys, accessibility names, and behavior are unchanged.

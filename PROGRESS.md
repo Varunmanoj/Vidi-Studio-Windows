@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-18 — Preview-only native voice selection (1.0.82 / 1.0.82.0, Mac build 83)
+
+On-device preview now offers only Windows OneCore/SAPI 5 voices; Gemini is available only with saved narration playback. Changing to preview automatically switches Gemini to OneCore, restores the saved local voice/default, stops voice samples, and refreshes the voice list. Returning to saved playback restores Gemini eligibility without overwriting the saved Gemini voice. SettingsStore enforces the rule on load/reload/save/programmatic changes and persists normalization of incompatible saved settings; `device` is normalized to Windows' `ondevice` playback mode. Mac applies the equivalent Apple-only rule in Settings/AD Overview. No existing project audio is changed.
+
+Validation on macOS: Mac settings/menu/parity suite passed 18 tests; Windows equivalent passed 19 tests; native Swift production-state harness passed playback/provider transitions and settings normalization. Root/both desktop menu checkers and both `git diff --check` checks passed. Mac packaged build/launch passed after correcting an Observation-recursion issue detected by the initial launch check (PID 86543, 1.0.82/build 83); all 13 Help pages verified. Added Windows native settings smoke expectations for local-only preview and re-enabled Gemini after returning to saved playback. Windows native compilation/UI smoke was not run because this host is macOS; no live Gemini requests were made. Versions remain synchronized at 1.0.82 / Windows package 1.0.82.0.
+
 ## 2026-10-18 — Edit-only More action buttons (1.0.81 / 1.0.81.0, Mac build 82)
 
 In Transcript, Descriptions, and AD Transcript, row More buttons now bind visibility to `IsEditing`, matching the existing Edit button and Mac behavior. The editor-header More button starts collapsed and refreshes on tab/mode changes, appearing only in Edit mode for those sections. Hidden More-button activation is guarded; View-mode right-click/context menus and narration preview remain unchanged. Other editor sections retain their existing header behavior. Added source regressions and native smoke checks covering View → Edit → View in each timed section, including realized row/header visibility.

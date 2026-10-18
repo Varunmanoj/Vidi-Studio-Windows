@@ -16,6 +16,7 @@ public sealed class SettingsStore
         if (File.Exists(ConfigPath)) Merge(Data, JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject());
         if (Data["ttsMode"] == null || Get("ttsMode") == "system") Set("ttsMode", "windows-core");
         if (Data["libraryPath"] == null) Set("libraryPath", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VidiStudio Projects"));
+        if (NormalizeNarrationPlaybackEngine()) Save();
     }
     private static void Merge(JsonObject target, JsonObject source)
     {
@@ -33,12 +34,34 @@ public sealed class SettingsStore
         if (File.Exists(ConfigPath)) Merge(Data, JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject());
         if (Data["ttsMode"] == null || Get("ttsMode") == "system") Set("ttsMode", "windows-core");
         if (Data["libraryPath"] == null) Set("libraryPath", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VidiStudio Projects"));
+        if (NormalizeNarrationPlaybackEngine()) Save();
     }
     public string Get(string key, string fallback = "") => Data[key]?.GetValue<string>() ?? fallback;
-    public void Set(string key, string value) => Data[key] = value;
+    public void Set(string key, string value)
+    {
+        Data[key] = value;
+        if (key is "narrationPlayback" or "ttsMode") NormalizeNarrationPlaybackEngine();
+    }
+    private bool NormalizeNarrationPlaybackEngine()
+    {
+        var changed = false;
+        if (Get("narrationPlayback", "generated") == "device")
+        {
+            Data["narrationPlayback"] = "ondevice";
+            changed = true;
+        }
+        if (Get("narrationPlayback", "generated") is "ondevice" or "device" && Get("ttsMode") == "gemini")
+        {
+            Data["ttsMode"] = "windows-core";
+            Data["systemVoice"] = Get("windowsCoreVoice");
+            changed = true;
+        }
+        return changed;
+    }
     public double Number(string key, double fallback = 1) => Data[key]?.GetValue<double>() ?? fallback;
     public void Save()
     {
+        NormalizeNarrationPlaybackEngine();
         // These jobs now share the base selection for local and YouTube projects.
         if (Data["models"] is JsonObject models)
             foreach (var stage in new[] { "summary", "audio_descriptions", "screen_text", "text_rewrite", "tts_audio" })

@@ -22,9 +22,15 @@ internal sealed record GeminiModelOption(string Id, string Label)
 
 internal static class GeminiVoices
 {
+    public static readonly string[] Names =
+    {
+        "Aoede", "Callirrhoe", "Charon", "Fenrir", "Kore", "Leda", "Orus", "Puck", "Zephyr"
+    };
+
     public static IReadOnlyList<Voice> Featured { get; } =
-        "Zephyr|Puck|Charon|Kore|Fenrir|Leda|Orus|Aoede|Callirrhoe|Autonoe|Enceladus|Iapetus|Umbriel|Algieba|Despina|Erinome|Algenib|Rasalgethi|Laomedeia|Achernar|Alnilam|Schedar|Gacrux|Pulcherrima|Achird|Zubenelgenubi|Vindemiatrix|Sadachbia|Sadaltager|Sulafat"
-        .Split('|').Select(name => new Voice(name, name, "", "")).ToArray();
+        Names.Select(name => new Voice(name, name, "", "")).ToArray();
+
+    public static IReadOnlyList<Voice> Voices => Featured;
 }
 
 public sealed partial class SettingsDialog

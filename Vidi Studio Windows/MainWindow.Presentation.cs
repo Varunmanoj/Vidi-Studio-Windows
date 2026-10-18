@@ -421,7 +421,7 @@ public sealed partial class MainWindow
         foreach (var origin in new[] { ("ai", "AI-generated"), ("ai_modified", "AI-generated · modified"), ("manual", "Manually added"), ("unknown", "Origin unknown") })
             AddInfo(OriginStatistics, origin.Item2, p.Cues.Count(c => c.Origin == origin.Item1).ToString());
         OriginStatistics.Children.Add(new TextBlock { Text = "AI-generated and modified segments are counted separately. Manual descriptions stay manual when edited.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
-        OverviewVoice.Text = "Speech engine: " + Model.Settings.Get("ttsMode", "windows-core") + "\nVoice: " + (Model.Settings.Get("ttsMode") == "gemini" ? Model.Settings.Get("geminiVoice", "Kore") : string.IsNullOrEmpty(Model.Settings.Get("systemVoice")) ? "System default" : Model.Settings.Get("systemVoice").Split('\\').Last());
+        OverviewVoice.Text = "Speech engine: " + EngineTitle(Model.Settings.Get("ttsMode", "windows-core")) + "\nVoice: " + (Model.Settings.Get("ttsMode") == "gemini" ? Model.Settings.Get("geminiVoice", "Kore") : string.IsNullOrEmpty(Model.Settings.Get("systemVoice")) ? "System default" : Model.Settings.Get("systemVoice").Split('\\').Last());
         if (OverviewVoiceWarningBorder != null && OverviewVoiceWarningText != null)
         {
             if (voiceReport is { HasDifferentVoices: true })
@@ -443,6 +443,12 @@ public sealed partial class MainWindow
         }
         UpdateApiKeyUi();
     }
+    private static string EngineTitle(string mode) => mode switch
+    {
+        "gemini" => "Gemini Voices",
+        "sapi5" => "Windows SAPI 5",
+        _ => "Windows OneCore",
+    };
     private static void AddInfo(StackPanel panel, string label, string value)
     {
         var row = new Grid { ColumnSpacing = 10 };

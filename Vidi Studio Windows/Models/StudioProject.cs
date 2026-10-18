@@ -294,10 +294,10 @@ public static class NarrationVoiceFormatting
 {
     public static string EngineDisplayName(string? engine) => (engine ?? "").Trim().ToLowerInvariant() switch
     {
-        "gemini" => "Gemini TTS",
-        "system" => "Apple on-device",
+        "gemini" => "Gemini Voices",
+        "system" => "Apple Voices",
         "windows-core" => "Windows OneCore",
-        "sapi5" => "SAPI 5",
+        "sapi5" => "Windows SAPI 5",
         _ => "Windows OneCore"
     };
 

@@ -46,20 +46,24 @@ public sealed partial class SettingsDialog : Window
         mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "sapi5");
         mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "windows-core");
         await RefreshVoices();
-        if (voices.Count < 2 || (mode.SelectedItem as SpeechEngineOption)?.Id != "windows-core") throw new InvalidOperationException("Core voice refresh did not finish.");
+        if (voices.Count < 2 || (mode.SelectedItem as SpeechEngineOption)?.Id != "windows-core" || localSpeechControls.Visibility != Visibility.Visible) throw new InvalidOperationException("Core voice refresh did not finish.");
         mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "sapi5");
+        await RefreshVoices();
+        if (localSpeechControls.Visibility != Visibility.Visible) throw new InvalidOperationException("SAPI 5 must show local speech controls.");
         mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "gemini");
         await RefreshVoices();
         await Task.Delay(100);
-        if (voices.Count < 30 || voices.Any(v => v.Id == "")) throw new InvalidOperationException("A stale local voice list replaced Gemini settings.");
+        if (voices.Count != GeminiVoices.Featured.Count || voices.Any(v => v.Id == "" || v.ToString() != v.Id) || localSpeechControls.Visibility != Visibility.Collapsed)
+            throw new InvalidOperationException("A stale local voice list or local speech controls remained visible for Gemini settings.");
         narrationPlaybackChoice.SelectedItem = ((IEnumerable<PlaybackOption>)narrationPlaybackChoice.ItemsSource).First(option => option.Id == "ondevice");
         await RefreshVoices();
-        if (((IEnumerable<SpeechEngineOption>)mode.ItemsSource).Any(option => option.Id == "gemini") ||
-            draft["ttsMode"]?.GetValue<string>() != "windows-core")
-            throw new InvalidOperationException("On-device preview must only offer local Windows speech engines.");
+        if (!((IEnumerable<SpeechEngineOption>)mode.ItemsSource).Any(option => option.Id == "gemini") ||
+            draft["ttsMode"]?.GetValue<string>() != "gemini")
+            throw new InvalidOperationException("On-device preview must keep the selected Gemini generation engine.");
+        if (voices.Count != GeminiVoices.Featured.Count || voices.Any(v => v.Id == "" || v.ToString() != v.Id)) throw new InvalidOperationException("Gemini voice list was lost in on-device preview.");
         narrationPlaybackChoice.SelectedItem = ((IEnumerable<PlaybackOption>)narrationPlaybackChoice.ItemsSource).First(option => option.Id == "generated");
-        if (!((IEnumerable<SpeechEngineOption>)mode.ItemsSource).Any(option => option.Id == "gemini"))
-            throw new InvalidOperationException("Saved narration playback must allow Gemini voices again.");
+        if (draft["ttsMode"]?.GetValue<string>() != "gemini" || (mode.SelectedItem as SpeechEngineOption)?.Id != "gemini")
+            throw new InvalidOperationException("Returning to saved narration playback must keep Gemini selected.");
     }
     internal async Task VerifyLocalVoiceSamplesAsync()
     {
@@ -107,6 +111,7 @@ public sealed partial class SettingsDialog : Window
     private readonly ComboBox voice = new() { Header = "Installed voice", HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly TextBox search = new() { Header = "Filter voices by name, language or region" };
     private readonly TextBox sapiHost = new() { Header = "Optional SAPI host executable (match your legacy voice architecture)" };
+    private readonly StackPanel localSpeechControls = new() { Spacing = 14 };
     private List<Voice> voices = new();
     public SettingsDialog(StudioViewModel model, Window window, int initialSection = 0)
     {
@@ -326,24 +331,17 @@ public sealed partial class SettingsDialog : Window
         panel.Children.Add(slider);
     }
     private bool narrationBuilt;
-    private bool LocalNarrationPreview => draft["narrationPlayback"]?.GetValue<string>() is "ondevice" or "device";
     private void UpdateNarrationEngineOptions()
     {
         var provider = draft["ttsMode"]?.GetValue<string>() ?? "windows-core";
-        if (LocalNarrationPreview && provider == "gemini")
-        {
-            provider = "windows-core";
-            draft["ttsMode"] = provider;
-            draft["systemVoice"] = draft[VoiceKey(provider)]?.GetValue<string>() ?? "";
-        }
-        var options = new List<SpeechEngineOption> { new("windows-core", "Windows OneCore voices"), new("sapi5", "SAPI 5 voices") };
-        if (!LocalNarrationPreview) options.Add(new("gemini", "Gemini voices"));
+        var options = new List<SpeechEngineOption> { new("windows-core", "Windows OneCore"), new("sapi5", "Windows SAPI 5"), new("gemini", "Gemini Voices") };
         mode.ItemsSource = options;
         mode.SelectedItem = options.FirstOrDefault(option => option.Id == provider) ?? options[0];
     }
     private void BuildNarration(StackPanel panel)
     {
-        foreach (var element in new FrameworkElement[] { mode, voice, search, sapiHost }) if (element.Parent is Panel parent) parent.Children.Remove(element);
+        foreach (var element in new FrameworkElement[] { mode, voice, search, sapiHost, localSpeechControls }) if (element.Parent is Panel parent) parent.Children.Remove(element);
+        localSpeechControls.Children.Clear();
         UpdateNarrationEngineOptions();
         var initialProvider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
         if (initialProvider is "windows-core" or "sapi5" && draft[VoiceKey(initialProvider)] == null)
@@ -355,7 +353,6 @@ public sealed partial class SettingsDialog : Window
             mode.SelectionChanged += async (_, _) =>
             {
                 if (mode.SelectedItem is not SpeechEngineOption selected) return;
-                if (LocalNarrationPreview && selected.Id == "gemini") { UpdateNarrationEngineOptions(); return; }
                 draft["ttsMode"] = selected.Id;
                 if (selected.Id != "gemini") draft["systemVoice"] = draft[VoiceKey(selected.Id)]?.GetValue<string>() ?? "";
                 await RefreshVoices();
@@ -372,11 +369,12 @@ public sealed partial class SettingsDialog : Window
         }
         panel.Children.Add(mode); panel.Children.Add(search); panel.Children.Add(voice); panel.Children.Add(sapiHost);
         AddPlaybackChoice(panel);
-        panel.Children.Add(new TextBlock { Text = "On-device preview only allows local Windows OneCore or SAPI 5 voices and does not create audio files. Select Play saved narration audio to enable Gemini voices. SAPI 5 samples and live playback use rate and volume; pitch is applied when generating saved audio.", TextWrapping = TextWrapping.Wrap });
-        var refresh = new Button { Content = "Refresh installed voices" }; refresh.Click += async (_, _) => await RefreshVoices(); panel.Children.Add(refresh);
-        AddSpeechSlider(panel, "Speech rate", "systemSpeechRate", 1, .5, 2);
-        AddSpeechSlider(panel, "Speech pitch", "systemSpeechPitch", 1, .5, 2);
-        AddSpeechSlider(panel, "Speech volume", "systemSpeechVolume", 1, 0, 1);
+        panel.Children.Add(new TextBlock { Text = "The speech engine selects the voice used when generating saved narration audio; Gemini Voices stays selected in either playback mode. On-device preview speaks segment text live with local Windows speech and does not create audio files; with Gemini selected, preview uses the default Windows OneCore voice. Play saved narration audio to hear each saved file with the voice it was created with. SAPI 5 samples and live playback use rate and volume; pitch is applied when generating saved audio.", TextWrapping = TextWrapping.Wrap });
+        var refresh = new Button { Content = "Refresh installed voices" }; refresh.Click += async (_, _) => await RefreshVoices(); localSpeechControls.Children.Add(refresh);
+        AddSpeechSlider(localSpeechControls, "Speech rate", "systemSpeechRate", 1, .5, 2);
+        AddSpeechSlider(localSpeechControls, "Speech pitch", "systemSpeechPitch", 1, .5, 2);
+        AddSpeechSlider(localSpeechControls, "Speech volume", "systemSpeechVolume", 1, 0, 1);
+        panel.Children.Add(localSpeechControls);
         var sample = new TextBox { Header = "Voice sample (up to 500 characters)", Text = "Welcome to Vidi Studio. Create accessible video with clear audio descriptions.", MaxLength = 500, TextWrapping = TextWrapping.Wrap };
         panel.Children.Add(sample);
         var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -390,6 +388,9 @@ public sealed partial class SettingsDialog : Window
         panel.Children.Add(controls);
         _ = RefreshVoices();
     }
+    private bool HasDraftApiKey => !string.IsNullOrWhiteSpace(draft["apiKey"]?.GetValue<string>()) &&
+        (draft["apiKeyValid"]?.GetValue<string>() ?? "true") != "false" &&
+        (draft["apiPlan"]?.GetValue<string>() ?? "") != "invalid";
     private void UpdateSampleControls()
     {
         if (samplePlayButton != null)
@@ -401,7 +402,8 @@ public sealed partial class SettingsDialog : Window
                 SampleState.Paused => "Resume sample",
                 _ => "Play selected voice sample"
             };
-            samplePlayButton.IsEnabled = sampleState != SampleState.Generating;
+            var provider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
+            samplePlayButton.IsEnabled = sampleState != SampleState.Generating && (provider != "gemini" || HasDraftApiKey);
         }
         if (sampleStopButton != null) sampleStopButton.IsEnabled = sampleState != SampleState.Stopped;
     }
@@ -431,10 +433,16 @@ public sealed partial class SettingsDialog : Window
     private void FilterVoices()
     {
         var provider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
-        var selected = draft[provider == "gemini" ? "geminiVoice" : VoiceKey(provider)]?.GetValue<string>() ?? "";
-        var filtered = voices.Where(v => v.ToString().Contains(search.Text, StringComparison.CurrentCultureIgnoreCase)).ToList();
+        var key = provider == "gemini" ? "geminiVoice" : VoiceKey(provider);
+        var selected = (draft[key]?.GetValue<string>() ?? (provider == "gemini" ? "Kore" : "")).Trim();
+        var filtered = provider == "gemini"
+            ? voices.ToList()
+            : voices.Where(v => v.ToString().Contains(search.Text, StringComparison.CurrentCultureIgnoreCase)).ToList();
         voice.ItemsSource = filtered;
-        voice.SelectedItem = filtered.FirstOrDefault(v => v.Id == selected);
+        var chosen = filtered.FirstOrDefault(v => string.Equals(v.Id, selected, StringComparison.OrdinalIgnoreCase))
+            ?? (provider == "gemini" ? filtered.FirstOrDefault(v => v.Id == "Kore") ?? filtered.FirstOrDefault() : filtered.FirstOrDefault());
+        voice.SelectedItem = chosen;
+        if (provider == "gemini" && chosen != null) draft["geminiVoice"] = chosen.Id;
     }
     private async Task RefreshVoices()
     {
@@ -444,8 +452,11 @@ public sealed partial class SettingsDialog : Window
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         voiceCancellation = cancellation;
         var provider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
-        voice.Header = provider == "gemini" ? "Gemini voice" : provider == "sapi5" ? "SAPI 5 voice" : "Windows OneCore voice";
+        voice.Header = provider == "gemini" ? "Gemini voice" : provider == "sapi5" ? "Windows SAPI 5 voice" : "Windows OneCore voice";
+        search.Visibility = provider == "gemini" ? Visibility.Collapsed : Visibility.Visible;
+        localSpeechControls.Visibility = provider == "gemini" ? Visibility.Collapsed : Visibility.Visible;
         sapiHost.Visibility = provider == "sapi5" ? Visibility.Visible : Visibility.Collapsed;
+        UpdateSampleControls();
         voice.ItemsSource = null;
         voices = new();
         try
@@ -453,13 +464,10 @@ public sealed partial class SettingsDialog : Window
             if (provider == "gemini")
             {
                 voices = GeminiVoices.Featured.ToList();
+                var savedGemini = (draft["geminiVoice"]?.GetValue<string>() ?? "Kore").Trim();
+                if (savedGemini.Length > 0 && !voices.Any(v => string.Equals(v.Id, savedGemini, StringComparison.OrdinalIgnoreCase)))
+                    voices.Add(new Voice(savedGemini, savedGemini, "", ""));
                 FilterVoices();
-                if (!string.IsNullOrWhiteSpace(draft["apiKey"]?.GetValue<string>()))
-                {
-                    var geminiVoices = await LoadGeminiVoicesAsync(cancellation.Token);
-                    if (closed || request != voiceRequest) return;
-                    if (geminiVoices.Count > 0) { voices = geminiVoices; FilterVoices(); }
-                }
                 status.Text = $"{voices.Count} Gemini voices available.";
                 return;
             }

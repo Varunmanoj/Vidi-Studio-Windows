@@ -1095,7 +1095,7 @@ public sealed partial class MainWindow : Window
         var settings = new Views.SettingsDialog(Model, this, section);
         openSettings = settings;
         try { await settings.ShowAsync(); }
-        finally { openSettings = null; ApplyTheme(); Model.Reload(); UpdateApiKeyUi(); }
+        finally { openSettings = null; ApplyTheme(); Model.Reload(); UpdateApiKeyUi(); UpdateSectionPresentation(); }
     }
     private async void Settings_Click(object sender, RoutedEventArgs e)
     {

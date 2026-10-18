@@ -337,6 +337,16 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             var result = await Engine.RunAsync(args, new Progress<EngineEvent>(e =>
             {
                 Status = e.Message;
+                if (e.Data.TryGetProperty("narrationPrimaryVoiceUpdated", out var primaryUpdated) && primaryUpdated.ValueKind == System.Text.Json.JsonValueKind.True && Project != null)
+                {
+                    try
+                    {
+                        Project = StudioProject.Load(Project.Folder);
+                        ApplyNarrationStateToProject();
+                        ProjectReloaded?.Invoke(this, EventArgs.Empty);
+                    }
+                    catch (Exception ex) { Engine.Log(ex.ToString()); }
+                }
                 if (e.Data.TryGetProperty("processingSection", out var section) && section.ValueKind == System.Text.Json.JsonValueKind.String)
                     ProcessingSection = section.GetString();
                 if (e.Data.TryGetProperty("narratingTotal", out var nTotal) && nTotal.ValueKind == System.Text.Json.JsonValueKind.Number && nTotal.TryGetInt32(out var totalVal))

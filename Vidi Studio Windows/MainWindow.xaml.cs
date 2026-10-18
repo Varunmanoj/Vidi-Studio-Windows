@@ -973,12 +973,12 @@ public sealed partial class MainWindow : Window
         if (extra?.Contains("--regenerate-all") == true)
         {
             if (!await Confirm("Regenerate all narration?",
-                $"All generated narration audio will be replaced by newly generated audio for every Audio Description segment using the currently selected voice: {Model.CurrentNarrationSummary()}. Description text and timing will be kept. Existing audio is replaced only after each segment is generated successfully; if generation fails or is canceled, some old audio may remain. Do you want to continue?",
+                $"All generated narration audio will be replaced by newly generated audio for every Audio Description segment using the currently selected voice: {Model.CurrentNarrationSummary()}. This becomes the project's primary narration voice as soon as regeneration starts. Description text and timing will be kept. Existing audio is replaced only after each segment is generated successfully; if generation fails or is canceled, some old audio may remain. Do you want to continue?",
                 "Regenerate All Narration")) return;
         }
         else if (!await ConfirmNarrationVoiceChangeAsync()) return;
         await Model.RunAsync("synthesize-tts", extra);
-        if (hadPriorNarration && Model.NarrationVoiceUsageReport() is { HasDifferentVoices: true } voiceReport)
+        if (extra?.Contains("--regenerate-all") != true && hadPriorNarration && Model.NarrationVoiceUsageReport() is { HasDifferentVoices: true } voiceReport)
         {
             try { await ShowNarrationVoicesAsync(voiceReport); }
             catch (Exception ex) { Model.Engine.Log(ex.ToString()); }

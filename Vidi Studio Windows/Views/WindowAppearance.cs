@@ -53,13 +53,29 @@ internal static class WindowedDialog
             presenter.IsMaximizable = true;
             presenter.IsResizable = true;
         }
+        // When the dialog should fill its own window, blend the ContentDialog smoke layer, card
+        // background, and border into the window background so no gray frame shows around the card.
+        var backdrop = new SolidColorBrush();
+        void ApplySeamless(ElementTheme theme)
+        {
+            if (!fitToContent) return;
+            backdrop.Color = theme == ElementTheme.Dark
+                ? Windows.UI.Color.FromArgb(255, 24, 24, 24)
+                : Microsoft.UI.Colors.White;
+            root.Background = backdrop;
+            dialog.Resources["ContentDialogSmokeFill"] = backdrop;
+            dialog.Resources["ContentDialogBackground"] = backdrop;
+            dialog.Resources["ContentDialogBorderBrush"] = backdrop;
+            dialog.Resources["ContentDialogBorderWidth"] = new Thickness(0);
+        }
         void ApplyTheme(string theme)
         {
             var requested = theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
             WindowAppearance.ApplyTheme(window, root, requested);
             dialog.RequestedTheme = requested;
+            ApplySeamless(requested == ElementTheme.Default ? root.ActualTheme : requested);
         }
-        root.ActualThemeChanged += (_, _) => WindowAppearance.UpdateColors(window, root, root.ActualTheme);
+        root.ActualThemeChanged += (_, _) => { WindowAppearance.UpdateColors(window, root, root.ActualTheme); ApplySeamless(root.ActualTheme); };
         App.ThemeChanged += ApplyTheme;
         ApplyTheme(App.ActiveTheme ?? ((owner.Content as FrameworkElement)?.ActualTheme == ElementTheme.Dark ? "dark" : "light"));
         var area = owner.AppWindow;

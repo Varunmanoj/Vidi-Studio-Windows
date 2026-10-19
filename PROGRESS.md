@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-19 — Seamless New Project dialog with no smoke frame (1.0.94 / 1.0.94.0)
+
+Removed the gray `ContentDialog` smoke frame around the New Project card. `WindowedDialog` now, when hosting a content-fitted dialog, blends the smoke layer, card background, and card border into a single theme-matched brush that is also applied as the window background (`ContentDialogSmokeFill`, `ContentDialogBackground`, `ContentDialogBorderBrush` overridden on the dialog, `ContentDialogBorderWidth` set to 0), and keeps it in sync across light/dark theme changes. Combined with the existing content-fit sizing, the card now sits directly in its own window instead of floating in a dimmed area. Only dialogs shown with `fitToContent` are affected; all other dialogs keep the standard smoke.
+
+Validation: `script/check_xaml_references.py` passed; Windows `test_parity` and `test_menu_parity` passed; version synchronized at 1.0.94 (Mac build 94 / Windows package 1.0.94.0). Native Windows rendering of the seamless dialog was not run on this macOS host.
+
 ## 2026-10-19 — New Project dialog window fits its content and aligns source icons (1.0.93 / 1.0.93.0)
 
 The Windows New Project dialog opened in a fixed 680×780 host window while its `ContentDialog` card is only about 520 wide, so the card floated in a large gray smoke area. `WindowedDialog.ShowAsync` now accepts an opt-in `fitToContent` mode that resizes the host window to the dialog's measured content plus the `ContentDialog` chrome (title, button row, padding), grows when later content appears (for example the selected-video preview), and is clamped to the owner window; `ShowNewProjectDialogAsync` and the UI smoke test use it with a 560×560 fallback. The dialog also dropped its redundant 18 pt "Choose a project source" heading (the label now moves onto the source card, matching the Mac section header), tightened spacing, and reduced the video preview to 160 pt. Source-picker icons now use a consistent 16 pt size with center vertical alignment for both the radio options and the "Choose Video…" button, and the radio content is vertically centered. Version only changed for macOS; macOS UI is unchanged.

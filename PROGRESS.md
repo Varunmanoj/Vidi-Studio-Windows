@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-19 — New Project window hugs the dialog card and drops minimize/maximize (1.0.95 / 1.0.95.0)
+
+The New Project window no longer frames the `ContentDialog` card in a dimmed area and no longer offers minimize or maximize. `WindowedDialog` now disables `IsMinimizable`, `IsMaximizable`, and `IsResizable` for content-fitted dialogs, and `FitWindowToCard` measures the rendered card (walking the visual tree to the card border that wraps the dialog content) and resizes the window to exactly that card, including the content scroll extent so it grows when a preview or extra fields appear and shrinks back. Combined with the seamless brush override, the window itself is the dialog with no gray around it. Other dialogs keep their resizable tool-window behavior.
+
+Validation: `script/check_xaml_references.py` passed; Windows `test_parity` passed; version synchronized at 1.0.95 (Mac build 95 / Windows package 1.0.95.0). Native Windows rendering of the fitted dialog was not run on this macOS host.
+
 ## 2026-10-19 — Seamless New Project dialog with no smoke frame (1.0.94 / 1.0.94.0)
 
 Removed the gray `ContentDialog` smoke frame around the New Project card. `WindowedDialog` now, when hosting a content-fitted dialog, blends the smoke layer, card background, and card border into a single theme-matched brush that is also applied as the window background (`ContentDialogSmokeFill`, `ContentDialogBackground`, `ContentDialogBorderBrush` overridden on the dialog, `ContentDialogBorderWidth` set to 0), and keeps it in sync across light/dark theme changes. Combined with the existing content-fit sizing, the card now sits directly in its own window instead of floating in a dimmed area. Only dialogs shown with `fitToContent` are affected; all other dialogs keep the standard smoke.

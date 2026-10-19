@@ -49,9 +49,10 @@ internal static class WindowedDialog
         WindowAppearance.ApplyIcon(window);
         if (window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
         {
-            presenter.IsMinimizable = true;
-            presenter.IsMaximizable = true;
-            presenter.IsResizable = true;
+            // A dialog window only shows Close; only regular tool windows can be minimized/maximized.
+            presenter.IsMinimizable = !fitToContent;
+            presenter.IsMaximizable = !fitToContent;
+            presenter.IsResizable = !fitToContent;
         }
         // When the dialog should fill its own window, blend the ContentDialog smoke layer, card
         // background, and border into the window background so no gray frame shows around the card.
@@ -95,42 +96,59 @@ internal static class WindowedDialog
         {
             if (!await loaded.Task) return ContentDialogResult.None;
             dialog.XamlRoot = root.XamlRoot;
-            if (fitToContent) FitToContent(dialog, window, root.XamlRoot, owner);
+            if (fitToContent) FitWindowToCard(dialog, window, root, owner);
             return await dialog.ShowAsync();
         }
         finally { App.ThemeChanged -= ApplyTheme; window.Close(); }
     }
 
     /// <summary>
-    /// Sizes the hosting window to the dialog's own content so the window does not show a large
-    /// empty smoke area around a small card. The window grows when later content appears (for
-    /// example a media preview) and is always clamped to the owner window.
+    /// Sizes the hosting window to the rendered dialog card so the window itself is the dialog and
+    /// no dimmed smoke area frames it. Runs once the card is on screen and follows later content
+    /// changes (for example a media preview), always clamped to the owner window.
     /// </summary>
-    private static void FitToContent(ContentDialog dialog, Window window, XamlRoot xamlRoot, Window owner)
+    private static void FitWindowToCard(ContentDialog dialog, Window window, Grid root, Window owner)
     {
-        if (dialog.Content is not FrameworkElement content) return;
-        var measured = (content as ScrollViewer)?.Content as FrameworkElement ?? content;
-        void Apply()
+        void Resize()
         {
-            var desired = measured.DesiredSize;
-            if (desired.Height <= 0) return;
-            // ContentDialog chrome around the content: title, button row, and card padding.
-            const double chromeHeight = 200;
-            const double chromeWidth = 64;
-            var scale = xamlRoot.RasterizationScale;
+            if (dialog.Content is not FrameworkElement content) return;
+            var card = FindCard(content);
+            if (card is null) return;
+            var scroller = content as ScrollViewer;
+            // Prefer the full content extent so the window grows when a preview or extra fields appear.
+            var contentHeight = scroller is not null && scroller.ExtentHeight > 0
+                ? scroller.ExtentHeight + Math.Max(0, card.ActualHeight - scroller.ActualHeight)
+                : card.ActualHeight;
+            if (contentHeight <= 0 || card.ActualWidth <= 0) return;
+            var scale = root.XamlRoot?.RasterizationScale ?? 1;
             var area = owner.AppWindow;
-            var dialogWidth = double.IsNaN(dialog.Width) || dialog.Width <= 0 ? 520 : dialog.Width;
-            var logicalWidth = Math.Min(dialogWidth + chromeWidth, 560);
-            var logicalHeight = Math.Min(desired.Height + chromeHeight, 780);
+            var logicalWidth = card.ActualWidth + card.Margin.Left + card.Margin.Right + 2;
+            var logicalHeight = contentHeight + card.Margin.Top + card.Margin.Bottom + 2;
             var pixelWidth = (int)Math.Ceiling(Math.Min(logicalWidth * scale, area.Size.Width - 24));
             var pixelHeight = (int)Math.Ceiling(Math.Min(logicalHeight * scale, area.Size.Height - 24));
-            window.AppWindow.Resize(new Windows.Graphics.SizeInt32(Math.Max(380, pixelWidth), Math.Max(320, pixelHeight)));
+            if (Math.Abs(pixelWidth - window.AppWindow.Size.Width) < 4 && Math.Abs(pixelHeight - window.AppWindow.Size.Height) < 4) return;
+            window.AppWindow.Resize(new Windows.Graphics.SizeInt32(Math.Max(360, pixelWidth), Math.Max(300, pixelHeight)));
             window.AppWindow.Move(new Windows.Graphics.PointInt32(
                 area.Position.X + Math.Max(0, (area.Size.Width - pixelWidth) / 2),
                 area.Position.Y + Math.Max(0, (area.Size.Height - pixelHeight) / 2)));
         }
-        measured.SizeChanged += (_, _) => Apply();
-        dialog.Opened += (_, _) => Apply();
-        Apply();
+        dialog.Opened += (_, _) =>
+        {
+            root.DispatcherQueue.TryEnqueue(Resize);
+            if (dialog.Content is FrameworkElement content) content.SizeChanged += (_, _) => Resize();
+            if ((dialog.Content as ScrollViewer)?.Content is FrameworkElement inner) inner.SizeChanged += (_, _) => Resize();
+        };
+    }
+
+    /// <summary>Finds the ContentDialog card border that wraps the dialog content.</summary>
+    private static Border? FindCard(FrameworkElement? content)
+    {
+        DependencyObject? node = content;
+        while (node is not null)
+        {
+            if (node is Border border) return border;
+            node = VisualTreeHelper.GetParent(node);
+        }
+        return null;
     }
 }

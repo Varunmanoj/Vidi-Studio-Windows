@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-19 — Clean New Project dialog without verbose descriptions (1.0.89 / 1.0.89.0, Mac build 89)
+
+Removed verbose explanatory paragraphs and footer descriptions from the New Project dialog across both macOS and Windows, matching the clean presentation established in Settings. On Windows (`NewProjectDialog.cs`): removed the local video copy notice, cleared idle/fetched description text from `youtubeStatus` (reserving it for active progress and error messages), and standardized the YouTube URL header to "YouTube video URL". On macOS (`ContentView.swift`): removed the Section footer descriptions and the preview review notice, and tightened dialog height. All functionality, field inputs, fetch capabilities, error diagnostics, and button states remain intact.
+
+Validation on macOS: Windows reference/Inspector/menu/parity suite passed 27 tests; Mac unit test suite passed 27 tests; Mac packaged build passed (`build_and_run.sh --build-only`); menu parity checker and version sync passed at 1.0.89 (Mac build 89, Windows package 1.0.89.0).
+
 ## 2026-10-18 — Startup crash fix and Settings tab re-entry safety (1.0.89 / 1.0.89.0, Mac build 90)
 
 Fixed an unhandled NullReferenceException on Windows application startup that caused WinUI 3 (`Microsoft.UI.Xaml.dll`, exception code `0xc000027b`) to crash immediately upon launching from Visual Studio or the Start Menu. During `InitializeComponent()`, setting `SelectedIndex="0"` on the `Section` ComboBox triggered `Section_Changed` before the full visual tree had loaded and while `SectionProcessingRing` and `SectionProcessingOverlay` were still null. `Section_Changed` now early-exits if the window is not yet ready, `UpdateSectionOverlay` guards against uninitialized overlay controls, and `Root.Loaded` updates the overlay once the window is ready. In `SettingsDialog.Gemini.cs`, fixed a `COMException (0x800F1000)` on tab re-entry where retained verification and account plan controls were being added to new visual containers without first detaching from their previous visual parents.

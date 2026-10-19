@@ -31,10 +31,10 @@ public sealed class NewProjectDialog : ContentDialog
     private readonly TextBlock selectedFile = new() { Text = "No video selected", Opacity = .7, TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock details = new() { TextWrapping = TextWrapping.Wrap };
     private readonly MediaPlayerElement preview = new() { Height = 180, AreTransportControlsEnabled = true, Visibility = Visibility.Collapsed };
-    private readonly TextBox youtubeUrl = new() { PlaceholderText = "https://youtu.be/…", Header = "Public YouTube video URL", Width = 280, HorizontalAlignment = HorizontalAlignment.Left };
+    private readonly TextBox youtubeUrl = new() { PlaceholderText = "https://youtu.be/…", Header = "YouTube video URL", Width = 280, HorizontalAlignment = HorizontalAlignment.Left };
     private readonly Button fetchDetails = new() { Content = "Fetch Details", Width = 120, VerticalAlignment = VerticalAlignment.Bottom };
     private readonly Border youtubePreview = new() { Visibility = Visibility.Collapsed, Width = 410, CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Background = new SolidColorBrush(Windows.UI.Color.FromArgb(24, 128, 128, 128)) };
-    private readonly TextBlock youtubeStatus = new() { Text = "Fetch and review the video details before creating the project. Public videos are checked for Gemini availability during creation.", Width = 410, TextWrapping = TextWrapping.Wrap, Opacity = .7 };
+    private readonly TextBlock youtubeStatus = new() { Width = 410, TextWrapping = TextWrapping.Wrap, Opacity = .7 };
     private readonly TextBlock sourceHeading = new() { Text = "Video File", FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
     private static readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private CancellationTokenSource? inspection;
@@ -77,7 +77,6 @@ public sealed class NewProjectDialog : ContentDialog
         localFields.Children.Add(selectedFile);
         localFields.Children.Add(preview);
         localFields.Children.Add(details);
-        localFields.Children.Add(new TextBlock { Text = "Vidi Studio copies the video into a new local project folder when you create the project.", Opacity = .7, TextWrapping = TextWrapping.Wrap });
         var youtubeRow = new Grid { ColumnSpacing = 10, Width = 410 };
         youtubeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(280) });
         youtubeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -144,9 +143,7 @@ public sealed class NewProjectDialog : ContentDialog
     {
         youtubeInspection?.Cancel(); youtubeInspection = null;
         fetchedYouTubeId = null; youtubePreview.Visibility = Visibility.Collapsed;
-        youtubeStatus.Text = ValidYouTubeId(YouTubeUrl) == null
-            ? "Enter a valid public YouTube video URL, then fetch its details."
-            : "Fetch and review the video details first. Vidi Studio checks Gemini availability when creating the project.";
+        youtubeStatus.Text = "";
         UpdateSource();
     }
     private async Task FetchYouTubeDetailsAsync()
@@ -156,7 +153,7 @@ public sealed class NewProjectDialog : ContentDialog
         youtubeInspection?.Cancel();
         var request = new CancellationTokenSource(); youtubeInspection = request;
         fetchedYouTubeId = null; youtubePreview.Visibility = Visibility.Collapsed;
-        youtubeStatus.Text = "Fetching public video details…"; UpdateSource();
+        youtubeStatus.Text = "Fetching video details…"; UpdateSource();
         try
         {
             var url = "https://www.youtube.com/watch?v=" + id;
@@ -170,7 +167,7 @@ public sealed class NewProjectDialog : ContentDialog
             var thumbnail = root.TryGetProperty("thumbnail_url", out var image) ? image.GetString() ?? "" : "";
             fetchedYouTubeId = id;
             ShowYouTubePreview(id, title, author, thumbnail);
-            youtubeStatus.Text = "Review these details before creating the project. Vidi Studio will check that Gemini can analyze this public video.";
+            youtubeStatus.Text = "";
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)

@@ -95,6 +95,26 @@ class Parity(unittest.TestCase):
                 else:
                     engine.os.environ.pop('VIDISTUDIO_CONFIG', None)
 
+    def test_settings_store_safe_types(self):
+        root = Path(__file__).resolve().parents[1]
+        settings_store_path = root / 'Vidi Studio Windows' / 'Services' / 'SettingsStore.cs'
+        if not settings_store_path.is_file():
+            settings_store_path = root / 'Vidi-Studio-Windows' / 'Vidi Studio Windows' / 'Services' / 'SettingsStore.cs'
+        if settings_store_path.is_file():
+            source = settings_store_path.read_text(encoding='utf-8')
+            self.assertIn('public static string GetString(JsonNode? node, string fallback = "")', source)
+            self.assertIn('public static double GetDouble(JsonNode? node, double fallback = 1)', source)
+            self.assertIn('public static bool GetBool(JsonNode? node, bool fallback = false)', source)
+            self.assertNotIn('Data[key]?.GetValue<string>()', source)
+            self.assertIn('GetString(Data[key], fallback)', source)
+            self.assertIn('val.TryGetValue<bool>(out var b)', source)
+
+        dialog_path = settings_store_path.parent.parent / 'Views' / 'SettingsDialog.cs'
+        if dialog_path.is_file():
+            dialog_source = dialog_path.read_text(encoding='utf-8')
+            self.assertNotIn('draft["apiKeyValid"]?.GetValue<string>()', dialog_source)
+            self.assertIn('SettingsStore.GetString(draft["apiKeyValid"]', dialog_source)
+
     def test_app_version_parity(self):
         script = Path(__file__).resolve().parents[1] / 'script' / 'sync_version.py'
         if script.exists():

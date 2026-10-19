@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using System;
+using Vidi_Studio_Windows.Services;
 using Windows.UI;
 
 namespace Vidi_Studio_Windows.Views;
@@ -24,7 +25,7 @@ public sealed partial class SettingsDialog
         }
         void Choice(string label, string key, string[] ids, string[] labels)
         {
-            var choice = new ComboBox { ItemsSource = labels, SelectedIndex = Math.Max(0, Array.IndexOf(ids, draft[key]?.GetValue<string>() ?? ids[0])), MinWidth = 165 };
+            var choice = new ComboBox { ItemsSource = labels, SelectedIndex = Math.Max(0, Array.IndexOf(ids, SettingsStore.GetString(draft[key], ids[0]))), MinWidth = 165 };
             choice.SelectionChanged += (_, _) =>
             {
                 if (choice.SelectedIndex < 0) return;
@@ -43,16 +44,16 @@ public sealed partial class SettingsDialog
         var summaryPreview = new TextBlock { Text = "A person enters the room and opens the door.", TextWrapping = TextWrapping.Wrap, FontSize = 16 };
         Color ReadColor(string key, string fallback)
         {
-            var value = (draft[key]?.GetValue<string>() ?? fallback).TrimStart('#');
+            var value = SettingsStore.GetString(draft[key], fallback).TrimStart('#');
             if (value.Length != 6 || !uint.TryParse(value, System.Globalization.NumberStyles.HexNumber, null, out var rgb)) rgb = Convert.ToUInt32(fallback.TrimStart('#'), 16);
             return Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
         }
         void Preview()
         {
-            dialogue.FontSize = description.FontSize = draft["captionFontSize"]?.GetValue<double>() ?? 24;
+            dialogue.FontSize = description.FontSize = SettingsStore.GetDouble(draft["captionFontSize"], 24);
             dialogue.Foreground = new SolidColorBrush(ReadColor("captionTextColor", "#FFFFFF"));
             description.Foreground = new SolidColorBrush(ReadColor("adCaptionTextColor", "#FFD60A"));
-            var alpha = (byte)(255 * (draft["captionBackgroundOpacity"]?.GetValue<double>() ?? .75));
+            var alpha = (byte)(255 * SettingsStore.GetDouble(draft["captionBackgroundOpacity"], .75));
             var normal = ReadColor("captionBackgroundColor", "#000000"); normal.A = alpha;
             var ad = ReadColor("adCaptionBackgroundColor", "#3A2F00"); ad.A = alpha;
             dialogueBox.Background = new SolidColorBrush(normal); descriptionBox.Background = new SolidColorBrush(ad);
@@ -65,13 +66,13 @@ public sealed partial class SettingsDialog
                 textHighlight.Ranges.Add(new TextRange { StartIndex = start, Length = length });
                 summaryPreview.TextHighlighters.Add(textHighlight);
             }
-            if (draft["summarySentenceHighlight"]?.GetValue<string>() != "false") Highlight(0, summaryPreview.Text.Length, "summarySentenceHighlightColor", "#A9D6FF");
-            if (draft["summaryWordHighlight"]?.GetValue<string>() != "false") Highlight(2, 6, "summaryWordHighlightColor", "#FFD54A");
+            if (SettingsStore.GetString(draft["summarySentenceHighlight"], "true") != "false") Highlight(0, summaryPreview.Text.Length, "summarySentenceHighlightColor", "#A9D6FF");
+            if (SettingsStore.GetString(draft["summaryWordHighlight"], "true") != "false") Highlight(2, 6, "summaryWordHighlightColor", "#FFD54A");
         }
         void Slider(string label, string key, double fallback, double low, double high, double step, bool percent)
         {
             var group = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-            var slider = new Slider { Width = 210, Minimum = low, Maximum = high, StepFrequency = step, Value = draft[key]?.GetValue<double>() ?? fallback };
+            var slider = new Slider { Width = 210, Minimum = low, Maximum = high, StepFrequency = step, Value = SettingsStore.GetDouble(draft[key], fallback) };
             var value = new TextBlock { Width = 45, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Text = percent ? $"{slider.Value:P0}" : $"{slider.Value:F0} pt" };
             slider.ValueChanged += (_, _) => { draft[key] = slider.Value; value.Text = percent ? $"{slider.Value:P0}" : $"{slider.Value:F0} pt"; Preview(); };
             group.Children.Add(slider); group.Children.Add(value); Row(label, group);
@@ -97,7 +98,7 @@ public sealed partial class SettingsDialog
         card.Children.Add(new TextBlock { Text = "Summary readback highlighting", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) });
         void HighlightChoice(string label, string key)
         {
-            var toggle = new ToggleSwitch { IsOn = draft[key]?.GetValue<string>() != "false", OnContent = "On", OffContent = "Off" };
+            var toggle = new ToggleSwitch { IsOn = SettingsStore.GetString(draft[key], "true") != "false", OnContent = "On", OffContent = "Off" };
             toggle.Toggled += (_, _) => { draft[key] = toggle.IsOn ? "true" : "false"; Preview(); };
             Row(label, toggle);
         }

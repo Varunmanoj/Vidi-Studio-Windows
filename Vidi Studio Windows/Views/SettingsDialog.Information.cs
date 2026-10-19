@@ -4,6 +4,7 @@ using System;
 using System.Diagnostics;
 using System.Reflection;
 using System.Threading.Tasks;
+using Vidi_Studio_Windows.Services;
 
 namespace Vidi_Studio_Windows.Views;
 
@@ -53,7 +54,7 @@ public sealed partial class SettingsDialog
     {
         try
         {
-            var configured = draft["ffmpegPath"]?.GetValue<string>();
+            var configured = SettingsStore.GetString(draft["ffmpegPath"]);
             var info = new ProcessStartInfo(string.IsNullOrWhiteSpace(configured) ? "ffmpeg" : configured)
             {
                 UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true

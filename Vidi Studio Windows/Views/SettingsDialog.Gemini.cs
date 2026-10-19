@@ -130,7 +130,7 @@ public sealed partial class SettingsDialog
         var key = new PasswordBox
         {
             Header = "Personal Gemini API key",
-            Password = draft["apiKey"]?.GetValue<string>() ?? "",
+            Password = SettingsStore.GetString(draft["apiKey"]),
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
         topStack.Children.Add(key);
@@ -301,14 +301,14 @@ public sealed partial class SettingsDialog
         var initialHasKey = !string.IsNullOrWhiteSpace(key.Password);
         if (initialHasKey)
         {
-            var isInvalid = draft["apiKeyValid"]?.GetValue<bool>() == false || draft["apiPlan"]?.GetValue<string>() == "invalid";
+            var isInvalid = !SettingsStore.GetBool(draft["apiKeyValid"], true) || SettingsStore.GetString(draft["apiPlan"]) == "invalid";
             if (isInvalid)
             {
                 UpdatePlanDisplay(false, "invalid", 0, "The API key is invalid or was rejected by Google.");
             }
             else
             {
-                var savedPlan = draft["apiPlan"]?.GetValue<string>()?.ToLowerInvariant() ?? "free";
+                var savedPlan = SettingsStore.GetString(draft["apiPlan"], "free").ToLowerInvariant();
                 UpdatePlanDisplay(true, savedPlan, availableModels.Count);
             }
             _ = CheckApiKeyAndPlanAsync();
@@ -376,7 +376,7 @@ public sealed partial class SettingsDialog
         else
         {
             // Empty / checking
-            var hasKey = !string.IsNullOrEmpty(draft["apiKey"]?.GetValue<string>());
+            var hasKey = !string.IsNullOrEmpty(SettingsStore.GetString(draft["apiKey"]));
             if (hasKey)
             {
                 apiStatusCard.Visibility = Visibility.Visible;
@@ -408,7 +408,7 @@ public sealed partial class SettingsDialog
     private async Task CheckApiKeyAndPlanAsync()
     {
         if (closed) return;
-        var enteredKey = draft["apiKey"]?.GetValue<string>() ?? "";
+        var enteredKey = SettingsStore.GetString(draft["apiKey"]);
         if (string.IsNullOrWhiteSpace(enteredKey))
         {
             status.Text = "Enter a Gemini API key first.";
@@ -521,7 +521,7 @@ public sealed partial class SettingsDialog
         }
         finally
         {
-            if (checkPlanButton != null) checkPlanButton.IsEnabled = !string.IsNullOrWhiteSpace(draft["apiKey"]?.GetValue<string>());
+            if (checkPlanButton != null) checkPlanButton.IsEnabled = !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"]));
         }
     }
 
@@ -553,7 +553,7 @@ public sealed partial class SettingsDialog
     {
         foreach (var (stage, selector) in modelSelectors)
         {
-            var current = draft["models"]?[stage]?.GetValue<string>() ?? "";
+            var current = SettingsStore.GetString(draft["models"]?[stage]);
             var choices = availableModels.Where(option => SupportsModelStage(stage, option.Id)).ToList();
             selector.ItemsSource = null;
             selector.Items.Clear();
@@ -594,7 +594,7 @@ public sealed partial class SettingsDialog
     private async Task RefreshGeminiModelsAsync()
     {
         if (closed || modelSelectors.Count == 0) return;
-        if (string.IsNullOrWhiteSpace(draft["apiKey"]?.GetValue<string>())) { status.Text = "Add a Gemini API key to load available models."; return; }
+        if (string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"]))) { status.Text = "Add a Gemini API key to load available models."; return; }
         try
         {
             status.Text = "Loading models from Gemini…";
@@ -671,7 +671,7 @@ public sealed partial class SettingsDialog
                     throw new InvalidOperationException("Unsuitable Gemini model offered for " + stage);
             }
             SelectLatestModels();
-            if (draft["models"]!["transcript"]!.GetValue<string>() != "gemini-3.5-transcribe")
+            if (SettingsStore.GetString(draft["models"]?["transcript"]) != "gemini-3.5-transcribe")
                 throw new InvalidOperationException("Latest model selection bypassed transcription filtering.");
             availableModels.RemoveAll(option => option.Id.Contains("transcribe"));
             ApplyGeminiModelChoices();

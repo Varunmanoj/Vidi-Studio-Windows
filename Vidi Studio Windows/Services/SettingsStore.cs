@@ -36,19 +36,65 @@ public sealed class SettingsStore
         if (Data["libraryPath"] == null) Set("libraryPath", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VidiStudio Projects"));
         if (NormalizeNarrationPlayback()) Save();
     }
-    public string Get(string key, string fallback = "") => Data[key]?.GetValue<string>() ?? fallback;
+    public static string GetString(JsonNode? node, string fallback = "")
+    {
+        if (node == null) return fallback;
+        if (node is JsonValue val)
+        {
+            if (val.TryGetValue<string>(out var str)) return str;
+            if (val.TryGetValue<bool>(out var b)) return b ? "true" : "false";
+            if (val.TryGetValue<double>(out var d)) return d.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (val.TryGetValue<long>(out var l)) return l.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (val.TryGetValue<int>(out var i)) return i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return val.ToString();
+        }
+        return node.ToJsonString();
+    }
+    public static double GetDouble(JsonNode? node, double fallback = 1)
+    {
+        if (node == null) return fallback;
+        if (node is JsonValue val)
+        {
+            if (val.TryGetValue<double>(out var d)) return d;
+            if (val.TryGetValue<long>(out var l)) return l;
+            if (val.TryGetValue<int>(out var i)) return i;
+            if (val.TryGetValue<string>(out var str) && double.TryParse(str, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var parsed)) return parsed;
+        }
+        return fallback;
+    }
+    public static bool GetBool(JsonNode? node, bool fallback = false)
+    {
+        if (node == null) return fallback;
+        if (node is JsonValue val)
+        {
+            if (val.TryGetValue<bool>(out var b)) return b;
+            if (val.TryGetValue<string>(out var str))
+            {
+                if (bool.TryParse(str, out var parsed)) return parsed;
+                if (string.Equals(str, "true", StringComparison.OrdinalIgnoreCase)) return true;
+                if (string.Equals(str, "false", StringComparison.OrdinalIgnoreCase)) return false;
+            }
+            if (val.TryGetValue<long>(out var l)) return l != 0;
+            if (val.TryGetValue<int>(out var i)) return i != 0;
+        }
+        return fallback;
+    }
+    public string Get(string key, string fallback = "") => GetString(Data[key], fallback);
+    public bool GetBool(string key, bool fallback = false) => GetBool(Data[key], fallback);
     public void Set(string key, string value)
     {
         Data[key] = value;
         if (key == "narrationPlayback") NormalizeNarrationPlayback();
     }
+    public void Set(string key, bool value) => Data[key] = value;
+    public void Set(string key, double value) => Data[key] = value;
     private bool NormalizeNarrationPlayback()
     {
         if (Get("narrationPlayback", "generated") != "device") return false;
         Data["narrationPlayback"] = "ondevice";
         return true;
     }
-    public double Number(string key, double fallback = 1) => Data[key]?.GetValue<double>() ?? fallback;
+    public double Number(string key, double fallback = 1) => GetDouble(Data[key], fallback);
     public void Save()
     {
         NormalizeNarrationPlayback();

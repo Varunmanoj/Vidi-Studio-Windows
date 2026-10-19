@@ -58,11 +58,11 @@ public sealed partial class SettingsDialog : Window
         narrationPlaybackChoice.SelectedItem = ((IEnumerable<PlaybackOption>)narrationPlaybackChoice.ItemsSource).First(option => option.Id == "ondevice");
         await RefreshVoices();
         if (!((IEnumerable<SpeechEngineOption>)mode.ItemsSource).Any(option => option.Id == "gemini") ||
-            draft["ttsMode"]?.GetValue<string>() != "gemini")
+            SettingsStore.GetString(draft["ttsMode"]) != "gemini")
             throw new InvalidOperationException("On-device preview must keep the selected Gemini generation engine.");
         if (voices.Count != GeminiVoices.Featured.Count || voices.Any(v => v.Id == "" || v.ToString() != v.Id)) throw new InvalidOperationException("Gemini voice list was lost in on-device preview.");
         narrationPlaybackChoice.SelectedItem = ((IEnumerable<PlaybackOption>)narrationPlaybackChoice.ItemsSource).First(option => option.Id == "generated");
-        if (draft["ttsMode"]?.GetValue<string>() != "gemini" || (mode.SelectedItem as SpeechEngineOption)?.Id != "gemini")
+        if (SettingsStore.GetString(draft["ttsMode"]) != "gemini" || (mode.SelectedItem as SpeechEngineOption)?.Id != "gemini")
             throw new InvalidOperationException("Returning to saved narration playback must keep Gemini selected.");
     }
     internal async Task VerifyLocalVoiceSamplesAsync()
@@ -195,7 +195,7 @@ public sealed partial class SettingsDialog : Window
                             var fields = new StackPanel { Spacing = 10 };
                             if (stage.Value is JsonObject pair) foreach (var entry in pair.ToList())
                             {
-                                var field = new TextBox { Header = entry.Key, Text = entry.Value?.GetValue<string>() ?? "", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 130 };
+                                var field = new TextBox { Header = entry.Key, Text = SettingsStore.GetString(entry.Value), AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 130 };
                                 var name = entry.Key; field.TextChanged += (_, _) => pair[name] = field.Text; fields.Children.Add(field);
                             }
                             panel.Children.Add(new Expander { Header = stage.Key, Content = fields, HorizontalAlignment = HorizontalAlignment.Stretch });
@@ -263,7 +263,7 @@ public sealed partial class SettingsDialog : Window
     }
     private void AddText(StackPanel panel, string label, string key, string fallback = "")
     {
-        var field = new TextBox { Header = label, Text = draft[key]?.GetValue<string>() ?? fallback };
+        var field = new TextBox { Header = label, Text = SettingsStore.GetString(draft[key], fallback) };
         field.TextChanged += (_, _) => draft[key] = field.Text; panel.Children.Add(field);
     }
     private void AddExecutablePicker(StackPanel panel, string label, string key)
@@ -271,7 +271,7 @@ public sealed partial class SettingsDialog : Window
         var row = new Grid { ColumnSpacing = 10 };
         row.ColumnDefinitions.Add(new ColumnDefinition());
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var field = new TextBox { Header = label, Text = draft[key]?.GetValue<string>() ?? "", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var field = new TextBox { Header = label, Text = SettingsStore.GetString(draft[key]), HorizontalAlignment = HorizontalAlignment.Stretch };
         field.TextChanged += (_, _) => draft[key] = field.Text;
         row.Children.Add(field);
         var browse = new Button { Content = "Browse…", VerticalAlignment = VerticalAlignment.Bottom, MinWidth = 100 };
@@ -296,7 +296,7 @@ public sealed partial class SettingsDialog : Window
         var options = new[] { new PlaybackOption("generated", "Play saved narration audio"),
             new PlaybackOption("ondevice", "Speak with an on-device voice") };
         var field = new ComboBox { Header = "Narration during video playback", ItemsSource = options,
-            SelectedItem = options.FirstOrDefault(option => option.Id == (draft["narrationPlayback"]?.GetValue<string>() ?? "generated")) ?? options[0] };
+            SelectedItem = options.FirstOrDefault(option => option.Id == SettingsStore.GetString(draft["narrationPlayback"], "generated")) ?? options[0] };
         narrationPlaybackChoice = field;
         field.SelectionChanged += (_, _) =>
         {
@@ -309,7 +309,7 @@ public sealed partial class SettingsDialog : Window
     }
     private void AddChoice(StackPanel panel, string label, string key, string[] values)
     {
-        var field = new ComboBox { Header = label, ItemsSource = values, SelectedItem = draft[key]?.GetValue<string>() ?? values[0] };
+        var field = new ComboBox { Header = label, ItemsSource = values, SelectedItem = SettingsStore.GetString(draft[key], values[0]) };
         field.SelectionChanged += (_, _) => { if (field.SelectedItem is string selected) draft[key] = selected; };
         panel.Children.Add(field);
     }
@@ -319,11 +319,11 @@ public sealed partial class SettingsDialog : Window
         row.ColumnDefinitions.Add(new ColumnDefinition());
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.Children.Add(new TextBlock { Text = label });
-        var value = new TextBlock { Text = $"{(draft[key]?.GetValue<double>() ?? fallback):P0}", MinWidth = 52,
+        var value = new TextBlock { Text = $"{SettingsStore.GetDouble(draft[key], fallback):P0}", MinWidth = 52,
             HorizontalAlignment = HorizontalAlignment.Right };
         Grid.SetColumn(value, 1); row.Children.Add(value); panel.Children.Add(row);
         var slider = new Slider { Minimum = minimum, Maximum = maximum,
-            Value = Math.Clamp(draft[key]?.GetValue<double>() ?? fallback, minimum, maximum),
+            Value = Math.Clamp(SettingsStore.GetDouble(draft[key], fallback), minimum, maximum),
             StepFrequency = .05, SmallChange = .05, LargeChange = .25,
             HorizontalAlignment = HorizontalAlignment.Stretch };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(slider, label);
@@ -333,7 +333,7 @@ public sealed partial class SettingsDialog : Window
     private bool narrationBuilt;
     private void UpdateNarrationEngineOptions()
     {
-        var provider = draft["ttsMode"]?.GetValue<string>() ?? "windows-core";
+        var provider = SettingsStore.GetString(draft["ttsMode"], "windows-core");
         var options = new List<SpeechEngineOption> { new("windows-core", "Windows OneCore"), new("sapi5", "Windows SAPI 5"), new("gemini", "Gemini Voices") };
         mode.ItemsSource = options;
         mode.SelectedItem = options.FirstOrDefault(option => option.Id == provider) ?? options[0];
@@ -345,8 +345,8 @@ public sealed partial class SettingsDialog : Window
         UpdateNarrationEngineOptions();
         var initialProvider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
         if (initialProvider is "windows-core" or "sapi5" && draft[VoiceKey(initialProvider)] == null)
-            draft[VoiceKey(initialProvider)] = draft["systemVoice"]?.GetValue<string>() ?? "";
-        sapiHost.Text = draft["sapiHostPath"]?.GetValue<string>() ?? "";
+            draft[VoiceKey(initialProvider)] = SettingsStore.GetString(draft["systemVoice"]);
+        sapiHost.Text = SettingsStore.GetString(draft["sapiHostPath"]);
         if (!narrationBuilt)
         {
             narrationBuilt = true;
@@ -354,7 +354,7 @@ public sealed partial class SettingsDialog : Window
             {
                 if (mode.SelectedItem is not SpeechEngineOption selected) return;
                 draft["ttsMode"] = selected.Id;
-                if (selected.Id != "gemini") draft["systemVoice"] = draft[VoiceKey(selected.Id)]?.GetValue<string>() ?? "";
+                if (selected.Id != "gemini") draft["systemVoice"] = SettingsStore.GetString(draft[VoiceKey(selected.Id)]);
                 await RefreshVoices();
             };
             sapiHost.TextChanged += (_, _) => draft["sapiHostPath"] = sapiHost.Text;
@@ -388,9 +388,9 @@ public sealed partial class SettingsDialog : Window
         panel.Children.Add(controls);
         _ = RefreshVoices();
     }
-    private bool HasDraftApiKey => !string.IsNullOrWhiteSpace(draft["apiKey"]?.GetValue<string>()) &&
-        (draft["apiKeyValid"]?.GetValue<string>() ?? "true") != "false" &&
-        (draft["apiPlan"]?.GetValue<string>() ?? "") != "invalid";
+    private bool HasDraftApiKey => !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"])) &&
+        SettingsStore.GetString(draft["apiKeyValid"], "true") != "false" &&
+        SettingsStore.GetString(draft["apiPlan"], "") != "invalid";
     private void UpdateSampleControls()
     {
         if (samplePlayButton != null)
@@ -434,7 +434,7 @@ public sealed partial class SettingsDialog : Window
     {
         var provider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
         var key = provider == "gemini" ? "geminiVoice" : VoiceKey(provider);
-        var selected = (draft[key]?.GetValue<string>() ?? (provider == "gemini" ? "Kore" : "")).Trim();
+        var selected = SettingsStore.GetString(draft[key], provider == "gemini" ? "Kore" : "").Trim();
         var filtered = provider == "gemini"
             ? voices.ToList()
             : voices.Where(v => v.ToString().Contains(search.Text, StringComparison.CurrentCultureIgnoreCase)).ToList();
@@ -464,7 +464,7 @@ public sealed partial class SettingsDialog : Window
             if (provider == "gemini")
             {
                 voices = GeminiVoices.Featured.ToList();
-                var savedGemini = (draft["geminiVoice"]?.GetValue<string>() ?? "Kore").Trim();
+                var savedGemini = SettingsStore.GetString(draft["geminiVoice"], "Kore").Trim();
                 if (savedGemini.Length > 0 && !voices.Any(v => string.Equals(v.Id, savedGemini, StringComparison.OrdinalIgnoreCase)))
                     voices.Add(new Voice(savedGemini, savedGemini, "", ""));
                 FilterVoices();
@@ -481,7 +481,7 @@ public sealed partial class SettingsDialog : Window
             }
             if (closed || request != voiceRequest) return;
             voices = discovered;
-            var saved = draft[VoiceKey(provider)]?.GetValue<string>() ?? "";
+            var saved = SettingsStore.GetString(draft[VoiceKey(provider)]);
             if (saved.Length > 0 && !voices.Any(v => v.Id == saved))
             {
                 draft[VoiceKey(provider)] = "";
@@ -522,12 +522,12 @@ public sealed partial class SettingsDialog : Window
             if (provider == "windows-core")
             {
                 using var synthesizer = new SpeechSynthesizer();
-                var voiceId = draft["systemVoice"]?.GetValue<string>() ?? "";
+                var voiceId = SettingsStore.GetString(draft["systemVoice"]);
                 if (voiceId.Length > 0) synthesizer.Voice = SpeechSynthesizer.AllVoices.FirstOrDefault(v => v.Id == voiceId)
                     ?? throw new InvalidOperationException("The selected Windows OneCore voice is unavailable. Refresh installed voices.");
-                synthesizer.Options.SpeakingRate = Math.Clamp(draft["systemSpeechRate"]?.GetValue<double>() ?? 1, .5, 2);
-                synthesizer.Options.AudioPitch = Math.Clamp(draft["systemSpeechPitch"]?.GetValue<double>() ?? 1, .5, 2);
-                synthesizer.Options.AudioVolume = Math.Clamp(draft["systemSpeechVolume"]?.GetValue<double>() ?? 1, 0, 1);
+                synthesizer.Options.SpeakingRate = Math.Clamp(SettingsStore.GetDouble(draft["systemSpeechRate"], 1), .5, 2);
+                synthesizer.Options.AudioPitch = Math.Clamp(SettingsStore.GetDouble(draft["systemSpeechPitch"], 1), .5, 2);
+                synthesizer.Options.AudioVolume = Math.Clamp(SettingsStore.GetDouble(draft["systemSpeechVolume"], 1), 0, 1);
                 using var stream = await synthesizer.SynthesizeTextToStreamAsync(text).AsTask(cancellation.Token);
                 using var input = stream.AsStreamForRead();
                 using var output = File.Create(audio);
@@ -537,9 +537,9 @@ public sealed partial class SettingsDialog : Window
             else if (provider == "sapi5")
             {
                 var host = !string.IsNullOrWhiteSpace(sapiHost.Text) ? sapiHost.Text : model.Engine.SpeechHost;
-                await SpeechService.SynthesizeAsync(host, "sapi5", draft["systemVoice"]?.GetValue<string>() ?? "", text,
-                    audio, draft["systemSpeechRate"]?.GetValue<double>() ?? 1, cancellation.Token);
-                samplePlayer.Volume = Math.Clamp(draft["systemSpeechVolume"]?.GetValue<double>() ?? 1, 0, 1);
+                await SpeechService.SynthesizeAsync(host, "sapi5", SettingsStore.GetString(draft["systemVoice"]), text,
+                    audio, SettingsStore.GetDouble(draft["systemSpeechRate"], 1), cancellation.Token);
+                samplePlayer.Volume = Math.Clamp(SettingsStore.GetDouble(draft["systemSpeechVolume"], 1), 0, 1);
             }
             else
             {

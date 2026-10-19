@@ -7,6 +7,7 @@
 | SwiftUI app and windows | WinUI 3 `App`, `MainWindow`, native Settings window and export dialog |
 | `StudioModel` | `ViewModels/StudioViewModel`, `Models/StudioProject`, `Models/Segment` |
 | Process invocation / settings | `Services/EngineClient`, `SettingsStore` |
+| Keychain credential store | `Services/CredentialStore` (Windows Credential Manager) |
 | AVKit player | `MediaPlayerElement` / `MediaPlayer` |
 | YouTube WebKit player | WebView2 hosting only the YouTube player |
 | Apple voice catalog / speech | `SpeechHost`: Windows.Media.SpeechSynthesis and SAPI COM |
@@ -23,6 +24,8 @@ Settings uses its own WinUI window so native title-bar controls and theme colors
 `EngineClient` invokes either `engine-bin/vidistudio-engine.exe` or the configured Python with the copied engine script. Arguments use `ProcessStartInfo.ArgumentList`, never shell interpolation. JSON line events on stdout supply status, progress, project paths, OCR results, and model catalogs. stderr and error events are diagnostics. An engine semaphore serializes work within each window; the engine's OS project lock prevents concurrent writers across processes.
 
 Config path and speech helper path are passed through `VIDISTUDIO_CONFIG` and `VIDISTUDIO_SPEECH_HOST`. Settings are outside projects. Source engine execution sets `PYTHONUTF8=1` for multilingual project data.
+
+The Gemini API key is owned by Windows Credential Manager (`Services/CredentialStore`), never written to `config.json` or project files, and handed to the engine per process through `VIDISTUDIO_API_KEY`. This keeps the key out of the config file, command lines, logs, and project JSON, and lets it survive app updates and reinstalls. macOS stores the same key in the login Keychain through `KeychainStore`.
 
 The speech helper accepts exactly one JSON request on stdin and returns JSON on stdout. `voices` enumerates provider voices; `synthesize` writes a WAV. Core uses WinRT; SAPI uses a synchronous STA COM host with explicit voice token selection and plain-text flags. The engine applies pitch and volume once during audio normalization and rejects narration that overruns its cue. Provider identity forms part of the narration signature so changed-voice regeneration detects provider changes.
 

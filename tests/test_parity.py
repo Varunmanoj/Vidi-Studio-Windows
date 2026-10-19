@@ -115,6 +115,42 @@ class Parity(unittest.TestCase):
             self.assertNotIn('draft["apiKeyValid"]?.GetValue<string>()', dialog_source)
             self.assertIn('SettingsStore.GetString(draft["apiKeyValid"]', dialog_source)
 
+    def test_api_key_reads_from_environment_not_disk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / 'config.json'
+            cfg.write_text(json.dumps({'apiKey': 'plaintext-in-file'}), encoding='utf-8')
+            old_cfg = engine.os.environ.get('VIDISTUDIO_CONFIG')
+            old_key = engine.os.environ.get('VIDISTUDIO_API_KEY')
+            engine.os.environ['VIDISTUDIO_CONFIG'] = str(cfg)
+            engine.os.environ['VIDISTUDIO_API_KEY'] = 'from-credential-store'
+            try:
+                self.assertEqual(engine.config().get('apiKey'), 'from-credential-store')
+            finally:
+                if old_cfg is None: engine.os.environ.pop('VIDISTUDIO_CONFIG', None)
+                else: engine.os.environ['VIDISTUDIO_CONFIG'] = old_cfg
+                if old_key is None: engine.os.environ.pop('VIDISTUDIO_API_KEY', None)
+                else: engine.os.environ['VIDISTUDIO_API_KEY'] = old_key
+
+    def test_api_key_is_stored_in_credential_manager_not_config(self):
+        root = Path(__file__).resolve().parents[1]
+        credential = root / 'Vidi Studio Windows' / 'Services' / 'CredentialStore.cs'
+        if not credential.is_file():
+            credential = root / 'Vidi-Studio-Windows' / 'Vidi Studio Windows' / 'Services' / 'CredentialStore.cs'
+        self.assertTrue(credential.is_file(), 'Windows must store the Gemini key in Credential Manager')
+        source = credential.read_text(encoding='utf-8')
+        for token in ('CredWriteW', 'CredReadW', 'CredDeleteW', 'CredTypeGeneric'):
+            self.assertIn(token, source)
+        services = credential.parent
+        settings = services / 'SettingsStore.cs'
+        if settings.is_file():
+            settings_source = settings.read_text(encoding='utf-8')
+            self.assertIn('CredentialStore.Read()', settings_source)
+            self.assertIn('Data.Remove("apiKey")', settings_source)
+        engine_client = services / 'EngineClient.cs'
+        if engine_client.is_file():
+            self.assertIn('VIDISTUDIO_API_KEY', engine_client.read_text(encoding='utf-8'))
+        self.assertIn('VIDISTUDIO_API_KEY', (root / 'engine' / 'vidistudio_engine.py').read_text(encoding='utf-8'))
+
     def test_app_version_parity(self):
         script = Path(__file__).resolve().parents[1] / 'script' / 'sync_version.py'
         if script.exists():

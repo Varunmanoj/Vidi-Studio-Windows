@@ -19,7 +19,7 @@ public sealed class EngineClient
     public string SpeechHost => Path.Combine(AppContext.BaseDirectory, "speech", "VidiStudio.SpeechHost.exe");
 
     public async Task<List<EngineEvent>> RunAsync(IEnumerable<string> arguments, IProgress<EngineEvent>? progress = null,
-        CancellationToken cancellation = default, string? configPath = null)
+        CancellationToken cancellation = default, string? configPath = null, string? apiKey = null)
     {
         await gate.WaitAsync(cancellation);
         string? cancellationFile = null;
@@ -36,6 +36,10 @@ public sealed class EngineClient
             if (!File.Exists(frozen)) start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "engine", "vidistudio_engine.py"));
             foreach (var argument in arguments) start.ArgumentList.Add(argument);
             start.Environment["VIDISTUDIO_CONFIG"] = configPath ?? SettingsStore.ConfigPath;
+            // The Gemini key is held in Windows Credential Manager and handed to the engine per
+            // process in the environment; it is never written to the config file on disk.
+            var geminiKey = (apiKey ?? settings.Get("apiKey")).Trim();
+            if (geminiKey.Length > 0) start.Environment["VIDISTUDIO_API_KEY"] = geminiKey;
             start.Environment["VIDISTUDIO_SPEECH_HOST"] = SpeechHost;
             start.Environment["PYTHONUTF8"] = "1";
             Directory.CreateDirectory(SettingsStore.DirectoryPath);

@@ -72,8 +72,11 @@ public sealed partial class SettingsDialog
         var config = Path.Combine(SettingsStore.DirectoryPath, Guid.NewGuid() + ".json");
         try
         {
-            await File.WriteAllTextAsync(config, draft.ToJsonString(Models.Json.Options), cancellation);
-            return await model.Engine.RunAsync(new[] { command }, configPath: config, cancellation: cancellation);
+            var configData = draft.DeepClone().AsObject();
+            configData.Remove("apiKey");
+            await File.WriteAllTextAsync(config, configData.ToJsonString(Models.Json.Options), cancellation);
+            return await model.Engine.RunAsync(new[] { command }, configPath: config, cancellation: cancellation,
+                apiKey: SettingsStore.GetString(draft["apiKey"]));
         }
         finally { if (File.Exists(config)) File.Delete(config); }
     }
@@ -134,6 +137,11 @@ public sealed partial class SettingsDialog
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
         topStack.Children.Add(key);
+        topStack.Children.Add(new TextBlock
+        {
+            Text = "Your Gemini key is stored securely in Windows Credential Manager and is never saved inside a project.",
+            TextWrapping = TextWrapping.Wrap, Opacity = .7, FontSize = 12
+        });
 
         var openKeysLink = new HyperlinkButton
         {

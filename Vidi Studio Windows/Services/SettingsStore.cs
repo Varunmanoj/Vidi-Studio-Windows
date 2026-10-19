@@ -17,6 +17,20 @@ public sealed class SettingsStore
         if (Data["ttsMode"] == null || Get("ttsMode") == "system") Set("ttsMode", "windows-core");
         if (Data["libraryPath"] == null) Set("libraryPath", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VidiStudio Projects"));
         if (NormalizeNarrationPlayback()) Save();
+        if (MigrateApiKeyToCredentialStore()) Save();
+    }
+    /// <summary>
+    /// One-time migration: move any plaintext key left in config.json into Windows Credential
+    /// Manager and drop it from the file. Returns true when the file data changed.
+    /// </summary>
+    private bool MigrateApiKeyToCredentialStore()
+    {
+        if (Data["apiKey"] == null) return false;
+        var legacy = GetString(Data["apiKey"]);
+        // Keep the plaintext value in place rather than lose the key if the store is unavailable.
+        if (!string.IsNullOrWhiteSpace(legacy) && !CredentialStore.Write(legacy)) return false;
+        Data.Remove("apiKey");
+        return true;
     }
     private static void Merge(JsonObject target, JsonObject source)
     {
@@ -35,6 +49,7 @@ public sealed class SettingsStore
         if (Data["ttsMode"] == null || Get("ttsMode") == "system") Set("ttsMode", "windows-core");
         if (Data["libraryPath"] == null) Set("libraryPath", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VidiStudio Projects"));
         if (NormalizeNarrationPlayback()) Save();
+        if (MigrateApiKeyToCredentialStore()) Save();
     }
     public static string GetString(JsonNode? node, string fallback = "")
     {
@@ -79,10 +94,21 @@ public sealed class SettingsStore
         }
         return fallback;
     }
-    public string Get(string key, string fallback = "") => GetString(Data[key], fallback);
+    /// <summary>
+    /// The Gemini API key is owned by Windows Credential Manager, never config.json, so reads
+    /// and writes for "apiKey" are routed to the OS credential store.
+    /// </summary>
+    public string Get(string key, string fallback = "") =>
+        key == "apiKey" ? CredentialStore.Read() ?? fallback : GetString(Data[key], fallback);
     public bool GetBool(string key, bool fallback = false) => GetBool(Data[key], fallback);
     public void Set(string key, string value)
     {
+        if (key == "apiKey")
+        {
+            CredentialStore.Write(value);
+            Data.Remove("apiKey");
+            return;
+        }
         Data[key] = value;
         if (key == "narrationPlayback") NormalizeNarrationPlayback();
     }
@@ -98,6 +124,8 @@ public sealed class SettingsStore
     public void Save()
     {
         NormalizeNarrationPlayback();
+        // The Gemini key lives only in Windows Credential Manager; never persist it here.
+        Data.Remove("apiKey");
         // These jobs now share the base selection for local and YouTube projects.
         if (Data["models"] is JsonObject models)
             foreach (var stage in new[] { "summary", "audio_descriptions", "screen_text", "text_rewrite", "tts_audio" })

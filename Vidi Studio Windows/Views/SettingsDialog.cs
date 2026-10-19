@@ -119,6 +119,9 @@ public sealed partial class SettingsDialog : Window
         requestedSection = initialSection;
         menuOwner = window as MainWindow;
         this.model = model; draft = model.Settings.Data.DeepClone().AsObject();
+        // Seed the key box from Windows Credential Manager; it is never part of config.json.
+        var savedApiKey = model.Settings.Get("apiKey");
+        if (savedApiKey.Length > 0) draft["apiKey"] = savedApiKey;
         originalTheme = App.ActiveTheme ?? model.Settings.Get("theme", "system");
         Title = "Vidi Studio Settings";
         WindowAppearance.ApplyIcon(this);
@@ -239,7 +242,11 @@ public sealed partial class SettingsDialog : Window
     public void Hide() => Close();
     private void SaveAndClose()
     {
+        // The Gemini key is stored in Windows Credential Manager, never in config.json.
+        var apiKey = SettingsStore.GetString(draft["apiKey"]);
+        draft.Remove("apiKey");
         foreach (var item in draft) model.Settings.Data[item.Key] = item.Value?.DeepClone();
+        model.Settings.Set("apiKey", apiKey);
         model.Settings.Save(); saved = true; App.CommitTheme(model.Settings.Get("theme", "system")); Close();
     }
     private void ApplyWindowTheme(string theme)
@@ -543,8 +550,11 @@ public sealed partial class SettingsDialog : Window
             }
             else
             {
-                await File.WriteAllTextAsync(config, draft.ToJsonString(Models.Json.Options), cancellation.Token);
-                await model.Engine.RunAsync(new[] { "preview-tts", "--text", text, "--output", audio }, cancellation: cancellation.Token, configPath: config);
+                var previewConfig = draft.DeepClone().AsObject();
+                previewConfig.Remove("apiKey");
+                await File.WriteAllTextAsync(config, previewConfig.ToJsonString(Models.Json.Options), cancellation.Token);
+                await model.Engine.RunAsync(new[] { "preview-tts", "--text", text, "--output", audio }, cancellation: cancellation.Token, configPath: config,
+                    apiKey: SettingsStore.GetString(draft["apiKey"]));
                 samplePlayer.Volume = 1;
             }
             if (closed || cancellation.IsCancellationRequested || !ReferenceEquals(sampleCancellation, cancellation)) return;

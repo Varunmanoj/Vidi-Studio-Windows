@@ -151,6 +151,19 @@ class Parity(unittest.TestCase):
             self.assertIn('VIDISTUDIO_API_KEY', engine_client.read_text(encoding='utf-8'))
         self.assertIn('VIDISTUDIO_API_KEY', (root / 'engine' / 'vidistudio_engine.py').read_text(encoding='utf-8'))
 
+    def test_engine_sources_are_copied_unconditionally(self):
+        root = Path(__file__).resolve().parents[1]
+        csproj = root / 'Vidi Studio Windows' / 'Vidi Studio Windows.csproj'
+        if not csproj.is_file():
+            csproj = root / 'Vidi-Studio-Windows' / 'Vidi Studio Windows' / 'Vidi Studio Windows.csproj'
+        if not csproj.is_file():
+            return
+        text = csproj.read_text(encoding='utf-8')
+        engine_lines = [line for line in text.splitlines() if '..\\engine\\*.py' in line]
+        self.assertTrue(engine_lines, 'engine sources must be copied into the app output')
+        for line in engine_lines:
+            self.assertIn('CopyToOutputDirectory="Always"', line)
+
     def test_app_version_parity(self):
         script = Path(__file__).resolve().parents[1] / 'script' / 'sync_version.py'
         if script.exists():

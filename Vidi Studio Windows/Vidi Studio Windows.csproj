@@ -8,7 +8,7 @@
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
-    <Version>1.0.91</Version>
+    <Version>1.0.92</Version>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
@@ -62,7 +62,10 @@
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">False</PublishTrimmed>
   </PropertyGroup>
   <ItemGroup>
-    <Content Include="..\engine\*.py;..\engine\ai-defaults.json;..\engine\requirements.txt" Link="engine\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Always refresh the engine sources: an updated app must never run a stale engine
+         (PreserveNewest skipped the copy when the source timestamp was older, which left the
+         Gemini key handoff and other engine changes out of the running app). -->
+    <Content Include="..\engine\*.py;..\engine\ai-defaults.json;..\engine\requirements.txt" Link="engine\%(Filename)%(Extension)" CopyToOutputDirectory="Always" />
     <Content Include="Assets\youtube.html" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\runtime\speech\$(Platform)\**\*" Link="speech\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\runtime\engine\**\*" Link="engine-bin\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

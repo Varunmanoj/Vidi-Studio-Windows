@@ -91,6 +91,19 @@ internal static class WindowedDialog
         var loaded = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         root.Loaded += (_, _) => loaded.TrySetResult(true);
         window.Closed += (_, _) => { loaded.TrySetResult(false); dialog.Hide(); };
+        // Escape cancels the dialog, matching the Mac sheet's Cancel action. The accelerator is
+        // scoped to both the window and the dialog so it works wherever focus sits.
+        var dialogVisible = false;
+        dialog.Opened += (_, _) => dialogVisible = true;
+        dialog.Closed += (_, _) => dialogVisible = false;
+        void AddEscapeAccelerator(UIElement scope)
+        {
+            var accelerator = new Microsoft.UI.Xaml.Input.KeyboardAccelerator { Key = Windows.System.VirtualKey.Escape };
+            accelerator.Invoked += (_, args) => { args.Handled = true; if (dialogVisible) dialog.Hide(); };
+            scope.KeyboardAccelerators.Add(accelerator);
+        }
+        AddEscapeAccelerator(root);
+        AddEscapeAccelerator(dialog);
         window.Activate();
         try
         {

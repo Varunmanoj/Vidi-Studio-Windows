@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-19 — Escape cancels hosted dialogs on Windows (1.0.97 / 1.0.97.0)
+
+Windows dialog windows now cancel on Escape. `WindowedDialog` adds an Escape `KeyboardAccelerator` scoped to both the host window and the `ContentDialog`, guarded by the dialog's `Opened`/`Closed` state so it can never double-fire, and hides the dialog with a `None` result — the same outcome as the Close/Cancel button or the title-bar close. This covers New Project and every other dialog shown through the shared host. macOS already dismisses the New Project sheet with Escape via the Cancel button's `.keyboardShortcut(.cancelAction)`, so no macOS change was needed.
+
+Validation: `script/check_xaml_references.py` passed; Windows `test_parity` (9) passed; version synchronized at 1.0.97 (Mac build 97 / Windows package 1.0.97.0). Native Windows key-handling was not run on this macOS host.
+
 ## 2026-10-19 — Larger New Project dialog with a correct card measurement (1.0.96 / 1.0.96.0)
 
 The previous fit collapsed the New Project window onto an inner frame border and made the dialog smaller than its content, clipping the project-type options and adding a horizontal scrollbar. `WindowAppearance.FindCard` now walks the ancestors and selects the largest border that does not fill the whole host — the real dialog card, not the full-size smoke layer above or an inner frame below — and caches it so later layout passes cannot drift. The dialog grew to a 560-wide card (`ContentDialogMaxWidth`) with content widened to 490 (rows/cards 460, YouTube URL 290) and a 470 minimum content height, so the source picker, file row, video preview, and YouTube fields all fit without scrolling; the host opens at 700×820 and then fits the card. All controls are visible without scrolling, and the window still has no minimize or maximize.

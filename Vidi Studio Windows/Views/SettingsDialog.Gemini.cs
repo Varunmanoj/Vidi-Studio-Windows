@@ -73,10 +73,11 @@ public sealed partial class SettingsDialog
         try
         {
             var configData = draft.DeepClone().AsObject();
-            configData.Remove("apiKey");
+            var enteredKey = SettingsStore.GetString(draft["apiKey"]).Trim();
+            if (!string.IsNullOrEmpty(enteredKey)) configData["apiKey"] = enteredKey;
             await File.WriteAllTextAsync(config, configData.ToJsonString(Models.Json.Options), cancellation);
             return await model.Engine.RunAsync(new[] { command }, configPath: config, cancellation: cancellation,
-                apiKey: SettingsStore.GetString(draft["apiKey"]));
+                apiKey: enteredKey);
         }
         finally { if (File.Exists(config)) File.Delete(config); }
     }

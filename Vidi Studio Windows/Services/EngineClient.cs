@@ -23,6 +23,7 @@ public sealed class EngineClient
     {
         await gate.WaitAsync(cancellation);
         string? cancellationFile = null;
+        string? temporaryConfig = null;
         try
         {
             var frozen = Path.Combine(AppContext.BaseDirectory, "engine-bin", "vidistudio-engine.exe");
@@ -35,10 +36,20 @@ public sealed class EngineClient
             };
             if (!File.Exists(frozen)) start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "engine", "vidistudio_engine.py"));
             foreach (var argument in arguments) start.ArgumentList.Add(argument);
-            start.Environment["VIDISTUDIO_CONFIG"] = configPath ?? SettingsStore.ConfigPath;
+            var geminiKey = (apiKey ?? settings.Get("apiKey")).Trim();
+            if (configPath == null && !string.IsNullOrEmpty(geminiKey))
+            {
+                // Create a transient execution config so frozen engines that read config.json
+                // can receive the securely stored key without persisting it to SettingsStore.ConfigPath.
+                var runConfigData = settings.Data.DeepClone().AsObject();
+                runConfigData["apiKey"] = geminiKey;
+                Directory.CreateDirectory(SettingsStore.DirectoryPath);
+                temporaryConfig = Path.Combine(SettingsStore.DirectoryPath, "run-" + Guid.NewGuid() + ".json");
+                File.WriteAllText(temporaryConfig, runConfigData.ToJsonString(Models.Json.Options));
+            }
+            start.Environment["VIDISTUDIO_CONFIG"] = configPath ?? temporaryConfig ?? SettingsStore.ConfigPath;
             // The Gemini key is held in Windows Credential Manager and handed to the engine per
             // process in the environment; it is never written to the config file on disk.
-            var geminiKey = (apiKey ?? settings.Get("apiKey")).Trim();
             if (geminiKey.Length > 0) start.Environment["VIDISTUDIO_API_KEY"] = geminiKey;
             start.Environment["VIDISTUDIO_SPEECH_HOST"] = SpeechHost;
             start.Environment["PYTHONUTF8"] = "1";
@@ -84,6 +95,7 @@ public sealed class EngineClient
         }
         finally
         {
+            try { if (temporaryConfig != null && File.Exists(temporaryConfig)) File.Delete(temporaryConfig); } catch { }
             try { if (cancellationFile != null) File.Delete(cancellationFile); }
             finally { gate.Release(); }
         }

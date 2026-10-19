@@ -551,10 +551,11 @@ public sealed partial class SettingsDialog : Window
             else
             {
                 var previewConfig = draft.DeepClone().AsObject();
-                previewConfig.Remove("apiKey");
+                var enteredKey = SettingsStore.GetString(draft["apiKey"]).Trim();
+                if (!string.IsNullOrEmpty(enteredKey)) previewConfig["apiKey"] = enteredKey;
                 await File.WriteAllTextAsync(config, previewConfig.ToJsonString(Models.Json.Options), cancellation.Token);
                 await model.Engine.RunAsync(new[] { "preview-tts", "--text", text, "--output", audio }, cancellation: cancellation.Token, configPath: config,
-                    apiKey: SettingsStore.GetString(draft["apiKey"]));
+                    apiKey: enteredKey);
                 samplePlayer.Volume = 1;
             }
             if (closed || cancellation.IsCancellationRequested || !ReferenceEquals(sampleCancellation, cancellation)) return;

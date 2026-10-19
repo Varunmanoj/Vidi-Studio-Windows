@@ -109,10 +109,11 @@ internal static class WindowedDialog
     /// </summary>
     private static void FitWindowToCard(ContentDialog dialog, Window window, Grid root, Window owner)
     {
+        Border? card = null;
         void Resize()
         {
             if (dialog.Content is not FrameworkElement content) return;
-            var card = FindCard(content);
+            card ??= FindCard(content, root);
             if (card is null) return;
             var scroller = content as ScrollViewer;
             // Prefer the full content extent so the window grows when a preview or extra fields appear.
@@ -141,14 +142,23 @@ internal static class WindowedDialog
     }
 
     /// <summary>Finds the ContentDialog card border that wraps the dialog content.</summary>
-    private static Border? FindCard(FrameworkElement? content)
+    private static Border? FindCard(FrameworkElement? content, FrameworkElement root)
     {
+        // Walk the ancestors and keep the largest border that does not fill the whole host: that is
+        // the dialog card, not the full-size smoke layer above it or an inner frame below it.
+        var rootArea = root.ActualWidth * root.ActualHeight;
+        Border? best = null;
+        var bestArea = 0.0;
         DependencyObject? node = content;
         while (node is not null)
         {
-            if (node is Border border) return border;
+            if (node is Border border)
+            {
+                var area = border.ActualWidth * border.ActualHeight;
+                if (area > 0 && area < rootArea - 1 && area > bestArea) { bestArea = area; best = border; }
+            }
             node = VisualTreeHelper.GetParent(node);
         }
-        return null;
+        return best;
     }
 }

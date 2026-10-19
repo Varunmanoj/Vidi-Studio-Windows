@@ -251,7 +251,7 @@ public sealed partial class MainWindow : Window
         try
         {
             var dialog = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings, youtube);
-            if (await ShowDialogAsync(dialog, 560, 560, fitToContent: true) != ContentDialogResult.Primary) return;
+            if (await ShowDialogAsync(dialog, 700, 820, fitToContent: true) != ContentDialogResult.Primary) return;
             if (dialog.IsYouTube)
                 await Model.RunAsync("import-youtube", new[] { "--url", dialog.YouTubeUrl, "--library", Model.Settings.Get("libraryPath") }, false);
             else if (dialog.VideoPath is { } path)

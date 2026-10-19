@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-19 — Larger New Project dialog with a correct card measurement (1.0.96 / 1.0.96.0)
+
+The previous fit collapsed the New Project window onto an inner frame border and made the dialog smaller than its content, clipping the project-type options and adding a horizontal scrollbar. `WindowAppearance.FindCard` now walks the ancestors and selects the largest border that does not fill the whole host — the real dialog card, not the full-size smoke layer above or an inner frame below — and caches it so later layout passes cannot drift. The dialog grew to a 560-wide card (`ContentDialogMaxWidth`) with content widened to 490 (rows/cards 460, YouTube URL 290) and a 470 minimum content height, so the source picker, file row, video preview, and YouTube fields all fit without scrolling; the host opens at 700×820 and then fits the card. All controls are visible without scrolling, and the window still has no minimize or maximize.
+
+Validation: `script/check_xaml_references.py` passed; Windows `test_parity` (9) and `test_menu_parity` (10) passed; version synchronized at 1.0.96 (Mac build 96 / Windows package 1.0.96.0). Native Windows rendering was not run on this macOS host.
+
 ## 2026-10-19 — New Project window hugs the dialog card and drops minimize/maximize (1.0.95 / 1.0.95.0)
 
 The New Project window no longer frames the `ContentDialog` card in a dimmed area and no longer offers minimize or maximize. `WindowedDialog` now disables `IsMinimizable`, `IsMaximizable`, and `IsResizable` for content-fitted dialogs, and `FitWindowToCard` measures the rendered card (walking the visual tree to the card border that wraps the dialog content) and resizes the window to exactly that card, including the content scroll extent so it grows when a preview or extra fields appear and shrinks back. Combined with the seamless brush override, the window itself is the dialog with no gray around it. Other dialogs keep their resizable tool-window behavior.

@@ -41,7 +41,7 @@ internal static class WindowAppearance
 /// <summary>Shows a WinUI content dialog in its own titled window with standard caption buttons.</summary>
 internal static class WindowedDialog
 {
-    internal static async Task<ContentDialogResult> ShowAsync(ContentDialog dialog, Window owner, int width = 680, int height = 460)
+    internal static async Task<ContentDialogResult> ShowAsync(ContentDialog dialog, Window owner, int width = 680, int height = 460, bool fitToContent = false)
     {
         var window = new Window { Title = dialog.Title?.ToString() ?? "Vidi Studio" };
         var root = new Grid();
@@ -79,8 +79,42 @@ internal static class WindowedDialog
         {
             if (!await loaded.Task) return ContentDialogResult.None;
             dialog.XamlRoot = root.XamlRoot;
+            if (fitToContent) FitToContent(dialog, window, root.XamlRoot, owner);
             return await dialog.ShowAsync();
         }
         finally { App.ThemeChanged -= ApplyTheme; window.Close(); }
+    }
+
+    /// <summary>
+    /// Sizes the hosting window to the dialog's own content so the window does not show a large
+    /// empty smoke area around a small card. The window grows when later content appears (for
+    /// example a media preview) and is always clamped to the owner window.
+    /// </summary>
+    private static void FitToContent(ContentDialog dialog, Window window, XamlRoot xamlRoot, Window owner)
+    {
+        if (dialog.Content is not FrameworkElement content) return;
+        var measured = (content as ScrollViewer)?.Content as FrameworkElement ?? content;
+        void Apply()
+        {
+            var desired = measured.DesiredSize;
+            if (desired.Height <= 0) return;
+            // ContentDialog chrome around the content: title, button row, and card padding.
+            const double chromeHeight = 200;
+            const double chromeWidth = 64;
+            var scale = xamlRoot.RasterizationScale;
+            var area = owner.AppWindow;
+            var dialogWidth = double.IsNaN(dialog.Width) || dialog.Width <= 0 ? 520 : dialog.Width;
+            var logicalWidth = Math.Min(dialogWidth + chromeWidth, 560);
+            var logicalHeight = Math.Min(desired.Height + chromeHeight, 780);
+            var pixelWidth = (int)Math.Ceiling(Math.Min(logicalWidth * scale, area.Size.Width - 24));
+            var pixelHeight = (int)Math.Ceiling(Math.Min(logicalHeight * scale, area.Size.Height - 24));
+            window.AppWindow.Resize(new Windows.Graphics.SizeInt32(Math.Max(380, pixelWidth), Math.Max(320, pixelHeight)));
+            window.AppWindow.Move(new Windows.Graphics.PointInt32(
+                area.Position.X + Math.Max(0, (area.Size.Width - pixelWidth) / 2),
+                area.Position.Y + Math.Max(0, (area.Size.Height - pixelHeight) / 2)));
+        }
+        measured.SizeChanged += (_, _) => Apply();
+        dialog.Opened += (_, _) => Apply();
+        Apply();
     }
 }

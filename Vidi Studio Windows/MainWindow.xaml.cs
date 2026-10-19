@@ -216,8 +216,8 @@ public sealed partial class MainWindow : Window
     }
     private ContentDialog Dialog(string title, object content, string action = "Save") => new()
     { Title = title, Content = content, PrimaryButtonText = action, CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
-    private Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog, int width = 680, int height = 460)
-        => Views.WindowedDialog.ShowAsync(dialog, this, width, height);
+    private Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog, int width = 680, int height = 460, bool fitToContent = false)
+        => Views.WindowedDialog.ShowAsync(dialog, this, width, height, fitToContent);
     private async Task<bool> Confirm(string title, string text, string action = "Continue") => await ShowDialogAsync(Dialog(title, new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, MaxWidth = 520 }, action)) == ContentDialogResult.Primary;
     private async Task ShowError(Exception ex)
     {
@@ -251,7 +251,7 @@ public sealed partial class MainWindow : Window
         try
         {
             var dialog = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings, youtube);
-            if (await ShowDialogAsync(dialog, 680, 780) != ContentDialogResult.Primary) return;
+            if (await ShowDialogAsync(dialog, 560, 560, fitToContent: true) != ContentDialogResult.Primary) return;
             if (dialog.IsYouTube)
                 await Model.RunAsync("import-youtube", new[] { "--url", dialog.YouTubeUrl, "--library", Model.Settings.Get("libraryPath") }, false);
             else if (dialog.VideoPath is { } path)

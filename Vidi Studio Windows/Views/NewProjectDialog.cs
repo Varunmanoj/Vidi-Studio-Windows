@@ -30,12 +30,12 @@ public sealed class NewProjectDialog : ContentDialog
     private readonly StackPanel youtubeFields = new() { Spacing = 12, Width = 410 };
     private readonly TextBlock selectedFile = new() { Text = "No video selected", Opacity = .7, TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock details = new() { TextWrapping = TextWrapping.Wrap };
-    private readonly MediaPlayerElement preview = new() { Height = 180, AreTransportControlsEnabled = true, Visibility = Visibility.Collapsed };
+    private readonly MediaPlayerElement preview = new() { Height = 160, AreTransportControlsEnabled = true, Visibility = Visibility.Collapsed };
     private readonly TextBox youtubeUrl = new() { PlaceholderText = "https://youtu.be/…", Header = "YouTube video URL", Width = 280, HorizontalAlignment = HorizontalAlignment.Left };
     private readonly Button fetchDetails = new() { Content = "Fetch Details", Width = 120, VerticalAlignment = VerticalAlignment.Bottom };
     private readonly Border youtubePreview = new() { Visibility = Visibility.Collapsed, Width = 410, CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Background = new SolidColorBrush(Windows.UI.Color.FromArgb(24, 128, 128, 128)) };
     private readonly TextBlock youtubeStatus = new() { Width = 410, TextWrapping = TextWrapping.Wrap, Opacity = .7 };
-    private readonly TextBlock sourceHeading = new() { Text = "Video File", FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
+    private readonly TextBlock sourceHeading = new() { Text = "Video File", FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(2, 4, 0, 0) };
     private static readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private CancellationTokenSource? inspection;
     private CancellationTokenSource? youtubeInspection;
@@ -61,9 +61,11 @@ public sealed class NewProjectDialog : ContentDialog
     {
         this.owner = owner; this.settings = settings;
         RequestedTheme = theme;
-        Width = 520; MaxWidth = 560;
+        Width = 520; MaxWidth = 520;
         Title = "New Project"; PrimaryButtonText = "Create Project"; CloseButtonText = "Cancel";
         DefaultButton = ContentDialogButton.Primary;
+        local.VerticalContentAlignment = VerticalAlignment.Center;
+        youtube.VerticalContentAlignment = VerticalAlignment.Center;
         local.Content = SourceLabel("\uE8B2", "Video File");
         youtube.Content = SourceLabel("\uE768", "YouTube Video");
         var chooser = new Button { Content = SourceLabel("\uE8B7", "Choose Video…"), HorizontalAlignment = HorizontalAlignment.Right };
@@ -88,12 +90,11 @@ public sealed class NewProjectDialog : ContentDialog
         fetchDetails.Click += async (_, _) => await FetchYouTubeDetailsAsync();
         var sourceOptions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
         sourceOptions.Children.Add(local); sourceOptions.Children.Add(youtube);
-        var sourceRow = new StackPanel { Spacing = 5, Width = 410 };
-        sourceRow.Children.Add(new TextBlock { Text = "Project type" });
+        var sourceRow = new StackPanel { Spacing = 6, Width = 410 };
+        sourceRow.Children.Add(new TextBlock { Text = "Choose a project source" });
         sourceRow.Children.Add(sourceOptions);
-        var contents = new StackPanel { Spacing = 18, Width = 440 };
-        contents.Children.Add(new TextBlock { Text = "Choose a project source", FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-        contents.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Child = sourceRow });
+        var contents = new StackPanel { Spacing = 14, Width = 440 };
+        contents.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = sourceRow });
         contents.Children.Add(sourceHeading);
         contents.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = localFields });
         contents.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = youtubeFields });
@@ -108,8 +109,8 @@ public sealed class NewProjectDialog : ContentDialog
 
     private static StackPanel SourceLabel(string glyph, string label)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        row.Children.Add(new FontIcon { Glyph = glyph, FontSize = 18 });
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(new FontIcon { Glyph = glyph, FontSize = 16, VerticalAlignment = VerticalAlignment.Center });
         row.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
         return row;
     }

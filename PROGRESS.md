@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-19 — File > New Project disabled without a Gemini API key (1.0.100 / 1.0.100.0)
+
+The Windows File > New Project… command is now disabled when no Gemini API key is present. `MainWindow.Menus.cs` `CanRunDesktopCommand("new-project")` returns `Model.HasApiKey` (still idle-gated) instead of always true, matching the already-disabled gallery "New project" button and the Mac command; the command handler still redirects to Settings → Gemini API if it is invoked. `MainWindow.SmokeTest.cs` now asserts the New Project command is disabled in the no-key menu state. The macOS app gates the same command in the same task.
+
+Validation: `script/check_xaml_references.py` passed; Windows `test_parity` (9) passed; menu parity checker passed; version synchronized at 1.0.100 (Mac build 100 / Windows package 1.0.100.0). Native Windows menu-state rendering was not run on this macOS host.
+
 ## 2026-10-19 — Escape cancels hosted dialogs on Windows (1.0.97 / 1.0.97.0)
 
 Windows dialog windows now cancel on Escape. `WindowedDialog` adds an Escape `KeyboardAccelerator` scoped to both the host window and the `ContentDialog`, guarded by the dialog's `Opened`/`Closed` state so it can never double-fire, and hides the dialog with a `None` result — the same outcome as the Close/Cancel button or the title-bar close. This covers New Project and every other dialog shown through the shared host. macOS already dismisses the New Project sheet with Escape via the Cancel button's `.keyboardShortcut(.cancelAction)`, so no macOS change was needed.

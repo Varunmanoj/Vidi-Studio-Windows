@@ -209,7 +209,8 @@ public sealed partial class MainWindow
     private bool CanRunDesktopCommand(string id)
     {
         if (!Model.Idle) return false;
-        if (id is "new-project" or "open-project" or "settings" or "help" or "about" or "close-window") return true;
+        if (id == "new-project") return Model.HasApiKey;
+        if (id is "open-project" or "settings" or "help" or "about" or "close-window") return true;
         if (id is "project-list" or "project-grid") return true;
         if (!desktopEditorVisible || Model.Project is not { } p) return false;
         var timed = Section.SelectedIndex is 0 or 2 or 4;

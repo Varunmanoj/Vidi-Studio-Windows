@@ -63,7 +63,8 @@ public sealed partial class MainWindow
             Model.Settings.Set("apiKey", ""); Model.Settings.Set("ttsMode", "windows-core");
             UpdateDesktopMenuStates();
             if (!desktopMenuItems["export"].Last().IsEnabled || !desktopMenuItems["synthesize-tts"].Last().IsEnabled ||
-                !desktopMenuItems["review-narration-issues"].Last().IsEnabled || !desktopMenuItems["review-narration-voices"].Last().IsEnabled || desktopMenuItems["transcribe"].Last().IsEnabled)
+                !desktopMenuItems["review-narration-issues"].Last().IsEnabled || !desktopMenuItems["review-narration-voices"].Last().IsEnabled || desktopMenuItems["transcribe"].Last().IsEnabled ||
+                desktopMenuItems["new-project"].Last().IsEnabled)
                 throw new InvalidOperationException("Offline menu actions and AI prerequisites are not independently guarded.");
             var originalAudio = Model.Project!.Cues.Select(c => (Cue: c, Audio: c.Audio)).ToList();
             try

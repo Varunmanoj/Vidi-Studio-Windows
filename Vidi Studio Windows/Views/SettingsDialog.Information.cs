@@ -26,7 +26,7 @@ public sealed partial class SettingsDialog
         panel.Children.Add(new TextBlock { Text = "Shortcuts work when a project is open and processing is idle.", TextWrapping = TextWrapping.Wrap });
         if (menuOwner != null)
             foreach (var (label, shortcut) in menuOwner.DesktopShortcutReference) AddInformationRow(panel, label, shortcut);
-        panel.Children.Add(new TextBlock { Text = "Menus follow the Mac layout: File, View, Playback, Project, Help. Local exports and on-device narration do not require a Gemini API key.", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
+        panel.Children.Add(new TextBlock { Text = "Menus follow the Mac layout: File, View, Playback, Project, Help. Local exports and on-device narration do not require a Gemini API key. Built-in voices are platform-specific: Windows offers Windows OneCore and Windows SAPI 5 voices (macOS offers Apple Voices), and Gemini voices work on both platforms with your API key.", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
     }
 
     private void BuildAbout(StackPanel panel)

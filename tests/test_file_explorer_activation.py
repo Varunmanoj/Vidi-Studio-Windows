@@ -57,15 +57,19 @@ class TestFileExplorerActivation(unittest.TestCase):
             "uap": "http://schemas.microsoft.com/appx/manifest/uap/windows10",
             "uap2": "http://schemas.microsoft.com/appx/manifest/uap/windows10/2",
             "uap3": "http://schemas.microsoft.com/appx/manifest/uap/windows10/3",
+            "desktop6": "http://schemas.microsoft.com/appx/manifest/desktop/windows10/6",
+            "rescap": "http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities",
         }
 
-        extensions = root.findall(".//uap:Extension", ns)
+        extensions = root.findall(".//uap:Extension", ns) + root.findall(".//uap3:Extension", ns)
         categories = [ext.attrib.get("Category") for ext in extensions]
         self.assertIn("windows.fileTypeAssociation", categories)
         self.assertIn("windows.shareTarget", categories)
         self.assertIn("windows.protocol", categories)
 
-        fta = root.find(".//uap:Extension[@Category='windows.fileTypeAssociation']/uap:FileTypeAssociation", ns)
+        fta = root.find(".//uap3:Extension[@Category='windows.fileTypeAssociation']/uap3:FileTypeAssociation", ns)
+        if fta is None:
+            fta = root.find(".//uap:Extension[@Category='windows.fileTypeAssociation']/uap:FileTypeAssociation", ns)
         self.assertIsNotNone(fta, "FileTypeAssociation must be declared")
         self.assertEqual(fta.attrib.get("Name"), "video")
 
@@ -77,9 +81,16 @@ class TestFileExplorerActivation(unittest.TestCase):
         # Check verb definition
         verb = fta.find("uap2:SupportedVerbs/uap3:Verb", ns)
         self.assertIsNotNone(verb, "Verb must be declared under uap2:SupportedVerbs")
-        self.assertEqual(verb.attrib.get("Id"), "OpenInVidiStudio")
+        self.assertEqual(verb.attrib.get("Id"), "DescribeWithVidiStudio")
         self.assertIn('--video "%1"', verb.attrib.get("Parameters", ""))
-        self.assertEqual(verb.text, "Open in VidiStudio")
+        self.assertEqual(verb.text, "Describe with Vidi Studio")
+
+        # Check unvirtualized resources capability and disabled write virtualization
+        reg_virt = root.find(".//desktop6:RegistryWriteVirtualization", ns)
+        self.assertIsNotNone(reg_virt)
+        self.assertEqual(reg_virt.text, "disabled")
+        unvirt = root.find(".//rescap:Capability[@Name='unvirtualizedResources']", ns)
+        self.assertIsNotNone(unvirt)
 
         # Check protocol definition
         protocol = root.find(".//uap:Extension[@Category='windows.protocol']/uap:Protocol", ns)
@@ -125,9 +136,26 @@ class TestFileExplorerActivation(unittest.TestCase):
         self.assertIn("public static bool IsContextMenuRegistered()", source)
         self.assertIn("public static void UpdateContextMenuState", source)
         self.assertIn(r"Software\Classes\SystemFileAssociations\video\shell", source)
-        self.assertIn("OpenInVidiStudio", source)
+        self.assertIn("DescribeWithVidiStudio", source)
+        self.assertIn("Describe with Vidi Studio", source)
+        self.assertIn("SHChangeNotify", source)
+        self.assertIn("AppliesTo", source)
+        self.assertIn("VidiStudio.Video", source)
         self.assertIn("--video", source)
         self.assertIn('DeleteValue("LegacyDisable"', source)
+
+    def test_powershell_registration_script_exists_and_implements_describe_menu(self):
+        script_path = self.root / "script" / "register-context-menu.ps1"
+        self.assertTrue(script_path.is_file(), "register-context-menu.ps1 must exist in script/")
+        source = script_path.read_text(encoding="utf-8")
+        self.assertIn("DescribeWithVidiStudio", source)
+        self.assertIn("Describe with Vidi Studio", source)
+        self.assertIn("SHChangeNotify", source)
+        self.assertIn("AppliesTo", source)
+        self.assertIn("VidiStudio.Video", source)
+        self.assertIn("OpenWithProgids", source)
+        self.assertIn("OpenWithList", source)
+        self.assertIn("$Unregister", source)
 
     def test_in_app_context_menu_and_ai_gating(self):
         source = self.main_window_commands_cs_path.read_text(encoding="utf-8")

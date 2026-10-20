@@ -6,9 +6,10 @@
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:uap2="http://schemas.microsoft.com/appx/manifest/uap/windows10/2"
   xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   xmlns:systemai="http://schemas.microsoft.com/appx/manifest/systemai/windows10"
-  IgnorableNamespaces="uap uap2 uap3 rescap systemai">
+  IgnorableNamespaces="uap uap2 uap3 desktop6 rescap systemai">
 
   <Identity
     Name="7b6f5f53-8ba2-429e-a747-0e2393ce9cee"
@@ -21,6 +22,8 @@
     <DisplayName>Vidi Studio</DisplayName>
     <PublisherDisplayName>personal</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
+    <desktop6:RegistryWriteVirtualization>disabled</desktop6:RegistryWriteVirtualization>
+    <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
   </Properties>
 
   <Dependencies>
@@ -61,9 +64,9 @@
             <uap:DataFormat>WebLink</uap:DataFormat>
           </uap:ShareTarget>
         </uap:Extension>
-        <uap:Extension Category="windows.fileTypeAssociation">
-          <uap:FileTypeAssociation Name="video">
-            <uap:DisplayName>VidiStudio</uap:DisplayName>
+        <uap3:Extension Category="windows.fileTypeAssociation">
+          <uap3:FileTypeAssociation Name="video">
+            <uap:DisplayName>Vidi Studio</uap:DisplayName>
             <uap:Logo>Assets\StoreLogo.png</uap:Logo>
             <uap:SupportedFileTypes>
               <uap:FileType>.mp4</uap:FileType>
@@ -75,13 +78,13 @@
               <uap:FileType>.wmv</uap:FileType>
             </uap:SupportedFileTypes>
             <uap2:SupportedVerbs>
-              <uap3:Verb Id="OpenInVidiStudio" Parameters="--video &quot;%1&quot;">Open in VidiStudio</uap3:Verb>
+              <uap3:Verb Id="DescribeWithVidiStudio" Parameters="--video &quot;%1&quot;">Describe with Vidi Studio</uap3:Verb>
             </uap2:SupportedVerbs>
-          </uap:FileTypeAssociation>
-        </uap:Extension>
+          </uap3:FileTypeAssociation>
+        </uap3:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="vidistudio">
-            <uap:DisplayName>VidiStudio</uap:DisplayName>
+            <uap:DisplayName>Vidi Studio</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
       </Extensions>
@@ -91,6 +94,7 @@
   <Capabilities>
     <Capability Name="internetClient" />
     <rescap:Capability Name="runFullTrust" />
+    <rescap:Capability Name="unvirtualizedResources" />
     <systemai:Capability Name="systemAIModels"/>
   </Capabilities>
 </Package>

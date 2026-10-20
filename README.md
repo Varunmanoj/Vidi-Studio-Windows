@@ -2,6 +2,16 @@
 
 Native WinUI 3 / .NET 8 front end for the VidiStudio portable media engine. The Windows application targets **ARM64 and x64**. Project folders remain compatible with the macOS engine. The Mac checkout has not been modified.
 
+## Bring Your Own Key (BYOK) Architecture
+
+Vidi Studio is built on a **Bring Your Own Key (BYOK)** system. **A personal Google Gemini API key must be configured in Settings before utilizing this application to create projects or perform AI processing.**
+
+### Why BYOK is a Key Feature:
+- **Zero Subscriptions & Middlemen:** Vidi Studio has no monthly platform fees, centralized server proxies, or account registrations. Requests travel directly from your Windows workstation to Google's official Gemini API endpoints.
+- **Direct Quota & Pricing Control:** Use your own [Google AI Studio](https://aistudio.google.com/) account. You can utilize the generous Free tier or pay-as-you-go pricing, paying Google directly with zero markups or token resale fees.
+- **Enterprise-Grade Credential Security:** Your Gemini API key is stored securely in **Windows Credential Manager** (generic credential target `VidiStudio/GeminiApiKey`). It is never written to plaintext configuration files (`config.json`), never committed to project folders, and never logged or exposed on command lines.
+- **Prerequisite Enforcement:** Project creation (via File → New Project, `Ctrl-N`, or the All Projects gallery cards) is strictly gated on having a valid Gemini API key configured. If no key is configured, Vidi Studio immediately opens **Settings → Gemini API** with an explanation so you can enter your key before proceeding. Automated speech transcription, scene summaries, Audio Description generation, cue rewriting, frame OCR ("Read Frame Text"), YouTube video accessibility validation, and Gemini TTS narration all use your configured BYOK key.
+
 ## Official Repositories & Live Website
 
 VidiStudio is maintained across dedicated desktop repositories and an online showcase:
@@ -73,7 +83,8 @@ Legacy third-party SAPI voices may be registered only for x86 or x64. Run setup 
 
 ## Workflow
 
-- Library: **New Project** offers Video File and YouTube Video sources in one light/dark-aware dialog. Choose a local file to preview it and inspect FFprobe duration, resolution, frame rate, codecs, and size before creating the project. For a public YouTube URL, select **Fetch Details** to review its title, channel, and thumbnail; Create stays disabled until details load. The engine checks Gemini availability when the YouTube project is created. All Projects switches between cards and a table with name, duration, AD segment count, transcript, summary, narration, video exports, and audio exports. Open portable project folders, search/filter, rename, or move a project to the Recycle Bin.
+- Initial Setup (BYOK): Configure your personal Google Gemini API key in **Settings → Gemini API** before utilizing the application. Both local and YouTube project creation require a configured key. Use **Check API Key & Plan** to verify the key, automatically detect your Free or Paid plan, and populate the compatible model catalog.
+- Library: **New Project** offers Video File and YouTube Video sources in one light/dark-aware dialog. Choose a local file to preview it and inspect FFprobe duration, resolution, frame rate, codecs, and size before creating the project. For a public YouTube URL, select **Fetch Details** to review its title, channel, and thumbnail; Create stays disabled until details load. The engine checks Gemini availability when the YouTube project is created. All Projects switches between cards and a table with name, duration, AD segment count, transcript, summary, narration, video exports, and audio exports. Open portable project folders, search/filter, rename, or move a project to the Recycle Bin. System speech narration works offline once projects exist, but project creation and AI stages require the BYOK key.
 - Analyze: complete analysis or individual transcript, summary, and description generation. Gemini preparation and availability checks use the original engine.
 - Timeline pictures: Local frames and YouTube cover images fill the complete timeline strip with centered cropping and resize with the editor. A YouTube cover fills one full-width cell; local frames divide the strip evenly. Click or drag anywhere on the strip to seek and play, or use the video-position slider for keyboard seeking. The playhead follows playback, and missing pictures show a placeholder.
 - Editor: Transcript, Summary, Descriptions, AD Overview, combined AD Transcript, and Created Exports. Click or drag across the timeline tracks to seek and begin playback, or drag the position slider; a red triangle marks the playhead above the tracks. The transport has one button that changes between Play and Pause, with the Playback menu reflecting the same state. Transcript, Descriptions, and AD Transcript scroll to and highlight the active row when **Follow** is enabled. The top-right **Open folder** button reveals the current project in File Explorer. Add/edit/select/delete rows, undo/redo, re-analyze a selected range, extract frame text, or rewrite an AD cue to fit.

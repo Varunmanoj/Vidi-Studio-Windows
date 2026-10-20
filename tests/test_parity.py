@@ -150,6 +150,12 @@ class Parity(unittest.TestCase):
         if engine_client.is_file():
             self.assertIn('VIDISTUDIO_API_KEY', engine_client.read_text(encoding='utf-8'))
         self.assertIn('VIDISTUDIO_API_KEY', (root / 'engine' / 'vidistudio_engine.py').read_text(encoding='utf-8'))
+        gemini_dialog = credential.parent.parent / 'Views' / 'SettingsDialog.Gemini.cs'
+        if gemini_dialog.is_file():
+            gemini_source = gemini_dialog.read_text(encoding='utf-8')
+            self.assertIn('CredentialStore.Delete()', gemini_source)
+            self.assertIn(r'\uE74D', gemini_source)
+            self.assertIn('deleteKeyButton', gemini_source)
 
     def test_engine_sources_are_copied_unconditionally(self):
         root = Path(__file__).resolve().parents[1]

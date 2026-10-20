@@ -131,13 +131,67 @@ public sealed partial class SettingsDialog
 
         var topStack = new StackPanel { Spacing = 10 };
 
+        var keyRow = new Grid { ColumnSpacing = 8 };
+        keyRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        keyRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
         var key = new PasswordBox
         {
             Header = "Personal Gemini API key",
             Password = SettingsStore.GetString(draft["apiKey"]),
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
-        topStack.Children.Add(key);
+        Grid.SetColumn(key, 0);
+        keyRow.Children.Add(key);
+
+        var deleteKeyButton = new Button
+        {
+            Content = new FontIcon { Glyph = "\uE74D", FontSize = 14 },
+            VerticalAlignment = VerticalAlignment.Bottom,
+            MinWidth = 36,
+            Padding = new Thickness(8, 6, 8, 6),
+            IsEnabled = !string.IsNullOrWhiteSpace(key.Password)
+        };
+        ToolTipService.SetToolTip(deleteKeyButton, "Clear and delete API key from Windows Credential Manager");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(deleteKeyButton, "Delete Gemini API key");
+        deleteKeyButton.Click += async (_, _) =>
+        {
+            var confirmDialog = new ContentDialog
+            {
+                Title = "Delete Gemini API Key?",
+                Content = new TextBlock
+                {
+                    Text = "Are you sure you want to delete your Gemini API key from Windows Credential Manager? You will need to enter a new key to use AI features.",
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 480
+                },
+                PrimaryButtonText = "Delete API key",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close
+            };
+
+            var confirmResult = await WindowedDialog.ShowAsync(confirmDialog, this, width: 500, height: 240, fitToContent: true);
+            if (confirmResult != ContentDialogResult.Primary) return;
+
+            checkDebounceTimer?.Stop();
+            key.Password = "";
+            draft["apiKey"] = "";
+            draft["apiKeyValid"] = false;
+            draft["apiPlan"] = "none";
+            CredentialStore.Delete();
+            model.Settings.Set("apiKey", "");
+            model.Settings.Save();
+            availableModels.Clear();
+            ApplyGeminiModelChoices();
+            UpdatePlanDisplay(null, "", 0);
+            deleteKeyButton.IsEnabled = false;
+            if (checkPlanButton != null) checkPlanButton.IsEnabled = false;
+            status.Text = "Gemini API key deleted from Windows Credential Manager.";
+        };
+        Grid.SetColumn(deleteKeyButton, 1);
+        keyRow.Children.Add(deleteKeyButton);
+
+        topStack.Children.Add(keyRow);
         topStack.Children.Add(new TextBlock
         {
             Text = "Your Gemini key is stored securely in Windows Credential Manager and is never saved inside a project.",
@@ -265,6 +319,7 @@ public sealed partial class SettingsDialog
             draft["apiKey"] = key.Password;
             var hasKey = !string.IsNullOrWhiteSpace(key.Password);
             if (checkPlanButton != null) checkPlanButton.IsEnabled = hasKey;
+            deleteKeyButton.IsEnabled = hasKey;
 
             if (!hasKey)
             {

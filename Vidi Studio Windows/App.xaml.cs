@@ -156,9 +156,20 @@ public partial class App : Application
                 return result;
         }
 
-        if (activation.Kind == ExtendedActivationKind.CommandLine && activation.Data is CommandLineActivatedEventArgs cmdArgs)
+        if (activation.Kind == ExtendedActivationKind.CommandLineLaunch && activation.Data is ICommandLineActivatedEventArgs cmdArgs)
         {
             var cmdLine = cmdArgs.Operation?.Arguments;
+            if (!string.IsNullOrWhiteSpace(cmdLine))
+            {
+                var result = ParseTokens(SplitCommandLine(cmdLine));
+                if (result.VideoPath != null || result.YouTubeUrl != null)
+                    return result;
+            }
+        }
+
+        if (activation.Kind == ExtendedActivationKind.Launch && activation.Data is ILaunchActivatedEventArgs launchArgs)
+        {
+            var cmdLine = launchArgs.Arguments;
             if (!string.IsNullOrWhiteSpace(cmdLine))
             {
                 var result = ParseTokens(SplitCommandLine(cmdLine));

@@ -89,7 +89,7 @@ class TestFileExplorerActivation(unittest.TestCase):
     def test_app_handles_file_and_command_line_activation(self):
         source = self.app_xaml_cs_path.read_text(encoding="utf-8")
         self.assertIn("ExtendedActivationKind.File", source)
-        self.assertIn("ExtendedActivationKind.CommandLine", source)
+        self.assertIn("ExtendedActivationKind.CommandLineLaunch", source)
         self.assertIn("ExtendedActivationKind.Protocol", source)
         self.assertIn("ParseActivationTarget", source)
         self.assertIn("ParseTokens", source)

@@ -4,9 +4,11 @@
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap2="http://schemas.microsoft.com/appx/manifest/uap/windows10/2"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   xmlns:systemai="http://schemas.microsoft.com/appx/manifest/systemai/windows10"
-  IgnorableNamespaces="uap rescap systemai">
+  IgnorableNamespaces="uap uap2 uap3 rescap systemai">
 
   <Identity
     Name="7b6f5f53-8ba2-429e-a747-0e2393ce9cee"
@@ -16,7 +18,7 @@
   <mp:PhoneIdentity PhoneProductId="7b6f5f53-8ba2-429e-a747-0e2393ce9cee" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
-    <DisplayName>Vidi Studio Windows</DisplayName>
+    <DisplayName>Vidi Studio</DisplayName>
     <PublisherDisplayName>personal</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -35,8 +37,8 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="Vidi Studio Windows"
-        Description="Vidi Studio Windows"
+        DisplayName="Vidi Studio"
+        Description="Vidi Studio"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
@@ -53,10 +55,34 @@
               <uap:FileType>.mkv</uap:FileType>
               <uap:FileType>.avi</uap:FileType>
               <uap:FileType>.webm</uap:FileType>
+              <uap:FileType>.wmv</uap:FileType>
             </uap:SupportedFileTypes>
             <uap:DataFormat>StorageItems</uap:DataFormat>
             <uap:DataFormat>WebLink</uap:DataFormat>
           </uap:ShareTarget>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="video">
+            <uap:DisplayName>VidiStudio</uap:DisplayName>
+            <uap:Logo>Assets\StoreLogo.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.mp4</uap:FileType>
+              <uap:FileType>.mov</uap:FileType>
+              <uap:FileType>.m4v</uap:FileType>
+              <uap:FileType>.mkv</uap:FileType>
+              <uap:FileType>.avi</uap:FileType>
+              <uap:FileType>.webm</uap:FileType>
+              <uap:FileType>.wmv</uap:FileType>
+            </uap:SupportedFileTypes>
+            <uap2:SupportedVerbs>
+              <uap3:Verb Id="OpenInVidiStudio" Parameters="--video &quot;%1&quot;">Open in VidiStudio</uap3:Verb>
+            </uap2:SupportedVerbs>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="vidistudio">
+            <uap:DisplayName>VidiStudio</uap:DisplayName>
+          </uap:Protocol>
         </uap:Extension>
       </Extensions>
     </Application>

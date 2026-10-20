@@ -29,7 +29,7 @@ This is a work record, not a declaration that the full migration is finished.
 | Generated-content deletion dependencies | Connected |
 | Grid/list library presentation, context menus | Grid/list, thumbnail cards, search/filter, and native context menus implemented; view checks pass |
 | Multiple independent editor windows | Native workflow verifies a second editor with independent view selection |
-| OS share target / activation | Manifest and file/link handlers implemented; actual Windows Share activation unverified |
+| File Explorer context menu & OS share activation | Implemented with Package.appxmanifest fileTypeAssociation + verbs, deep link protocol, and registry shell context menu for all videos; direct new project creation & duplicate matching in full parity with macOS Finder |
 | Full Mac shortcut and menu coverage | Native File/View/Analysis/Segments/Playback/Help menus and shortcuts implemented; keyboard accessibility audit remains |
 | Accessibility metadata conventions | Portable MOV tagc characteristics and alternate groups implemented; real exports validated; Apple-player recognition unverified |
 | ARM64/x64 builds | Debug and Release builds plus native UI smoke tests pass for both targets; ARM64 development registration/activation and packaged workflow pass; signed MSIX installation remains unverified |

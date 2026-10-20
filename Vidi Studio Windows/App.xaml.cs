@@ -2,6 +2,10 @@ using Microsoft.UI.Xaml;
 using Microsoft.Windows.AppLifecycle;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 using Windows.ApplicationModel.Activation;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.ApplicationModel.DataTransfer.ShareTarget;
@@ -12,6 +16,7 @@ namespace Vidi_Studio_Windows;
 public partial class App : Application
 {
     private static readonly List<MainWindow> Windows = new();
+    private static AppInstance? mainInstance;
     internal static event Action<string>? ThemeChanged;
     internal static string? ActiveTheme { get; private set; }
     internal static void PreviewTheme(string theme)
@@ -43,11 +48,12 @@ public partial class App : Application
         window.Closed += (_, _) => Windows.Remove(window);
         window.Activate(); return window;
     }
-    protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+    protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
         var activation = AppInstance.GetCurrent().GetActivatedEventArgs();
-#if DEBUG
         var launchArguments = activation.Data is Windows.ApplicationModel.Activation.LaunchActivatedEventArgs launch ? launch.Arguments : args.Arguments;
+
+#if DEBUG
         const string smokePrefix = "--vidi-smoke ";
         if (launchArguments.StartsWith(smokePrefix, StringComparison.Ordinal))
         {
@@ -55,39 +61,292 @@ public partial class App : Application
             var environment = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json)!;
             foreach (var key in new[] { "VIDISTUDIO_UI_SMOKE_REPORT", "VIDISTUDIO_UI_SMOKE_PROJECT", "VIDISTUDIO_CONFIG" })
                 Environment.SetEnvironmentVariable(key, environment[key]);
+            _ = OpenWindow();
+            return;
         }
 #endif
+
+        if (launchArguments.Contains("--register-context-menu", StringComparison.OrdinalIgnoreCase))
+        {
+            Services.ShellIntegration.RegisterContextMenu();
+            return;
+        }
+        if (launchArguments.Contains("--unregister-context-menu", StringComparison.OrdinalIgnoreCase))
+        {
+            Services.ShellIntegration.UnregisterContextMenu();
+            return;
+        }
+
+        try
+        {
+            mainInstance = AppInstance.FindOrRegisterForKey("VidiStudioMainInstance");
+            if (!mainInstance.IsCurrent)
+            {
+                await mainInstance.RedirectActivationToAsync(activation);
+                System.Diagnostics.Process.GetCurrentProcess().Kill();
+                return;
+            }
+        }
+        catch { }
+
         var window = OpenWindow();
+        try { Services.ShellIntegration.RegisterContextMenu(); } catch { }
+
+        if (mainInstance != null)
+        {
+            mainInstance.Activated += (sender, redirectedArgs) =>
+            {
+                window.DispatcherQueue.TryEnqueue(async () =>
+                {
+                    window.Activate();
+                    window.BringToForeground();
+                    await HandleIncomingActivationAsync(window, redirectedArgs, null);
+                });
+            };
+        }
+
+        await HandleIncomingActivationAsync(window, activation, launchArguments);
+    }
+
+    private static async Task HandleIncomingActivationAsync(MainWindow window, AppActivationArguments activation, string? rawLaunchArgs)
+    {
         if (activation.Kind == ExtendedActivationKind.ShareTarget && activation.Data is ShareTargetActivatedEventArgs share)
         {
-            async void Receive(object sender, RoutedEventArgs e)
+            void Receive(object sender, RoutedEventArgs e)
             {
                 ((FrameworkElement)window.Content).Loaded -= Receive;
-                await ReceiveShare(window, share.ShareOperation);
+                _ = ReceiveShare(window, share.ShareOperation);
             }
-            ((FrameworkElement)window.Content).Loaded += Receive;
+            if (((FrameworkElement)window.Content).IsLoaded)
+                _ = ReceiveShare(window, share.ShareOperation);
+            else
+                ((FrameworkElement)window.Content).Loaded += Receive;
+            return;
+        }
+
+        var (videoPath, youtubeUrl) = ParseActivationTarget(activation, rawLaunchArgs);
+        if (!string.IsNullOrEmpty(videoPath))
+        {
+            await window.OpenVideoFileAsync(videoPath);
+        }
+        else if (!string.IsNullOrEmpty(youtubeUrl))
+        {
+            await window.OpenYouTubeUrlAsync(youtubeUrl);
         }
     }
-    private static async System.Threading.Tasks.Task ReceiveShare(MainWindow window, ShareOperation share)
+
+    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp4", ".mov", ".m4v", ".mkv", ".avi", ".webm", ".wmv"
+    };
+
+    public static (string? VideoPath, string? YouTubeUrl) ParseActivationTarget(AppActivationArguments activation, string? rawLaunchArgs)
+    {
+        if (activation.Kind == ExtendedActivationKind.File && activation.Data is IFileActivatedEventArgs fileArgs)
+        {
+            var file = fileArgs.Files?.FirstOrDefault() as IStorageFile;
+            if (file != null && !string.IsNullOrWhiteSpace(file.Path))
+                return (file.Path, null);
+        }
+
+        if (activation.Kind == ExtendedActivationKind.Protocol && activation.Data is IProtocolActivatedEventArgs protoArgs)
+        {
+            var result = ParseProtocolUri(protoArgs.Uri);
+            if (result.VideoPath != null || result.YouTubeUrl != null)
+                return result;
+        }
+
+        if (activation.Kind == ExtendedActivationKind.CommandLine && activation.Data is CommandLineActivatedEventArgs cmdArgs)
+        {
+            var cmdLine = cmdArgs.Operation?.Arguments;
+            if (!string.IsNullOrWhiteSpace(cmdLine))
+            {
+                var result = ParseTokens(SplitCommandLine(cmdLine));
+                if (result.VideoPath != null || result.YouTubeUrl != null)
+                    return result;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(rawLaunchArgs))
+        {
+            var result = ParseTokens(SplitCommandLine(rawLaunchArgs));
+            if (result.VideoPath != null || result.YouTubeUrl != null)
+                return result;
+        }
+
+        var envArgs = Environment.GetCommandLineArgs();
+        if (envArgs.Length > 1)
+        {
+            var result = ParseTokens(envArgs.Skip(1));
+            if (result.VideoPath != null || result.YouTubeUrl != null)
+                return result;
+        }
+
+        return (null, null);
+    }
+
+    public static (string? VideoPath, string? YouTubeUrl) ParseProtocolUri(Uri uri)
+    {
+        if (uri == null) return (null, null);
+        try
+        {
+            if (!uri.Scheme.Equals("vidistudio", StringComparison.OrdinalIgnoreCase)) return (null, null);
+            if (!uri.Host.Equals("share", StringComparison.OrdinalIgnoreCase)) return (null, null);
+
+            string? kind = null;
+            string? source = null;
+            var query = uri.Query.TrimStart('?');
+            foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var idx = part.IndexOf('=');
+                if (idx < 0) continue;
+                var key = Uri.UnescapeDataString(part.Substring(0, idx));
+                var val = Uri.UnescapeDataString(part.Substring(idx + 1));
+                if (key.Equals("kind", StringComparison.OrdinalIgnoreCase)) kind = val;
+                else if (key.Equals("source", StringComparison.OrdinalIgnoreCase)) source = val;
+            }
+
+            if (kind == "video" && !string.IsNullOrWhiteSpace(source))
+            {
+                if (source.StartsWith("file://", StringComparison.OrdinalIgnoreCase) && Uri.TryCreate(source, UriKind.Absolute, out var fileUri))
+                    return (fileUri.LocalPath, null);
+                return (source, null);
+            }
+            if (kind == "youtube" && !string.IsNullOrWhiteSpace(source))
+            {
+                return (null, source);
+            }
+        }
+        catch { }
+        return (null, null);
+    }
+
+    public static List<string> SplitCommandLine(string commandLine)
+    {
+        var args = new List<string>();
+        if (string.IsNullOrWhiteSpace(commandLine)) return args;
+
+        var sb = new StringBuilder();
+        bool inQuotes = false;
+        for (int i = 0; i < commandLine.Length; i++)
+        {
+            char c = commandLine[i];
+            if (c == '"')
+            {
+                inQuotes = !inQuotes;
+            }
+            else if (char.IsWhiteSpace(c) && !inQuotes)
+            {
+                if (sb.Length > 0)
+                {
+                    args.Add(sb.ToString());
+                    sb.Clear();
+                }
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+        if (sb.Length > 0)
+        {
+            args.Add(sb.ToString());
+        }
+        return args;
+    }
+
+    public static (string? VideoPath, string? YouTubeUrl) ParseTokens(IEnumerable<string> tokens)
+    {
+        var list = tokens.ToList();
+        for (int i = 0; i < list.Count; i++)
+        {
+            var token = list[i].Trim();
+            if (string.IsNullOrEmpty(token)) continue;
+
+            if ((token.Equals("--video", StringComparison.OrdinalIgnoreCase) || token.Equals("-v", StringComparison.OrdinalIgnoreCase)) && i + 1 < list.Count)
+            {
+                return (CleanPath(list[i + 1]), null);
+            }
+            if ((token.Equals("--url", StringComparison.OrdinalIgnoreCase) || token.Equals("-u", StringComparison.OrdinalIgnoreCase)) && i + 1 < list.Count)
+            {
+                return (null, list[i + 1].Trim());
+            }
+            if (token.StartsWith("--video=", StringComparison.OrdinalIgnoreCase))
+            {
+                return (CleanPath(token.Substring(8)), null);
+            }
+            if (token.StartsWith("--url=", StringComparison.OrdinalIgnoreCase))
+            {
+                return (null, token.Substring(6).Trim());
+            }
+            if (token.StartsWith("vidistudio://", StringComparison.OrdinalIgnoreCase) && Uri.TryCreate(token, UriKind.Absolute, out var uri))
+            {
+                var parsed = ParseProtocolUri(uri);
+                if (parsed.VideoPath != null || parsed.YouTubeUrl != null) return parsed;
+            }
+            if (IsSupportedVideoFile(token))
+            {
+                return (CleanPath(token), null);
+            }
+            if (IsYouTubeUrl(token))
+            {
+                return (null, token);
+            }
+        }
+        return (null, null);
+    }
+
+    private static string CleanPath(string raw)
+    {
+        var path = raw.Trim().Trim('"', '\'');
+        try { return Path.GetFullPath(path); } catch { return path; }
+    }
+
+    private static bool IsSupportedVideoFile(string token)
+    {
+        var clean = token.Trim().Trim('"', '\'');
+        try
+        {
+            var ext = Path.GetExtension(clean);
+            return !string.IsNullOrEmpty(ext) && VideoExtensions.Contains(ext);
+        }
+        catch { return false; }
+    }
+
+    private static bool IsYouTubeUrl(string token)
+    {
+        var clean = token.Trim().Trim('"', '\'');
+        try
+        {
+            if (Uri.TryCreate(clean, UriKind.Absolute, out var uri))
+            {
+                var host = uri.Host.ToLowerInvariant();
+                return host == "youtu.be" || host == "www.youtu.be" || host.Contains("youtube.com");
+            }
+        }
+        catch { }
+        return false;
+    }
+
+    private static async Task ReceiveShare(MainWindow window, ShareOperation share)
     {
         share.ReportStarted();
         try
         {
-            List<Services.EngineEvent> result;
             if (share.Data.Contains(StandardDataFormats.StorageItems))
             {
                 var items = await share.Data.GetStorageItemsAsync();
                 if (items.Count != 1 || items[0] is not StorageFile file) { share.ReportError("Share one video file at a time."); return; }
-                result = await window.Model.RunAsync("import-video", new[] { "--video", file.Path, "--library", window.Model.Settings.Get("libraryPath") }, false);
+                await window.OpenVideoFileAsync(file.Path);
+                share.ReportDataRetrieved(); share.ReportCompleted();
             }
             else if (share.Data.Contains(StandardDataFormats.WebLink))
             {
                 var uri = await share.Data.GetWebLinkAsync();
-                result = await window.Model.RunAsync("import-youtube", new[] { "--url", uri.AbsoluteUri, "--library", window.Model.Settings.Get("libraryPath") }, false);
+                await window.OpenYouTubeUrlAsync(uri.AbsoluteUri);
+                share.ReportDataRetrieved(); share.ReportCompleted();
             }
             else { share.ReportError("Share one video file or public YouTube link."); return; }
-            if (result.Count == 0) share.ReportError("Import could not finish. Check Vidi Studio settings and retry.");
-            else { share.ReportDataRetrieved(); share.ReportCompleted(); }
         }
         catch (Exception ex)
         {

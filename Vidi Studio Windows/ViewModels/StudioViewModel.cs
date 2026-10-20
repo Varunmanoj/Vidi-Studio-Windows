@@ -129,6 +129,64 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         Reload();
         ProjectReloaded?.Invoke(this, EventArgs.Empty);
     }
+    public StudioProject? ExistingProjectForVideo(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return null;
+        var fileName = Path.GetFileName(filePath);
+        if (string.IsNullOrEmpty(fileName)) return null;
+        return Projects.FirstOrDefault(p =>
+            !p.IsYouTube &&
+            string.Equals(Path.GetFileName(p.Source), fileName, StringComparison.OrdinalIgnoreCase));
+    }
+    public StudioProject? ExistingProjectForYouTube(string rawUrl)
+    {
+        if (string.IsNullOrWhiteSpace(rawUrl)) return null;
+        var candidateId = ExtractYouTubeId(rawUrl);
+        return Projects.FirstOrDefault(p =>
+        {
+            if (!p.IsYouTube || string.IsNullOrWhiteSpace(p.YoutubeURL)) return false;
+            if (candidateId != null)
+            {
+                var existingId = ExtractYouTubeId(p.YoutubeURL);
+                if (existingId != null) return string.Equals(candidateId, existingId, StringComparison.OrdinalIgnoreCase);
+            }
+            return string.Equals(p.YoutubeURL.Trim(), rawUrl.Trim(), StringComparison.OrdinalIgnoreCase);
+        });
+    }
+    private static string? ExtractYouTubeId(string url)
+    {
+        try
+        {
+            if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri)) return null;
+            var host = uri.Host.ToLowerInvariant();
+            if (host is "youtu.be" or "www.youtu.be")
+            {
+                var id = uri.AbsolutePath.TrimStart('/');
+                var slash = id.IndexOf('/');
+                if (slash >= 0) id = id.Substring(0, slash);
+                return id.Length == 11 ? id : null;
+            }
+            if (host.Contains("youtube.com"))
+            {
+                if (uri.AbsolutePath == "/watch")
+                {
+                    foreach (var pair in uri.Query.TrimStart('?').Split('&'))
+                    {
+                        var kv = pair.Split('=');
+                        if (kv.Length == 2 && kv[0] == "v" && kv[1].Length == 11)
+                            return kv[1];
+                    }
+                }
+                var parts = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length > 1 && (parts[0] == "shorts" || parts[0] == "embed" || parts[0] == "live"))
+                {
+                    return parts[1].Length == 11 ? parts[1] : null;
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
     public void Cancel() => operation?.Cancel();
     public string CurrentNarrationEngine()
     {

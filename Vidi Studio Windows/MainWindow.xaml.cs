@@ -38,6 +38,8 @@ public sealed partial class MainWindow : Window
     private bool youtubePolling;
     private bool youtubeMetadataUpdating;
     private bool ready;
+    private string? pendingVideoPath;
+    private string? pendingYouTubeUrl;
     private Segment? highlightedSegment;
     private Segment? previewingSegment;
     private readonly HashSet<Segment> activeSegmentRows = new();
@@ -80,7 +82,27 @@ public sealed partial class MainWindow : Window
                 try { cleanup(); } catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
             }
         };
-        Root.Loaded += (_, _) => { ready = true; Model.Reload(); ApplyTheme(); if (Model.Settings.Get("showPreview", "true") == "false") PreviewPanel.Visibility = Visibility.Collapsed; if (folder != null) Model.Open(folder); if (Model.Settings.Get("projectPresentation") == "grid") ToggleGrid_Click(this, new RoutedEventArgs()); UpdateApiKeyUi(); UpdateSectionOverlay(Model.IsAnalyzing); };
+        Root.Loaded += async (_, _) =>
+        {
+            ready = true;
+            Model.Reload();
+            ApplyTheme();
+            if (Model.Settings.Get("showPreview", "true") == "false") PreviewPanel.Visibility = Visibility.Collapsed;
+            if (folder != null) Model.Open(folder);
+            if (Model.Settings.Get("projectPresentation") == "grid") ToggleGrid_Click(this, new RoutedEventArgs());
+            UpdateApiKeyUi();
+            UpdateSectionOverlay(Model.IsAnalyzing);
+            if (pendingVideoPath is { } vidPath)
+            {
+                pendingVideoPath = null;
+                await OpenVideoFileAsync(vidPath);
+            }
+            else if (pendingYouTubeUrl is { } ytUrl)
+            {
+                pendingYouTubeUrl = null;
+                await OpenYouTubeUrlAsync(ytUrl);
+            }
+        };
 #if DEBUG
         Root.Loaded += async (_, _) => { if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_REPORT") is { } report && System.Threading.Interlocked.CompareExchange(ref smokeTestClaimed, 1, 0) == 0) await RunSmokeTestAsync(report); };
 #endif
@@ -224,6 +246,109 @@ public sealed partial class MainWindow : Window
         Model.Engine.Log(ex.ToString());
         await ShowDialogAsync(new ContentDialog { Title = "Action could not finish", Content = "Check your settings and the diagnostic log, then retry. Your saved project remains available.", CloseButtonText = "Close" });
     }
+    private async Task ShowErrorMessage(string title, string message)
+    {
+        await ShowDialogAsync(new ContentDialog
+        {
+            Title = title,
+            Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, MaxWidth = 520 },
+            CloseButtonText = "OK"
+        });
+    }
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    public void BringToForeground()
+    {
+        try
+        {
+            var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            if (hWnd != IntPtr.Zero)
+            {
+                const int SW_RESTORE = 9;
+                ShowWindow(hWnd, SW_RESTORE);
+                SetForegroundWindow(hWnd);
+            }
+        }
+        catch { }
+    }
+    public async Task OpenVideoFileAsync(string videoPath)
+    {
+        if (string.IsNullOrWhiteSpace(videoPath)) return;
+        if (!ready)
+        {
+            pendingVideoPath = videoPath;
+            return;
+        }
+
+        Activate();
+        BringToForeground();
+
+        if (!File.Exists(videoPath))
+        {
+            await ShowErrorMessage("Video Not Found", $"The selected video file could not be found:\n{videoPath}");
+            return;
+        }
+
+        if (Model.Busy)
+        {
+            await ShowErrorMessage("Vidi Studio Is Busy", "Wait for the current operation to finish, then open the video again.");
+            return;
+        }
+
+        try
+        {
+            Model.Reload();
+            var existing = Model.ExistingProjectForVideo(videoPath);
+            if (existing != null)
+            {
+                Model.Open(existing.Folder);
+                return;
+            }
+
+            await Model.RunAsync("import-video", new[] { "--video", videoPath, "--library", Model.Settings.Get("libraryPath") }, false);
+        }
+        catch (Exception ex)
+        {
+            await ShowError(ex);
+        }
+    }
+    public async Task OpenYouTubeUrlAsync(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return;
+        if (!ready)
+        {
+            pendingYouTubeUrl = url;
+            return;
+        }
+
+        Activate();
+        BringToForeground();
+
+        if (Model.Busy)
+        {
+            await ShowErrorMessage("Vidi Studio Is Busy", "Wait for the current operation to finish, then open the video again.");
+            return;
+        }
+
+        try
+        {
+            Model.Reload();
+            var existing = Model.ExistingProjectForYouTube(url);
+            if (existing != null)
+            {
+                Model.Open(existing.Folder);
+                return;
+            }
+
+            await Model.RunAsync("import-youtube", new[] { "--url", url, "--library", Model.Settings.Get("libraryPath") }, false);
+        }
+        catch (Exception ex)
+        {
+            await ShowError(ex);
+        }
+    }
     private async Task<string?> PickFolder()
     {
         var picker = new FolderPicker(); picker.FileTypeFilter.Add("*");
@@ -243,11 +368,6 @@ public sealed partial class MainWindow : Window
     private async Task ShowNewProjectDialogAsync(bool youtube)
     {
         if (Model.Busy) return;
-        if (!Model.HasApiKey)
-        {
-            await ShowSettingsSectionAsync(2);
-            return;
-        }
         try
         {
             var dialog = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings, youtube);
@@ -1211,7 +1331,8 @@ public sealed partial class MainWindow : Window
     {
         var hasKey = Model.HasApiKey;
         var isInvalid = Model.IsApiKeyInvalid;
-        var canUseAi = hasKey && Model.Idle;
+        var canUseAi = hasKey && !isInvalid && Model.Idle;
+        try { Services.ShellIntegration.UpdateContextMenuState(); } catch { }
 
         if (ApiKeyWarningBar != null)
         {
@@ -1232,23 +1353,19 @@ public sealed partial class MainWindow : Window
 
         if (GalleryImport != null)
         {
-            GalleryImport.IsEnabled = canUseAi;
-            ToolTipService.SetToolTip(GalleryImport, hasKey ? "Create a new local video or YouTube project" : (isInvalid ? "Your Gemini API key is invalid. Update your API key in Settings to create new projects." : "Configure your Gemini API key in Settings to create new projects."));
+            GalleryImport.IsEnabled = Model.Idle;
+            ToolTipService.SetToolTip(GalleryImport, "Create a new local video or YouTube project");
         }
 
         if (GalleryEmptyButton != null)
         {
-            GalleryEmptyButton.IsEnabled = canUseAi;
-            ToolTipService.SetToolTip(GalleryEmptyButton, hasKey ? "Create a new project" : (isInvalid ? "Your Gemini API key is invalid. Update your API key in Settings to create new projects." : "Configure your Gemini API key in Settings to create new projects."));
+            GalleryEmptyButton.IsEnabled = Model.Idle;
+            ToolTipService.SetToolTip(GalleryEmptyButton, "Create a new project");
         }
 
         if (GalleryEmptySubtitle != null)
         {
-            GalleryEmptySubtitle.Text = hasKey
-                ? "Import a video or add a public YouTube link to begin."
-                : (isInvalid
-                    ? "Your Gemini API key is invalid or rejected by Google. Enter a valid API key in Settings (Gemini API tab) to enable features."
-                    : "A Gemini API key is required to create projects and enable AI features. Enter your API key in Settings (Gemini API tab).");
+            GalleryEmptySubtitle.Text = "Import a video or add a public YouTube link to begin.";
         }
 
         var missingKeyTooltip = isInvalid

@@ -113,16 +113,42 @@ public sealed partial class MainWindow
         var element = (pointerRequest ? e.OriginalSource : FocusManager.GetFocusedElement(Root.XamlRoot)) as FrameworkElement;
         while (element != null && element.DataContext is not StudioProject) element = VisualTreeHelper.GetParent(element) as FrameworkElement;
         var project = element?.DataContext as StudioProject ?? (sender as ListViewBase)?.SelectedItem as StudioProject;
-        if (project == null) return;
+        if (project == null)
+        {
+            var emptyMenu = new MenuFlyout();
+            var newVideoItem = new MenuFlyoutItem
+            {
+                Text = "New project from video…",
+                Icon = Views.MenuIcons.Create("New project from video…"),
+                IsEnabled = Model.Idle
+            };
+            newVideoItem.Click += ImportVideo_Click;
+            emptyMenu.Items.Add(newVideoItem);
+
+            var newYouTubeItem = new MenuFlyoutItem
+            {
+                Text = "New project from YouTube…",
+                Icon = Views.MenuIcons.Create("New project from YouTube…"),
+                IsEnabled = Model.Idle
+            };
+            newYouTubeItem.Click += YouTube_Click;
+            emptyMenu.Items.Add(newYouTubeItem);
+
+            if (pointerRequest) emptyMenu.ShowAt((FrameworkElement)sender, point);
+            else emptyMenu.ShowAt((FrameworkElement)sender);
+            e.Handled = true;
+            return;
+        }
         var menu = new MenuFlyout();
         void Item(string label, RoutedEventHandler handler, bool enabled = true)
         {
             var item = new MenuFlyoutItem { Text = label, Icon = Views.MenuIcons.Create(label), IsEnabled = Model.Idle && enabled };
             item.Click += (s, args) => { Model.Open(project.Folder); handler(s, args); }; menu.Items.Add(item);
         }
-        Item("Open editor in new window", OpenEditor_Click); Item("Export", Export_Click, Model.HasApiKey); Item("Open project folder", Reveal_Click);
+        var activeApiKey = Model.HasApiKey && !Model.IsApiKeyInvalid;
+        Item("Open editor in new window", OpenEditor_Click); Item("Export", Export_Click, activeApiKey); Item("Open project folder", Reveal_Click);
         foreach (var pair in new[] { ("Analyze video", "analyze"), ("Generate transcript", "transcribe"), ("Generate summary", "generate-summary"), ("Generate descriptions", "generate-ad-cues") })
-            Item(pair.Item1, (_, args) => Command_Click(new Button { Tag = pair.Item2 }, args), Model.HasApiKey);
+            Item(pair.Item1, (_, args) => Command_Click(new Button { Tag = pair.Item2 }, args), activeApiKey);
         Item("Refresh video details", (_, args) => Command_Click(new Button { Tag = "prepare-video" }, args));
         Item("Rename", Rename_Click); Item("Move to Recycle Bin", DeleteProject_Click);
         if (pointerRequest) menu.ShowAt((FrameworkElement)sender, point);
@@ -172,12 +198,12 @@ public sealed partial class MainWindow
                 Item(synthLabel, NarrateSelected_Click, canSynthesize);
                 if (Model.IsSynthesizingNarration && !segment.IsNarrating && Model.NarratingSegmentIndex is { } activeIdx)
                     Item($"Currently generating AD segment {activeIdx}…", (_, _) => { }, false);
-                Item("Rewrite description to fit", Rewrite_Click, Model.HasApiKey);
+                Item("Rewrite description to fit", Rewrite_Click, Model.HasApiKey && !Model.IsApiKeyInvalid);
                 Item("Delete narration", DeleteNarration_Click, segment.Audio != null);
             }
             else
             {
-                Item("Re-Analyze this segment", async (_, _) => await EditSegment(segment), Model.HasApiKey);
+                Item("Re-Analyze this segment", async (_, _) => await EditSegment(segment), Model.HasApiKey && !Model.IsApiKeyInvalid);
             }
             menu.Items.Add(new MenuFlyoutSeparator());
             Item("Delete segment", async (_, _) =>

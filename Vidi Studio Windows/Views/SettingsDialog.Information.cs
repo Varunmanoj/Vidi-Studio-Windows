@@ -26,7 +26,9 @@ public sealed partial class SettingsDialog
         panel.Children.Add(new TextBlock { Text = "Shortcuts work when a project is open and processing is idle.", TextWrapping = TextWrapping.Wrap });
         if (menuOwner != null)
             foreach (var (label, shortcut) in menuOwner.DesktopShortcutReference) AddInformationRow(panel, label, shortcut);
-        panel.Children.Add(new TextBlock { Text = "Menus follow the Mac layout: File, View, Playback, Project, Help. Local exports and on-device narration do not require a Gemini API key. Built-in voices are platform-specific: Windows offers Windows OneCore and Windows SAPI 5 voices (macOS offers Apple Voices), and Gemini voices work on both platforms with your API key.", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
+        panel.Children.Add(new TextBlock { Text = "File Explorer & desktop integration", FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 18, 0, 0) });
+        panel.Children.Add(new TextBlock { Text = "Right-click any supported video file (.mp4, .mov, .m4v, .mkv, .avi, .webm, .wmv) in File Explorer to access \"Describe with Vidi Studio\" (directly or under Show more options / Shift+F10) or \"Open with > Vidi Studio\". You can also share video files to Vidi Studio through the Windows Share flyout. If you are running unpackaged builds and the context menu is not visible, use \"Register File Explorer context menu\" under Storage and tools.", TextWrapping = TextWrapping.Wrap, Opacity = .8 });
+        panel.Children.Add(new TextBlock { Text = "Menus follow the Mac layout: File, View, Playback, Project, Help. Creating new projects, local exports, and on-device narration do not require a Gemini API key; an active API key is only required when invoking automated AI features (transcription, summaries, audio description generation, and AI rewrites). Built-in voices are platform-specific: Windows offers Windows OneCore and Windows SAPI 5 voices (macOS offers Apple Voices), and Gemini voices work on both platforms with your API key.", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
     }
 
     private void BuildAbout(StackPanel panel)

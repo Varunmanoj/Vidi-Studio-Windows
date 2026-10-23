@@ -210,7 +210,8 @@ internal static class Program
     {
         if (voice.StartsWith(UnbridgedPrefix, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Windows only lets Narrator and Magnifier use this downloaded voice. Install the voice bridge add-on, then select Refresh voices in Settings.");
-        var available = NaturalVoices().Where(v => v.Available).ToList();
+        // Natural Voices offers only voices downloaded to this PC; online bridge voices stay in SAPI 5.
+        var available = NaturalVoices().Where(v => v.Available && v.Group != "bridge-online").ToList();
         if (voice.Length > 0)
             return available.Any(v => v.Id == voice) ? voice
                 : throw new InvalidOperationException("The selected natural voice can't be found. Select Refresh voices in Settings, or choose another SAPI host there.");

@@ -74,14 +74,19 @@ public sealed class SummaryReadback : IDisposable
             ownsPlayback = true;
             token.ThrowIfCancellationRequested();
             var config = Path.Combine(folder, "config.json");
-            await File.WriteAllTextAsync(config, settings.Data.ToJsonString(Models.Json.Options), token);
+            // "Azure online voice" reads the summary online even when narration uses another engine.
+            var useAzure = settings.Get("summaryReadbackVoice", "narration") == "azure" && settings.HasAzureSpeechKey;
+            var mode = useAzure ? "azure" : settings.Get("ttsMode", "windows-core");
+            var configData = settings.Data.DeepClone().AsObject();
+            configData["ttsMode"] = mode;
+            await File.WriteAllTextAsync(config, configData.ToJsonString(Models.Json.Options), token);
             foreach (var sentence in Chunks(text))
             {
                 token.ThrowIfCancellationRequested();
                 var path = Path.Combine(folder, Guid.NewGuid() + ".wav");
                 MediaSource audioSource;
                 MediaPlaybackItem? coreItem = null;
-                if (settings.Get("ttsMode", "windows-core") is "windows-core" or "system")
+                if (mode is "windows-core" or "system")
                 {
                     using var synthesizer = new SpeechSynthesizer();
                     var voiceId = settings.Get("systemVoice");

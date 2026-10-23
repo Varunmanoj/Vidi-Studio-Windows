@@ -36,12 +36,13 @@ public sealed partial class SettingsDialog
 {
     private const string DefaultAzureVoice = SpeechService.DefaultAzureVoice;
     private const string DefaultAzureRegion = SpeechService.DefaultAzureRegion;
-    /// <summary>Picker IDs for online voices; the stored engine becomes "azure" with the bare voice name.</summary>
-    private const string OnlineVoicePrefix = "online:";
     private readonly StackPanel azureControls = new() { Spacing = 10 };
     private readonly StackPanel naturalControls = new() { Spacing = 8 };
-    private readonly PasswordBox azureKey = new() { Header = "Azure Speech key (optional)", PlaceholderText = "Paste your key to add online voices" };
+    private readonly StackPanel summaryControls = new() { Spacing = 8 };
+    private readonly PasswordBox azureKey = new() { Header = "Azure Speech key", PlaceholderText = "Stored in Windows Credential Manager" };
     private readonly TextBox azureRegion = new() { Header = "Azure region", PlaceholderText = DefaultAzureRegion };
+    private readonly ComboBox summaryVoice = new() { Header = "Summary read-aloud voice", HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly TextBlock summaryVoiceNote = new() { TextWrapping = TextWrapping.Wrap, Opacity = .75 };
     private bool voiceControlsBuilt;
     private string loadedAzureAccount = "";
 
@@ -50,26 +51,29 @@ public sealed partial class SettingsDialog
 
     private void BuildVoiceEngineControls()
     {
-        foreach (var element in new FrameworkElement[] { azureControls, naturalControls }) if (element.Parent is Panel parent) parent.Children.Remove(element);
-        azureControls.Children.Clear(); naturalControls.Children.Clear();
+        foreach (var element in new FrameworkElement[] { azureControls, naturalControls, summaryControls }) if (element.Parent is Panel parent) parent.Children.Remove(element);
+        azureControls.Children.Clear(); naturalControls.Children.Clear(); summaryControls.Children.Clear();
         azureKey.Password = DraftAzureKey;
         azureRegion.Text = SettingsStore.GetString(draft["azureSpeechRegion"], DefaultAzureRegion);
-        AutomationProperties.SetName(azureKey, "Azure Speech key, optional");
+        AutomationProperties.SetName(azureKey, "Azure Speech key");
         AutomationProperties.SetName(azureRegion, "Azure region");
         if (!voiceControlsBuilt)
         {
             voiceControlsBuilt = true;
-            azureKey.PasswordChanged += (_, _) => { draft[SettingsStore.AzureSpeechKey] = azureKey.Password.Trim(); UpdateSampleControls(); };
+            azureKey.PasswordChanged += (_, _) => { draft[SettingsStore.AzureSpeechKey] = azureKey.Password.Trim(); UpdateSampleControls(); UpdateSummaryVoiceOptions(); };
             azureRegion.TextChanged += (_, _) => draft["azureSpeechRegion"] = azureRegion.Text.Trim().ToLowerInvariant();
-            // Reload the list once the key or region is finished, so online voices appear or disappear.
+            // Reload Azure voices once the key or region is finished.
             azureKey.LostFocus += async (_, _) => { if (AzureAccount != loadedAzureAccount) await RefreshVoices(); };
             azureRegion.LostFocus += async (_, _) => { if (AzureAccount != loadedAzureAccount) await RefreshVoices(); };
+            summaryVoice.SelectionChanged += (_, _) =>
+            {
+                if (summaryVoice.SelectedItem is PlaybackOption option) draft["summaryReadbackVoice"] = option.Id;
+                UpdateSummaryVoiceNote();
+            };
         }
 
         naturalControls.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .75,
-            Text = "Natural voices sound more like a real person. The list shows two kinds:\n" +
-                   "• Downloaded to this PC: voices you added in Windows Settings for Narrator or Magnifier. They work without the internet, but Windows only shares them with other apps through a free voice bridge add-on, such as NaturalVoiceSAPIAdapter. Voices that need the add-on are shown but can't be picked yet.\n" +
-                   "• Online with your Azure key: every Microsoft natural voice, in every language. These need the internet, send the narration text to Microsoft Azure, and Azure may charge for use." });
+            Text = "Natural voices sound more like a real person. This list shows the voices downloaded to this PC in Windows Settings for Narrator or Magnifier. They work without the internet, but Windows only shares them with other apps through a free voice bridge add-on, such as NaturalVoiceSAPIAdapter. Voices that need the add-on are shown but can't be picked yet. For online voices in every language, choose Azure Voices." });
         var links = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         links.Children.Add(new HyperlinkButton { Content = "Download natural voices in Windows Settings", NavigateUri = new Uri("ms-settings:easeofaccess-narrator") });
         links.Children.Add(new HyperlinkButton { Content = "Get the voice bridge add-on", NavigateUri = new Uri("https://github.com/gexgd0419/NaturalVoiceSAPIAdapter") });
@@ -77,32 +81,49 @@ public sealed partial class SettingsDialog
         naturalControls.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .6, FontSize = 12,
             Text = "The voice bridge add-on is made by an independent developer, not by Microsoft or Vidi Studio." });
 
+        azureControls.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .75,
+            Text = "Azure Voices are Microsoft's natural online voices, such as Ava, Andrew, Jenny and Ryan, in every language. Paste your Azure Speech key and its region to use them. They need the internet, send the narration text to Microsoft Azure, and Azure may charge for use." });
         azureControls.Children.Add(azureKey);
         azureControls.Children.Add(azureRegion);
         azureControls.Children.Add(new HyperlinkButton { Content = "Get an Azure Speech key", NavigateUri = new Uri("https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices") });
+
+        var heading = new TextBlock { Text = "Summary read-aloud", FontSize = 17, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 0) };
+        AutomationProperties.SetHeadingLevel(heading, Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2);
+        summaryControls.Children.Add(heading);
+        summaryControls.Children.Add(summaryVoice);
+        summaryControls.Children.Add(summaryVoiceNote);
+        UpdateSummaryVoiceOptions();
     }
 
     private void UpdateVoiceEngineVisibility(string provider)
     {
-        var natural = provider == "windows-natural" ? Visibility.Visible : Visibility.Collapsed;
-        azureControls.Visibility = natural;
-        naturalControls.Visibility = natural;
+        naturalControls.Visibility = provider == "windows-natural" ? Visibility.Visible : Visibility.Collapsed;
+        azureControls.Visibility = provider == "azure" ? Visibility.Visible : Visibility.Collapsed;
+        UpdateSummaryVoiceNote();
     }
 
-    /// <summary>Stores a Natural Voices choice: downloaded voices speak locally, online voices use Azure.</summary>
-    private void ApplyNaturalVoice(string id)
+    /// <summary>The Azure summary voice is offered only while an Azure Speech key is entered.</summary>
+    private void UpdateSummaryVoiceOptions()
     {
-        draft[VoiceKey("windows-natural")] = id;
-        if (id.StartsWith(OnlineVoicePrefix, StringComparison.Ordinal))
-        {
-            draft["ttsMode"] = "azure";
-            draft["azureVoice"] = id[OnlineVoicePrefix.Length..];
-        }
-        else
-        {
-            draft["ttsMode"] = "windows-natural";
-            draft["systemVoice"] = id;
-        }
+        var options = new List<PlaybackOption> { new("narration", "Same as narration voice") };
+        if (DraftAzureKey.Length > 0) options.Add(new("azure", "Azure online voice"));
+        var saved = SettingsStore.GetString(draft["summaryReadbackVoice"], "narration");
+        if (summaryVoice.ItemsSource is List<PlaybackOption> current && current.Select(o => o.Id).SequenceEqual(options.Select(o => o.Id))
+            && (summaryVoice.SelectedItem as PlaybackOption)?.Id == saved) return;
+        summaryVoice.ItemsSource = options;
+        summaryVoice.SelectedItem = options.FirstOrDefault(o => o.Id == saved) ?? options[0];
+        UpdateSummaryVoiceNote();
+    }
+
+    private void UpdateSummaryVoiceNote()
+    {
+        var useAzure = (summaryVoice.SelectedItem as PlaybackOption)?.Id == "azure";
+        var azureVoice = NarrationVoiceFormatting.VoiceDisplayName(SettingsStore.GetString(draft["azureVoice"], DefaultAzureVoice));
+        summaryVoiceNote.Text = useAzure
+            ? $"The summary is read with {azureVoice}, the voice last chosen under Azure Voices. Each sentence is created online, so reading needs the internet and may start after a short pause."
+            : DraftAzureKey.Length == 0
+                ? "The summary is read with the narration voice. To read it with an online voice, choose Azure Voices as the speech engine and add your Azure Speech key."
+                : "The summary is read with the voice chosen for narration above.";
     }
 
     private static List<Voice> FilterWithGroupHeadings(IEnumerable<Voice> source, string text)
@@ -124,73 +145,29 @@ public sealed partial class SettingsDialog
     private async Task<(List<Voice> Voices, string Status)> NaturalVoicesAsync(CancellationToken cancellation)
     {
         var host = !string.IsNullOrWhiteSpace(sapiHost.Text) ? sapiHost.Text : model.Engine.SpeechHost;
-        List<Voice> downloaded;
-        string downloadedStatus;
-        try
-        {
-            downloaded = await SpeechService.VoicesAsync(host, "windows-natural", cancellation);
-            var ready = downloaded.Count(v => v.Available);
-            downloadedStatus = downloaded.Count == 0
-                ? "No downloaded natural voices were found. You can download them in Windows Settings > Accessibility > Narrator."
-                : ready == 0
-                    ? $"{downloaded.Count} downloaded voices found. Install the voice bridge add-on to use them, then select Refresh voices."
-                    : $"{ready} of {downloaded.Count} downloaded voices ready.";
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
-            model.Engine.Log(ex.ToString());
-            downloaded = new();
-            downloadedStatus = "Downloaded voices could not be checked.";
-        }
-
-        List<Voice> online = new();
-        string onlineStatus;
-        loadedAzureAccount = AzureAccount;
-        if (DraftAzureKey.Length == 0) onlineStatus = "Add an Azure Speech key to also see online voices.";
-        else
-        {
-            try
-            {
-                online = await AzureVoicesAsync(cancellation);
-                onlineStatus = $"{online.Count} online voices available.";
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex)
-            {
-                model.Engine.Log(ex.ToString());
-                onlineStatus = "Online voices could not be loaded. " + ex.Message;
-            }
-        }
-
-        // Keep a saved online choice while Azure is unreachable so it is not silently replaced.
-        var saved = SettingsStore.GetString(draft[VoiceKey("windows-natural")]);
-        if (DraftAzureKey.Length > 0 && saved.StartsWith(OnlineVoicePrefix, StringComparison.Ordinal) && !online.Any(v => v.Id == saved))
-            online.Insert(0, new Voice(saved, NarrationVoiceFormatting.VoiceDisplayName(saved[OnlineVoicePrefix.Length..]), "", "", true,
-                "Online voice. Needs the internet and uses your Azure key.", VoiceGroups.Online));
+        var downloaded = (await SpeechService.VoicesAsync(host, "windows-natural", cancellation)).Where(v => v.Group != VoiceGroups.BridgeOnline).ToList();
+        var ready = downloaded.Count(v => v.Available);
+        var status = downloaded.Count == 0
+            ? "No downloaded natural voices were found. You can download them in Windows Settings > Accessibility > Narrator, then select Refresh voices."
+            : ready == 0
+                ? $"{downloaded.Count} downloaded voices found. Install the voice bridge add-on to use them, then select Refresh voices."
+                : $"{ready} of {downloaded.Count} downloaded voices ready.";
         var voices = new List<Voice>();
-        var bridgeOnline = downloaded.Where(v => v.Group == VoiceGroups.BridgeOnline).ToList();
-        var local = downloaded.Except(bridgeOnline).ToList();
-        if (local.Count > 0)
+        if (downloaded.Count > 0)
         {
             voices.Add(Heading("downloaded", "Downloaded to this PC"));
-            voices.AddRange(local.Select(v => v with { Group = VoiceGroups.Downloaded }));
+            voices.AddRange(downloaded.Select(v => v with { Group = VoiceGroups.Downloaded }));
         }
-        if (online.Count > 0)
-        {
-            voices.Add(Heading("online", "Online with your Azure key"));
-            voices.AddRange(online);
-        }
-        if (bridgeOnline.Count > 0)
-        {
-            voices.Add(Heading("bridge-online", "Online through the voice bridge add-on"));
-            voices.AddRange(bridgeOnline);
-        }
-        return (voices, downloadedStatus + " " + onlineStatus);
+        return (voices, status);
     }
 
-    private async Task<List<Voice>> AzureVoicesAsync(CancellationToken cancellation)
+    private async Task<(List<Voice> Voices, string Status)> AzureVoicesAsync(CancellationToken cancellation)
     {
+        loadedAzureAccount = AzureAccount;
+        var saved = SettingsStore.GetString(draft["azureVoice"], DefaultAzureVoice).Trim();
+        var savedVoice = new Voice(saved, NarrationVoiceFormatting.VoiceDisplayName(saved), "", "");
+        if (DraftAzureKey.Length == 0)
+            return (new() { savedVoice }, "Enter your Azure Speech key and region to load Azure Voices.");
         Directory.CreateDirectory(SettingsStore.DirectoryPath);
         var config = Path.Combine(SettingsStore.DirectoryPath, Guid.NewGuid() + ".json");
         try
@@ -199,10 +176,13 @@ public sealed partial class SettingsDialog
             var events = await model.Engine.RunAsync(new[] { "list-azure-voices" }, cancellation: cancellation, configPath: config, azureSpeechKey: DraftAzureKey);
             var payload = events.LastOrDefault(e => e.Data.TryGetProperty("voices", out _))
                 ?? throw new InvalidOperationException("Azure returned no voices.");
-            return payload.Data.GetProperty("voices").EnumerateArray()
-                .Select(item => new Voice(OnlineVoicePrefix + Text(item, "id"), "Microsoft " + Text(item, "name"), Text(item, "language"), Text(item, "gender"),
-                    true, "Online voice. Needs the internet and uses your Azure key.", VoiceGroups.Online))
-                .Where(v => v.Id.Length > OnlineVoicePrefix.Length).ToList();
+            var voices = payload.Data.GetProperty("voices").EnumerateArray()
+                .Select(item => new Voice(Text(item, "id"), "Microsoft " + Text(item, "name"), Text(item, "language"), Text(item, "gender"),
+                    true, "Online voice. Needs the internet and uses your Azure key."))
+                .Where(v => v.Id.Length > 0).ToList();
+            // Keep the saved choice even if this region does not list it, so it is not silently replaced.
+            if (saved.Length > 0 && !voices.Any(v => string.Equals(v.Id, saved, StringComparison.OrdinalIgnoreCase))) voices.Insert(0, savedVoice);
+            return (voices, $"{voices.Count} Azure Voices available.");
         }
         finally { try { File.Delete(config); } catch (IOException) { } }
         static string Text(JsonElement item, string name) => item.TryGetProperty(name, out var value) ? value.GetString() ?? "" : "";

@@ -50,6 +50,17 @@ public sealed partial class SettingsDialog : Window
         mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "sapi5");
         await RefreshVoices();
         if (localSpeechControls.Visibility != Visibility.Visible) throw new InvalidOperationException("SAPI 5 must show local speech controls.");
+        mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "windows-natural");
+        await RefreshVoices();
+        if (naturalControls.Visibility != Visibility.Visible || sapiHost.Visibility != Visibility.Visible || localSpeechControls.Visibility != Visibility.Visible
+            || voices.Any(v => v.Id == "") || (voice.SelectedItem is Voice chosenNatural && !chosenNatural.Available))
+            throw new InvalidOperationException("Windows natural voices must list installed Narrator voices without selecting an unavailable voice.");
+        if (azureControls.Visibility != Visibility.Visible || (DraftAzureKey.Length == 0 && voices.Any(v => v.Group == VoiceGroups.Online)))
+            throw new InvalidOperationException("Natural Voices must offer the Azure key and list online voices only when a key is entered.");
+        mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "sapi5");
+        await RefreshVoices();
+        if (azureControls.Visibility != Visibility.Collapsed || naturalControls.Visibility != Visibility.Collapsed)
+            throw new InvalidOperationException("Natural voice controls must be hidden for SAPI 5.");
         mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "gemini");
         await RefreshVoices();
         await Task.Delay(100);
@@ -108,7 +119,7 @@ public sealed partial class SettingsDialog : Window
     private sealed record SpeechEngineOption(string Id, string Label) { public override string ToString() => Label; }
     private sealed record PlaybackOption(string Id, string Label) { public override string ToString() => Label; }
     private readonly ComboBox mode = new() { Header = "Speech engine", HorizontalAlignment = HorizontalAlignment.Stretch };
-    private readonly ComboBox voice = new() { Header = "Installed voice", HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly VoiceComboBox voice = new() { Header = "Installed voice", HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly TextBox search = new() { Header = "Filter voices" };
     private readonly TextBox sapiHost = new() { Header = "Optional SAPI host executable" };
     private readonly StackPanel localSpeechControls = new() { Spacing = 14 };
@@ -122,6 +133,8 @@ public sealed partial class SettingsDialog : Window
         // Seed the key box from Windows Credential Manager; it is never part of config.json.
         var savedApiKey = model.Settings.Get("apiKey");
         if (savedApiKey.Length > 0) draft["apiKey"] = savedApiKey;
+        var savedAzureKey = model.Settings.Get(SettingsStore.AzureSpeechKey);
+        if (savedAzureKey.Length > 0) draft[SettingsStore.AzureSpeechKey] = savedAzureKey;
         originalTheme = App.ActiveTheme ?? model.Settings.Get("theme", "system");
         Title = "Vidi Studio Settings";
         WindowAppearance.ApplyIcon(this);
@@ -258,9 +271,12 @@ public sealed partial class SettingsDialog : Window
     {
         // The Gemini key is stored in Windows Credential Manager, never in config.json.
         var apiKey = SettingsStore.GetString(draft["apiKey"]);
+        var azureSpeechKey = SettingsStore.GetString(draft[SettingsStore.AzureSpeechKey]);
         draft.Remove("apiKey");
+        draft.Remove(SettingsStore.AzureSpeechKey);
         foreach (var item in draft) model.Settings.Data[item.Key] = item.Value?.DeepClone();
         model.Settings.Set("apiKey", apiKey);
+        model.Settings.Set(SettingsStore.AzureSpeechKey, azureSpeechKey);
         model.Settings.Save(); saved = true; App.CommitTheme(model.Settings.Get("theme", "system")); Close();
     }
     private void ApplyWindowTheme(string theme)
@@ -355,7 +371,10 @@ public sealed partial class SettingsDialog : Window
     private void UpdateNarrationEngineOptions()
     {
         var provider = SettingsStore.GetString(draft["ttsMode"], "windows-core");
-        var options = new List<SpeechEngineOption> { new("windows-core", "Windows OneCore"), new("sapi5", "Windows SAPI 5"), new("gemini", "Gemini Voices") };
+        // Downloaded and online (Azure) natural voices share one picker, grouped by where they come from.
+        if (provider == "azure") provider = "windows-natural";
+        var options = new List<SpeechEngineOption> { new("windows-core", "Windows OneCore"), new("windows-natural", "Natural Voices"),
+            new("sapi5", "Windows SAPI 5"), new("gemini", "Gemini Voices") };
         mode.ItemsSource = options;
         mode.SelectedItem = options.FirstOrDefault(option => option.Id == provider) ?? options[0];
     }
@@ -363,10 +382,13 @@ public sealed partial class SettingsDialog : Window
     {
         foreach (var element in new FrameworkElement[] { mode, voice, search, sapiHost, localSpeechControls }) if (element.Parent is Panel parent) parent.Children.Remove(element);
         localSpeechControls.Children.Clear();
+        BuildVoiceEngineControls();
         UpdateNarrationEngineOptions();
         var initialProvider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
-        if (initialProvider is "windows-core" or "sapi5" && draft[VoiceKey(initialProvider)] == null)
-            draft[VoiceKey(initialProvider)] = SettingsStore.GetString(draft["systemVoice"]);
+        if (initialProvider is "windows-core" or "sapi5" or "windows-natural" && draft[VoiceKey(initialProvider)] == null)
+            draft[VoiceKey(initialProvider)] = SettingsStore.GetString(draft["ttsMode"]) == "azure"
+                ? OnlineVoicePrefix + SettingsStore.GetString(draft["azureVoice"], DefaultAzureVoice)
+                : SettingsStore.GetString(draft["systemVoice"]);
         sapiHost.Text = SettingsStore.GetString(draft["sapiHostPath"]);
         if (!narrationBuilt)
         {
@@ -375,7 +397,8 @@ public sealed partial class SettingsDialog : Window
             {
                 if (mode.SelectedItem is not SpeechEngineOption selected) return;
                 draft["ttsMode"] = selected.Id;
-                if (selected.Id != "gemini") draft["systemVoice"] = SettingsStore.GetString(draft[VoiceKey(selected.Id)]);
+                if (selected.Id == "windows-natural") ApplyNaturalVoice(SettingsStore.GetString(draft[VoiceKey(selected.Id)]));
+                else if (selected.Id != "gemini") draft["systemVoice"] = SettingsStore.GetString(draft[VoiceKey(selected.Id)]);
                 await RefreshVoices();
             };
             sapiHost.TextChanged += (_, _) => draft["sapiHostPath"] = sapiHost.Text;
@@ -383,15 +406,26 @@ public sealed partial class SettingsDialog : Window
             {
                 if (voice.SelectedItem is not Voice selected) return;
                 var provider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
+                if (!selected.Available)
+                {
+                    // Keyboard selection on a closed picker can still land on a group heading or disabled voice.
+                    if (selected.Group != VoiceGroups.Heading) status.Text = selected.Name + ": " + selected.Note;
+                    var savedId = SettingsStore.GetString(draft[VoiceKey(provider)]);
+                    voice.SelectedItem = (voice.ItemsSource as IEnumerable<Voice>)?.FirstOrDefault(v => v.Available && v.Id == savedId);
+                    return;
+                }
                 if (provider == "gemini") draft["geminiVoice"] = selected.Id;
+                else if (provider == "windows-natural") ApplyNaturalVoice(selected.Id);
                 else { draft[VoiceKey(provider)] = selected.Id; draft["systemVoice"] = selected.Id; }
+                UpdateSampleControls();
             };
             search.TextChanged += (_, _) => FilterVoices();
         }
-        panel.Children.Add(mode); panel.Children.Add(search); panel.Children.Add(voice); panel.Children.Add(sapiHost);
+        panel.Children.Add(mode); panel.Children.Add(naturalControls); panel.Children.Add(azureControls);
+        panel.Children.Add(search); panel.Children.Add(voice); panel.Children.Add(sapiHost);
         AddPlaybackChoice(panel);
         panel.Children.Add(new TextBlock { Text = "The selected engine generates saved narration audio; Gemini Voices stays selected in either playback mode.", TextWrapping = TextWrapping.Wrap });
-        var refresh = new Button { Content = "Refresh installed voices" }; refresh.Click += async (_, _) => await RefreshVoices(); localSpeechControls.Children.Add(refresh);
+        var refresh = new Button { Content = "Refresh voices" }; refresh.Click += async (_, _) => await RefreshVoices(); localSpeechControls.Children.Add(refresh);
         AddSpeechSlider(localSpeechControls, "Speech rate", "systemSpeechRate", 1, .5, 2);
         AddSpeechSlider(localSpeechControls, "Speech pitch", "systemSpeechPitch", 1, .5, 2);
         AddSpeechSlider(localSpeechControls, "Speech volume", "systemSpeechVolume", 1, 0, 1);
@@ -425,6 +459,7 @@ public sealed partial class SettingsDialog : Window
             };
             var provider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
             samplePlayButton.IsEnabled = sampleState != SampleState.Generating && (provider != "gemini" || HasDraftApiKey);
+            if (provider == "windows-natural" && SettingsStore.GetString(draft["ttsMode"]) == "azure" && DraftAzureKey.Length == 0) samplePlayButton.IsEnabled = false;
         }
         if (sampleStopButton != null) sampleStopButton.IsEnabled = sampleState != SampleState.Stopped;
     }
@@ -450,18 +485,21 @@ public sealed partial class SettingsDialog : Window
         UpdateSampleControls();
         if (report) status.Text = "Sample stopped.";
     }
-    private static string VoiceKey(string provider) => provider == "sapi5" ? "sapi5Voice" : "windowsCoreVoice";
+    private static string VoiceKey(string provider) => provider switch
+    {
+        "sapi5" => "sapi5Voice",
+        "windows-natural" => "windowsNaturalVoice",
+        _ => "windowsCoreVoice"
+    };
     private void FilterVoices()
     {
         var provider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
         var key = provider == "gemini" ? "geminiVoice" : VoiceKey(provider);
         var selected = SettingsStore.GetString(draft[key], provider == "gemini" ? "Kore" : "").Trim();
-        var filtered = provider == "gemini"
-            ? voices.ToList()
-            : voices.Where(v => v.ToString().Contains(search.Text, StringComparison.CurrentCultureIgnoreCase)).ToList();
+        var filtered = provider == "gemini" ? voices.ToList() : FilterWithGroupHeadings(voices, search.Text);
         voice.ItemsSource = filtered;
-        var chosen = filtered.FirstOrDefault(v => string.Equals(v.Id, selected, StringComparison.OrdinalIgnoreCase))
-            ?? (provider == "gemini" ? filtered.FirstOrDefault(v => v.Id == "Kore") ?? filtered.FirstOrDefault() : filtered.FirstOrDefault());
+        var chosen = filtered.FirstOrDefault(v => v.Available && string.Equals(v.Id, selected, StringComparison.OrdinalIgnoreCase))
+            ?? (provider == "gemini" ? filtered.FirstOrDefault(v => v.Id == "Kore") ?? filtered.FirstOrDefault() : filtered.FirstOrDefault(v => v.Available));
         voice.SelectedItem = chosen;
         if (provider == "gemini" && chosen != null) draft["geminiVoice"] = chosen.Id;
     }
@@ -473,10 +511,17 @@ public sealed partial class SettingsDialog : Window
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         voiceCancellation = cancellation;
         var provider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
-        voice.Header = provider == "gemini" ? "Gemini voice" : provider == "sapi5" ? "Windows SAPI 5 voice" : "Windows OneCore voice";
+        voice.Header = provider switch
+        {
+            "gemini" => "Gemini voice",
+            "sapi5" => "Windows SAPI 5 voice",
+            "windows-natural" => "Natural voice",
+            _ => "Windows OneCore voice"
+        };
         search.Visibility = provider == "gemini" ? Visibility.Collapsed : Visibility.Visible;
         localSpeechControls.Visibility = provider == "gemini" ? Visibility.Collapsed : Visibility.Visible;
-        sapiHost.Visibility = provider == "sapi5" ? Visibility.Visible : Visibility.Collapsed;
+        sapiHost.Visibility = provider is "sapi5" or "windows-natural" ? Visibility.Visible : Visibility.Collapsed;
+        UpdateVoiceEngineVisibility(provider);
         UpdateSampleControls();
         voice.ItemsSource = null;
         voices = new();
@@ -490,6 +535,18 @@ public sealed partial class SettingsDialog : Window
                     voices.Add(new Voice(savedGemini, savedGemini, "", ""));
                 FilterVoices();
                 status.Text = $"{voices.Count} Gemini voices available.";
+                return;
+            }
+            if (provider == "windows-natural")
+            {
+                var natural = await NaturalVoicesAsync(cancellation.Token);
+                if (closed || request != voiceRequest) return;
+                voices = natural.Voices;
+                var savedNatural = SettingsStore.GetString(draft[VoiceKey(provider)]);
+                if (savedNatural.Length > 0 && !voices.Any(v => v.Available && v.Id == savedNatural)) draft[VoiceKey(provider)] = "";
+                FilterVoices();
+                if (voice.SelectedItem == null) draft["systemVoice"] = "";
+                status.Text = natural.Status;
                 return;
             }
             List<Voice> discovered;
@@ -518,9 +575,11 @@ public sealed partial class SettingsDialog : Window
             model.Engine.Log(ex.ToString());
             if (!closed && request == voiceRequest)
             {
-                voices = new() { new Voice("", "System default", "", "") };
+                voices = provider == "windows-natural" ? new() : new() { new Voice("", "System default", "", "") };
                 FilterVoices();
-                status.Text = "Voice discovery failed. You can still try the system default voice. " + ex.Message;
+                status.Text = provider == "windows-natural"
+                    ? "Voices could not be loaded. " + ex.Message
+                    : "Voice discovery failed. You can still try the system default voice. " + ex.Message;
             }
         }
         finally { if (ReferenceEquals(voiceCancellation, cancellation)) voiceCancellation = null; }
@@ -540,12 +599,13 @@ public sealed partial class SettingsDialog : Window
         {
             status.Text = "Creating voice sample…";
             var provider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
+            var onlineVoice = provider == "windows-natural" && SettingsStore.GetString(draft["ttsMode"]) == "azure";
             if (provider == "windows-core")
             {
                 using var synthesizer = new SpeechSynthesizer();
                 var voiceId = SettingsStore.GetString(draft["systemVoice"]);
                 if (voiceId.Length > 0) synthesizer.Voice = SpeechSynthesizer.AllVoices.FirstOrDefault(v => v.Id == voiceId)
-                    ?? throw new InvalidOperationException("The selected Windows OneCore voice is unavailable. Refresh installed voices.");
+                    ?? throw new InvalidOperationException("The selected Windows OneCore voice is unavailable. Select Refresh voices.");
                 synthesizer.Options.SpeakingRate = Math.Clamp(SettingsStore.GetDouble(draft["systemSpeechRate"], 1), .5, 2);
                 synthesizer.Options.AudioPitch = Math.Clamp(SettingsStore.GetDouble(draft["systemSpeechPitch"], 1), .5, 2);
                 synthesizer.Options.AudioVolume = Math.Clamp(SettingsStore.GetDouble(draft["systemSpeechVolume"], 1), 0, 1);
@@ -555,21 +615,21 @@ public sealed partial class SettingsDialog : Window
                 await input.CopyToAsync(output, cancellation.Token);
                 samplePlayer.Volume = 1;
             }
-            else if (provider == "sapi5")
+            else if (provider is "sapi5" or "windows-natural" && !onlineVoice)
             {
                 var host = !string.IsNullOrWhiteSpace(sapiHost.Text) ? sapiHost.Text : model.Engine.SpeechHost;
-                await SpeechService.SynthesizeAsync(host, "sapi5", SettingsStore.GetString(draft["systemVoice"]), text,
+                await SpeechService.SynthesizeAsync(host, provider, SettingsStore.GetString(draft["systemVoice"]), text,
                     audio, SettingsStore.GetDouble(draft["systemSpeechRate"], 1), cancellation.Token);
                 samplePlayer.Volume = Math.Clamp(SettingsStore.GetDouble(draft["systemSpeechVolume"], 1), 0, 1);
             }
             else
             {
-                var previewConfig = draft.DeepClone().AsObject();
+                var previewConfig = PreviewConfig();
                 var enteredKey = SettingsStore.GetString(draft["apiKey"]).Trim();
                 if (!string.IsNullOrEmpty(enteredKey)) previewConfig["apiKey"] = enteredKey;
                 await File.WriteAllTextAsync(config, previewConfig.ToJsonString(Models.Json.Options), cancellation.Token);
                 await model.Engine.RunAsync(new[] { "preview-tts", "--text", text, "--output", audio }, cancellation: cancellation.Token, configPath: config,
-                    apiKey: enteredKey);
+                    apiKey: enteredKey, azureSpeechKey: DraftAzureKey);
                 samplePlayer.Volume = 1;
             }
             if (closed || cancellation.IsCancellationRequested || !ReferenceEquals(sampleCancellation, cancellation)) return;

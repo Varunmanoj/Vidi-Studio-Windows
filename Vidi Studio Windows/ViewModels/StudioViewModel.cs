@@ -202,6 +202,11 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             var gv = Settings.Get("geminiVoice", "Kore").Trim();
             return string.IsNullOrEmpty(gv) ? "Kore" : gv;
         }
+        if (engine == "azure")
+        {
+            var av = Settings.Get("azureVoice", SpeechService.DefaultAzureVoice).Trim();
+            return string.IsNullOrEmpty(av) ? SpeechService.DefaultAzureVoice : av;
+        }
         var sv = Settings.Get("systemVoice", "").Trim();
         return string.IsNullOrEmpty(sv) ? "System default" : sv;
     }

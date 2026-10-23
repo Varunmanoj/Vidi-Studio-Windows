@@ -8,13 +8,29 @@ using System.Threading.Tasks;
 
 namespace Vidi_Studio_Windows.Services;
 
-public sealed record Voice(string Id, string Name, string Language, string Gender)
+public sealed record Voice(string Id, string Name, string Language, string Gender, bool Available = true, string Note = "", string Group = "")
 {
-    public override string ToString() => string.IsNullOrWhiteSpace(Language) ? Name : string.IsNullOrWhiteSpace(Gender) ? $"{Name} — {Language}" : $"{Name} — {Language} ({Gender})";
+    public override string ToString()
+    {
+        if (Group == VoiceGroups.Heading) return Name;
+        var label = string.IsNullOrWhiteSpace(Language) ? Name : string.IsNullOrWhiteSpace(Gender) ? $"{Name} — {Language}" : $"{Name} — {Language} ({Gender})";
+        return Available ? label : label + " — needs the voice bridge add-on";
+    }
+}
+
+/// <summary>Where a natural voice comes from, shown as headings in the voice picker.</summary>
+public static class VoiceGroups
+{
+    public const string Heading = "heading";
+    public const string Downloaded = "downloaded";
+    public const string Online = "online";
+    public const string BridgeOnline = "bridge-online";
 }
 
 public sealed class SpeechService
 {
+    public const string DefaultAzureVoice = "en-US-AvaMultilingualNeural";
+    public const string DefaultAzureRegion = "eastus";
     public static async Task SynthesizeAsync(string host, string engine, string voice, string text, string output, double rate, CancellationToken cancellation)
     {
         await RequestAsync(host, new { command = "synthesize", engine, voice, text, output, rate }, cancellation);

@@ -98,8 +98,15 @@ public sealed class SettingsStore
     /// The Gemini API key is owned by Windows Credential Manager, never config.json, so reads
     /// and writes for "apiKey" are routed to the OS credential store.
     /// </summary>
-    public string Get(string key, string fallback = "") =>
-        key == "apiKey" ? CredentialStore.Read() ?? fallback : GetString(Data[key], fallback);
+    public string Get(string key, string fallback = "") => key switch
+    {
+        "apiKey" => CredentialStore.Read() ?? fallback,
+        AzureSpeechKey => CredentialStore.AzureSpeech.Read() ?? fallback,
+        _ => GetString(Data[key], fallback)
+    };
+    /// <summary>The Azure Speech key is also owned by Windows Credential Manager.</summary>
+    public const string AzureSpeechKey = "azureSpeechKey";
+    public bool HasAzureSpeechKey => !string.IsNullOrWhiteSpace(Get(AzureSpeechKey));
     public bool GetBool(string key, bool fallback = false) => GetBool(Data[key], fallback);
     public void Set(string key, string value)
     {
@@ -107,6 +114,12 @@ public sealed class SettingsStore
         {
             CredentialStore.Write(value);
             Data.Remove("apiKey");
+            return;
+        }
+        if (key == AzureSpeechKey)
+        {
+            CredentialStore.AzureSpeech.Write(value);
+            Data.Remove(AzureSpeechKey);
             return;
         }
         Data[key] = value;
@@ -126,6 +139,7 @@ public sealed class SettingsStore
         NormalizeNarrationPlayback();
         // The Gemini key lives only in Windows Credential Manager; never persist it here.
         Data.Remove("apiKey");
+        Data.Remove(AzureSpeechKey);
         // These jobs now share the base selection for local and YouTube projects.
         if (Data["models"] is JsonObject models)
             foreach (var stage in new[] { "summary", "audio_descriptions", "screen_text", "text_rewrite", "tts_audio" })

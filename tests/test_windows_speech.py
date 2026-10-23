@@ -27,6 +27,28 @@ class WindowsSpeechRouting(unittest.TestCase):
             self.assertEqual(payload['engine'], 'sapi5')
             self.assertEqual(payload['voice'], 'token')
 
+    def test_natural_voices_use_the_sapi_host_override(self):
+        with tempfile.TemporaryDirectory() as folder:
+            host = Path(folder) / 'speech-x64.exe'
+            host.touch()
+            with patch.object(windows_speech.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout='[]')) as run:
+                windows_speech.request({'ttsMode': 'windows-natural', 'sapiHostPath': str(host),
+                                        'systemVoice': r'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\TokenEnums\NaturalVoiceEnumerator\MicrosoftWindows.Voice.en-US.Ava.1'},
+                                       'voices')
+            self.assertEqual(run.call_args.args[0], [str(host)])
+            payload = json.loads(run.call_args.kwargs['input'])
+            self.assertEqual(payload['engine'], 'windows-natural')
+            self.assertTrue(payload['voice'].endswith('MicrosoftWindows.Voice.en-US.Ava.1'))
+
+    def test_unknown_engine_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'Choose Windows OneCore'):
+            windows_speech.request({'ttsMode': 'azure'}, 'voices')
+
+    def test_natural_and_online_voices_have_their_own_narration_signature(self):
+        signatures = {engine.narration_signature({'ttsMode': mode, 'systemVoice': 'token'}) for mode in ('windows-natural', 'sapi5', 'azure')}
+        self.assertEqual(len(signatures), 3)
+        self.assertEqual(engine.narration_engine({'ttsMode': 'windows-natural'}), 'windows-natural')
+
     def test_missing_host_reports_setup_error(self):
         with patch.dict(os.environ, {'VIDISTUDIO_SPEECH_HOST': ''}):
             with self.assertRaisesRegex(ValueError, 'host is missing'):

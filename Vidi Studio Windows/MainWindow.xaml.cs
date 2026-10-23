@@ -1100,6 +1100,11 @@ public sealed partial class MainWindow : Window
             await ShowSettingsSectionAsync(2);
             return;
         }
+        if (Model.CurrentNarrationEngine() == "azure" && !Model.Settings.HasAzureSpeechKey)
+        {
+            await ShowSettingsSectionAsync(1);
+            return;
+        }
         var hadPriorNarration = Model.Project.Cues.Any(c => c.HasAudioFile);
         if (flags.Contains("--regenerate-all"))
         {

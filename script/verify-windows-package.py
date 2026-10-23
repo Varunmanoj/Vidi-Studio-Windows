@@ -30,7 +30,7 @@ with zipfile.ZipFile(args.package) as package:
         return struct.unpack_from("<H", data, offset+4)[0]
     assert machine(app.attrib["Executable"]) == expected, "Wrong UI architecture"
     assert machine("speech/VidiStudio.SpeechHost.exe") == expected, "Wrong speech helper architecture"
-    for file in ["speech/VidiStudio.SpeechHost.runtimeconfig.json", "engine/vidistudio_engine.py", "engine/windows_speech.py", "engine/mov_accessibility.py", "engine/youtube_audio.py", "engine/ai-defaults.json", "Assets/youtube.html"]:
+    for file in ["speech/VidiStudio.SpeechHost.runtimeconfig.json", "engine/vidistudio_engine.py", "engine/windows_speech.py", "engine/azure_speech.py", "engine/mov_accessibility.py", "engine/youtube_audio.py", "engine/ai-defaults.json", "Assets/youtube.html"]:
         read(file)
     if "engine-bin/vidistudio-engine.exe" in names:
         engine_machine = machine("engine-bin/vidistudio-engine.exe")

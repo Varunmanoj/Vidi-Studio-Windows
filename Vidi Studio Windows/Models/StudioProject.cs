@@ -298,14 +298,32 @@ public static class NarrationVoiceFormatting
         "system" => "Apple Voices",
         "windows-core" => "Windows OneCore",
         "sapi5" => "Windows SAPI 5",
+        "windows-natural" => "Downloaded Natural Voices",
+        "azure" => "Azure Online Voices",
         _ => "Windows OneCore"
     };
+
+    private static readonly System.Text.RegularExpressions.Regex NaturalPackage =
+        new(@"MicrosoftWindows\.Voice\.(?<locale>[A-Za-z]{2,3}-[A-Za-z0-9]{2,8})\.(?<speaker>[A-Za-z]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private static readonly System.Text.RegularExpressions.Regex AzureVoice =
+        new(@"^(?<locale>[a-z]{2,3}-[A-Za-z0-9]{2,8}(-[A-Za-z0-9]+)?)-(?<name>[A-Z][A-Za-z]+?)Neural$");
 
     public static string VoiceDisplayName(string? voice)
     {
         var trimmed = (voice ?? "").Trim();
         if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("default:", StringComparison.OrdinalIgnoreCase))
             return "System default";
+        // Bridged Narrator voices are identified by their voice package name.
+        if (NaturalPackage.Match(trimmed) is { Success: true } natural)
+        {
+            var speaker = natural.Groups["speaker"].Value;
+            var hd = speaker.Length > 2 && speaker.EndsWith("HD", StringComparison.Ordinal);
+            return $"Microsoft {(hd ? speaker[..^2] : speaker)} (Natural{(hd ? " HD" : "")}) - {natural.Groups["locale"].Value}";
+        }
+        // Azure voices are stored by short name, for example en-US-AvaMultilingualNeural.
+        if (AzureVoice.Match(trimmed) is { Success: true } azure)
+            return $"Microsoft {System.Text.RegularExpressions.Regex.Replace(azure.Groups["name"].Value, "(?<=[a-z])(?=[A-Z])", " ")} - {azure.Groups["locale"].Value}";
         if (trimmed.Contains('\\'))
             return trimmed.Split('\\').Last();
         return trimmed;

@@ -5,27 +5,47 @@ using System.Text;
 namespace Vidi_Studio_Windows.Services;
 
 /// <summary>
-/// Stores the Gemini API key in Windows Credential Manager as a generic credential owned by
-/// the current user. It is therefore protected by Windows, is not written to config.json, and
-/// survives app updates and reinstalls because it is not tied to the installed app package.
+/// Stores API keys in Windows Credential Manager as generic credentials owned by the current
+/// user. They are therefore protected by Windows, are not written to config.json, and survive
+/// app updates and reinstalls because they are not tied to the installed app package.
 /// </summary>
 internal static class CredentialStore
 {
-    // A stable target name so every version addresses the same credential across updates.
-    private const string TargetName = "VidiStudio/GeminiApiKey";
-    private const string UserName = "Gemini API key";
+    private static readonly CredentialSlot Gemini = new("VidiStudio/GeminiApiKey", "Gemini API key");
+    /// <summary>The Azure AI Speech subscription key used by Azure online voices.</summary>
+    public static readonly CredentialSlot AzureSpeech = new("VidiStudio/AzureSpeechKey", "Azure Speech key");
+
+    /// <summary>Returns the stored Gemini API key, or <c>null</c> when none is present.</summary>
+    public static string? Read() => Gemini.Read();
+
+    /// <summary>True when a non-empty Gemini key is available.</summary>
+    public static bool ContainsValue() => Gemini.ContainsValue();
+
+    /// <summary>Stores (or clears, for an empty value) the Gemini API key. Returns true on success.</summary>
+    public static bool Write(string value) => Gemini.Write(value);
+
+    /// <summary>Removes the stored Gemini API key.</summary>
+    public static void Delete() => Gemini.Delete();
+}
+
+internal sealed class CredentialSlot
+{
     private const int CredTypeGeneric = 1;
     private const int CredPersistLocalMachine = 2;
     private const int ErrorNotFound = 1168;
 
-    private static readonly object Gate = new();
-    private static bool loaded;
-    private static string? cached;
+    // Stable target names so every version addresses the same credential across updates.
+    private readonly string targetName;
+    private readonly string userName;
+    private readonly object gate = new();
+    private bool loaded;
+    private string? cached;
 
-    /// <summary>Returns the stored API key, or <c>null</c> when none is present.</summary>
-    public static string? Read()
+    public CredentialSlot(string targetName, string userName) { this.targetName = targetName; this.userName = userName; }
+
+    public string? Read()
     {
-        lock (Gate)
+        lock (gate)
         {
             if (!loaded)
             {
@@ -36,15 +56,13 @@ internal static class CredentialStore
         }
     }
 
-    /// <summary>True when a non-empty key is available.</summary>
-    public static bool ContainsValue() => !string.IsNullOrWhiteSpace(Read());
+    public bool ContainsValue() => !string.IsNullOrWhiteSpace(Read());
 
-    /// <summary>Stores (or clears, for an empty value) the API key. Returns true on success.</summary>
-    public static bool Write(string value)
+    public bool Write(string value)
     {
         var normalized = (value ?? string.Empty).Trim();
         var desired = normalized.Length == 0 ? null : normalized;
-        lock (Gate)
+        lock (gate)
         {
             if (loaded && cached == desired) return true;
             if (normalized.Length == 0)
@@ -61,10 +79,9 @@ internal static class CredentialStore
         }
     }
 
-    /// <summary>Removes the stored API key.</summary>
-    public static void Delete()
+    public void Delete()
     {
-        lock (Gate)
+        lock (gate)
         {
             DeleteFromStore();
             cached = null;
@@ -72,9 +89,9 @@ internal static class CredentialStore
         }
     }
 
-    private static string? ReadFromStore()
+    private string? ReadFromStore()
     {
-        if (!CredRead(TargetName, CredTypeGeneric, 0, out var pointer))
+        if (!CredRead(targetName, CredTypeGeneric, 0, out var pointer))
             return null;
         try
         {
@@ -88,7 +105,7 @@ internal static class CredentialStore
         }
     }
 
-    private static bool WriteToStore(string value)
+    private bool WriteToStore(string value)
     {
         var bytes = Encoding.Unicode.GetBytes(value);
         var blob = Marshal.AllocHGlobal(Math.Max(bytes.Length, 1));
@@ -98,11 +115,11 @@ internal static class CredentialStore
             var credential = new CREDENTIAL
             {
                 Type = CredTypeGeneric,
-                TargetName = TargetName,
+                TargetName = targetName,
                 CredentialBlob = blob,
                 CredentialBlobSize = bytes.Length,
                 Persist = CredPersistLocalMachine,
-                UserName = UserName,
+                UserName = userName,
             };
             return CredWrite(ref credential, 0);
         }
@@ -112,9 +129,9 @@ internal static class CredentialStore
         }
     }
 
-    private static bool DeleteFromStore()
+    private bool DeleteFromStore()
     {
-        if (CredDelete(TargetName, CredTypeGeneric, 0)) return true;
+        if (CredDelete(targetName, CredTypeGeneric, 0)) return true;
         return Marshal.GetLastWin32Error() == ErrorNotFound;
     }
 

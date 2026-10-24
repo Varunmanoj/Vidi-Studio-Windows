@@ -34,7 +34,6 @@ public sealed partial class SettingsDialog
     private readonly StackPanel piperControls = new() { Spacing = 10 };
     private readonly TextBlock piperStatus = new() { TextWrapping = TextWrapping.Wrap, Opacity = .75 };
     private readonly StackPanel summaryControls = new() { Spacing = 8 };
-    private bool voiceControlsBuilt;
 
     private void BuildVoiceEngineControls()
     {

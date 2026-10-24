@@ -173,6 +173,15 @@ class TestFileExplorerActivation(unittest.TestCase):
         self.assertIn('Item("Rewrite description to fit", Rewrite_Click, Model.HasApiKey && !Model.IsApiKeyInvalid)', source)
         self.assertIn('Item("Re-Analyze this segment", async (_, _) => await EditSegment(segment), Model.HasApiKey && !Model.IsApiKeyInvalid)', source)
 
+    def test_startup_logs_launch_milestones_for_silent_failures(self):
+        source = self.app_xaml_cs_path.read_text(encoding="utf-8")
+        self.assertIn("LogStartup", source)
+        self.assertIn("App constructed", source)
+        self.assertIn("OnLaunched", source)
+        self.assertIn("Main window created.", source)
+        self.assertIn("Startup failed: ", source)
+        self.assertIn("diagnostics.log", (self.root / "Vidi Studio Windows" / "Services" / "EngineClient.cs").read_text(encoding="utf-8"))
+
     def test_macos_share_extension_and_content_view_allow_project_creation_without_api_key(self):
         if self.mac_share_vc_path.is_file():
             share_src = self.mac_share_vc_path.read_text(encoding="utf-8")

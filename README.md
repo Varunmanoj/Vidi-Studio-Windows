@@ -86,7 +86,7 @@ Legacy third-party SAPI voices may be registered only for x86 or x64. Run setup 
 **Piper Voices** is the built-in neural speech engine for natural-sounding offline narration. The Piper runtime (`piper.exe` and its dependencies) ships inside Vidi Studio, so there is nothing to install separately. The much larger voice models are optional and downloaded only when you choose them.
 
 1. In **Settings → Narration**, choose **Piper Voices**, then choose **Download or remove voices**.
-2. Search the public Piper voice collection by name, language, or quality. Each entry shows its size and quality; voices range from small low-quality models to larger high-quality models. Some catalog voices contain multiple speakers; Vidi Studio currently uses the model's first speaker.
+2. Search or filter the public Piper voice collection by language and quality, then sort by language, name, quality, or size. Each entry shows the voice name, quality, size, and the language and dialect in plain English, such as **English (United States)**. Use **Play sample** to hear a short published sample before downloading; samples need the internet, while a downloaded voice works offline. Voices range from small extra-low-quality models to larger high-quality models. Some catalog voices contain multiple speakers; Vidi Studio currently uses the model's first speaker.
 3. Choose **Download**. Vidi Studio verifies the published size and MD5 checksum, then makes the voice available in the voice list. Use **Delete** in the same dialog to remove a downloaded voice.
 4. Select a Piper voice and play a sample. Rate and volume apply to samples and live playback; pitch is applied when generating saved narration.
 

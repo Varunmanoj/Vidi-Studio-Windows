@@ -48,7 +48,7 @@ public sealed partial class SettingsDialog
         manage.Click += async (_, _) =>
         {
             var dialog = new PiperVoicesDialog();
-            await WindowedDialog.ShowAsync(dialog, this, 780, 640);
+            await WindowedDialog.ShowAsync(dialog, this, 780, 740);
             await RefreshVoices();
         };
         piperControls.Children.Add(manage);

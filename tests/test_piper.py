@@ -33,6 +33,22 @@ class PiperCatalog(unittest.TestCase):
                 self.assertTrue(model.endswith('/' + voice_id + '.onnx'))
                 self.assertEqual(voice_id.split('-')[0], voice['language']['code'])
 
+    def test_languages_use_plain_english_names_and_dialects(self):
+        for voice_id, voice in self.voices.items():
+            with self.subTest(voice=voice_id):
+                language = voice['language']
+                self.assertTrue(language.get('family'))
+                self.assertTrue(language.get('name_english'))
+                self.assertTrue(language.get('country_english'))
+
+    def test_every_catalog_voice_has_a_published_sample_beside_its_model(self):
+        for voice_id, voice in self.voices.items():
+            with self.subTest(voice=voice_id):
+                model = next(name for name in voice['files'] if name.endswith('.onnx'))
+                sample = model.rsplit('/', 1)[0] + '/samples/speaker_0.mp3'
+                self.assertTrue(sample.endswith('/samples/speaker_0.mp3'))
+                self.assertEqual(sample.split('/')[-2], 'samples')
+
 
 class PiperPackaging(unittest.TestCase):
     def test_build_fetches_the_verified_official_runtime(self):
@@ -63,6 +79,51 @@ class PiperPackaging(unittest.TestCase):
         self.assertIn('"Assets/piper-voices.json"', verifier)
         self.assertIn('== 0x8664', verifier)
         self.assertNotIn('azure_speech.py', verifier)
+
+
+class PiperVoiceBrowser(unittest.TestCase):
+    def test_catalog_service_reads_plain_english_language_names(self):
+        service = (ROOT / 'Vidi Studio Windows' / 'Services' / 'PiperService.cs').read_text(encoding='utf-8')
+        self.assertIn('"family"', service)
+        self.assertIn('"name_english"', service)
+        self.assertIn('"country_english"', service)
+        self.assertIn('public string LanguageLabel', service)
+        self.assertIn('public string QualityLabel', service)
+        self.assertIn('public static string QualityLabelFor', service)
+        self.assertIn('public static int QualityRank', service)
+        # The visible label is "English (United States)", never just "en-US".
+        self.assertIn('? LanguageName', service)
+        self.assertIn(': $"{LanguageName} ({Country})"', service)
+        self.assertIn('public string DisplayName => $"{Name} ({QualityLabel}) — {LanguageLabel}"', service)
+        self.assertIn('public string SamplePath', service)
+        self.assertIn('samples/speaker_0.mp3', service)
+
+    def test_dialog_filters_sorts_and_previews_hosted_samples(self):
+        dialog = (ROOT / 'Vidi Studio Windows' / 'Views' / 'PiperVoicesDialog.cs').read_text(encoding='utf-8')
+        self.assertIn('Header = "Language"', dialog)
+        self.assertIn('Header = "Quality"', dialog)
+        self.assertIn('Header = "Sort by"', dialog)
+        self.assertIn('new("", "All languages")', dialog)
+        self.assertIn('new("", "All qualities")', dialog)
+        self.assertIn('new("language", "Language (A–Z)")', dialog)
+        self.assertIn('new("name", "Voice name (A–Z)")', dialog)
+        self.assertIn('new("quality", "Quality (high to low)")', dialog)
+        self.assertIn('new("size", "Size (smallest first)")', dialog)
+        self.assertIn('voice.LanguageFamily.Equals(language', dialog)
+        self.assertIn('voice.Quality.Equals(quality', dialog)
+        self.assertIn('ToggleSampleAsync', dialog)
+        self.assertIn('PiperService.GetSampleAsync', dialog)
+        self.assertIn('"Play sample"', dialog)
+        self.assertIn('"Stop sample"', dialog)
+        self.assertIn('MediaPlayerAudioCategory.Speech', dialog)
+        self.assertIn('The preview needs the internet', dialog)
+
+    def test_sample_download_is_cached_and_removed_with_the_voice(self):
+        service = (ROOT / 'Vidi Studio Windows' / 'Services' / 'PiperService.cs').read_text(encoding='utf-8')
+        self.assertIn('public static async Task<string> GetSampleAsync', service)
+        self.assertIn('private static string SampleCachePath', service)
+        self.assertIn('TryDelete(SampleCachePath(id))', service)
+        self.assertIn('"samples"', service)
 
 
 class AzureRemoval(unittest.TestCase):

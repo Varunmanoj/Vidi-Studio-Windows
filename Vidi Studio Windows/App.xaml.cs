@@ -40,6 +40,12 @@ public partial class App : Application
             if (!string.IsNullOrEmpty(report)) System.IO.File.WriteAllText(report, e.Exception.ToString());
 #endif
         };
+        // Startup milestones make a silent launch failure diagnosable from diagnostics.log.
+        LogStartup($"App constructed · version {typeof(App).Assembly.GetName().Version}");
+    }
+    private static void LogStartup(string message)
+    {
+        try { new Services.EngineClient(new Services.SettingsStore()).Log(message); } catch { }
     }
     public static MainWindow OpenWindow(string? folder = null)
     {
@@ -52,6 +58,7 @@ public partial class App : Application
     {
         var activation = AppInstance.GetCurrent().GetActivatedEventArgs();
         var launchArguments = activation.Data is Windows.ApplicationModel.Activation.LaunchActivatedEventArgs launch ? launch.Arguments : args.Arguments;
+        LogStartup($"OnLaunched · kind {activation.Kind} · args {Truncate(launchArguments, 200)}");
 
 #if DEBUG
         const string smokePrefix = "--vidi-smoke ";
@@ -82,6 +89,7 @@ public partial class App : Application
             mainInstance = AppInstance.FindOrRegisterForKey("VidiStudioMainInstance");
             if (!mainInstance.IsCurrent)
             {
+                LogStartup("Another Vidi Studio instance owns the single-instance key; redirecting activation and exiting this process.");
                 await mainInstance.RedirectActivationToAsync(activation);
                 System.Diagnostics.Process.GetCurrentProcess().Kill();
                 return;
@@ -89,24 +97,37 @@ public partial class App : Application
         }
         catch { }
 
-        var window = OpenWindow();
-        try { Services.ShellIntegration.RegisterContextMenu(); } catch { }
-
-        if (mainInstance != null)
+        try
         {
-            mainInstance.Activated += (sender, redirectedArgs) =>
-            {
-                window.DispatcherQueue.TryEnqueue(async () =>
-                {
-                    window.Activate();
-                    window.BringToForeground();
-                    await HandleIncomingActivationAsync(window, redirectedArgs, null);
-                });
-            };
-        }
+            var window = OpenWindow();
+            LogStartup("Main window created.");
+            try { Services.ShellIntegration.RegisterContextMenu(); } catch { }
 
-        await HandleIncomingActivationAsync(window, activation, launchArguments);
+            if (mainInstance != null)
+            {
+                mainInstance.Activated += (sender, redirectedArgs) =>
+                {
+                    window.DispatcherQueue.TryEnqueue(async () =>
+                    {
+                        window.Activate();
+                        window.BringToForeground();
+                        await HandleIncomingActivationAsync(window, redirectedArgs, null);
+                    });
+                };
+            }
+
+            await HandleIncomingActivationAsync(window, activation, launchArguments);
+            LogStartup("Launch completed.");
+        }
+        catch (Exception ex)
+        {
+            LogStartup("Startup failed: " + ex);
+            throw;
+        }
     }
+
+    private static string Truncate(string? value, int length) =>
+        string.IsNullOrEmpty(value) ? "" : value.Length <= length ? value : value[..length] + "…";
 
     private static async Task HandleIncomingActivationAsync(MainWindow window, AppActivationArguments activation, string? rawLaunchArgs)
     {

@@ -16,6 +16,9 @@ public sealed record PiperCatalogVoice(
     string Id,
     string Name,
     string Language,
+    string LanguageFamily,
+    string LanguageName,
+    string Country,
     string Quality,
     long ModelSize,
     string ModelPath,
@@ -25,15 +28,43 @@ public sealed record PiperCatalogVoice(
     string ConfigMd5,
     int Speakers)
 {
-    public string DisplayName => string.IsNullOrWhiteSpace(Quality)
-        ? $"{Name} — {Language}"
-        : $"{Name} ({Quality}) — {Language}";
+    /// <summary>Human-readable language and dialect, for example "English (United States)".</summary>
+    public string LanguageLabel => string.IsNullOrWhiteSpace(Country)
+        ? LanguageName
+        : $"{LanguageName} ({Country})";
+    public string QualityLabel => QualityLabelFor(Quality);
+    public string DisplayName => $"{Name} ({QualityLabel}) — {LanguageLabel}";
     public string SizeLabel => ModelSize >= 1_000_000
         ? $"{ModelSize / 1_000_000.0:0.#} MB"
         : $"{Math.Max(1, ModelSize / 1_000)} KB";
     public string Note => Speakers > 1
-        ? $"{Quality} quality · {SizeLabel} · {Speakers} speakers"
-        : $"{Quality} quality · {SizeLabel}";
+        ? $"{QualityLabel} quality · {SizeLabel} · {Speakers} speakers"
+        : $"{QualityLabel} quality · {SizeLabel}";
+    /// <summary>The public short sample that ships beside the model in the voice collection.</summary>
+    public string SamplePath
+    {
+        get
+        {
+            var slash = ModelPath.LastIndexOf('/');
+            return slash < 0 ? ModelPath + "/samples/speaker_0.mp3" : ModelPath[..(slash + 1)] + "samples/speaker_0.mp3";
+        }
+    }
+    public static string QualityLabelFor(string quality) => quality.ToLowerInvariant() switch
+    {
+        "x_low" => "Extra low",
+        "low" => "Low",
+        "medium" => "Medium",
+        "high" => "High",
+        _ => string.IsNullOrWhiteSpace(quality) ? "Unknown" : quality
+    };
+    public static int QualityRank(string quality) => quality.ToLowerInvariant() switch
+    {
+        "high" => 4,
+        "medium" => 3,
+        "low" => 2,
+        "x_low" => 1,
+        _ => 0
+    };
     public override string ToString() => $"{DisplayName} · {SizeLabel}";
 }
 
@@ -70,7 +101,7 @@ public static class PiperService
             .Select(Path.GetFileNameWithoutExtension)
             .Where(id => !string.IsNullOrWhiteSpace(id) && IsVoiceDownloaded(id!))
             .Select(id => CatalogById.TryGetValue(id!, out var catalog)
-                ? new Voice(id!, $"{catalog.Name} ({catalog.Quality})", catalog.Language, "", true,
+                ? new Voice(id!, $"{catalog.Name} ({catalog.QualityLabel})", catalog.LanguageLabel, "", true,
                     catalog.Note, VoiceGroups.Downloaded)
                 : new Voice(id!, id!, "", "", true, "Downloaded Piper voice.", VoiceGroups.Downloaded))
             .OrderBy(voice => voice.Language, StringComparer.CurrentCultureIgnoreCase)
@@ -95,7 +126,34 @@ public static class PiperService
         if (string.IsNullOrWhiteSpace(id)) return;
         TryDelete(ModelPath(id));
         TryDelete(ConfigPath(id));
+        TryDelete(SampleCachePath(id));
     }
+
+    /// <summary>Downloads and caches the short public sample that ships with a catalog voice.</summary>
+    public static async Task<string> GetSampleAsync(PiperCatalogVoice voice, CancellationToken cancellation)
+    {
+        var path = SampleCachePath(voice.Id);
+        if (File.Exists(path) && new FileInfo(path).Length > 0) return path;
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".part";
+        try
+        {
+            using var response = await Http.GetAsync(new Uri(VoiceDownloadBase + voice.SamplePath),
+                HttpCompletionOption.ResponseHeadersRead, cancellation);
+            response.EnsureSuccessStatusCode();
+            await using var input = await response.Content.ReadAsStreamAsync(cancellation);
+            await using var output = File.Create(temporary);
+            await input.CopyToAsync(output, cancellation);
+            if (output.Length == 0) throw new IOException("The sample was empty.");
+            output.Close();
+            File.Move(temporary, path, true);
+            return path;
+        }
+        finally { TryDelete(temporary); }
+    }
+
+    private static string SampleCachePath(string id) =>
+        Path.Combine(RootPath, "samples", id.Replace('/', '_').Replace('\\', '_') + "-speaker_0.mp3");
 
     private static void TryDelete(string path)
     {
@@ -177,16 +235,21 @@ public static class PiperService
                 if (modelPath.Length == 0 || configPath.Length == 0) continue;
                 var language = item.TryGetProperty("language", out var languageNode) ? languageNode : default;
                 var code = Text(language, "code").Replace('_', '-');
+                var family = Text(language, "family");
+                if (family.Length == 0) family = code.Split('-')[0];
+                var languageName = Text(language, "name_english");
+                if (languageName.Length == 0) languageName = code;
+                var country = Text(language, "country_english");
                 var name = Text(item, "name");
                 if (name.Length == 0) name = entry.Name;
                 var quality = Text(item, "quality");
                 var speakers = (int)Number(item, "num_speakers", 1);
-                voices.Add(new PiperCatalogVoice(entry.Name, Capitalize(name), code, quality,
+                voices.Add(new PiperCatalogVoice(entry.Name, Capitalize(name), code, family, languageName, country, quality,
                     modelSize, modelPath, modelMd5, configSize, configPath, configMd5, Math.Max(1, speakers)));
             }
-            return voices.OrderBy(voice => voice.Language, StringComparer.CurrentCultureIgnoreCase)
+            return voices.OrderBy(voice => voice.LanguageLabel, StringComparer.CurrentCultureIgnoreCase)
                 .ThenBy(voice => voice.Name, StringComparer.CurrentCultureIgnoreCase)
-                .ThenBy(voice => voice.Quality, StringComparer.CurrentCultureIgnoreCase)
+                .ThenByDescending(voice => PiperCatalogVoice.QualityRank(voice.Quality))
                 .ToArray();
         }
         catch (JsonException) { return Array.Empty<PiperCatalogVoice>(); }

@@ -118,6 +118,33 @@ class PiperVoiceBrowser(unittest.TestCase):
         self.assertIn('MediaPlayerAudioCategory.Speech', dialog)
         self.assertIn('The preview needs the internet', dialog)
 
+    def test_dialog_shows_download_and_removal_progress(self):
+        dialog = (ROOT / 'Vidi Studio Windows' / 'Views' / 'PiperVoicesDialog.cs').read_text(encoding='utf-8')
+        # Each row owns an inline progress bar and spinner, updated in place during a transfer.
+        self.assertIn('private sealed class RowState', dialog)
+        self.assertIn('public ProgressBar Bar', dialog)
+        self.assertIn('public ProgressRing Ring', dialog)
+        self.assertIn('private readonly Dictionary<string, RowState> rows', dialog)
+        self.assertIn('rows[voice.Id] = state', dialog)
+        self.assertIn('private void ReportDownload(', dialog)
+        self.assertIn('state.Bar.Value = downloadFraction * 100', dialog)
+        self.assertIn('state.ProgressText.Text = ProgressLabel(', dialog)
+        self.assertIn('private static string ProgressLabel(', dialog)
+        self.assertIn('of {SizeText(total)}', dialog)
+        # Downloading and deleting both report through the shared indicator and disable the row.
+        self.assertIn('downloadingVoiceId = voice.Id', dialog)
+        self.assertIn('downloadingVoiceId = null', dialog)
+        self.assertIn('deletingVoiceId = voice.Id', dialog)
+        self.assertIn('deletingVoiceId = null', dialog)
+        self.assertIn('"Deleting…"', dialog)
+        self.assertIn('"Downloading…"', dialog)
+        self.assertIn('progress.IsIndeterminate = true', dialog)
+        self.assertIn('progress.Visibility = Visibility.Visible', dialog)
+        self.assertIn('await Task.Run(() => PiperService.DeleteVoice(voice.Id))', dialog)
+        self.assertIn('state.Ring.IsActive = downloading || deleting', dialog)
+        self.assertIn('state.Action.IsEnabled = !locked && !downloading && !deleting', dialog)
+        self.assertIn('Voice download or removal progress', dialog)
+
     def test_sample_download_is_cached_and_removed_with_the_voice(self):
         service = (ROOT / 'Vidi Studio Windows' / 'Services' / 'PiperService.cs').read_text(encoding='utf-8')
         self.assertIn('public static async Task<string> GetSampleAsync', service)

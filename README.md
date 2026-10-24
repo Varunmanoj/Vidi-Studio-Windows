@@ -103,7 +103,7 @@ When a voice cannot speak, Vidi Studio now says why instead of a general error: 
 
 ### If natural voices from the add-on do not speak
 
-1. **Rebuild the app.** Building in Visual Studio (or `script/build-windows.ps1`) republishes the speech helper in `runtime/speech/<platform>` whenever `SpeechHost` changes; earlier builds kept whichever helper `script/setup-windows.ps1` last produced.
+1. **Rebuild the app.** Building in Visual Studio (or `script/build-windows.ps1`) republishes the speech helper in `runtime/speech/<platform>` whenever `SpeechHost` changes; earlier builds kept whichever helper `script/setup-windows.ps1` last produced. If the helper cannot be rebuilt, the build shows a warning and keeps the existing copy, so the app still builds and runs.
 2. **Test the add-on on its own.** Run `TtsApplication.exe` from the add-on's ARM64 (or x64) folder, pick the same voice and speak. If it fails there too, the problem is the add-on or Microsoft's service, not Vidi Studio or a virtual machine.
 3. **Read the add-on's log.** Open the add-on's `Installer.exe`, choose **Open log & cache folder**, and open `log.txt`. `Speak: (websocketpp.processor:20) Invalid HTTP status` means Microsoft's online voice service rejected the connection. Microsoft changed that service on 12 October 2026; v0.2.10 restored it only partly and failures can still be intermittent ([issue #120](https://github.com/gexgd0419/NaturalVoiceSAPIAdapter/issues/120)). Offline voice packs, Windows OneCore voices, or **Azure Voices** are not affected.
 4. **Read Vidi Studio's log.** **Settings → Storage and tools → Open diagnostics folder** opens `diagnostics.log`, which records the speech helper's full error, including retry notes.

@@ -82,15 +82,25 @@
     <SpeechHostSource Include="..\SpeechHost\**\*.cs;..\SpeechHost\SpeechHost.csproj" Exclude="..\SpeechHost\bin\**;..\SpeechHost\obj\**" />
     <UpToDateCheckInput Include="@(SpeechHostSource)" />
   </ItemGroup>
-  <Target Name="PublishSpeechHost" BeforeTargets="PrepareForBuild" Condition="'$(Platform)' == 'ARM64' or '$(Platform)' == 'x64'"
+  <Target Name="PublishSpeechHost" BeforeTargets="PrepareForBuild" Condition="('$(Platform)' == 'ARM64' or '$(Platform)' == 'x64') and '$(DesignTimeBuild)' != 'true'"
           Inputs="@(SpeechHostSource)" Outputs="$(SpeechHostPublishDir)\VidiStudio.SpeechHost.exe">
     <PropertyGroup>
       <SpeechHostWasMissing Condition="!Exists('$(SpeechHostPublishDir)\VidiStudio.SpeechHost.exe')">true</SpeechHostWasMissing>
+      <SpeechHostRid>win-$(Platform.ToLowerInvariant())</SpeechHostRid>
+      <!-- Prefer the .NET SDK in Program Files; the dotnet on PATH may be a different bitness. -->
+      <SpeechHostDotnet Condition="'$(SpeechHostDotnet)' == '' and Exists('$(ProgramFiles)\dotnet\dotnet.exe')">$(ProgramFiles)\dotnet\dotnet.exe</SpeechHostDotnet>
+      <SpeechHostDotnet Condition="'$(SpeechHostDotnet)' == ''">dotnet</SpeechHostDotnet>
     </PropertyGroup>
     <Message Importance="high" Text="Publishing the $(Platform) speech helper because its sources changed." />
-    <!-- Clear variables Visual Studio sets for its own MSBuild so the nested dotnet CLI uses its SDK. -->
-    <Exec Command="dotnet publish &quot;$(SpeechHostProject)&quot; -c Release -r win-$(Platform.ToLowerInvariant()) --self-contained true -p:Platform=$(Platform) -o &quot;$(SpeechHostPublishDir)&quot;"
-          EnvironmentVariables="MSBuildSDKsPath=;MSBUILD_EXE_PATH=;MSBuildExtensionsPath=;MSBuildLoadMicrosoftTargetsReadOnly=" />
+    <!-- Published with a separate dotnet process, exactly like script\setup-windows.ps1, so this
+         build never nests one MSBuild project inside another. A failure only warns: the existing
+         helper keeps working and the app must still build and run. -->
+    <Exec Command="&quot;$(SpeechHostDotnet)&quot; publish &quot;$(SpeechHostProject)&quot; -c Release -r $(SpeechHostRid) --self-contained true -p:Platform=$(Platform) -o &quot;$(SpeechHostPublishDir)&quot;"
+          ContinueOnError="WarnAndContinue">
+      <Output TaskParameter="ExitCode" PropertyName="SpeechHostExitCode" />
+    </Exec>
+    <Warning Condition="'$(SpeechHostExitCode)' != '0'"
+             Text="The $(Platform) speech helper could not be rebuilt (exit code $(SpeechHostExitCode)); the copy in runtime\speech\$(Platform) is used. Run script\setup-windows.ps1, then build again." />
     <!-- On the very first build the folder was empty when items were evaluated, so add the files now. -->
     <ItemGroup Condition="'$(SpeechHostWasMissing)' == 'true'">
       <Content Include="$(SpeechHostPublishDir)\**\*" Link="speech\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

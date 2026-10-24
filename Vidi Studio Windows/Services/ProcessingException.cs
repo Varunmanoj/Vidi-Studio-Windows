@@ -24,6 +24,12 @@ public sealed class ProcessingException : Exception
             "YouTube audio duration does not match this project. The video may have been edited. Refresh its transcript and descriptions, or import the matching original video.",
             "No edit history in this direction.", "No summary available to export.", "No text available to export."
         }) if (diagnostic == message) return message;
+        if (diagnostic.StartsWith("Windows speech failed:", StringComparison.Ordinal) || diagnostic.StartsWith("Windows speech host is missing", StringComparison.Ordinal))
+            return SpeechService.FriendlyMessage(diagnostic);
+        // Azure messages are written for people by engine/azure_speech.py and never contain the key.
+        foreach (var prefix in new[] { "Azure rejected the speech key", "Azure Speech is rate limiting", "Azure Speech could not use the selected voice",
+            "Azure Speech returned", "Could not reach Azure Speech", "Add an Azure Speech key", "Enter a valid Azure Speech region", "Choose a valid Azure voice" })
+            if (diagnostic.StartsWith(prefix, StringComparison.Ordinal)) return diagnostic.Split('\n', 2)[0];
         if (diagnostic.Contains("API_KEY_INVALID", StringComparison.OrdinalIgnoreCase) ||
             (diagnostic.Contains("invalid", StringComparison.OrdinalIgnoreCase) && diagnostic.Contains("API key", StringComparison.OrdinalIgnoreCase)))
             return "The Gemini API key is invalid or rejected by Google. Please enter a valid API key in Settings.";

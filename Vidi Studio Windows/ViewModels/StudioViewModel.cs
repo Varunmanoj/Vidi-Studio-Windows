@@ -35,6 +35,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public bool IsExporting { get; private set; }
     private string status = "Import a video or open an existing project to begin.";
     public string Status { get => status; private set { status = value; Changed(); } }
+    /// <summary>Shows a message in the status bar, for example when live narration cannot speak.</summary>
+    public void ReportStatus(string message) => Status = message;
     private string? processingSection;
     public string? ProcessingSection
     {

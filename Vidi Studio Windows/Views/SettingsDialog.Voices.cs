@@ -37,7 +37,7 @@ public sealed partial class SettingsDialog
     private const string DefaultAzureVoice = SpeechService.DefaultAzureVoice;
     private const string DefaultAzureRegion = SpeechService.DefaultAzureRegion;
     private readonly StackPanel azureControls = new() { Spacing = 10 };
-    private readonly StackPanel naturalControls = new() { Spacing = 8 };
+    private readonly StackPanel sapiHelp = new() { Spacing = 8 };
     private readonly StackPanel summaryControls = new() { Spacing = 8 };
     private readonly PasswordBox azureKey = new() { Header = "Azure Speech key", PlaceholderText = "Stored in Windows Credential Manager" };
     private readonly TextBox azureRegion = new() { Header = "Azure region", PlaceholderText = DefaultAzureRegion };
@@ -51,8 +51,8 @@ public sealed partial class SettingsDialog
 
     private void BuildVoiceEngineControls()
     {
-        foreach (var element in new FrameworkElement[] { azureControls, naturalControls, summaryControls }) if (element.Parent is Panel parent) parent.Children.Remove(element);
-        azureControls.Children.Clear(); naturalControls.Children.Clear(); summaryControls.Children.Clear();
+        foreach (var element in new FrameworkElement[] { azureControls, sapiHelp, summaryControls }) if (element.Parent is Panel parent) parent.Children.Remove(element);
+        azureControls.Children.Clear(); sapiHelp.Children.Clear(); summaryControls.Children.Clear();
         azureKey.Password = DraftAzureKey;
         azureRegion.Text = SettingsStore.GetString(draft["azureSpeechRegion"], DefaultAzureRegion);
         AutomationProperties.SetName(azureKey, "Azure Speech key");
@@ -72,13 +72,10 @@ public sealed partial class SettingsDialog
             };
         }
 
-        naturalControls.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .75,
-            Text = "Natural voices sound more like a real person. This list shows the voices downloaded to this PC in Windows Settings for Narrator or Magnifier. They work without the internet, but Windows only shares them with other apps through a free voice bridge add-on, such as NaturalVoiceSAPIAdapter. Voices that need the add-on are shown but can't be picked yet. For online voices in every language, choose Azure Voices." });
-        var links = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        links.Children.Add(new HyperlinkButton { Content = "Download natural voices in Windows Settings", NavigateUri = new Uri("ms-settings:easeofaccess-narrator") });
-        links.Children.Add(new HyperlinkButton { Content = "Get the voice bridge add-on", NavigateUri = new Uri("https://github.com/gexgd0419/NaturalVoiceSAPIAdapter") });
-        naturalControls.Children.Add(links);
-        naturalControls.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .6, FontSize = 12,
+        sapiHelp.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .75,
+            Text = "Want Microsoft's natural voices, such as Ava, Andrew, Jenny or Neerja? Install the free voice bridge add-on (NaturalVoiceSAPIAdapter, version 0.2.10 or later), then select Refresh voices. They appear in this list under their own headings. Online natural voices need the internet. On ARM-based PCs, install the add-on's 64-bit version." });
+        sapiHelp.Children.Add(new HyperlinkButton { Content = "Get the voice bridge add-on", NavigateUri = new Uri("https://github.com/gexgd0419/NaturalVoiceSAPIAdapter/releases/latest") });
+        sapiHelp.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .6, FontSize = 12,
             Text = "The voice bridge add-on is made by an independent developer, not by Microsoft or Vidi Studio." });
 
         azureControls.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .75,
@@ -97,7 +94,7 @@ public sealed partial class SettingsDialog
 
     private void UpdateVoiceEngineVisibility(string provider)
     {
-        naturalControls.Visibility = provider == "windows-natural" ? Visibility.Visible : Visibility.Collapsed;
+        sapiHelp.Visibility = provider == "sapi5" ? Visibility.Visible : Visibility.Collapsed;
         azureControls.Visibility = provider == "azure" ? Visibility.Visible : Visibility.Collapsed;
         UpdateSummaryVoiceNote();
     }
@@ -142,22 +139,31 @@ public sealed partial class SettingsDialog
 
     private static Voice Heading(string id, string text) => new("heading:" + id, text, "", "", false, text, VoiceGroups.Heading);
 
-    private async Task<(List<Voice> Voices, string Status)> NaturalVoicesAsync(CancellationToken cancellation)
+    private static bool IsBridgeVoice(Voice voice) =>
+        voice.Id.Contains("NaturalVoice", StringComparison.OrdinalIgnoreCase) || voice.Name.Contains("(Natural", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Groups SAPI 5 voices so natural voices from the voice bridge add-on are easy to find.</summary>
+    private static (List<Voice> Voices, string Status) GroupSapiVoices(List<Voice> discovered)
     {
-        var host = !string.IsNullOrWhiteSpace(sapiHost.Text) ? sapiHost.Text : model.Engine.SpeechHost;
-        var downloaded = (await SpeechService.VoicesAsync(host, "windows-natural", cancellation)).Where(v => v.Group != VoiceGroups.BridgeOnline).ToList();
-        var ready = downloaded.Count(v => v.Available);
-        var status = downloaded.Count == 0
-            ? "No downloaded natural voices were found. You can download them in Windows Settings > Accessibility > Narrator, then select Refresh voices."
-            : ready == 0
-                ? $"{downloaded.Count} downloaded voices found. Install the voice bridge add-on to use them, then select Refresh voices."
-                : $"{ready} of {downloaded.Count} downloaded voices ready.";
-        var voices = new List<Voice>();
-        if (downloaded.Count > 0)
+        var offline = discovered.Where(v => IsBridgeVoice(v) && !v.Name.Contains("Online", StringComparison.OrdinalIgnoreCase))
+            .Select(v => v with { Note = "Natural voice from the voice bridge add-on. Works without the internet.", Group = VoiceGroups.Downloaded }).ToList();
+        var online = discovered.Where(v => IsBridgeVoice(v) && v.Name.Contains("Online", StringComparison.OrdinalIgnoreCase))
+            .Select(v => v with { Note = "Online natural voice from the voice bridge add-on. Needs the internet.", Group = VoiceGroups.BridgeOnline }).ToList();
+        var standard = discovered.Where(v => !IsBridgeVoice(v)).ToList();
+        var voices = new List<Voice> { new("", "System default", "", "") };
+        void Add(string id, string title, List<Voice> items)
         {
-            voices.Add(Heading("downloaded", "Downloaded to this PC"));
-            voices.AddRange(downloaded.Select(v => v with { Group = VoiceGroups.Downloaded }));
+            if (items.Count == 0) return;
+            voices.Add(Heading(id, title));
+            voices.AddRange(items.OrderBy(v => v.Name, StringComparer.CurrentCultureIgnoreCase));
         }
+        Add("bridge-offline", "Natural voices — work offline", offline);
+        Add("bridge-online", "Online natural voices — need the internet", online);
+        Add("standard", "Standard voices", standard);
+        var natural = offline.Count + online.Count;
+        var status = natural == 0
+            ? $"{discovered.Count} installed voices available. Install the voice bridge add-on to add natural voices."
+            : $"{discovered.Count} installed voices available, including {natural} natural voices from the voice bridge add-on.";
         return (voices, status);
     }
 

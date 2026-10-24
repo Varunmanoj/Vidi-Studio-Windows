@@ -298,7 +298,7 @@ public static class NarrationVoiceFormatting
         "system" => "Apple Voices",
         "windows-core" => "Windows OneCore",
         "sapi5" => "Windows SAPI 5",
-        "windows-natural" => "Downloaded Natural Voices",
+        "windows-natural" => "Windows SAPI 5",
         "azure" => "Azure Voices",
         _ => "Windows OneCore"
     };

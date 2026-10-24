@@ -1,20 +1,22 @@
-"""Out-of-process Windows OneCore/SAPI/Natural speech, shared by preview and narration."""
+"""Out-of-process Windows OneCore/SAPI speech, shared by preview and narration."""
 import json
 import os
 import subprocess
 from pathlib import Path
 
-# Narrator natural voices are synthesized through a SAPI 5 bridge, so the SAPI host
-# override (for example an x64 host for an x64-only bridge) applies to both engines.
-SAPI_ENGINES = ('sapi5', 'windows-natural')
+# Natural voices from a voice bridge add-on are SAPI 5 voices. "windows-natural" is the
+# name an earlier build used for them, so it is accepted and handled as SAPI 5.
+SAPI_ENGINES = ('sapi5',)
 
 
 def request(config, command, **kwargs):
     mode = config.get('ttsMode', 'windows-core')
     if mode == 'system':
         mode = 'windows-core'
+    if mode == 'windows-natural':
+        mode = 'sapi5'
     if mode not in ('windows-core', *SAPI_ENGINES):
-        raise ValueError('Choose Windows OneCore, SAPI 5 or Windows Natural speech.')
+        raise ValueError('Choose Windows OneCore or SAPI 5 speech.')
     host = config.get('sapiHostPath') if mode in SAPI_ENGINES else None
     host = host or os.environ.get('VIDISTUDIO_SPEECH_HOST')
     if not host or not Path(host).is_file():

@@ -447,7 +447,7 @@ public sealed partial class MainWindow
     {
         "gemini" => "Gemini Voices",
         "sapi5" => "Windows SAPI 5",
-        "windows-natural" => "Downloaded Natural Voices",
+        "windows-natural" => "Windows SAPI 5",
         "azure" => "Azure Voices",
         _ => "Windows OneCore",
     };

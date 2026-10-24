@@ -27,7 +27,7 @@ class WindowsSpeechRouting(unittest.TestCase):
             self.assertEqual(payload['engine'], 'sapi5')
             self.assertEqual(payload['voice'], 'token')
 
-    def test_natural_voices_use_the_sapi_host_override(self):
+    def test_earlier_natural_engine_name_is_handled_as_sapi5_with_its_host_override(self):
         with tempfile.TemporaryDirectory() as folder:
             host = Path(folder) / 'speech-x64.exe'
             host.touch()
@@ -37,7 +37,7 @@ class WindowsSpeechRouting(unittest.TestCase):
                                        'voices')
             self.assertEqual(run.call_args.args[0], [str(host)])
             payload = json.loads(run.call_args.kwargs['input'])
-            self.assertEqual(payload['engine'], 'windows-natural')
+            self.assertEqual(payload['engine'], 'sapi5')
             self.assertTrue(payload['voice'].endswith('MicrosoftWindows.Voice.en-US.Ava.1'))
 
     def test_unknown_engine_is_rejected(self):

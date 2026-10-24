@@ -16,6 +16,8 @@ public sealed class OnDeviceNarrator : IDisposable
     private CancellationTokenSource? current;
     private string? temporary;
     public OnDeviceNarrator(SettingsStore settings, EngineClient engine) { this.settings = settings; this.engine = engine; }
+    /// <summary>Raised with a message safe to show when live narration cannot speak.</summary>
+    public event Action<string>? Failed;
     public void Stop()
     {
         current?.Cancel(); current = null; player.Pause(); player.Source = null;
@@ -29,7 +31,7 @@ public sealed class OnDeviceNarrator : IDisposable
         try
         {
             var mode = settings.Get("ttsMode", "windows-core");
-            if (mode is "sapi5" or "windows-natural")
+            if (mode == "sapi5")
             {
                 Directory.CreateDirectory(SettingsStore.DirectoryPath);
                 path = Path.Combine(SettingsStore.DirectoryPath, "live-" + Guid.NewGuid() + ".wav");
@@ -61,7 +63,12 @@ public sealed class OnDeviceNarrator : IDisposable
             player.Play();
         }
         catch (OperationCanceledException) { if (path != null) File.Delete(path); }
-        catch (Exception ex) { engine.Log(ex.ToString()); if (path != null) File.Delete(path); }
+        catch (Exception ex)
+        {
+            engine.Log(ex.ToString());
+            if (path != null) File.Delete(path);
+            Failed?.Invoke(ex is SpeechFailedException ? "Live narration: " + ex.Message : "Live narration could not speak with the selected voice. Check the voice in Settings → Narration.");
+        }
         finally { if (current == cancellation) current = null; }
     }
     public void Dispose() { Stop(); player.Dispose(); }

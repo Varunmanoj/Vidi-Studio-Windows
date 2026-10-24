@@ -27,9 +27,34 @@ public static class VoiceGroups
     public const string BridgeOnline = "bridge-online";
 }
 
+/// <summary>A speech host failure; Message is safe to show, Detail is for the diagnostic log.</summary>
+public sealed class SpeechFailedException : Exception
+{
+    public string Detail { get; }
+    public SpeechFailedException(string detail) : base(SpeechService.FriendlyMessage(detail)) => Detail = detail;
+    public override string ToString() => base.ToString() + System.Environment.NewLine + Detail;
+}
+
 public sealed class SpeechService
 {
     public const string DefaultAzureVoice = "en-US-AvaMultilingualNeural";
+    private const string GenericVoiceFailure = "The selected voice could not speak. If it is a natural voice from the voice bridge add-on, update the add-on to version 0.2.10 or later and check the internet connection for online voices, then try again.";
+
+    /// <summary>
+    /// Turns speech host or engine output into a message safe to show: the speech host's own
+    /// first-line explanations pass through, anything else becomes a general voice message.
+    /// </summary>
+    public static string FriendlyMessage(string detail)
+    {
+        var text = (detail ?? "").Trim();
+        const string enginePrefix = "Windows speech failed:";
+        if (text.StartsWith(enginePrefix, StringComparison.Ordinal)) text = text[enginePrefix.Length..].Trim();
+        var first = text.Split('\n', 2)[0].Trim();
+        foreach (var known in new[] { "The selected voice", "The selected Windows voice", "Selected SAPI voice", "SAPI 5 is unavailable", "Windows speech host is missing" })
+            if (first.StartsWith(known, StringComparison.Ordinal)) return first;
+        return GenericVoiceFailure;
+    }
+
     public const string DefaultAzureRegion = "eastus";
     public static async Task SynthesizeAsync(string host, string engine, string voice, string text, string output, double rate, CancellationToken cancellation)
     {
@@ -52,7 +77,7 @@ public sealed class SpeechService
         await process.StandardInput.WriteAsync(JsonSerializer.Serialize(request));
         process.StandardInput.Close();
         await process.WaitForExitAsync(cancellation);
-        if (process.ExitCode != 0) throw new InvalidOperationException(await error);
+        if (process.ExitCode != 0) throw new SpeechFailedException(await error);
         return await output;
     }
 }

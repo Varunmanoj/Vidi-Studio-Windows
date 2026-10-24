@@ -16,7 +16,7 @@ public sealed class SettingsStore
         if (File.Exists(ConfigPath)) Merge(Data, JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject());
         if (Data["ttsMode"] == null || Get("ttsMode") == "system") Set("ttsMode", "windows-core");
         if (Data["libraryPath"] == null) Set("libraryPath", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VidiStudio Projects"));
-        if (NormalizeNarrationPlayback()) Save();
+        if (NormalizeNarrationPlayback() | NormalizeSpeechEngine()) Save();
         if (MigrateApiKeyToCredentialStore()) Save();
     }
     /// <summary>
@@ -48,7 +48,7 @@ public sealed class SettingsStore
         if (File.Exists(ConfigPath)) Merge(Data, JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject());
         if (Data["ttsMode"] == null || Get("ttsMode") == "system") Set("ttsMode", "windows-core");
         if (Data["libraryPath"] == null) Set("libraryPath", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VidiStudio Projects"));
-        if (NormalizeNarrationPlayback()) Save();
+        if (NormalizeNarrationPlayback() | NormalizeSpeechEngine()) Save();
         if (MigrateApiKeyToCredentialStore()) Save();
     }
     public static string GetString(JsonNode? node, string fallback = "")
@@ -127,6 +127,21 @@ public sealed class SettingsStore
     }
     public void Set(string key, bool value) => Data[key] = value;
     public void Set(string key, double value) => Data[key] = value;
+    /// <summary>
+    /// An earlier build offered natural voices as a separate "windows-natural" engine. Those
+    /// voices are SAPI 5 voices from a voice bridge add-on, so the choice moves to SAPI 5.
+    /// </summary>
+    private bool NormalizeSpeechEngine()
+    {
+        if (Get("ttsMode") != "windows-natural") return false;
+        Data["ttsMode"] = "sapi5";
+        var natural = Get("windowsNaturalVoice", Get("systemVoice"));
+        // Unbridged Narrator packages were listed as "natural-package:" and can never speak.
+        if (natural.StartsWith("natural-package:", StringComparison.Ordinal)) natural = "";
+        Data["sapi5Voice"] = natural; Data["systemVoice"] = natural;
+        Data.Remove("windowsNaturalVoice");
+        return true;
+    }
     private bool NormalizeNarrationPlayback()
     {
         if (Get("narrationPlayback", "generated") != "device") return false;

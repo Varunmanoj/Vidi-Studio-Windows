@@ -51,6 +51,7 @@ public sealed partial class MainWindow : Window
     {
         readback = new SummaryReadback(Model.Engine, Model.Settings);
         onDeviceNarrator = new OnDeviceNarrator(Model.Settings, Model.Engine);
+        onDeviceNarrator.Failed += message => Model.ReportStatus(message);
         InitializeComponent();
         ActiveExports.Observe(Model);
         Model.PropertyChanged += UpdateStatusFooter;
@@ -244,7 +245,11 @@ public sealed partial class MainWindow : Window
     private async Task ShowError(Exception ex)
     {
         Model.Engine.Log(ex.ToString());
-        await ShowDialogAsync(new ContentDialog { Title = "Action could not finish", Content = "Check your settings and the diagnostic log, then retry. Your saved project remains available.", CloseButtonText = "Close" });
+        // Processing and speech messages are already written for people; other failures stay generic.
+        var message = ex is ProcessingException or SpeechFailedException
+            ? ex.Message
+            : "Check your settings and the diagnostic log, then retry. Your saved project remains available.";
+        await ShowDialogAsync(new ContentDialog { Title = "Action could not finish", Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, MaxWidth = 520 }, CloseButtonText = "Close" });
     }
     private async Task ShowErrorMessage(string title, string message)
     {

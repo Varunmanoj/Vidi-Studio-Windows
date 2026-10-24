@@ -99,7 +99,14 @@ Where each kind of voice is used:
 
 **Summary read-aloud voice → Azure online voice** (in the always-visible **Summary read-aloud** section) reads the summary with the voice last chosen under Azure Voices even when narration uses another engine; each sentence is created online, so reading needs the internet and may start after a short pause, and the spoken word is highlighted approximately. Rate, pitch and volume sliders apply to both.
 
-When a voice cannot speak, Vidi Studio now says why instead of a general error: for example that an online voice needs the internet, that the add-on should be updated, or that the voice produced no audio. Live narration reports the same message in the status bar. A voice that stalls is stopped after two minutes.
+When a voice cannot speak, Vidi Studio now says why instead of a general error: for example that an online voice needs the internet, that the add-on should be updated, or that the voice produced no audio. Live narration reports the same message in the status bar. A voice that stalls is stopped after two minutes, and a SAPI voice that fails or produces no audio is retried up to three times, because the add-on's online voices currently fail intermittently.
+
+### If natural voices from the add-on do not speak
+
+1. **Rebuild the app.** Building in Visual Studio (or `script/build-windows.ps1`) republishes the speech helper in `runtime/speech/<platform>` whenever `SpeechHost` changes; earlier builds kept whichever helper `script/setup-windows.ps1` last produced.
+2. **Test the add-on on its own.** Run `TtsApplication.exe` from the add-on's ARM64 (or x64) folder, pick the same voice and speak. If it fails there too, the problem is the add-on or Microsoft's service, not Vidi Studio or a virtual machine.
+3. **Read the add-on's log.** Open the add-on's `Installer.exe`, choose **Open log & cache folder**, and open `log.txt`. `Speak: (websocketpp.processor:20) Invalid HTTP status` means Microsoft's online voice service rejected the connection. Microsoft changed that service on 12 October 2026; v0.2.10 restored it only partly and failures can still be intermittent ([issue #120](https://github.com/gexgd0419/NaturalVoiceSAPIAdapter/issues/120)). Offline voice packs, Windows OneCore voices, or **Azure Voices** are not affected.
+4. **Read Vidi Studio's log.** **Settings → Storage and tools → Open diagnostics folder** opens `diagnostics.log`, which records the speech helper's full error, including retry notes.
 
 The Azure key is stored in Windows Credential Manager (`VidiStudio/AzureSpeechKey`), never in `config.json`, project files, command lines or logs, and is handed to the engine only in the `VIDISTUDIO_AZURE_SPEECH_KEY` process environment variable. Settings saved by an earlier build with a separate **Natural Voices** engine move to **Windows SAPI 5** automatically.
 

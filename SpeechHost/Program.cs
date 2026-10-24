@@ -31,31 +31,60 @@ internal static class Program
                 if (string.IsNullOrWhiteSpace(request.Text) || string.IsNullOrWhiteSpace(request.Output))
                     throw new ArgumentException("Text and output are required.");
                 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(request.Output))!);
-                if (request.Engine == "windows-core") CoreSpeech(request).GetAwaiter().GetResult();
-                else SapiSpeech(request);
-                // A voice that fails silently (for example an online voice without a connection)
-                // must not be treated as narration.
-                if (!File.Exists(request.Output) || new FileInfo(request.Output).Length <= 64)
+                if (request.Engine == "windows-core")
                 {
-                    try { File.Delete(request.Output); } catch (IOException) { }
-                    throw new InvalidOperationException("The selected voice produced no audio. If it is an online voice, check the internet connection, then try again.");
+                    CoreSpeech(request).GetAwaiter().GetResult();
+                    RequireAudio(request.Output);
+                }
+                else
+                {
+                    // Online voices from the voice bridge add-on can fail intermittently when their
+                    // service rejects a connection, so a failed attempt is retried a few times.
+                    for (var attempt = 1; ; attempt++)
+                    {
+                        try { SapiSpeech(request); RequireAudio(request.Output); break; }
+                        catch (Exception ex) when (attempt < SapiAttempts && ex is COMException or TimeoutException or SilentVoiceException)
+                        {
+                            RetryNotes.Add($"Attempt {attempt} of {SapiAttempts} failed; retried. {ex.GetType().Name}: {ex.Message}");
+                            Thread.Sleep(800 * attempt);
+                        }
+                    }
                 }
                 Console.WriteLine("{\"complete\":true}");
             }
             else throw new ArgumentException("Unknown speech command.");
             return 0;
         }
+        // The first stderr line is shown to people; technical details and retry notes follow it.
         catch (COMException ex)
         {
             Console.Error.WriteLine("The selected voice reported an error. If it comes from the voice bridge add-on, update the add-on to version 0.2.10 or later and check the internet connection for online voices.");
             Console.Error.WriteLine($"0x{ex.HResult:X8} {ex.Message}");
+            foreach (var note in RetryNotes) Console.Error.WriteLine(note);
             return 1;
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine(ex.Message);
+            foreach (var note in RetryNotes) Console.Error.WriteLine(note);
             return 1;
         }
+    }
+
+    private const int SapiAttempts = 3;
+    private static readonly List<string> RetryNotes = new();
+
+    private sealed class SilentVoiceException : Exception
+    {
+        public SilentVoiceException() : base("The selected voice produced no audio. If it is an online voice, check the internet connection, then try again.") { }
+    }
+
+    /// <summary>A voice that fails silently must not be treated as narration.</summary>
+    private static void RequireAudio(string output)
+    {
+        if (File.Exists(output) && new FileInfo(output).Length > 64) return;
+        try { File.Delete(output); } catch (IOException) { }
+        throw new SilentVoiceException();
     }
 
     private static List<Voice> CoreVoices() => SpeechSynthesizer.AllVoices

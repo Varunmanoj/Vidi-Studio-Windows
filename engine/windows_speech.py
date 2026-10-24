@@ -7,6 +7,8 @@ from pathlib import Path
 # Natural voices from a voice bridge add-on are SAPI 5 voices. "windows-natural" is the
 # name an earlier build used for them, so it is accepted and handled as SAPI 5.
 SAPI_ENGINES = ('sapi5',)
+CRASHED = ('The speech helper stopped unexpectedly (exit code {code}). The selected voice may have stopped it; '
+           'try again, choose another voice, or update the voice bridge add-on.')
 
 
 def request(config, command, **kwargs):
@@ -26,5 +28,7 @@ def request(config, command, **kwargs):
                             capture_output=True, timeout=300,
                             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     if result.returncode:
-        raise ValueError('Windows speech failed: ' + result.stderr[-1000:])
+        # The helper's first stderr line is the explanation; keep the start, not the end.
+        detail = (result.stderr or '').strip() or CRASHED.format(code=result.returncode)
+        raise ValueError('Windows speech failed: ' + detail[:1000])
     return json.loads(result.stdout)

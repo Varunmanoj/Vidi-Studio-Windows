@@ -8,7 +8,7 @@
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
-    <Version>1.0.107</Version>
+    <Version>1.0.108</Version>
     <Product>Vidi Studio</Product>
     <AssemblyTitle>Vidi Studio</AssemblyTitle>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>
@@ -72,4 +72,28 @@
     <Content Include="..\runtime\speech\$(Platform)\**\*" Link="speech\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\runtime\engine\**\*" Link="engine-bin\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- The bundled speech helper is published into runtime\speech by setup-windows.ps1. Republish it
+       whenever its sources change, so a Visual Studio build never packages a stale helper. -->
+  <PropertyGroup>
+    <SpeechHostPublishDir>$(MSBuildThisFileDirectory)..\runtime\speech\$(Platform)</SpeechHostPublishDir>
+    <SpeechHostProject>$(MSBuildThisFileDirectory)..\SpeechHost\SpeechHost.csproj</SpeechHostProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <SpeechHostSource Include="..\SpeechHost\**\*.cs;..\SpeechHost\SpeechHost.csproj" Exclude="..\SpeechHost\bin\**;..\SpeechHost\obj\**" />
+    <UpToDateCheckInput Include="@(SpeechHostSource)" />
+  </ItemGroup>
+  <Target Name="PublishSpeechHost" BeforeTargets="PrepareForBuild" Condition="'$(Platform)' == 'ARM64' or '$(Platform)' == 'x64'"
+          Inputs="@(SpeechHostSource)" Outputs="$(SpeechHostPublishDir)\VidiStudio.SpeechHost.exe">
+    <PropertyGroup>
+      <SpeechHostWasMissing Condition="!Exists('$(SpeechHostPublishDir)\VidiStudio.SpeechHost.exe')">true</SpeechHostWasMissing>
+    </PropertyGroup>
+    <Message Importance="high" Text="Publishing the $(Platform) speech helper because its sources changed." />
+    <!-- Clear variables Visual Studio sets for its own MSBuild so the nested dotnet CLI uses its SDK. -->
+    <Exec Command="dotnet publish &quot;$(SpeechHostProject)&quot; -c Release -r win-$(Platform.ToLowerInvariant()) --self-contained true -p:Platform=$(Platform) -o &quot;$(SpeechHostPublishDir)&quot;"
+          EnvironmentVariables="MSBuildSDKsPath=;MSBUILD_EXE_PATH=;MSBuildExtensionsPath=;MSBuildLoadMicrosoftTargetsReadOnly=" />
+    <!-- On the very first build the folder was empty when items were evaluated, so add the files now. -->
+    <ItemGroup Condition="'$(SpeechHostWasMissing)' == 'true'">
+      <Content Include="$(SpeechHostPublishDir)\**\*" Link="speech\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 </Project>

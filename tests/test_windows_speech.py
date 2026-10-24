@@ -49,6 +49,24 @@ class WindowsSpeechRouting(unittest.TestCase):
         self.assertEqual(len(signatures), 3)
         self.assertEqual(engine.narration_engine({'ttsMode': 'windows-natural'}), 'windows-natural')
 
+    def test_helper_explanation_on_the_first_line_survives_long_details(self):
+        with tempfile.TemporaryDirectory() as folder:
+            host = Path(folder) / 'speech.exe'; host.touch()
+            stderr = 'The selected voice reported an error. Update the add-on.\n' + 'Attempt 1 of 3 failed; retried. ' * 80
+            with patch.dict(os.environ, {'VIDISTUDIO_SPEECH_HOST': str(host)}), \
+                 patch.object(windows_speech.subprocess, 'run', return_value=SimpleNamespace(returncode=1, stderr=stderr)):
+                with self.assertRaises(ValueError) as raised:
+                    windows_speech.request({'ttsMode': 'sapi5'}, 'synthesize', text='Hi', output='out.wav', rate=1)
+            self.assertTrue(str(raised.exception).startswith('Windows speech failed: The selected voice reported an error.'))
+
+    def test_a_crashed_helper_is_reported_as_stopped_unexpectedly(self):
+        with tempfile.TemporaryDirectory() as folder:
+            host = Path(folder) / 'speech.exe'; host.touch()
+            with patch.dict(os.environ, {'VIDISTUDIO_SPEECH_HOST': str(host)}), \
+                 patch.object(windows_speech.subprocess, 'run', return_value=SimpleNamespace(returncode=-1073741819, stderr='')):
+                with self.assertRaisesRegex(ValueError, 'Windows speech failed: The speech helper stopped unexpectedly'):
+                    windows_speech.request({'ttsMode': 'sapi5'}, 'synthesize', text='Hi', output='out.wav', rate=1)
+
     def test_missing_host_reports_setup_error(self):
         with patch.dict(os.environ, {'VIDISTUDIO_SPEECH_HOST': ''}):
             with self.assertRaisesRegex(ValueError, 'host is missing'):

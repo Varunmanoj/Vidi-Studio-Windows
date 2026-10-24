@@ -50,7 +50,7 @@ public sealed class SpeechService
         const string enginePrefix = "Windows speech failed:";
         if (text.StartsWith(enginePrefix, StringComparison.Ordinal)) text = text[enginePrefix.Length..].Trim();
         var first = text.Split('\n', 2)[0].Trim();
-        foreach (var known in new[] { "The selected voice", "The selected Windows voice", "Selected SAPI voice", "SAPI 5 is unavailable", "Windows speech host is missing" })
+        foreach (var known in new[] { "The selected voice", "The selected Windows voice", "Selected SAPI voice", "SAPI 5 is unavailable", "Windows speech host is missing", "The speech helper stopped unexpectedly" })
             if (first.StartsWith(known, StringComparison.Ordinal)) return first;
         return GenericVoiceFailure;
     }
@@ -77,7 +77,13 @@ public sealed class SpeechService
         await process.StandardInput.WriteAsync(JsonSerializer.Serialize(request));
         process.StandardInput.Close();
         await process.WaitForExitAsync(cancellation);
-        if (process.ExitCode != 0) throw new SpeechFailedException(await error);
+        if (process.ExitCode != 0)
+        {
+            var detail = (await error).Trim();
+            // An empty error usually means a voice crashed the helper process.
+            if (detail.Length == 0) detail = $"The speech helper stopped unexpectedly (exit code {process.ExitCode}). The selected voice may have stopped it; try again, choose another voice, or update the voice bridge add-on.";
+            throw new SpeechFailedException(detail);
+        }
         return await output;
     }
 }

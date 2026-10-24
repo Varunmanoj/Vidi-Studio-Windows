@@ -27,8 +27,8 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
 
     private sealed class RowState
     {
-        public Button Sample { get; } = new() { MinWidth = 110, VerticalAlignment = VerticalAlignment.Center };
-        public Button Action { get; } = new() { MinWidth = 96, VerticalAlignment = VerticalAlignment.Center };
+        public Button Sample { get; } = new() { Width = 120, VerticalAlignment = VerticalAlignment.Center };
+        public Button Action { get; } = new() { Width = 110, VerticalAlignment = VerticalAlignment.Center };
         public ProgressRing Ring { get; } = new()
         {
             Width = 18, Height = 18, IsActive = false,
@@ -213,9 +213,9 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
         Grid.SetColumn(state.Sample, 2);
         grid.Children.Add(state.Sample);
 
-        state.Action.Content = removing ? "Deleting…" : "Delete";
+        IconButtonContent.Set(state.Action, removing ? "Deleting…" : "Delete", Symbol.Delete);
+        IconButtonContent.SetDestructive(state.Action, true);
         state.Action.IsEnabled = !locked;
-        state.Action.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 229, 43, 50));
         AutomationProperties.SetName(state.Action, removing ? "Deleting " + voice.DisplayName : "Delete " + voice.DisplayName);
         AutomationProperties.SetHelpText(state.Action, "Removes the downloaded model and its cached sample.");
         state.Action.Click += async (_, _) =>

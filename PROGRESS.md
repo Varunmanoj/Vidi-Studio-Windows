@@ -1,5 +1,23 @@
 # Windows migration progress
 
+## 2026-10-24 — Aligned Piper voice row actions (1.0.117 / 1.0.117.0)
+
+The Piper voice lists sized every button to its own label, so Play Sample moved sideways when a row showed Delete instead of Download, or Stop Sample instead of Play Sample. Both dialogs now use fixed-width buttons — 120 px for samples and 150 px (download catalog) or 110 px (delete dialog) for the action — so the columns stay aligned in every state. Icons, red delete styling, and accessible names are unchanged.
+
+Validation: on this macOS host the Windows Python suite (`../VidiStudio Mac/.venv/bin/python -m unittest discover -s tests`) and the macOS suite pass; `script/check_menu_parity.py` and both `test_menu_parity` suites pass; macOS `script/build_and_run.sh --verify` built and launched 1.0.117 with 13 Help pages. Not run: native Windows build/MSIX packaging and visual confirmation of the alignment.
+
+## 2026-10-24 — Red delete action in the Piper download catalog (1.0.116 / 1.0.116.0)
+
+The download-or-remove dialog now shows its Delete action in the same high-contrast red (`#E52B32`) as the delete-voices dialog, through a shared `IconButtonContent.SetDestructive` helper that colors both the Fluent icon and the label while the row shows Delete or Deleting… and restores the normal color for Download. macOS applies red to the catalog row's label in addition to the existing tint, so the trash icon and text stay red until the voice is removed.
+
+Validation: on this macOS host the Windows Python suite (`../VidiStudio Mac/.venv/bin/python -m unittest discover -s tests`) and the macOS suite pass; `script/check_menu_parity.py` and both `test_menu_parity` suites pass; macOS `script/build_and_run.sh --verify` built and launched 1.0.116 with 13 Help pages. Not run: native Windows build/MSIX packaging and visual inspection of the red delete action.
+
+## 2026-10-24 — Piper voice action icons (1.0.115 / 1.0.115.0)
+
+The Piper settings buttons and both voice dialogs now pair each action with a Fluent icon through a shared `IconButtonContent` helper: Download or remove voices uses `Symbol.Download`, Delete voices uses `Symbol.Delete`, and every row action shows the download or delete icon that matches its current state (including Downloading…, Deleting…, and Delete in the delete dialog). Accessible names and help text still describe the action, so screen readers are unaffected.
+
+Validation: on this macOS host the Windows Python suite (`../VidiStudio Mac/.venv/bin/python -m unittest discover -s tests`) and the macOS suite pass; `script/check_menu_parity.py` and both `test_menu_parity` suites pass; macOS `script/build_and_run.sh --verify` built and launched 1.0.115 with 13 Help pages. Not run: native Windows build/MSIX packaging and visual inspection of the Windows icons.
+
 ## 2026-10-24 — Piper summary playback, live timing, and voice management (1.0.114 / 1.0.114.0)
 
 Windows summary read-aloud with Piper used to fail immediately because each sentence ran through a second engine process; Piper and SAPI 5 now synthesize through the same speech host as live narration, so the summary plays and any failure carries its own message. Symbol-only summary lines (horizontal rules, bullets) are skipped instead of reaching the speech engine. Live narration pre-renders upcoming Piper cues into a small cache (`live-ready-*.wav`, capped at 8 files) so a cue begins at its first word instead of partway through; the playback timer warms the next cue within 20 seconds. The Narration settings page drops the long Piper descriptions and adds Delete voices beside Download or remove voices. A new `PiperDeleteVoicesDialog` lists only downloaded voices with Play Sample, the same search, language/quality filters, and four sort orders as the catalog, and a red Delete; Escape closes both Piper dialogs.

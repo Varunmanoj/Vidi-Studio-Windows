@@ -33,7 +33,7 @@ public sealed partial class SettingsDialog
 {
     private readonly StackPanel piperControls = new() { Spacing = 10 };
     private readonly TextBlock piperStatus = new() { TextWrapping = TextWrapping.Wrap, Opacity = .75 };
-    private readonly Button deletePiperVoices = new() { Content = "Delete voices…", MinWidth = 140 };
+    private readonly Button deletePiperVoices = new() { MinWidth = 140 };
     private readonly StackPanel summaryControls = new() { Spacing = 8 };
 
     private void BuildVoiceEngineControls()
@@ -42,7 +42,8 @@ public sealed partial class SettingsDialog
         piperControls.Children.Clear(); summaryControls.Children.Clear();
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        var manage = new Button { Content = "Download or remove voices…", MinWidth = 200 };
+        var manage = new Button { MinWidth = 200 };
+        IconButtonContent.Set(manage, "Download or remove voices…", Symbol.Download);
         AutomationProperties.SetName(manage, "Download or remove Piper voices");
         manage.Click += async (_, _) =>
         {
@@ -51,6 +52,7 @@ public sealed partial class SettingsDialog
             await RefreshVoices();
         };
         buttons.Children.Add(manage);
+        IconButtonContent.Set(deletePiperVoices, "Delete voices…", Symbol.Delete);
         AutomationProperties.SetName(deletePiperVoices, "Delete downloaded Piper voices");
         AutomationProperties.SetHelpText(deletePiperVoices, "Lists downloaded Piper voices so you can listen to a sample and remove the ones you no longer need");
         deletePiperVoices.Click += async (_, _) =>

@@ -27,8 +27,8 @@ public sealed class PiperVoicesDialog : ContentDialog
     /// <summary>The controls a voice row needs so in-place progress never rebuilds the whole list.</summary>
     private sealed class RowState
     {
-        public Button Sample { get; } = new() { MinWidth = 110, VerticalAlignment = VerticalAlignment.Center };
-        public Button Action { get; } = new() { MinWidth = 108, VerticalAlignment = VerticalAlignment.Center };
+        public Button Sample { get; } = new() { Width = 120, VerticalAlignment = VerticalAlignment.Center };
+        public Button Action { get; } = new() { Width = 150, VerticalAlignment = VerticalAlignment.Center };
         public ProgressRing Ring { get; } = new()
         {
             Width = 18, Height = 18, IsActive = false,
@@ -223,7 +223,10 @@ public sealed class PiperVoicesDialog : ContentDialog
         Grid.SetColumn(state.Sample, 2);
         grid.Children.Add(state.Sample);
 
-        state.Action.Content = deleting ? "Deleting…" : downloading ? "Downloading…" : downloaded ? "Delete" : "Download";
+        IconButtonContent.Set(state.Action,
+            deleting ? "Deleting…" : downloading ? "Downloading…" : downloaded ? "Delete" : "Download",
+            downloaded || deleting ? Symbol.Delete : Symbol.Download);
+        IconButtonContent.SetDestructive(state.Action, downloaded || deleting);
         state.Action.IsEnabled = !locked && !downloading && !deleting;
         AutomationProperties.SetName(state.Action, deleting ? "Deleting " + voice.DisplayName
             : downloading ? "Downloading " + voice.DisplayName

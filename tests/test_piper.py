@@ -120,6 +120,7 @@ class PiperVoiceBrowser(unittest.TestCase):
 
     def test_dialog_shows_download_and_removal_progress(self):
         dialog = (ROOT / 'Vidi Studio Windows' / 'Views' / 'PiperVoicesDialog.cs').read_text(encoding='utf-8')
+        settings = (ROOT / 'Vidi Studio Windows' / 'Views' / 'SettingsDialog.Voices.cs').read_text(encoding='utf-8')
         # Each row owns an inline progress bar and spinner, updated in place during a transfer.
         self.assertIn('private sealed class RowState', dialog)
         self.assertIn('public ProgressBar Bar', dialog)
@@ -138,6 +139,19 @@ class PiperVoiceBrowser(unittest.TestCase):
         self.assertIn('deletingVoiceId = null', dialog)
         self.assertIn('"Deleting…"', dialog)
         self.assertIn('"Downloading…"', dialog)
+        # Each row's download or delete action carries a Fluent icon.
+        self.assertIn('IconButtonContent.Set(state.Action,', dialog)
+        self.assertIn('downloaded || deleting ? Symbol.Delete : Symbol.Download);', dialog)
+        # Delete is red in the download catalog too, not only in the delete dialog.
+        self.assertIn('IconButtonContent.SetDestructive(state.Action, downloaded || deleting);', dialog)
+        self.assertIn('internal static void SetDestructive(Button button, bool destructive)', (ROOT / 'Vidi Studio Windows' / 'Views' / 'IconButtonContent.cs').read_text(encoding='utf-8'))
+        # Fixed button widths keep the sample and action columns aligned in every row.
+        self.assertIn('public Button Sample { get; } = new() { Width = 120', dialog)
+        self.assertIn('public Button Action { get; } = new() { Width = 150', dialog)
+        delete_dialog = (ROOT / 'Vidi Studio Windows' / 'Views' / 'PiperDeleteVoicesDialog.cs').read_text(encoding='utf-8')
+        self.assertIn('public Button Sample { get; } = new() { Width = 120', delete_dialog)
+        self.assertIn('public Button Action { get; } = new() { Width = 110', delete_dialog)
+        self.assertIn('IconButtonContent.Set(manage, "Download or remove voices…", Symbol.Download)', settings)
         self.assertIn('progress.IsIndeterminate = true', dialog)
         self.assertIn('progress.Visibility = Visibility.Visible', dialog)
         self.assertIn('await Task.Run(() => PiperService.DeleteVoice(voice.Id))', dialog)
@@ -170,6 +184,8 @@ class PiperVoiceBrowser(unittest.TestCase):
         self.assertIn('"Play sample"', dialog)
         self.assertIn('PiperService.DeleteVoice(voice.Id)', dialog)
         self.assertIn('VirtualKey.Escape', dialog)
+        # Delete and download actions carry Fluent icons.
+        self.assertIn('IconButtonContent.Set(state.Action, removing ? "Deleting…" : "Delete", Symbol.Delete)', dialog)
         # The settings page shows the two dialog entry points without long descriptions.
         settings = (ROOT / 'Vidi Studio Windows' / 'Views' / 'SettingsDialog.Voices.cs').read_text(encoding='utf-8')
         self.assertIn('"Download or remove voices…"', settings)

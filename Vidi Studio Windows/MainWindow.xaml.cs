@@ -35,6 +35,7 @@ public sealed partial class MainWindow : Window
     private string? activeCue;
     private double youtubePosition;
     private bool youtubePlaying;
+    private bool wasPlaying;
     private bool youtubePolling;
     private bool youtubeMetadataUpdating;
     private bool ready;
@@ -68,7 +69,8 @@ public sealed partial class MainWindow : Window
         readback.StateChanged += _ => DispatcherQueue.TryEnqueue(UpdateSummaryControls);
         if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter) presenter.Maximize();
         Player.SetMediaPlayer(video);
-        Model.ProjectReloaded += (_, _) => RefreshProject();
+        // Any saved project change or a newly started video ends summary playback.
+        Model.ProjectReloaded += (_, _) => { readback.Stop(); RefreshProject(); };
         timer.Tick += Timer_Tick;
         timer.Start();
         Closed += (_, _) =>
@@ -518,6 +520,8 @@ public sealed partial class MainWindow : Window
         readback.TickWordProgress();
         TimeLabel.Text = $"{TimeSpan.FromSeconds(Position):hh\\:mm\\:ss\\.fff}";
         var playing = Model.Project.IsYouTube ? youtubePlaying : video.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
+        if (playing && !wasPlaying) readback.Stop();
+        wasPlaying = playing;
         var targetInterval = playing ? TimeSpan.FromMilliseconds(40) : TimeSpan.FromMilliseconds(150);
         if (timer.Interval != targetInterval) timer.Interval = targetInterval;
         UpdatePlaybackControls();

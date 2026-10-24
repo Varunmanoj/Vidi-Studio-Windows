@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-24 — Summary playback stops on project or video changes (1.0.118 / 1.0.118.0)
+
+Summary read-aloud now stops automatically when the project changes or the video starts playing. `ProjectReloaded` — raised after every engine command reloads the project, including transcript and description saves, summary edits, analysis, and narration — calls `readback.Stop()` before the refreshed view appears, and the playback timer stops the reader on the transition into playback for both the local video and the YouTube player. macOS applies the same rule through `project.updatedAt` and `playback.playing`, so both desktops behave identically. Manual Play, Pause, and Stop are unchanged.
+
+Validation: on this macOS host the Windows Python suite (`../VidiStudio Mac/.venv/bin/python -m unittest discover -s tests`) and the macOS suite pass; `script/check_menu_parity.py` and both `test_menu_parity` suites pass; macOS `script/build_and_run.sh --verify` built and launched 1.0.118 with 13 Help pages. Not run: native Windows build/MSIX packaging and interactive listening checks.
+
 ## 2026-10-24 — Aligned Piper voice row actions (1.0.117 / 1.0.117.0)
 
 The Piper voice lists sized every button to its own label, so Play Sample moved sideways when a row showed Delete instead of Download, or Stop Sample instead of Play Sample. Both dialogs now use fixed-width buttons — 120 px for samples and 150 px (download catalog) or 110 px (delete dialog) for the action — so the columns stay aligned in every state. Icons, red delete styling, and accessible names are unchanged.

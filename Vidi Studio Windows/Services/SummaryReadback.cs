@@ -126,8 +126,20 @@ public sealed class SummaryReadback : IDisposable
                 }
                 else
                 {
-                    await engine.RunAsync(new[] { "preview-tts", "--text", sentence, "--output", path }, cancellation: token, configPath: config);
-                    audioSource = MediaSource.CreateFromUri(new Uri(path));
+                    var host = settings.Get("sapiHostPath"); if (string.IsNullOrWhiteSpace(host)) host = engine.SpeechHost;
+                    if (mode is "piper" or "sapi5")
+                    {
+                        // Piper and SAPI 5 speak through the same speech host as live narration,
+                        // so summary playback does not depend on an extra engine process.
+                        var voice = mode == "piper" ? settings.Get("piperVoice", settings.Get("systemVoice")) : settings.Get("systemVoice");
+                        await SpeechService.SynthesizeAsync(host, mode, voice, sentence, path, settings.Number("systemSpeechRate"), token);
+                        audioSource = MediaSource.CreateFromUri(new Uri(path));
+                    }
+                    else
+                    {
+                        await engine.RunAsync(new[] { "preview-tts", "--text", sentence, "--output", path }, cancellation: token, configPath: config);
+                        audioSource = MediaSource.CreateFromUri(new Uri(path));
+                    }
                 }
                 token.ThrowIfCancellationRequested();
                 var finished = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -169,7 +181,7 @@ public sealed class SummaryReadback : IDisposable
                 var split = remaining.LastIndexOf(' ', 499, 499); if (split <= 0) split = 499;
                 yield return remaining[..split]; remaining = remaining[split..].Trim();
             }
-            if (remaining.Length > 0) yield return remaining;
+            if (remaining.Length > 0 && remaining.Any(char.IsLetterOrDigit)) yield return remaining;
         }
     }
     public void Dispose() { Stop(); player.Dispose(); }

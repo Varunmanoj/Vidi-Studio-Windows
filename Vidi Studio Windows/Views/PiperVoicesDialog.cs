@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using Vidi_Studio_Windows.Services;
 using Windows.Media.Core;
 using Windows.Media.Playback;
+using Windows.System;
 
 namespace Vidi_Studio_Windows.Views;
 
@@ -68,7 +69,7 @@ public sealed class PiperVoicesDialog : ContentDialog
         Resources["ContentDialogMaxHeight"] = 900d;
         var body = new StackPanel { Spacing = 10, Width = 720 };
         body.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .75,
-            Text = "Choose the voices you want to use with Piper. Filter by language or quality, then use Play sample to hear a short hosted sample before downloading. A progress bar shows each download as it arrives, and removing a voice shows its own progress while the model and cached sample are deleted. Downloaded voices work offline in live narration, generated narration audio, voice samples, and summary read-aloud." });
+            Text = "Download neural voices for offline narration. Filter or sort the catalog, then play a sample before downloading." });
         body.Children.Add(search);
         var filters = new Grid { ColumnSpacing = 10 };
         for (var column = 0; column < 3; column++) filters.ColumnDefinitions.Add(new ColumnDefinition());
@@ -94,6 +95,13 @@ public sealed class PiperVoicesDialog : ContentDialog
         samplePlayer.MediaFailed += (_, _) => DispatcherQueue.TryEnqueue(() =>
             FinishSample("The sample could not be played. Check the internet connection and try again."));
         Closed += (_, _) => { lifetime.Cancel(); samplePlayer.Dispose(); };
+        // Escape closes the dialog from anywhere, including the search box.
+        body.KeyDown += (_, args) =>
+        {
+            if (args.Key != VirtualKey.Escape) return;
+            args.Handled = true;
+            Hide();
+        };
         Rebuild();
         status.Text = PiperService.IsRuntimeAvailable
             ? "The bundled Piper speech engine is ready."

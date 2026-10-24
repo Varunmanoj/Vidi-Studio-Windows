@@ -33,6 +33,7 @@ public sealed partial class SettingsDialog
 {
     private readonly StackPanel piperControls = new() { Spacing = 10 };
     private readonly TextBlock piperStatus = new() { TextWrapping = TextWrapping.Wrap, Opacity = .75 };
+    private readonly Button deletePiperVoices = new() { Content = "Delete voices…", MinWidth = 140 };
     private readonly StackPanel summaryControls = new() { Spacing = 8 };
 
     private void BuildVoiceEngineControls()
@@ -40,9 +41,7 @@ public sealed partial class SettingsDialog
         foreach (var element in new FrameworkElement[] { piperControls, summaryControls }) if (element.Parent is Panel parent) parent.Children.Remove(element);
         piperControls.Children.Clear(); summaryControls.Children.Clear();
 
-        piperControls.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .75,
-            Text = "Piper Voices are free neural voices that run entirely on this PC. The Piper speech engine is included with Vidi Studio; download the voices you want to use. Voices work offline and your narration text never leaves this PC." });
-        piperControls.Children.Add(piperStatus);
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         var manage = new Button { Content = "Download or remove voices…", MinWidth = 200 };
         AutomationProperties.SetName(manage, "Download or remove Piper voices");
         manage.Click += async (_, _) =>
@@ -51,9 +50,18 @@ public sealed partial class SettingsDialog
             await WindowedDialog.ShowAsync(dialog, this, 780, 740);
             await RefreshVoices();
         };
-        piperControls.Children.Add(manage);
-        piperControls.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .6, FontSize = 12,
-            Text = "Voices are downloaded from the public Piper voice collection on Hugging Face and checked against their published size and checksum. Piper is an open-source project by Rhasspy." });
+        buttons.Children.Add(manage);
+        AutomationProperties.SetName(deletePiperVoices, "Delete downloaded Piper voices");
+        AutomationProperties.SetHelpText(deletePiperVoices, "Lists downloaded Piper voices so you can listen to a sample and remove the ones you no longer need");
+        deletePiperVoices.Click += async (_, _) =>
+        {
+            var dialog = new PiperDeleteVoicesDialog();
+            await WindowedDialog.ShowAsync(dialog, this, 720, 700);
+            await RefreshVoices();
+        };
+        buttons.Children.Add(deletePiperVoices);
+        piperControls.Children.Add(buttons);
+        piperControls.Children.Add(piperStatus);
 
         var heading = new TextBlock { Text = "Summary read-aloud", FontSize = 17, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 0) };
         AutomationProperties.SetHeadingLevel(heading, Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2);
@@ -72,6 +80,7 @@ public sealed partial class SettingsDialog
     private void UpdatePiperStatus()
     {
         var installed = PiperService.InstalledVoices();
+        deletePiperVoices.IsEnabled = installed.Count > 0;
         piperStatus.Text = !PiperService.IsRuntimeAvailable
             ? "The bundled Piper speech engine is missing. Reinstall Vidi Studio, or run script\\fetch-piper.ps1 and build the app again."
             : installed.Count == 0

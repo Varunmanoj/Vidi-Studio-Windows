@@ -153,6 +153,36 @@ class PiperVoiceBrowser(unittest.TestCase):
         self.assertIn('"samples"', service)
 
 
+    def test_delete_dialog_lists_only_downloaded_voices_with_samples_and_filters(self):
+        dialog = (ROOT / 'Vidi Studio Windows' / 'Views' / 'PiperDeleteVoicesDialog.cs').read_text(encoding='utf-8')
+        self.assertIn('public sealed class PiperDeleteVoicesDialog : ContentDialog', dialog)
+        self.assertIn('Title = "Delete Piper Voices"', dialog)
+        self.assertIn('PiperService.Catalog.Where(voice => PiperService.IsVoiceDownloaded(voice.Id))', dialog)
+        self.assertIn('Header = "Language"', dialog)
+        self.assertIn('Header = "Quality"', dialog)
+        self.assertIn('Header = "Sort by"', dialog)
+        self.assertIn('new("language", "Language (A–Z)")', dialog)
+        self.assertIn('new("name", "Voice name (A–Z)")', dialog)
+        self.assertIn('new("quality", "Quality (high to low)")', dialog)
+        self.assertIn('new("size", "Size (smallest first)")', dialog)
+        self.assertIn('ToggleSampleAsync', dialog)
+        self.assertIn('PiperService.GetSampleAsync', dialog)
+        self.assertIn('"Play sample"', dialog)
+        self.assertIn('PiperService.DeleteVoice(voice.Id)', dialog)
+        self.assertIn('VirtualKey.Escape', dialog)
+        # The settings page shows the two dialog entry points without long descriptions.
+        settings = (ROOT / 'Vidi Studio Windows' / 'Views' / 'SettingsDialog.Voices.cs').read_text(encoding='utf-8')
+        self.assertIn('"Download or remove voices…"', settings)
+        self.assertIn('"Delete voices…"', settings)
+        self.assertIn('new PiperDeleteVoicesDialog()', settings)
+        self.assertNotIn('Piper Voices are free neural voices', settings)
+        self.assertNotIn('open-source project by Rhasspy', settings)
+        # Both Piper dialogs close with Escape.
+        catalog = (ROOT / 'Vidi Studio Windows' / 'Views' / 'PiperVoicesDialog.cs').read_text(encoding='utf-8')
+        self.assertIn('VirtualKey.Escape', catalog)
+        self.assertNotIn('Choose the voices you want to use with Piper.', catalog)
+
+
 class AzureRemoval(unittest.TestCase):
     def test_engine_and_app_no_longer_reference_azure_speech(self):
         engine = (ROOT / 'engine' / 'vidistudio_engine.py').read_text(encoding='utf-8')

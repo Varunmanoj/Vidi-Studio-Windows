@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-24 — Piper summary playback, live timing, and voice management (1.0.114 / 1.0.114.0)
+
+Windows summary read-aloud with Piper used to fail immediately because each sentence ran through a second engine process; Piper and SAPI 5 now synthesize through the same speech host as live narration, so the summary plays and any failure carries its own message. Symbol-only summary lines (horizontal rules, bullets) are skipped instead of reaching the speech engine. Live narration pre-renders upcoming Piper cues into a small cache (`live-ready-*.wav`, capped at 8 files) so a cue begins at its first word instead of partway through; the playback timer warms the next cue within 20 seconds. The Narration settings page drops the long Piper descriptions and adds Delete voices beside Download or remove voices. A new `PiperDeleteVoicesDialog` lists only downloaded voices with Play Sample, the same search, language/quality filters, and four sort orders as the catalog, and a red Delete; Escape closes both Piper dialogs.
+
+Validation: on this macOS host the Windows Python suite (`../VidiStudio Mac/.venv/bin/python -m unittest discover -s tests`) passes 198 tests (1 Windows-only skip); the macOS suite passes 150 tests; both `test_menu_parity` suites and `script/check_menu_parity.py` pass; macOS `script/build_and_run.sh --verify` built and launched 1.0.114 with 13 Help pages. Not run: native Windows build/MSIX packaging, C# compilation, and Windows UI/Narrator smoke tests, so the new Windows dialog and live-cue cache need a Windows-host check.
+
 ## 2026-10-24 — macOS Piper summary read-aloud fix (1.0.113 / 1.0.113.0)
 
 Windows runtime code is unchanged in this patch; the shared parity tests gained assertions for the macOS fix, and versions advanced together to 1.0.113. The macOS engine now hands Piper a short espeak-ng data path because espeak-ng truncates paths at 160 bytes, which made Piper speech fail only inside the signed app bundle (Windows paths are short and its speech host is unaffected). macOS summary read-aloud labels the selected engine (**Piper Speech** or **Apple Speech**) and shows Piper's own guidance instead of the Apple-only message.

@@ -533,7 +533,12 @@ public sealed partial class MainWindow : Window
             else if (cue.AudioReady && cue.Audio is { } audio)
             { narrationPlayer.Source = MediaSource.CreateFromUri(new Uri(Model.Project.Resolve(audio))); narrationPlayer.PlaybackSession.Position = TimeSpan.FromSeconds(Math.Max(0, Position - cue.Start)); narrationPlayer.Play(); }
         }
-        UpdateActiveSegment();
+        if (playing && Model.Settings.Get("narrationPlayback") == "ondevice" && Model.Settings.Get("ttsMode") == "piper")
+        {
+            // Render the next cue while the current one plays so Piper starts on time.
+            var nextCue = Model.Project.Cues.FirstOrDefault(c => c.Start > Position && c.Start < Position + 20);
+            if (nextCue != null) onDeviceNarrator.Prepare(nextCue.Text);
+        }        UpdateActiveSegment();
         if (!youtubeMetadataUpdating && Model.Idle && ReferenceEquals(Model.Project, polledProject) && youtubeDuration is { } durationSeconds && Math.Abs(durationSeconds - polledProject.Duration) > .5)
         {
             youtubeMetadataUpdating = true;

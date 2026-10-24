@@ -26,6 +26,14 @@ public sealed class ProcessingException : Exception
         }) if (diagnostic == message) return message;
         if (diagnostic.StartsWith("Windows speech failed:", StringComparison.Ordinal) || diagnostic.StartsWith("Windows speech host is missing", StringComparison.Ordinal))
             return SpeechService.FriendlyMessage(diagnostic);
+        if (diagnostic.StartsWith("The bundled Piper speech engine is missing", StringComparison.Ordinal) ||
+            diagnostic.StartsWith("The selected Piper voice", StringComparison.Ordinal) ||
+            diagnostic.StartsWith("The Piper voice folder", StringComparison.Ordinal) ||
+            diagnostic.StartsWith("Choose a Piper voice", StringComparison.Ordinal) ||
+            diagnostic.StartsWith("Piper could not create audio", StringComparison.Ordinal) ||
+            diagnostic.StartsWith("Piper did not finish", StringComparison.Ordinal) ||
+            diagnostic.StartsWith("This text has no words to read aloud", StringComparison.Ordinal))
+            return diagnostic;
         if (diagnostic.Contains("API_KEY_INVALID", StringComparison.OrdinalIgnoreCase) ||
             (diagnostic.Contains("invalid", StringComparison.OrdinalIgnoreCase) && diagnostic.Contains("API key", StringComparison.OrdinalIgnoreCase)))
             return "The Gemini API key is invalid or rejected by Google. Please enter a valid API key in Settings.";

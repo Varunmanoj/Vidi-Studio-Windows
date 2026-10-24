@@ -41,13 +41,55 @@ class WindowsSpeechRouting(unittest.TestCase):
             self.assertTrue(payload['voice'].endswith('MicrosoftWindows.Voice.en-US.Ava.1'))
 
     def test_unknown_engine_is_rejected(self):
-        with self.assertRaisesRegex(ValueError, 'Choose Windows OneCore'):
+        with self.assertRaisesRegex(ValueError, 'Choose Windows OneCore, Windows SAPI 5, or Piper'):
             windows_speech.request({'ttsMode': 'azure'}, 'voices')
 
-    def test_natural_and_online_voices_have_their_own_narration_signature(self):
-        signatures = {engine.narration_signature({'ttsMode': mode, 'systemVoice': 'token'}) for mode in ('windows-natural', 'sapi5', 'azure')}
-        self.assertEqual(len(signatures), 3)
-        self.assertEqual(engine.narration_engine({'ttsMode': 'windows-natural'}), 'windows-natural')
+    def test_piper_requests_include_the_bundled_runtime_and_downloaded_voice(self):
+        with tempfile.TemporaryDirectory() as folder:
+            host = Path(folder) / 'speech.exe'; host.touch()
+            runtime = Path(folder) / 'piper.exe'; runtime.touch()
+            voices = Path(folder) / 'voices'; voices.mkdir()
+            (voices / 'en_US-amy-low.onnx').touch()
+            (voices / 'en_US-amy-low.onnx.json').touch()
+            environment = {'VIDISTUDIO_SPEECH_HOST': str(host), 'VIDISTUDIO_PIPER_PATH': str(runtime),
+                           'VIDISTUDIO_PIPER_VOICES': str(voices)}
+            with patch.dict(os.environ, environment), \
+                 patch.object(windows_speech.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout='{}')) as run:
+                windows_speech.request({'ttsMode': 'piper', 'piperVoice': 'en_US-amy-low'}, 'synthesize',
+                                       text='A person walks into the room.', output='out.wav', rate=1.25)
+            payload = json.loads(run.call_args.kwargs['input'])
+            self.assertEqual(payload['engine'], 'piper')
+            self.assertEqual(payload['piperPath'], str(runtime))
+            self.assertEqual(payload['piperModel'], str(voices / 'en_US-amy-low.onnx'))
+            self.assertEqual(payload['piperConfig'], str(voices / 'en_US-amy-low.onnx.json'))
+            self.assertEqual(payload['piperSpeaker'], 0)
+            self.assertEqual(payload['rate'], 1.25)
+
+    def test_piper_requires_the_bundled_runtime(self):
+        with patch.dict(os.environ, {'VIDISTUDIO_PIPER_PATH': ''}):
+            with self.assertRaisesRegex(ValueError, 'bundled Piper speech engine is missing'):
+                windows_speech.request({'ttsMode': 'piper', 'piperVoice': 'en_US-amy-low'}, 'voices')
+
+    def test_piper_requires_a_downloaded_voice(self):
+        with tempfile.TemporaryDirectory() as folder:
+            host = Path(folder) / 'speech.exe'; host.touch()
+            runtime = Path(folder) / 'piper.exe'; runtime.touch()
+            voices = Path(folder) / 'voices'; voices.mkdir()
+            environment = {'VIDISTUDIO_SPEECH_HOST': str(host), 'VIDISTUDIO_PIPER_PATH': str(runtime),
+                           'VIDISTUDIO_PIPER_VOICES': str(voices)}
+            with patch.dict(os.environ, environment):
+                with self.assertRaisesRegex(ValueError, 'not downloaded'):
+                    windows_speech.request({'ttsMode': 'piper', 'piperVoice': 'en_US-amy-low'}, 'synthesize',
+                                           text='Hi', output='out.wav', rate=1)
+
+    def test_piper_voices_have_their_own_narration_signature(self):
+        core = engine.narration_signature({'ttsMode': 'windows-core', 'systemVoice': 'token'})
+        sapi = engine.narration_signature({'ttsMode': 'sapi5', 'systemVoice': 'token'})
+        piper = engine.narration_signature({'ttsMode': 'piper', 'piperVoice': 'en_US-amy-low'})
+        self.assertEqual(len({core, sapi, piper}), 3)
+        self.assertTrue(piper.startswith('piper|en_US-amy-low|'))
+        self.assertEqual(engine.narration_engine({'ttsMode': 'piper'}), 'piper')
+        self.assertEqual(engine.narration_voice({'ttsMode': 'piper', 'piperVoice': 'en_US-amy-low'}), 'en_US-amy-low')
 
     def test_helper_explanation_on_the_first_line_survives_long_details(self):
         with tempfile.TemporaryDirectory() as folder:

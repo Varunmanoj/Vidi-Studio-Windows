@@ -30,8 +30,11 @@ with zipfile.ZipFile(args.package) as package:
         return struct.unpack_from("<H", data, offset+4)[0]
     assert machine(app.attrib["Executable"]) == expected, "Wrong UI architecture"
     assert machine("speech/VidiStudio.SpeechHost.exe") == expected, "Wrong speech helper architecture"
-    for file in ["speech/VidiStudio.SpeechHost.runtimeconfig.json", "engine/vidistudio_engine.py", "engine/windows_speech.py", "engine/azure_speech.py", "engine/mov_accessibility.py", "engine/youtube_audio.py", "engine/ai-defaults.json", "Assets/youtube.html"]:
+    for file in ["speech/VidiStudio.SpeechHost.runtimeconfig.json", "engine/vidistudio_engine.py", "engine/windows_speech.py", "engine/mov_accessibility.py", "engine/youtube_audio.py", "engine/ai-defaults.json", "Assets/youtube.html", "Assets/piper-voices.json", "piper/piper.exe", "piper/onnxruntime.dll", "piper/espeak-ng-data/en_dict"]:
         read(file)
+    # Piper is published only as a Windows x64 build, so it runs natively on x64 and through
+    # Windows 11 ARM64 x64 emulation.
+    assert machine("piper/piper.exe") == 0x8664, "The bundled Piper engine must be the Windows x64 build"
     if "engine-bin/vidistudio-engine.exe" in names:
         engine_machine = machine("engine-bin/vidistudio-engine.exe")
         assert engine_machine in (expected, 0x8664), "Engine is incompatible with target"

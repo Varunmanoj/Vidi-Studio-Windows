@@ -204,10 +204,10 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             var gv = Settings.Get("geminiVoice", "Kore").Trim();
             return string.IsNullOrEmpty(gv) ? "Kore" : gv;
         }
-        if (engine == "azure")
+        if (engine == "piper")
         {
-            var av = Settings.Get("azureVoice", SpeechService.DefaultAzureVoice).Trim();
-            return string.IsNullOrEmpty(av) ? SpeechService.DefaultAzureVoice : av;
+            var pv = Settings.Get("piperVoice", Settings.Get("systemVoice")).Trim();
+            return string.IsNullOrEmpty(pv) ? "Piper voice" : pv;
         }
         var sv = Settings.Get("systemVoice", "").Trim();
         return string.IsNullOrEmpty(sv) ? "System default" : sv;

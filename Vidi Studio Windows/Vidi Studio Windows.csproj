@@ -8,7 +8,7 @@
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
-    <Version>1.0.108</Version>
+    <Version>1.0.109</Version>
     <Product>Vidi Studio</Product>
     <AssemblyTitle>Vidi Studio</AssemblyTitle>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>
@@ -69,8 +69,11 @@
          Gemini key handoff and other engine changes out of the running app). -->
     <Content Include="..\engine\*.py;..\engine\ai-defaults.json;..\engine\requirements.txt" Link="engine\%(Filename)%(Extension)" CopyToOutputDirectory="Always" />
     <Content Include="Assets\youtube.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\piper-voices.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\piper-notice.txt" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\runtime\speech\$(Platform)\**\*" Link="speech\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\runtime\engine\**\*" Link="engine-bin\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\runtime\piper\**\*" Link="piper\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <!-- The bundled speech helper is published into runtime\speech by setup-windows.ps1. Republish it
        whenever its sources change, so a Visual Studio build never packages a stale helper. -->
@@ -104,6 +107,27 @@
     <!-- On the very first build the folder was empty when items were evaluated, so add the files now. -->
     <ItemGroup Condition="'$(SpeechHostWasMissing)' == 'true'">
       <Content Include="$(SpeechHostPublishDir)\**\*" Link="speech\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+  <!-- Piper ships with the app so people never install a separate speech engine. The runtime is
+       fetched once into runtime\piper (and verified by SHA-256) before it is packaged. -->
+  <PropertyGroup>
+    <PiperRuntimeDir>$(MSBuildThisFileDirectory)..\runtime\piper</PiperRuntimeDir>
+    <PiperFetchScript>$(MSBuildThisFileDirectory)..\script\fetch-piper.ps1</PiperFetchScript>
+  </PropertyGroup>
+  <Target Name="FetchPiperRuntime" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <PiperWasMissing Condition="!Exists('$(PiperRuntimeDir)\piper.exe')">true</PiperWasMissing>
+    </PropertyGroup>
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(PiperFetchScript)&quot;"
+          Condition="'$(PiperWasMissing)' == 'true'" ContinueOnError="WarnAndContinue">
+      <Output TaskParameter="ExitCode" PropertyName="PiperFetchExitCode" />
+    </Exec>
+    <Warning Condition="'$(PiperFetchExitCode)' != '0' and '$(PiperFetchExitCode)' != ''"
+             Text="The bundled Piper speech engine could not be downloaded (exit code $(PiperFetchExitCode)). Piper voices will be unavailable until script\fetch-piper.ps1 succeeds and the app is built again." />
+    <!-- On the first build the folder was empty when items were evaluated, so add the files now. -->
+    <ItemGroup Condition="'$(PiperWasMissing)' == 'true' and Exists('$(PiperRuntimeDir)\piper.exe')">
+      <Content Include="$(PiperRuntimeDir)\**\*" Link="piper\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
 </Project>

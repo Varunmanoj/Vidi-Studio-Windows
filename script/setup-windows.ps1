@@ -13,6 +13,8 @@ try {
     $venvPython = Join-Path $projectRoot '.venv-windows\Scripts\python.exe'
     & $venvPython -m pip install -r engine/requirements.txt
     if ($LASTEXITCODE -ne 0) { throw 'Engine dependencies could not be installed.' }
+    & (Join-Path $PSScriptRoot 'fetch-piper.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'The bundled Piper speech engine could not be prepared.' }
     $speechPlatforms = @($Platform)
     if ($LegacySapiHosts) { $speechPlatforms = @($Platform, 'x64', 'x86') | Select-Object -Unique }
     foreach ($speechPlatform in $speechPlatforms) {

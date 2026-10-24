@@ -19,7 +19,7 @@ public sealed class EngineClient
     public string SpeechHost => Path.Combine(AppContext.BaseDirectory, "speech", "VidiStudio.SpeechHost.exe");
 
     public async Task<List<EngineEvent>> RunAsync(IEnumerable<string> arguments, IProgress<EngineEvent>? progress = null,
-        CancellationToken cancellation = default, string? configPath = null, string? apiKey = null, string? azureSpeechKey = null)
+        CancellationToken cancellation = default, string? configPath = null, string? apiKey = null)
     {
         await gate.WaitAsync(cancellation);
         string? cancellationFile = null;
@@ -51,9 +51,9 @@ public sealed class EngineClient
             // The Gemini key is held in Windows Credential Manager and handed to the engine per
             // process in the environment; it is never written to the config file on disk.
             if (geminiKey.Length > 0) start.Environment["VIDISTUDIO_API_KEY"] = geminiKey;
-            var azureKey = (azureSpeechKey ?? settings.Get(SettingsStore.AzureSpeechKey)).Trim();
-            if (azureKey.Length > 0) start.Environment["VIDISTUDIO_AZURE_SPEECH_KEY"] = azureKey;
             start.Environment["VIDISTUDIO_SPEECH_HOST"] = SpeechHost;
+            start.Environment["VIDISTUDIO_PIPER_PATH"] = PiperService.RuntimePath;
+            start.Environment["VIDISTUDIO_PIPER_VOICES"] = PiperService.VoicesPath;
             start.Environment["PYTHONUTF8"] = "1";
             Directory.CreateDirectory(SettingsStore.DirectoryPath);
             cancellationFile = Path.Combine(SettingsStore.DirectoryPath, Guid.NewGuid() + ".cancel");
@@ -111,8 +111,8 @@ public sealed class EngineClient
 
     public void Log(string detail)
     {
-        foreach (var key in new[] { settings.Get("apiKey"), settings.Get(SettingsStore.AzureSpeechKey) })
-            if (!string.IsNullOrEmpty(key)) detail = detail.Replace(key, "[redacted]");
+        var key = settings.Get("apiKey");
+        if (!string.IsNullOrEmpty(key)) detail = detail.Replace(key, "[redacted]");
         Directory.CreateDirectory(SettingsStore.DirectoryPath);
         File.AppendAllText(Path.Combine(SettingsStore.DirectoryPath, "diagnostics.log"), $"{DateTimeOffset.Now:u} {detail}{Environment.NewLine}");
     }

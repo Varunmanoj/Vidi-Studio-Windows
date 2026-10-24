@@ -12,8 +12,6 @@ namespace Vidi_Studio_Windows.Services;
 internal static class CredentialStore
 {
     private static readonly CredentialSlot Gemini = new("VidiStudio/GeminiApiKey", "Gemini API key");
-    /// <summary>The Azure AI Speech subscription key used by Azure online voices.</summary>
-    public static readonly CredentialSlot AzureSpeech = new("VidiStudio/AzureSpeechKey", "Azure Speech key");
 
     /// <summary>Returns the stored Gemini API key, or <c>null</c> when none is present.</summary>
     public static string? Read() => Gemini.Read();

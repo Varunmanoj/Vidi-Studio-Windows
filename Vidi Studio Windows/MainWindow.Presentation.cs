@@ -448,7 +448,7 @@ public sealed partial class MainWindow
         "gemini" => "Gemini Voices",
         "sapi5" => "Windows SAPI 5",
         "windows-natural" => "Windows SAPI 5",
-        "azure" => "Azure Voices",
+        "piper" => "Piper Voices",
         _ => "Windows OneCore",
     };
     private static void AddInfo(StackPanel panel, string label, string value)

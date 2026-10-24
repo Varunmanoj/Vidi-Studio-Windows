@@ -31,12 +31,13 @@ public sealed class OnDeviceNarrator : IDisposable
         try
         {
             var mode = settings.Get("ttsMode", "windows-core");
-            if (mode == "sapi5")
+            if (mode is "sapi5" or "piper")
             {
                 Directory.CreateDirectory(SettingsStore.DirectoryPath);
                 path = Path.Combine(SettingsStore.DirectoryPath, "live-" + Guid.NewGuid() + ".wav");
                 var host = settings.Get("sapiHostPath"); if (string.IsNullOrWhiteSpace(host)) host = engine.SpeechHost;
-                await SpeechService.SynthesizeAsync(host, mode, settings.Get("systemVoice"), text, path, settings.Number("systemSpeechRate"), cancellation.Token);
+                var voice = mode == "piper" ? settings.Get("piperVoice", settings.Get("systemVoice")) : settings.Get("systemVoice");
+                await SpeechService.SynthesizeAsync(host, mode, voice, text, path, settings.Number("systemSpeechRate"), cancellation.Token);
                 cancellation.Token.ThrowIfCancellationRequested();
                 temporary = path;
                 player.Source = MediaSource.CreateFromUri(new Uri(path));
@@ -45,7 +46,7 @@ public sealed class OnDeviceNarrator : IDisposable
             else
             {
                 using var synth = new SpeechSynthesizer();
-                // Cloud generation (Gemini, Azure) still uses a local voice for on-device playback.
+                // Gemini generation still uses a local voice for on-device playback.
                 var voiceId = mode is "windows-core" or "system" ? settings.Get("systemVoice") : "";
                 if (!string.IsNullOrEmpty(voiceId))
                 {

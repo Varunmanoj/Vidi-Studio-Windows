@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -20,9 +21,10 @@ internal static class Program
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? throw new ArgumentException("Missing request.");
             // "windows-natural" was an earlier name for natural voices offered through SAPI 5.
             if (request.Engine == "windows-natural") request = request with { Engine = "sapi5" };
-            if (request.Engine is not ("windows-core" or "sapi5")) throw new ArgumentException("Unknown speech engine.");
+            if (request.Engine is not ("windows-core" or "sapi5" or "piper")) throw new ArgumentException("Unknown speech engine.");
             if (request.Command == "voices")
             {
+                if (request.Engine == "piper") throw new ArgumentException("Piper voices are listed by the app.");
                 var voices = request.Engine == "windows-core" ? CoreVoices() : SapiVoices();
                 Console.WriteLine(JsonSerializer.Serialize(voices));
             }
@@ -36,10 +38,15 @@ internal static class Program
                     CoreSpeech(request).GetAwaiter().GetResult();
                     RequireAudio(request.Output);
                 }
+                else if (request.Engine == "piper")
+                {
+                    PiperSpeech(request);
+                    RequireAudio(request.Output);
+                }
                 else
                 {
-                    // Online voices from the voice bridge add-on can fail intermittently when their
-                    // service rejects a connection, so a failed attempt is retried a few times.
+                    // Some third-party SAPI voices fail or stay silent intermittently, so a failed
+                    // attempt is retried a few times before reporting the error.
                     for (var attempt = 1; ; attempt++)
                     {
                         try { SapiSpeech(request); RequireAudio(request.Output); break; }
@@ -58,7 +65,7 @@ internal static class Program
         // The first stderr line is shown to people; technical details and retry notes follow it.
         catch (COMException ex)
         {
-            Console.Error.WriteLine("The selected voice reported an error. If it comes from the voice bridge add-on, update the add-on to version 0.2.10 or later and check the internet connection for online voices.");
+            Console.Error.WriteLine("The selected voice reported an error. Update the voice in Windows Settings, choose another voice, or check the diagnostics log.");
             Console.Error.WriteLine($"0x{ex.HResult:X8} {ex.Message}");
             foreach (var note in RetryNotes) Console.Error.WriteLine(note);
             return 1;
@@ -169,6 +176,67 @@ internal static class Program
         finally { if (opened) stream.Close(); Release(tokens); Release(stream); Release(speech); }
     }
 
+    private const int PiperTimeoutMs = 180_000;
+
+    /// <summary>
+    /// Runs the bundled Piper engine. Piper receives the text on stdin and writes a mono
+    /// 16-bit WAV; the engine then applies pitch and volume while it normalizes the audio.
+    /// </summary>
+    private static void PiperSpeech(Request r)
+    {
+        if (string.IsNullOrWhiteSpace(r.PiperPath) || !File.Exists(r.PiperPath))
+            throw new InvalidOperationException("The bundled Piper speech engine is missing. Reinstall Vidi Studio or run script\\fetch-piper.ps1, then build again.");
+        if (string.IsNullOrWhiteSpace(r.PiperModel) || !File.Exists(r.PiperModel))
+            throw new InvalidOperationException("The selected Piper voice is not downloaded. Download it in Settings, then try again.");
+        if (string.IsNullOrWhiteSpace(r.PiperConfig) || !File.Exists(r.PiperConfig))
+            throw new InvalidOperationException("The selected Piper voice is incomplete. Download it again in Settings.");
+        var rate = Math.Clamp(r.Rate, .5, 2);
+        var arguments = new List<string>
+        {
+            "--model", r.PiperModel,
+            "--config", r.PiperConfig,
+            "--output_file", r.Output,
+            // Piper's length scale is the inverse of speaking rate.
+            "--length_scale", (1 / rate).ToString("0.####", CultureInfo.InvariantCulture)
+        };
+        if (r.PiperSpeaker > 0)
+        {
+            arguments.Add("--speaker");
+            arguments.Add(r.PiperSpeaker.ToString(CultureInfo.InvariantCulture));
+        }
+        var start = new ProcessStartInfo(r.PiperPath)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardInputEncoding = new UTF8Encoding(false),
+            WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(r.PiperPath))!
+        };
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("Piper did not start.");
+        var error = process.StandardError.ReadToEndAsync();
+        var output = process.StandardOutput.ReadToEndAsync();
+        process.StandardInput.Write(r.Text);
+        process.StandardInput.Close();
+        if (!process.WaitForExit(PiperTimeoutMs))
+        {
+            try { process.Kill(true); } catch (InvalidOperationException) { }
+            throw new TimeoutException("Piper did not finish speaking in time. Try a shorter sample or choose another voice.");
+        }
+        if (process.ExitCode != 0)
+        {
+            var detail = error.GetAwaiter().GetResult().Trim();
+            var first = detail.Split('\n', 2)[0].Trim();
+            throw new InvalidOperationException(string.IsNullOrEmpty(first)
+                ? "Piper could not create audio for the selected voice. Try again or choose another voice."
+                : "Piper could not create audio: " + first);
+        }
+        _ = output.GetAwaiter().GetResult();
+    }
+
     private sealed record Voice(string Id, string Name, string Language, string Gender);
-    private sealed record Request(string Command, string Engine, string Voice = "", string Text = "", string Output = "", double Rate = 1);
+    private sealed record Request(string Command, string Engine, string Voice = "", string Text = "", string Output = "", double Rate = 1,
+        string PiperPath = "", string PiperModel = "", string PiperConfig = "", int PiperSpeaker = 0);
 }

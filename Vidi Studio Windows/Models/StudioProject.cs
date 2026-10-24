@@ -299,15 +299,16 @@ public static class NarrationVoiceFormatting
         "windows-core" => "Windows OneCore",
         "sapi5" => "Windows SAPI 5",
         "windows-natural" => "Windows SAPI 5",
-        "azure" => "Azure Voices",
+        "piper" => "Piper Voices",
         _ => "Windows OneCore"
     };
 
     private static readonly System.Text.RegularExpressions.Regex NaturalPackage =
         new(@"MicrosoftWindows\.Voice\.(?<locale>[A-Za-z]{2,3}-[A-Za-z0-9]{2,8})\.(?<speaker>[A-Za-z]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-    private static readonly System.Text.RegularExpressions.Regex AzureVoice =
-        new(@"^(?<locale>[a-z]{2,3}-[A-Za-z0-9]{2,8}(-[A-Za-z0-9]+)?)-(?<name>[A-Z][A-Za-z]+?)Neural$");
+    // Downloaded Piper voices use ids such as en_US-amy-low or en_GB-alan-medium.
+    private static readonly System.Text.RegularExpressions.Regex PiperVoice =
+        new(@"^(?<locale>[a-z]{2,3}_[A-Za-z]{2})-(?<name>.+)-(?<quality>x_low|low|medium|high)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     public static string VoiceDisplayName(string? voice)
     {
@@ -321,9 +322,13 @@ public static class NarrationVoiceFormatting
             var hd = speaker.Length > 2 && speaker.EndsWith("HD", StringComparison.Ordinal);
             return $"Microsoft {(hd ? speaker[..^2] : speaker)} (Natural{(hd ? " HD" : "")}) - {natural.Groups["locale"].Value}";
         }
-        // Azure voices are stored by short name, for example en-US-AvaMultilingualNeural.
-        if (AzureVoice.Match(trimmed) is { Success: true } azure)
-            return $"Microsoft {System.Text.RegularExpressions.Regex.Replace(azure.Groups["name"].Value, "(?<=[a-z])(?=[A-Z])", " ")} - {azure.Groups["locale"].Value}";
+        if (PiperVoice.Match(trimmed) is { Success: true } piper)
+        {
+            var name = System.Text.RegularExpressions.Regex.Replace(piper.Groups["name"].Value, "[_-]+", " ");
+            name = name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
+            var quality = piper.Groups["quality"].Value.Replace('_', ' ');
+            return $"{name} ({quality}) — {piper.Groups["locale"].Value.Replace('_', '-')}";
+        }
         if (trimmed.Contains('\\'))
             return trimmed.Split('\\').Last();
         return trimmed;

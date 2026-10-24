@@ -16,7 +16,7 @@ public sealed class SettingsStore
         if (File.Exists(ConfigPath)) Merge(Data, JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject());
         if (Data["ttsMode"] == null || Get("ttsMode") == "system") Set("ttsMode", "windows-core");
         if (Data["libraryPath"] == null) Set("libraryPath", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VidiStudio Projects"));
-        if (NormalizeNarrationPlayback() | NormalizeSpeechEngine()) Save();
+        if (NormalizeNarrationPlayback() | NormalizeSpeechEngine() | NormalizeSummaryVoice()) Save();
         if (MigrateApiKeyToCredentialStore()) Save();
     }
     /// <summary>
@@ -48,7 +48,7 @@ public sealed class SettingsStore
         if (File.Exists(ConfigPath)) Merge(Data, JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject());
         if (Data["ttsMode"] == null || Get("ttsMode") == "system") Set("ttsMode", "windows-core");
         if (Data["libraryPath"] == null) Set("libraryPath", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VidiStudio Projects"));
-        if (NormalizeNarrationPlayback() | NormalizeSpeechEngine()) Save();
+        if (NormalizeNarrationPlayback() | NormalizeSpeechEngine() | NormalizeSummaryVoice()) Save();
         if (MigrateApiKeyToCredentialStore()) Save();
     }
     public static string GetString(JsonNode? node, string fallback = "")
@@ -101,12 +101,8 @@ public sealed class SettingsStore
     public string Get(string key, string fallback = "") => key switch
     {
         "apiKey" => CredentialStore.Read() ?? fallback,
-        AzureSpeechKey => CredentialStore.AzureSpeech.Read() ?? fallback,
         _ => GetString(Data[key], fallback)
     };
-    /// <summary>The Azure Speech key is also owned by Windows Credential Manager.</summary>
-    public const string AzureSpeechKey = "azureSpeechKey";
-    public bool HasAzureSpeechKey => !string.IsNullOrWhiteSpace(Get(AzureSpeechKey));
     public bool GetBool(string key, bool fallback = false) => GetBool(Data[key], fallback);
     public void Set(string key, string value)
     {
@@ -116,30 +112,43 @@ public sealed class SettingsStore
             Data.Remove("apiKey");
             return;
         }
-        if (key == AzureSpeechKey)
-        {
-            CredentialStore.AzureSpeech.Write(value);
-            Data.Remove(AzureSpeechKey);
-            return;
-        }
         Data[key] = value;
         if (key == "narrationPlayback") NormalizeNarrationPlayback();
     }
     public void Set(string key, bool value) => Data[key] = value;
     public void Set(string key, double value) => Data[key] = value;
     /// <summary>
-    /// An earlier build offered natural voices as a separate "windows-natural" engine. Those
-    /// voices are SAPI 5 voices from a voice bridge add-on, so the choice moves to SAPI 5.
+    /// Moves legacy engine choices to a supported local engine. Natural voices used to be a
+    /// separate "windows-natural" engine but are SAPI 5 voices, and Azure Voices was removed.
     /// </summary>
     private bool NormalizeSpeechEngine()
     {
-        if (Get("ttsMode") != "windows-natural") return false;
-        Data["ttsMode"] = "sapi5";
-        var natural = Get("windowsNaturalVoice", Get("systemVoice"));
-        // Unbridged Narrator packages were listed as "natural-package:" and can never speak.
-        if (natural.StartsWith("natural-package:", StringComparison.Ordinal)) natural = "";
-        Data["sapi5Voice"] = natural; Data["systemVoice"] = natural;
-        Data.Remove("windowsNaturalVoice");
+        var changed = false;
+        if (Get("ttsMode") == "windows-natural")
+        {
+            Data["ttsMode"] = "sapi5";
+            var natural = Get("windowsNaturalVoice", Get("systemVoice"));
+            // Unbridged Narrator packages were listed as "natural-package:" and can never speak.
+            if (natural.StartsWith("natural-package:", StringComparison.Ordinal)) natural = "";
+            Data["sapi5Voice"] = natural; Data["systemVoice"] = natural;
+            Data.Remove("windowsNaturalVoice");
+            changed = true;
+        }
+        if (Get("ttsMode") == "azure")
+        {
+            Data["ttsMode"] = "windows-core";
+            Data.Remove("azureVoice");
+            Data.Remove("azureSpeechRegion");
+            Data.Remove("azureSpeechKey");
+            changed = true;
+        }
+        return changed;
+    }
+    /// <summary>The summary now always uses the narration voice; drop the removed Azure option.</summary>
+    private bool NormalizeSummaryVoice()
+    {
+        if (Get("summaryReadbackVoice", "narration") != "azure") return false;
+        Data["summaryReadbackVoice"] = "narration";
         return true;
     }
     private bool NormalizeNarrationPlayback()
@@ -154,7 +163,7 @@ public sealed class SettingsStore
         NormalizeNarrationPlayback();
         // The Gemini key lives only in Windows Credential Manager; never persist it here.
         Data.Remove("apiKey");
-        Data.Remove(AzureSpeechKey);
+        Data.Remove("azureSpeechKey");
         // These jobs now share the base selection for local and YouTube projects.
         if (Data["models"] is JsonObject models)
             foreach (var stage in new[] { "summary", "audio_descriptions", "screen_text", "text_rewrite", "tts_audio" })

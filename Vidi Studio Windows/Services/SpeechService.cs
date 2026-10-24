@@ -14,17 +14,15 @@ public sealed record Voice(string Id, string Name, string Language, string Gende
     {
         if (Group == VoiceGroups.Heading) return Name;
         var label = string.IsNullOrWhiteSpace(Language) ? Name : string.IsNullOrWhiteSpace(Gender) ? $"{Name} — {Language}" : $"{Name} — {Language} ({Gender})";
-        return Available ? label : label + " — needs the voice bridge add-on";
+        return Available ? label : label + " — unavailable";
     }
 }
 
-/// <summary>Where a natural voice comes from, shown as headings in the voice picker.</summary>
+/// <summary>Where a downloaded voice comes from, shown as headings in the voice picker.</summary>
 public static class VoiceGroups
 {
     public const string Heading = "heading";
     public const string Downloaded = "downloaded";
-    public const string Online = "online";
-    public const string BridgeOnline = "bridge-online";
 }
 
 /// <summary>A speech host failure; Message is safe to show, Detail is for the diagnostic log.</summary>
@@ -37,8 +35,7 @@ public sealed class SpeechFailedException : Exception
 
 public sealed class SpeechService
 {
-    public const string DefaultAzureVoice = "en-US-AvaMultilingualNeural";
-    private const string GenericVoiceFailure = "The selected voice could not speak. If it is a natural voice from the voice bridge add-on, update the add-on to version 0.2.10 or later and check the internet connection for online voices, then try again.";
+    private const string GenericVoiceFailure = "The selected voice could not speak. Try again or choose another voice in Settings.";
 
     /// <summary>
     /// Turns speech host or engine output into a message safe to show: the speech host's own
@@ -50,21 +47,44 @@ public sealed class SpeechService
         const string enginePrefix = "Windows speech failed:";
         if (text.StartsWith(enginePrefix, StringComparison.Ordinal)) text = text[enginePrefix.Length..].Trim();
         var first = text.Split('\n', 2)[0].Trim();
-        foreach (var known in new[] { "The selected voice", "The selected Windows voice", "Selected SAPI voice", "SAPI 5 is unavailable", "Windows speech host is missing", "The speech helper stopped unexpectedly" })
+        foreach (var known in new[] { "The selected voice", "The selected Windows voice", "Selected SAPI voice", "SAPI 5 is unavailable",
+                     "Windows speech host is missing", "The speech helper stopped unexpectedly", "The bundled Piper speech engine is missing",
+                     "The selected Piper voice", "The Piper voice folder", "Choose a Piper voice", "Piper could not create audio", "Piper did not finish" })
             if (first.StartsWith(known, StringComparison.Ordinal)) return first;
         return GenericVoiceFailure;
     }
 
-    public const string DefaultAzureRegion = "eastus";
-    public static async Task SynthesizeAsync(string host, string engine, string voice, string text, string output, double rate, CancellationToken cancellation)
+    public static Task SynthesizeAsync(string host, string engine, string voice, string text, string output, double rate, CancellationToken cancellation)
     {
-        await RequestAsync(host, new { command = "synthesize", engine, voice, text, output, rate }, cancellation);
+        if (engine == "piper")
+        {
+            var voiceId = (voice ?? "").Trim();
+            if (voiceId.Length == 0 || !PiperService.IsVoiceDownloaded(voiceId))
+                throw new SpeechFailedException("The selected Piper voice is not downloaded. Download it in Settings, then try again.");
+            return RequestAsync(host, new
+            {
+                command = "synthesize", engine, voice = voiceId, text, output, rate,
+                piperPath = PiperService.RuntimePath,
+                piperModel = PiperService.ModelPath(voiceId),
+                piperConfig = PiperService.ConfigPath(voiceId),
+                piperSpeaker = 0
+            }, cancellation);
+        }
+        return RequestAsync(host, new { command = "synthesize", engine, voice, text, output, rate }, cancellation);
     }
-    public static async Task<List<Voice>> VoicesAsync(string host, string engine, CancellationToken cancellation = default)
+
+    public static Task<List<Voice>> VoicesAsync(string host, string engine, CancellationToken cancellation = default)
+    {
+        if (engine == "piper") return Task.FromResult(PiperService.InstalledVoices());
+        return VoicesCoreAsync(host, engine, cancellation);
+    }
+
+    private static async Task<List<Voice>> VoicesCoreAsync(string host, string engine, CancellationToken cancellation)
     {
         var output = await RequestAsync(host, new { command = "voices", engine }, cancellation);
         return JsonSerializer.Deserialize<List<Voice>>(output, Models.Json.Options) ?? new();
     }
+
     private static async Task<string> RequestAsync(string host, object request, CancellationToken cancellation)
     {
         var info = new ProcessStartInfo(host) { UseShellExecute = false, CreateNoWindow = true,
@@ -81,7 +101,7 @@ public sealed class SpeechService
         {
             var detail = (await error).Trim();
             // An empty error usually means a voice crashed the helper process.
-            if (detail.Length == 0) detail = $"The speech helper stopped unexpectedly (exit code {process.ExitCode}). The selected voice may have stopped it; try again, choose another voice, or update the voice bridge add-on.";
+            if (detail.Length == 0) detail = $"The speech helper stopped unexpectedly (exit code {process.ExitCode}). The selected voice may have stopped it; try again or choose another voice.";
             throw new SpeechFailedException(detail);
         }
         return await output;

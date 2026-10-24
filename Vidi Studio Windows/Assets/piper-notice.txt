@@ -1,0 +1,16 @@
+Piper text-to-speech
+====================
+
+Vidi Studio includes the Piper speech engine (piper.exe and its runtime files)
+from the rhasspy/piper project, release 2023.11.14-2.
+
+Piper is Copyright (c) 2022 Rhasspy and contributors and is licensed under the
+MIT License. The full source and license are available at:
+
+https://github.com/rhasspy/piper
+
+Piper voices are downloaded on demand from the public Piper voice collection:
+
+https://huggingface.co/rhasspy/piper-voices
+
+Each voice remains subject to the license and terms published with that voice.

@@ -1105,7 +1105,7 @@ public sealed partial class MainWindow : Window
             await ShowSettingsSectionAsync(2);
             return;
         }
-        if (Model.CurrentNarrationEngine() == "azure" && !Model.Settings.HasAzureSpeechKey)
+        if (Model.CurrentNarrationEngine() == "piper" && !PiperService.IsVoiceDownloaded(Model.CurrentNarrationVoice()))
         {
             await ShowSettingsSectionAsync(1);
             return;

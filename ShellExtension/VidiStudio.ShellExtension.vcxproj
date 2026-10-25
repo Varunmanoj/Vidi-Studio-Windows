@@ -33,7 +33,12 @@
 
   <PropertyGroup Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
-    <PlatformToolset>$(DefaultPlatformToolset)</PlatformToolset>
+    <PlatformToolset Condition="'$(PlatformToolset)' == '' and '$(DefaultPlatformToolset)' != ''">$(DefaultPlatformToolset)</PlatformToolset>
+    <PlatformToolset Condition="'$(PlatformToolset)' == '' and Exists('$(VCTargetsPath)\Platforms\$(Platform)\PlatformToolsets\v145')">v145</PlatformToolset>
+    <PlatformToolset Condition="'$(PlatformToolset)' == '' and Exists('$(VCTargetsPath)\Platforms\$(Platform)\PlatformToolsets\v144')">v144</PlatformToolset>
+    <PlatformToolset Condition="'$(PlatformToolset)' == '' and Exists('$(VCTargetsPath)\Platforms\$(Platform)\PlatformToolsets\v143')">v143</PlatformToolset>
+    <PlatformToolset Condition="'$(PlatformToolset)' == '' and Exists('$(VCTargetsPath)\Platforms\$(Platform)\PlatformToolsets\v142')">v142</PlatformToolset>
+    <PlatformToolset Condition="'$(PlatformToolset)' == ''">v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">

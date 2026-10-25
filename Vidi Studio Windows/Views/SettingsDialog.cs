@@ -32,12 +32,18 @@ public sealed partial class SettingsDialog : Window
         var original = model.Settings.Get("theme", "system");
         ApplyWindowTheme("dark");
         await Task.Delay(50);
-        if (layout.ActualTheme != ElementTheme.Dark || ((SolidColorBrush)layout.Background).Color.R > 40)
+        var dark = ((SolidColorBrush)layout.Background).Color;
+        if (layout.ActualTheme != ElementTheme.Dark || dark.R + dark.G + dark.B > 300)
             throw new InvalidOperationException("The Settings window did not switch to dark appearance.");
         ApplyWindowTheme("light");
         await Task.Delay(50);
-        if (layout.ActualTheme != ElementTheme.Light || ((SolidColorBrush)layout.Background).Color.R < 200)
+        var light = ((SolidColorBrush)layout.Background).Color;
+        if (layout.ActualTheme != ElementTheme.Light || light.R + light.G + light.B < 600)
             throw new InvalidOperationException("The Settings window did not switch to light appearance.");
+        if (dark == light)
+            throw new InvalidOperationException("The Settings window surface did not follow the selected appearance.");
+        if (WindowAppearance.MaterialFor(this) != WindowMaterial.None && (dark.A == 255 || light.A == 255))
+            throw new InvalidOperationException("The Settings window surface is opaque, so the system material cannot show through.");
         ApplyWindowTheme(original);
     }
     internal async Task VerifyProviderSwitchingAsync()
@@ -210,6 +216,19 @@ public sealed partial class SettingsDialog : Window
         progress.Observe(model);
         Closed += (_, _) => progress.Detach();
         Content = layout;
+        WindowAppearance.ApplyMaterial(this);
+        ExtendsContentIntoTitleBar = true;
+        var titleBarDrag = new Border
+        {
+            Height = 32,
+            VerticalAlignment = VerticalAlignment.Top,
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            Margin = new Thickness(-16, -16, -16, 0)
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(titleBarDrag, "Vidi Studio Settings title bar");
+        Grid.SetColumnSpan(titleBarDrag, 2);
+        layout.Children.Add(titleBarDrag);
+        SetTitleBar(titleBarDrag);
         App.ThemeChanged += ReceiveTheme;
         samplePlayer.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
@@ -347,18 +366,13 @@ public sealed partial class SettingsDialog : Window
     }
     private void ReceiveTheme(string theme)
     {
-        layout.RequestedTheme = theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
-        UpdateWindowTitleBar();
+        var requested = theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
+        WindowAppearance.ApplyTheme(this, layout, requested);
     }
     private void UpdateWindowTitleBar()
     {
-        if (AppWindow?.TitleBar is not { } titleBar) return;
-        var dark = layout.ActualTheme == ElementTheme.Dark;
-        layout.Background = new SolidColorBrush(dark ? Windows.UI.Color.FromArgb(255, 24, 24, 24) : Microsoft.UI.Colors.White);
-        titleBar.BackgroundColor = dark ? Microsoft.UI.Colors.Black : Microsoft.UI.Colors.White;
-        titleBar.ForegroundColor = dark ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
-        titleBar.ButtonBackgroundColor = titleBar.BackgroundColor;
-        titleBar.ButtonForegroundColor = titleBar.ForegroundColor;
+        WindowAppearance.ApplySurface(this, layout, layout.ActualTheme);
+        WindowAppearance.UpdateTitleBar(this, layout.ActualTheme);
     }
     private void AddText(StackPanel panel, string label, string key, string fallback = "")
     {

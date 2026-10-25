@@ -55,6 +55,9 @@ public sealed partial class MainWindow : Window
         onDeviceNarrator = new OnDeviceNarrator(Model.Settings, Model.Engine);
         onDeviceNarrator.Failed += message => Model.ReportStatus(message);
         InitializeComponent();
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+        Views.WindowAppearance.ApplyMaterial(this);
         ActiveExports.Observe(Model);
         Model.PropertyChanged += UpdateStatusFooter;
         Views.WindowAppearance.ApplyIcon(this);
@@ -225,25 +228,8 @@ public sealed partial class MainWindow : Window
 
     private void UpdateTitleBarTheme(ElementTheme theme)
     {
-        if (AppWindow?.TitleBar is not { } titleBar) return;
-        var dark = theme == ElementTheme.Dark;
-        var background = dark ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 243, 243, 243);
-        var foreground = dark ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
-        var inactive = dark ? Windows.UI.Color.FromArgb(255, 170, 170, 170) : Windows.UI.Color.FromArgb(255, 90, 90, 90);
-        var hover = dark ? Windows.UI.Color.FromArgb(255, 62, 62, 62) : Windows.UI.Color.FromArgb(255, 224, 224, 224);
-        var pressed = dark ? Windows.UI.Color.FromArgb(255, 82, 82, 82) : Windows.UI.Color.FromArgb(255, 205, 205, 205);
-        titleBar.BackgroundColor = background;
-        titleBar.ForegroundColor = foreground;
-        titleBar.InactiveBackgroundColor = background;
-        titleBar.InactiveForegroundColor = inactive;
-        titleBar.ButtonBackgroundColor = background;
-        titleBar.ButtonForegroundColor = foreground;
-        titleBar.ButtonInactiveBackgroundColor = background;
-        titleBar.ButtonInactiveForegroundColor = inactive;
-        titleBar.ButtonHoverBackgroundColor = hover;
-        titleBar.ButtonHoverForegroundColor = foreground;
-        titleBar.ButtonPressedBackgroundColor = pressed;
-        titleBar.ButtonPressedForegroundColor = foreground;
+        Views.WindowAppearance.ApplyWindowSurface(this, Root, AppSurface, theme);
+        Views.WindowAppearance.UpdateTitleBar(this, theme);
     }
     private ContentDialog Dialog(string title, object content, string action = "Save") => new()
     { Title = title, Content = content, PrimaryButtonText = action, CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };

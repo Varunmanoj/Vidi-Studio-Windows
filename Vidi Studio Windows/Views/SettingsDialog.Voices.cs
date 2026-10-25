@@ -33,7 +33,7 @@ public sealed partial class SettingsDialog
 {
     private readonly StackPanel piperControls = new() { Spacing = 10 };
     private readonly TextBlock piperStatus = new() { TextWrapping = TextWrapping.Wrap, Opacity = .75 };
-    private readonly Button deletePiperVoices = new() { MinWidth = 140 };
+    private Button? deletePiperVoices;
     private readonly StackPanel summaryControls = new() { Spacing = 8 };
 
     private void BuildVoiceEngineControls()
@@ -52,16 +52,18 @@ public sealed partial class SettingsDialog
             await RefreshVoices();
         };
         buttons.Children.Add(manage);
-        IconButtonContent.Set(deletePiperVoices, "Delete voices…", Symbol.Delete);
-        AutomationProperties.SetName(deletePiperVoices, "Delete downloaded Piper voices");
-        AutomationProperties.SetHelpText(deletePiperVoices, "Lists downloaded Piper voices so you can listen to a sample and remove the ones you no longer need");
-        deletePiperVoices.Click += async (_, _) =>
+        var delete = new Button { MinWidth = 140 };
+        deletePiperVoices = delete;
+        IconButtonContent.Set(delete, "Delete voices…", Symbol.Delete);
+        AutomationProperties.SetName(delete, "Delete downloaded Piper voices");
+        AutomationProperties.SetHelpText(delete, "Lists downloaded Piper voices so you can listen to a sample and remove the ones you no longer need");
+        delete.Click += async (_, _) =>
         {
             var dialog = new PiperDeleteVoicesDialog();
             await WindowedDialog.ShowAsync(dialog, this, 720, 700);
             await RefreshVoices();
         };
-        buttons.Children.Add(deletePiperVoices);
+        buttons.Children.Add(delete);
         piperControls.Children.Add(buttons);
         piperControls.Children.Add(piperStatus);
 
@@ -82,7 +84,7 @@ public sealed partial class SettingsDialog
     private void UpdatePiperStatus()
     {
         var installed = PiperService.InstalledVoices();
-        deletePiperVoices.IsEnabled = installed.Count > 0;
+        if (deletePiperVoices is not null) deletePiperVoices.IsEnabled = installed.Count > 0;
         piperStatus.Text = !PiperService.IsRuntimeAvailable
             ? "The bundled Piper speech engine is missing. Reinstall Vidi Studio, or run script\\fetch-piper.ps1 and build the app again."
             : installed.Count == 0

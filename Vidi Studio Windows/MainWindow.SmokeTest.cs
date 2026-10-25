@@ -64,8 +64,13 @@ public sealed partial class MainWindow
             UpdateDesktopMenuStates();
             if (!desktopMenuItems["export"].Last().IsEnabled || !desktopMenuItems["synthesize-tts"].Last().IsEnabled ||
                 !desktopMenuItems["review-narration-issues"].Last().IsEnabled || !desktopMenuItems["review-narration-voices"].Last().IsEnabled || desktopMenuItems["transcribe"].Last().IsEnabled ||
-                desktopMenuItems["new-project"].Last().IsEnabled)
-                throw new InvalidOperationException("Offline menu actions and AI prerequisites are not independently guarded.");
+                !desktopMenuItems["new-project"].Last().IsEnabled)
+                // New Project stays available without an API key, matching the Mac menu; its dialog applies the key gate.
+                throw new InvalidOperationException(
+                    $"Offline menu actions and AI prerequisites are not independently guarded. " +
+                    $"export={desktopMenuItems["export"].Last().IsEnabled}, synthesize={desktopMenuItems["synthesize-tts"].Last().IsEnabled}, " +
+                    $"issues={desktopMenuItems["review-narration-issues"].Last().IsEnabled}, voices={desktopMenuItems["review-narration-voices"].Last().IsEnabled}, " +
+                    $"transcribe={desktopMenuItems["transcribe"].Last().IsEnabled}, new-project={desktopMenuItems["new-project"].Last().IsEnabled}, idle={Model.Idle}, editor={desktopEditorVisible}, cues={Model.Project?.Cues.Count}");
             var originalAudio = Model.Project!.Cues.Select(c => (Cue: c, Audio: c.Audio)).ToList();
             try
             {
@@ -144,14 +149,28 @@ public sealed partial class MainWindow
             await Task.Delay(50);
             if (Root.RequestedTheme != ElementTheme.Dark || Root.ActualTheme != ElementTheme.Dark)
                 throw new InvalidOperationException("Dark appearance did not apply to the application root.");
-            var darkBackground = ((Microsoft.UI.Xaml.Media.SolidColorBrush)Root.Background).Color;
+            var darkBackground = ((Microsoft.UI.Xaml.Media.SolidColorBrush)AppSurface.Background).Color;
             PreviewTheme("light");
             await Task.Delay(50);
             if (Root.RequestedTheme != ElementTheme.Light || Root.ActualTheme != ElementTheme.Light)
                 throw new InvalidOperationException("Light appearance did not apply to the application root.");
-            var lightBackground = ((Microsoft.UI.Xaml.Media.SolidColorBrush)Root.Background).Color;
+            var lightBackground = ((Microsoft.UI.Xaml.Media.SolidColorBrush)AppSurface.Background).Color;
             if (darkBackground.R + darkBackground.G + darkBackground.B >= lightBackground.R + lightBackground.G + lightBackground.B)
                 throw new InvalidOperationException("Application background colors did not follow the selected appearance.");
+            var material = Views.WindowAppearance.MaterialFor(this);
+            if (Microsoft.UI.Composition.SystemBackdrops.MicaController.IsSupported() && material != Views.WindowMaterial.Mica)
+                throw new InvalidOperationException("Mica is supported but the main window did not use it.");
+            if (!Microsoft.UI.Composition.SystemBackdrops.MicaController.IsSupported() &&
+                Microsoft.UI.Composition.SystemBackdrops.DesktopAcrylicController.IsSupported() && material != Views.WindowMaterial.Acrylic)
+                throw new InvalidOperationException("Desktop Acrylic is supported but the main window did not use it.");
+            if (material != Views.WindowMaterial.None && (darkBackground.A == 255 || lightBackground.A == 255))
+                throw new InvalidOperationException("The application surface is opaque, so the system material cannot show through.");
+            if (material != Views.WindowMaterial.None && ((Microsoft.UI.Xaml.Media.SolidColorBrush)Root.Background).Color.A != 0)
+                throw new InvalidOperationException("The title bar and menu strip are painted over the system material.");
+            if (!ExtendsContentIntoTitleBar || AppTitleBar.ActualHeight < 30)
+                throw new InvalidOperationException("The main window does not use the extended material title bar.");
+            if (material == Views.WindowMaterial.Mica && (AppWindow.TitleBar.ButtonBackgroundColor is not { } caption || caption.A > 1))
+                throw new InvalidOperationException("Mica caption buttons are not transparent.");
             PreviewTheme(originalTheme);
             if (Model.Project?.Cues[0].Origin != "ai") throw new InvalidOperationException("Description origin was not preserved while reading project JSON.");
             Model.Settings.Set("captionDisplayMode", "combined");

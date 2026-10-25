@@ -50,7 +50,8 @@ public sealed partial class SettingsDialog : Window
         if (voices.Count < 2 || (mode.SelectedItem as SpeechEngineOption)?.Id != "windows-core" || localSpeechControls.Visibility != Visibility.Visible) throw new InvalidOperationException("Core voice refresh did not finish.");
         mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "sapi5");
         await RefreshVoices();
-        if (localSpeechControls.Visibility != Visibility.Visible || sapiHost.Visibility != Visibility.Visible || piperControls.Visibility != Visibility.Collapsed
+        var expectedSapiHost = DeveloperModeEnabled ? Visibility.Visible : Visibility.Collapsed;
+        if (localSpeechControls.Visibility != Visibility.Visible || sapiHost.Visibility != expectedSapiHost || piperControls.Visibility != Visibility.Collapsed
             || voices.FirstOrDefault()?.Id != "" || (voice.SelectedItem is Voice chosenSapi && !chosenSapi.Available))
             throw new InvalidOperationException("SAPI 5 must show local speech controls and a selectable voice.");
         mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "piper");
@@ -115,6 +116,25 @@ public sealed partial class SettingsDialog : Window
         if (developerPromptsItem.Visibility != Visibility.Collapsed || SelectedSectionForSmokeTest != 0)
             throw new InvalidOperationException("Turning Developer mode off did not hide Developer prompts.");
     }
+    internal async Task VerifyAdvancedOptionsForSmokeTestAsync()
+    {
+        draft["developerMode"] = false; UpdateDeveloperPromptsVisibility();
+        NavigateForSmokeTest(4);
+        if (storageAdvancedControls.Visibility != Visibility.Collapsed || storageAdvancedControls.Children.Count == 0)
+            throw new InvalidOperationException("Executable paths must be hidden until Developer mode is enabled.");
+        draft["developerMode"] = true; UpdateDeveloperPromptsVisibility();
+        if (storageAdvancedControls.Visibility != Visibility.Visible)
+            throw new InvalidOperationException("Developer mode did not reveal the executable paths.");
+        NavigateForSmokeTest(1);
+        mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "sapi5");
+        await RefreshVoices();
+        if (sapiHost.Visibility != Visibility.Visible)
+            throw new InvalidOperationException("Developer mode did not reveal the optional SAPI host field.");
+        draft["developerMode"] = false; UpdateDeveloperPromptsVisibility();
+        if (sapiHost.Visibility != Visibility.Collapsed)
+            throw new InvalidOperationException("Turning Developer mode off did not hide the optional SAPI host field.");
+        NavigateForSmokeTest(0);
+    }
 #endif
     private readonly StudioViewModel model;
     private readonly JsonObject draft;
@@ -138,6 +158,7 @@ public sealed partial class SettingsDialog : Window
     private readonly TextBox search = new() { Header = "Filter voices" };
     private readonly TextBox sapiHost = new() { Header = "Optional SAPI host executable" };
     private readonly StackPanel localSpeechControls = new() { Spacing = 14 };
+    private readonly StackPanel storageAdvancedControls = new() { Spacing = 12 };
     private List<Voice> voices = new();
     public SettingsDialog(StudioViewModel model, Window window, int initialSection = 0)
     {
@@ -243,9 +264,13 @@ public sealed partial class SettingsDialog : Window
                     break;
                 case 4:
                     AddText(panel, "Project library", "libraryPath");
-                    AddText(panel, "Python executable", "pythonPath", "python.exe");
-                    AddExecutablePicker(panel, "FFmpeg executable", "ffmpegPath");
-                    AddExecutablePicker(panel, "FFprobe executable", "ffprobePath");
+                    storageAdvancedControls.Children.Clear();
+                    storageAdvancedControls.Children.Add(new TextBlock { Text = "Advanced", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+                    AddText(storageAdvancedControls, "Python executable", "pythonPath", "python.exe");
+                    AddExecutablePicker(storageAdvancedControls, "FFmpeg executable", "ffmpegPath");
+                    AddExecutablePicker(storageAdvancedControls, "FFprobe executable", "ffprobePath");
+                    panel.Children.Add(storageAdvancedControls);
+                    UpdateAdvancedControlsVisibility();
                     var doctor = new Button { Content = "Check engine and media tools" };
                     doctor.Click += async (_, _) => { await model.RunAsync("doctor", needsProject: false); status.Text = model.Status; }; panel.Children.Add(doctor);
                     var logs = new Button { Content = "Open diagnostics folder" };
@@ -289,6 +314,13 @@ public sealed partial class SettingsDialog : Window
         if (developerPromptsItem != null)
             developerPromptsItem.Visibility = DeveloperModeEnabled ? Visibility.Visible : Visibility.Collapsed;
         if (!DeveloperModeEnabled && sectionList?.SelectedIndex == 3) sectionList.SelectedIndex = 0;
+        UpdateAdvancedControlsVisibility();
+    }
+    private void UpdateAdvancedControlsVisibility()
+    {
+        storageAdvancedControls.Visibility = DeveloperModeEnabled ? Visibility.Visible : Visibility.Collapsed;
+        var provider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
+        sapiHost.Visibility = provider == "sapi5" && DeveloperModeEnabled ? Visibility.Visible : Visibility.Collapsed;
     }
     public void SelectSection(int section)
     {
@@ -546,7 +578,7 @@ public sealed partial class SettingsDialog : Window
         };
         search.Visibility = provider == "gemini" ? Visibility.Collapsed : Visibility.Visible;
         localSpeechControls.Visibility = provider == "gemini" ? Visibility.Collapsed : Visibility.Visible;
-        sapiHost.Visibility = provider == "sapi5" ? Visibility.Visible : Visibility.Collapsed;
+        sapiHost.Visibility = provider == "sapi5" && DeveloperModeEnabled ? Visibility.Visible : Visibility.Collapsed;
         UpdateVoiceEngineVisibility(provider);
         UpdateSampleControls();
         voice.ItemsSource = null;

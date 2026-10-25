@@ -271,6 +271,7 @@ public sealed partial class MainWindow
             var display = settings.ShowAsync();
             await Task.Delay(250);
             settings.VerifyDeveloperModeGateForSmokeTest();
+            await settings.VerifyAdvancedOptionsForSmokeTestAsync();
             PreviewTheme("dark"); await Task.Delay(80);
             if (((FrameworkElement)settings.Content).ActualTheme != ElementTheme.Dark || Root.ActualTheme != ElementTheme.Dark)
                 throw new InvalidOperationException("An open Settings window did not follow the app's dark theme.");

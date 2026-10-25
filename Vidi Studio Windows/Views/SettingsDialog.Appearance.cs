@@ -124,7 +124,7 @@ public sealed partial class SettingsDialog
         developerRow.Children.Add(new TextBlock { Text = "Developer mode", VerticalAlignment = VerticalAlignment.Center });
         Grid.SetColumn(developerMode, 1); developerRow.Children.Add(developerMode);
         advanced.Children.Add(developerRow);
-        advanced.Children.Add(new TextBlock { Text = "Shows Developer prompts for editing model instructions and output requirements.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
+        advanced.Children.Add(new TextBlock { Text = "Shows Developer prompts and the advanced executable-path overrides in Narration and Storage.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
         developerMode.Toggled += (_, _) =>
         {
             draft["developerMode"] = developerMode.IsOn;

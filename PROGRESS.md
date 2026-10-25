@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-25 — Advanced executable paths gated by Developer mode (1.0.126 / 1.0.126.0)
+
+Developer mode now controls the remaining advanced executable settings. With it off, **Storage and tools** shows the project library and the engine/diagnostics actions but not the Python, FFmpeg, or FFprobe executable fields. **Narration** hides the optional SAPI host executable even when Windows SAPI 5 is selected. Enabling Developer mode reveals all four controls; disabling it hides them again without clearing saved paths. The controls remain available to speech and media execution while hidden.
+
+Validation: on this macOS host the macOS suite passed 151 tests, the Windows Python suite passed 199 tests (1 Windows-only skip), both `test_parity` suites passed, and `script/check_menu_parity.py` passed. `VIDISTUDIO_CONFIGURATION=Release ./script/build_and_run.sh --verify` built, signed, and launched 1.0.126 with 13 Help pages; native accessibility inspection verified the Mac Storage gate, and the Windows smoke test now asserts the Storage and SAPI-host gates. Not run: native Windows build/MSIX packaging, full C# code-behind compilation, or interactive Windows UI/Narrator checks.
+
 ## 2026-10-25 — Developer mode gates Developer prompts and Piper licensing in About (1.0.125 / 1.0.125.0)
 
 The Appearance page now has an **Advanced** card with **Developer mode**, off by default. **Developer prompts** is hidden from the Settings sidebar and redirects to Appearance if selected while the switch is off. Enabling Developer mode reveals the prompts page; disabling it hides the page again, returns to Appearance when necessary, and keeps saved prompt edits. About gained a **Piper voices** section that identifies the bundled `rhasspy/piper` 2023.11.14-2 engine, states the MIT license and Rhasspy copyright, links to the source, opens the bundled notice, and notes that downloaded voices keep their published terms. The bundled `piper-notice.txt` now includes the complete MIT license text.

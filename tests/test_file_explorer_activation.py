@@ -50,6 +50,12 @@ class TestFileExplorerActivation(unittest.TestCase):
         self.assertEqual(namespaces["uap2"], "http://schemas.microsoft.com/appx/manifest/uap/windows10/2")
         self.assertIn("uap3", namespaces)
         self.assertEqual(namespaces["uap3"], "http://schemas.microsoft.com/appx/manifest/uap/windows10/3")
+        self.assertIn("com", namespaces)
+        self.assertEqual(namespaces["com"], "http://schemas.microsoft.com/appx/manifest/com/windows10")
+        self.assertIn("desktop4", namespaces)
+        self.assertEqual(namespaces["desktop4"], "http://schemas.microsoft.com/appx/manifest/desktop/windows10/4")
+        self.assertIn("desktop5", namespaces)
+        self.assertEqual(namespaces["desktop5"], "http://schemas.microsoft.com/appx/manifest/desktop/windows10/5")
 
         # Check extensions
         ns = {
@@ -57,15 +63,20 @@ class TestFileExplorerActivation(unittest.TestCase):
             "uap": "http://schemas.microsoft.com/appx/manifest/uap/windows10",
             "uap2": "http://schemas.microsoft.com/appx/manifest/uap/windows10/2",
             "uap3": "http://schemas.microsoft.com/appx/manifest/uap/windows10/3",
+            "com": "http://schemas.microsoft.com/appx/manifest/com/windows10",
+            "desktop4": "http://schemas.microsoft.com/appx/manifest/desktop/windows10/4",
+            "desktop5": "http://schemas.microsoft.com/appx/manifest/desktop/windows10/5",
             "desktop6": "http://schemas.microsoft.com/appx/manifest/desktop/windows10/6",
             "rescap": "http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities",
         }
 
-        extensions = root.findall(".//uap:Extension", ns) + root.findall(".//uap3:Extension", ns)
+        extensions = root.findall(".//uap:Extension", ns) + root.findall(".//uap3:Extension", ns) + root.findall(".//desktop4:Extension", ns) + root.findall(".//com:Extension", ns)
         categories = [ext.attrib.get("Category") for ext in extensions]
         self.assertIn("windows.fileTypeAssociation", categories)
         self.assertIn("windows.shareTarget", categories)
         self.assertIn("windows.protocol", categories)
+        self.assertIn("windows.comServer", categories)
+        self.assertIn("windows.fileExplorerContextMenus", categories)
 
         fta = root.find(".//uap3:Extension[@Category='windows.fileTypeAssociation']/uap3:FileTypeAssociation", ns)
         if fta is None:
@@ -96,6 +107,41 @@ class TestFileExplorerActivation(unittest.TestCase):
         protocol = root.find(".//uap:Extension[@Category='windows.protocol']/uap:Protocol", ns)
         self.assertIsNotNone(protocol, "Protocol must be declared")
         self.assertEqual(protocol.attrib.get("Name"), "vidistudio")
+
+    def test_modern_context_menu_uses_native_iexplorercommand(self):
+        root = ET.parse(self.manifest_path).getroot()
+        ns = {
+            "com": "http://schemas.microsoft.com/appx/manifest/com/windows10",
+            "desktop4": "http://schemas.microsoft.com/appx/manifest/desktop/windows10/4",
+            "desktop5": "http://schemas.microsoft.com/appx/manifest/desktop/windows10/5",
+        }
+        com_class = root.find(".//com:Extension[@Category='windows.comServer']//com:Class", ns)
+        self.assertIsNotNone(com_class)
+        self.assertEqual(com_class.attrib.get("Path"), "VidiStudio.ShellExtension.dll")
+        self.assertEqual(com_class.attrib.get("ThreadingModel"), "STA")
+
+        verb = root.find(".//desktop4:Extension[@Category='windows.fileExplorerContextMenus']//desktop5:Verb", ns)
+        self.assertIsNotNone(verb)
+        self.assertEqual(verb.attrib.get("Id"), "DescribeWithVidiStudioModern")
+        self.assertEqual(verb.attrib.get("Clsid"), com_class.attrib.get("Id"))
+
+        item_type = root.find(".//desktop4:Extension[@Category='windows.fileExplorerContextMenus']//desktop5:ItemType", ns)
+        self.assertIsNotNone(item_type)
+        self.assertEqual(item_type.attrib.get("Type"), "*")
+
+        extension_root = self.root / "ShellExtension"
+        self.assertTrue((extension_root / "VidiStudio.ShellExtension.vcxproj").is_file())
+        source = (extension_root / "VidiStudio.ShellExtension.cpp").read_text(encoding="utf-8")
+        for expected in ("IExplorerCommand", "GetTitle", "GetState", "Invoke", "ActivateApplication", "--video", "Describe with Vidi Studio"):
+            self.assertIn(expected, source)
+        project = (self.root / "Vidi Studio Windows" / "Vidi Studio Windows.csproj").read_text(encoding="utf-8")
+        self.assertIn(r"..\ShellExtension\VidiStudio.ShellExtension.vcxproj", project)
+        self.assertIn("VidiStudio.ShellExtension.dll", project)
+
+        settings = (self.root / "Vidi Studio Windows" / "Views" / "SettingsDialog.cs").read_text(encoding="utf-8")
+        self.assertIn("Repair legacy File Explorer context menu", settings)
+        self.assertIn("storageAdvancedControls.Children.Add(contextMenuButton)", settings)
+        self.assertIn("DeveloperModeEnabled", settings)
 
     def test_app_handles_file_and_command_line_activation(self):
         source = self.app_xaml_cs_path.read_text(encoding="utf-8")

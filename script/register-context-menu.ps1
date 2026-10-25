@@ -6,10 +6,14 @@
 .DESCRIPTION
     Creates user-level file associations in HKCU:\Software\Classes so that:
     1. A dedicated "Describe with Vidi Studio" menu item (with app icon) appears
-       in the Windows 11 context menu and "Show more options" (classic menu) for
-       all supported video files (.mp4, .mov, .m4v, .mkv, .avi, .webm, .wmv).
+       in the classic "Show more options" menu for all supported video files
+       (.mp4, .mov, .m4v, .mkv, .avi, .webm, .wmv).
     2. "Vidi Studio" is registered in the "Open with" submenu and handler list.
     3. Notifies Windows Explorer immediately via SHChangeNotify without restarting explorer.exe.
+
+    Windows 11's modern context menu is provided automatically by the packaged
+    app through its IExplorerCommand COM surrogate and Package.appxmanifest
+    fileExplorerContextMenus extension; this script repairs the legacy menu.
 
 .PARAMETER ExePath
     Explicit path to Vidi Studio Windows.exe. If omitted, the script auto-discovers

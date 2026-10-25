@@ -269,26 +269,26 @@ public sealed partial class SettingsDialog : Window
                     AddText(storageAdvancedControls, "Python executable", "pythonPath", "python.exe");
                     AddExecutablePicker(storageAdvancedControls, "FFmpeg executable", "ffmpegPath");
                     AddExecutablePicker(storageAdvancedControls, "FFprobe executable", "ffprobePath");
+                    var contextMenuButton = new Button { Content = "Repair legacy File Explorer context menu" };
+                    contextMenuButton.Click += (_, _) =>
+                    {
+                        try
+                        {
+                            Services.ShellIntegration.RegisterContextMenu();
+                            status.Text = "Legacy File Explorer context menu registered for video files.";
+                        }
+                        catch (Exception ex)
+                        {
+                            status.Text = "Could not register the legacy context menu: " + ex.Message;
+                        }
+                    };
+                    storageAdvancedControls.Children.Add(contextMenuButton);
                     panel.Children.Add(storageAdvancedControls);
                     UpdateAdvancedControlsVisibility();
                     var doctor = new Button { Content = "Check engine and media tools" };
                     doctor.Click += async (_, _) => { await model.RunAsync("doctor", needsProject: false); status.Text = model.Status; }; panel.Children.Add(doctor);
                     var logs = new Button { Content = "Open diagnostics folder" };
                     logs.Click += async (_, _) => { Directory.CreateDirectory(SettingsStore.DirectoryPath); await Windows.System.Launcher.LaunchFolderPathAsync(SettingsStore.DirectoryPath); }; panel.Children.Add(logs);
-                    var contextMenuButton = new Button { Content = "Register File Explorer context menu" };
-                    contextMenuButton.Click += (_, _) =>
-                    {
-                        try
-                        {
-                            Services.ShellIntegration.RegisterContextMenu();
-                            status.Text = "File Explorer context menu registered for video files.";
-                        }
-                        catch (Exception ex)
-                        {
-                            status.Text = "Could not register context menu: " + ex.Message;
-                        }
-                    };
-                    panel.Children.Add(contextMenuButton);
                     break;
                 case 5: BuildHelp(panel); break;
                 case 6: BuildAbout(panel); break;

@@ -30,8 +30,20 @@ with zipfile.ZipFile(args.package) as package:
         return struct.unpack_from("<H", data, offset+4)[0]
     assert machine(app.attrib["Executable"]) == expected, "Wrong UI architecture"
     assert machine("speech/VidiStudio.SpeechHost.exe") == expected, "Wrong speech helper architecture"
+    assert machine("VidiStudio.ShellExtension.dll") == expected, "Wrong shell extension architecture"
     for file in ["speech/VidiStudio.SpeechHost.runtimeconfig.json", "engine/vidistudio_engine.py", "engine/windows_speech.py", "engine/mov_accessibility.py", "engine/youtube_audio.py", "engine/ai-defaults.json", "Assets/youtube.html", "Assets/piper-voices.json", "piper/piper.exe", "piper/onnxruntime.dll", "piper/espeak-ng-data/en_dict"]:
         read(file)
+    modern_ns = {
+        "com": "http://schemas.microsoft.com/appx/manifest/com/windows10",
+        "desktop4": "http://schemas.microsoft.com/appx/manifest/desktop/windows10/4",
+        "desktop5": "http://schemas.microsoft.com/appx/manifest/desktop/windows10/5",
+    }
+    com_class = manifest.find(".//com:Extension[@Category='windows.comServer']//com:Class", modern_ns)
+    assert com_class is not None, "Modern context menu COM server is not registered"
+    assert com_class.attrib.get("Path") == "VidiStudio.ShellExtension.dll", "Wrong context menu DLL path"
+    context_verb = manifest.find(".//desktop4:Extension[@Category='windows.fileExplorerContextMenus']//desktop5:Verb", modern_ns)
+    assert context_verb is not None, "Modern File Explorer context menu is not registered"
+    assert context_verb.attrib.get("Clsid") == com_class.attrib.get("Id"), "Context menu CLSID mismatch"
     # Piper is published only as a Windows x64 build, so it runs natively on x64 and through
     # Windows 11 ARM64 x64 emulation.
     assert machine("piper/piper.exe") == 0x8664, "The bundled Piper engine must be the Windows x64 build"

@@ -83,7 +83,9 @@ public static class ShellIntegration
                 }
             }
 
-            // 3. Register under Software\Classes\*\shell with AppliesTo for Explorer modern / classic menu
+            // 3. Register under Software\Classes\*\shell with AppliesTo for the legacy Explorer menu.
+            // Windows 11's modern menu is provided by the packaged IExplorerCommand extension;
+            // these registry verbs remain for Windows 10 and "Show more options".
             var appliesTo = string.Join(" OR ", Array.ConvertAll(VideoExtensions, ext => $"System.FileExtension:={ext}"));
             using (var anyVerb = Registry.CurrentUser.CreateSubKey(@"Software\Classes\*\shell\" + VerbKey))
             {

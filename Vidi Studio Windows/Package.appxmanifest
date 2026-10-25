@@ -6,15 +6,18 @@
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:uap2="http://schemas.microsoft.com/appx/manifest/uap/windows10/2"
   xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+  xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
   xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   xmlns:systemai="http://schemas.microsoft.com/appx/manifest/systemai/windows10"
-  IgnorableNamespaces="uap uap2 uap3 desktop6 rescap systemai">
+  IgnorableNamespaces="uap uap2 uap3 com desktop4 desktop5 desktop6 rescap systemai">
 
   <Identity
     Name="7b6f5f53-8ba2-429e-a747-0e2393ce9cee"
     Publisher="CN=personal"
-    Version="1.0.126.0" />
+    Version="1.0.128.0" />
 
   <mp:PhoneIdentity PhoneProductId="7b6f5f53-8ba2-429e-a747-0e2393ce9cee" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
@@ -49,6 +52,25 @@
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
       <Extensions>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:SurrogateServer DisplayName="Vidi Studio context menu">
+              <com:Class
+                Id="8E2C4B1A-7D4F-4A2B-9C3D-6F1E5A8B0C42"
+                Path="VidiStudio.ShellExtension.dll"
+                ThreadingModel="STA" />
+            </com:SurrogateServer>
+          </com:ComServer>
+        </com:Extension>
+        <desktop4:Extension Category="windows.fileExplorerContextMenus">
+          <desktop4:FileExplorerContextMenus>
+            <desktop5:ItemType Type="*">
+              <desktop5:Verb
+                Id="DescribeWithVidiStudioModern"
+                Clsid="8E2C4B1A-7D4F-4A2B-9C3D-6F1E5A8B0C42" />
+            </desktop5:ItemType>
+          </desktop4:FileExplorerContextMenus>
+        </desktop4:Extension>
         <uap:Extension Category="windows.shareTarget">
           <uap:ShareTarget>
             <uap:SupportedFileTypes>

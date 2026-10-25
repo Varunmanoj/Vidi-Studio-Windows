@@ -1,5 +1,17 @@
 # Windows migration progress
 
+## 2026-10-25 — Version sync for macOS Finder context menu (1.0.128 / 1.0.128.0)
+
+No Windows behavior changed in this task. The desktop version was advanced in lockstep for the macOS Finder Sync **Describe with Vidi Studio** context-menu extension and Settings enablement controls; the Windows modern **Describe with Vidi Studio** IExplorerCommand integration from 1.0.127 remains unchanged.
+
+Validation: on this macOS host the Windows Python suite passed 200 tests (1 Windows-only skip), the macOS suite passed 155 tests, and menu parity passed. macOS `script/build_and_run.sh --verify` built and launched 1.0.128 with 13 Help pages, and the Finder context menu was verified in Finder. Windows native build, MSIX packaging, and Windows UI checks were not run on this host.
+
+## 2026-10-25 — Modern Windows context menu and developer-only repair action (1.0.127 / 1.0.127.0)
+
+The Windows 11 modern File Explorer context menu now includes **Describe with Vidi Studio** directly. A new native `ShellExtension` project implements `IExplorerCommand`, exports the COM class factory, uses the app icon, and launches the packaged app through `IApplicationActivationManager` with `--video` and the selected path. `Package.appxmanifest` registers the DLL with `windows.comServer` and `windows.fileExplorerContextMenus` (`desktop4`/`desktop5`), while the existing HKCU verbs continue to serve the legacy **Show more options** menu. The Storage action is now **Repair legacy File Explorer context menu**, appears only with Developer mode, and is grouped with the advanced executable-path overrides.
+
+Validation: on this macOS host the macOS suite passed 151 tests and the Windows Python suite passed 200 tests (1 Windows-only skip), including new manifest/native-extension assertions; `script/check_menu_parity.py` passed; macOS `script/build_and_run.sh --verify` built and launched 1.0.127 with 13 Help pages. Not run: native Windows/MSBuild compilation of the C++ shell extension, MSIX packaging, and interactive Windows 11 modern-context-menu or UI verification. The modern menu must be built and checked on Windows before being claimed as runtime-validated.
+
 ## 2026-10-25 — Advanced executable paths gated by Developer mode (1.0.126 / 1.0.126.0)
 
 Developer mode now controls the remaining advanced executable settings. With it off, **Storage and tools** shows the project library and the engine/diagnostics actions but not the Python, FFmpeg, or FFprobe executable fields. **Narration** hides the optional SAPI host executable even when Windows SAPI 5 is selected. Enabling Developer mode reveals all four controls; disabling it hides them again without clearing saved paths. The controls remain available to speech and media execution while hidden.

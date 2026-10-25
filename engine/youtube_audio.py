@@ -27,7 +27,7 @@ ERROR_MESSAGES = {
     'audio': 'This YouTube video has no downloadable audio-only track.',
     'size': 'The YouTube audio is too large to download. Import your original video instead.',
     'runtime': 'The YouTube JavaScript runtime could not run. Rebuild the bundled engine and try again.',
-    'ffmpeg': 'FFmpeg is unavailable. Set its executable path in Settings → Storage and tools.',
+    'ffmpeg': 'FFmpeg is unavailable. Set its executable path in Settings → Storage.',
     'worker': 'The YouTube download worker could not finish. Rebuild the bundled engine and try again.',
 }
 RETRYABLE_ERRORS = {'download', 'network', 'blocked'}

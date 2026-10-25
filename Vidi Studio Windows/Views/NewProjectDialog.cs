@@ -229,7 +229,7 @@ public sealed class NewProjectDialog : ContentDialog
         catch (Exception ex)
         {
             if (inspection != request) return;
-            details.Text = "Could not read this video's details. Check FFprobe in Settings → Storage and tools. " + ex.Message;
+            details.Text = "Could not read this video's details. Check FFprobe in Settings → Storage. " + ex.Message;
         }
         finally { if (inspection == request) inspection = null; request.Dispose(); }
     }

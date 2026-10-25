@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
@@ -8,7 +8,7 @@
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
-    <Version>1.0.128</Version>
+    <Version>1.0.129</Version>
     <Product>Vidi Studio</Product>
     <AssemblyTitle>Vidi Studio</AssemblyTitle>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>
@@ -19,15 +19,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="Assets\AppIcon.svg" />
+    <!-- The package logo variants must also be present in the loose debug
+         layout (AppxManifest.xml next to the executable), otherwise the
+         taskbar and Start tile fall back to the generic app icon even though
+         the window and executable carry AppIcon.ico. -->
+    <Content Include="Assets\AppIcon.svg" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Assets\SplashScreen.scale-200.png" />
-    <Content Include="Assets\LockScreenLogo.scale-200.png" />
-    <Content Include="Assets\Square150x150Logo.scale-200.png" />
-    <Content Include="Assets\Square44x44Logo.scale-200.png" />
-    <Content Include="Assets\Square44x44Logo.targetsize-*.png" />
-    <Content Include="Assets\StoreLogo.png" />
-    <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+    <Content Include="Assets\SplashScreen.scale-200.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\LockScreenLogo.scale-200.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Square150x150Logo.scale-200.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Square44x44Logo.scale-200.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Square44x44Logo.targetsize-*.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\StoreLogo.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Wide310x150Logo.scale-200.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -46,16 +50,41 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
   </ItemGroup>
-  <ItemGroup>
-    <!-- The Windows 11 modern context menu is implemented by this native COM
-         surrogate server. Building it as a project reference keeps the DLL in
-         the app package before MSIX packaging runs. -->
+  <!--
+    The Windows 11 modern context menu is implemented by a native COM surrogate
+    server. It is an optional enhancement: build it only when the Visual C++
+    desktop toolset for the selected architecture is installed, so a machine
+    with only the WinUI/.NET workloads still builds and runs the app with the
+    legacy registry context menu. Visual Studio and MSBuild set VCTargetsPath;
+    the VSInstallRoot/MSBuildExtensionsPath32 checks cover hosts that do not.
+  -->
+  <PropertyGroup>
+    <VidiShellToolsetRoot Condition="'$(VidiShellToolsetRoot)' == '' and '$(VCTargetsPath)' != ''">$(VCTargetsPath)</VidiShellToolsetRoot>
+    <VidiShellToolsetRoot Condition="'$(VidiShellToolsetRoot)' == '' and Exists('$(VSInstallRoot)\MSBuild\Microsoft\VC\v180\Microsoft.Cpp.Default.props')">$(VSInstallRoot)\MSBuild\Microsoft\VC\v180\</VidiShellToolsetRoot>
+    <VidiShellToolsetRoot Condition="'$(VidiShellToolsetRoot)' == '' and Exists('$(VSInstallRoot)\MSBuild\Microsoft\VC\v170\Microsoft.Cpp.Default.props')">$(VSInstallRoot)\MSBuild\Microsoft\VC\v170\</VidiShellToolsetRoot>
+    <VidiShellToolsetRoot Condition="'$(VidiShellToolsetRoot)' == '' and Exists('$(MSBuildExtensionsPath32)\Microsoft\VC\v180\Microsoft.Cpp.Default.props')">$(MSBuildExtensionsPath32)\Microsoft\VC\v180\</VidiShellToolsetRoot>
+    <VidiShellToolsetRoot Condition="'$(VidiShellToolsetRoot)' == '' and Exists('$(MSBuildExtensionsPath32)\Microsoft\VC\v170\Microsoft.Cpp.Default.props')">$(MSBuildExtensionsPath32)\Microsoft\VC\v170\</VidiShellToolsetRoot>
+    <VidiShellToolsetRoot Condition="'$(VidiShellToolsetRoot)' != '' and !HasTrailingSlash('$(VidiShellToolsetRoot)')">$(VidiShellToolsetRoot)\</VidiShellToolsetRoot>
+    <VidiShellExtensionBuild Condition="'$(VidiShellExtensionBuild)' == '' and Exists('$(VidiShellToolsetRoot)\Platforms\$(Platform)\PlatformToolsets\v145')">true</VidiShellExtensionBuild>
+    <VidiShellExtensionBuild Condition="'$(VidiShellExtensionBuild)' == '' and Exists('$(VidiShellToolsetRoot)\Platforms\$(Platform)\PlatformToolsets\v144')">true</VidiShellExtensionBuild>
+    <VidiShellExtensionBuild Condition="'$(VidiShellExtensionBuild)' == '' and Exists('$(VidiShellToolsetRoot)\Platforms\$(Platform)\PlatformToolsets\v143')">true</VidiShellExtensionBuild>
+    <VidiShellExtensionBuild Condition="'$(VidiShellExtensionBuild)' == '' and Exists('$(VidiShellToolsetRoot)\Platforms\$(Platform)\PlatformToolsets\v142')">true</VidiShellExtensionBuild>
+    <VidiShellExtensionBuild Condition="'$(VidiShellExtensionBuild)' == ''">false</VidiShellExtensionBuild>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(VidiShellExtensionBuild)' == 'true'">
+    <!-- Building it as a project reference keeps the DLL in the app package
+         before MSIX packaging runs. -->
     <ProjectReference Include="..\ShellExtension\VidiStudio.ShellExtension.vcxproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <LinkLibraryDependencies>false</LinkLibraryDependencies>
       <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
     </ProjectReference>
+    <Content Include="..\runtime\shell\$(Platform)\VidiStudio.ShellExtension.dll" Link="VidiStudio.ShellExtension.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="NoteOptionalShellExtension" BeforeTargets="PrepareForBuild"
+          Condition="'$(VidiShellExtensionBuild)' != 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Message Importance="high" Text="The Visual C++ toolset for $(Platform) is not installed; building without the optional native Windows 11 context-menu extension. Install the Desktop development with C++ workload (including the $(Platform) build tools) and rebuild to include it." />
+  </Target>
 
   <!--
     Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
@@ -84,7 +113,6 @@
     <Content Include="..\runtime\speech\$(Platform)\**\*" Link="speech\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\runtime\engine\**\*" Link="engine-bin\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\runtime\piper\**\*" Link="piper\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\runtime\shell\$(Platform)\VidiStudio.ShellExtension.dll" Link="VidiStudio.ShellExtension.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <!-- The bundled speech helper is published into runtime\speech by setup-windows.ps1. Republish it
        whenever its sources change, so a Visual Studio build never packages a stale helper. -->
@@ -142,3 +170,4 @@
     </ItemGroup>
   </Target>
 </Project>
+

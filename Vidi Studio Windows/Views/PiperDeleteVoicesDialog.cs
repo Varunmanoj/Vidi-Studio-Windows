@@ -66,7 +66,6 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
     private readonly CancellationTokenSource lifetime = new();
     private readonly MediaPlayer samplePlayer = new() { AudioCategory = MediaPlayerAudioCategory.Speech };
     private readonly Dictionary<string, RowState> rows = new(StringComparer.OrdinalIgnoreCase);
-    private bool deleting;
     private string? deletingVoiceId;
     private string? sampleLoadingId;
     private string? sampleVoiceId;
@@ -207,7 +206,7 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
         var state = new RowState();
         rows[voice.Id] = state;
         var removing = deletingVoiceId == voice.Id;
-        var locked = deleting || deletingVoiceId != null;
+        var locked = deletingVoiceId != null;
 
         var grid = new Grid { ColumnSpacing = 12, Padding = new Thickness(6) };
         for (var column = 0; column < 5; column++)
@@ -247,7 +246,7 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
         AutomationProperties.SetHelpText(state.Action, "Removes the downloaded model and its cached sample.");
         state.Action.Click += async (_, _) =>
         {
-            if (deleting || deletingVoiceId != null) return;
+            if (deletingVoiceId != null) return;
             await DeleteAsync(voice);
         };
         Grid.SetColumn(state.Action, 4);
@@ -257,7 +256,7 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
 
     private async Task DeleteAsync(PiperCatalogVoice voice)
     {
-        if (deleting || deletingVoiceId != null) return;
+        if (deletingVoiceId != null) return;
         if (sampleVoiceId == voice.Id) StopSample(null, rebuild: false);
         deletingVoiceId = voice.Id;
         progress.IsIndeterminate = true;
@@ -284,7 +283,7 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
 
     private async Task ToggleSampleAsync(PiperCatalogVoice voice)
     {
-        if (sampleLoadingId != null || deleting || deletingVoiceId != null) return;
+        if (sampleLoadingId != null || deletingVoiceId != null) return;
         if (sampleVoiceId == voice.Id)
         {
             StopSample("Sample stopped.");

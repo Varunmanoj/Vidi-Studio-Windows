@@ -28,7 +28,7 @@ public sealed partial class SettingsDialog
         if (menuOwner != null)
             foreach (var (label, shortcut) in menuOwner.DesktopShortcutReference) AddInformationRow(panel, label, shortcut);
         panel.Children.Add(new TextBlock { Text = "File Explorer & desktop integration", FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 18, 0, 0) });
-        panel.Children.Add(new TextBlock { Text = "Right-click any supported video file (.mp4, .mov, .m4v, .mkv, .avi, .webm, .wmv) in File Explorer to access \"Describe with Vidi Studio\" directly in the Windows 11 modern context menu, or under Show more options / Shift+F10 in the legacy menu. The packaged app registers the modern menu automatically. For unpackaged builds or a missing legacy entry, turn on Developer mode and use \"Repair legacy File Explorer context menu\" under Storage and tools. You can also share video files to Vidi Studio through the Windows Share flyout.", TextWrapping = TextWrapping.Wrap, Opacity = .8 });
+        panel.Children.Add(new TextBlock { Text = "Right-click any supported video file (.mp4, .mov, .m4v, .mkv, .avi, .webm, .wmv) in File Explorer to access \"Describe with Vidi Studio\" directly in the Windows 11 modern context menu, or under Show more options / Shift+F10 in the legacy menu. The packaged app registers the modern menu automatically. For unpackaged builds or a missing legacy entry, turn on Developer mode and use \"Repair legacy File Explorer context menu\" under Storage. You can also share video files to Vidi Studio through the Windows Share flyout.", TextWrapping = TextWrapping.Wrap, Opacity = .8 });
         panel.Children.Add(new TextBlock { Text = "Menus follow the Mac layout: File, View, Playback, Project, Help. Creating new projects, local exports, and on-device narration do not require a Gemini API key; an active API key is only required when invoking automated AI features (transcription, summaries, audio description generation, and AI rewrites). Windows offers Windows OneCore, Windows SAPI 5, Piper, and Gemini voices; Piper voices download on demand and run offline. macOS offers Apple Voices and Gemini voices. Summary read-aloud always uses the same engine and voice chosen for narration.", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
     }
 
@@ -44,7 +44,7 @@ public sealed partial class SettingsDialog
         catch { version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "Unknown"; }
         AddInformationRow(panel, "App version", version);
         panel.Children.Add(new TextBlock { Text = "Media tools", FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 18, 0, 0) });
-        panel.Children.Add(new TextBlock { Text = "Vidi Studio uses the FFmpeg and FFprobe executables installed on this computer or set under Storage and tools.", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = "Vidi Studio uses the FFmpeg and FFprobe executables installed on this computer or set under Storage.", TextWrapping = TextWrapping.Wrap });
         var ffmpegDetails = new TextBlock { Text = "Checking installed FFmpeg…", TextWrapping = TextWrapping.Wrap, Opacity = .7 };
         panel.Children.Add(ffmpegDetails);
         _ = ShowFfmpegDetailsAsync(ffmpegDetails);

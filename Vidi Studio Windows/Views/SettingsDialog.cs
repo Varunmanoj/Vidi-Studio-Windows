@@ -183,7 +183,7 @@ public sealed partial class SettingsDialog : Window
         layout.ColumnDefinitions.Add(new ColumnDefinition());
         layout.Children.Add(new TextBlock { Text = "Settings", FontSize = 26, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(4, 4, 0, 18) });
         var sections = new ListView { SelectionMode = ListViewSelectionMode.Single };
-        var labels = new[] { "Appearance", "Narration", "Gemini API", "Developer prompts", "Storage and tools", "Help", "About" };
+        var labels = new[] { "Appearance", "Narration", "Gemini API", "Developer prompts", "Storage", "Help", "About" };
         var glyphs = new[] { "\uE790", "\uE767", "\uE734", "\uE8F2", "\uE8B7", "\uE897", "\uE946" };
         for (var i = 0; i < labels.Length; i++)
         {

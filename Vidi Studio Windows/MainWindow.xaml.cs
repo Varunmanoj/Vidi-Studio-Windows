@@ -1621,7 +1621,7 @@ public sealed partial class MainWindow : Window
         var section = ((sender as FrameworkElement)?.Tag as string) switch
         {
             "Narration" => 1, "Gemini API" => 2, "Developer prompts" => 3,
-            "Storage and tools" => 4, "Help" => 5, "About" => 6, _ => 0
+            "Storage" => 4, "Help" => 5, "About" => 6, _ => 0
         };
         await ShowSettingsSectionAsync(section);
     }

@@ -8,7 +8,7 @@
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
-    <Version>1.0.129</Version>
+    <Version>1.0.130</Version>
     <Product>Vidi Studio</Product>
     <AssemblyTitle>Vidi Studio</AssemblyTitle>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>
@@ -71,16 +71,29 @@
     <VidiShellExtensionBuild Condition="'$(VidiShellExtensionBuild)' == '' and Exists('$(VidiShellToolsetRoot)\Platforms\$(Platform)\PlatformToolsets\v142')">true</VidiShellExtensionBuild>
     <VidiShellExtensionBuild Condition="'$(VidiShellExtensionBuild)' == ''">false</VidiShellExtensionBuild>
   </PropertyGroup>
+  <PropertyGroup>
+    <VidiShellExtensionProject>$(MSBuildThisFileDirectory)..\ShellExtension\VidiStudio.ShellExtension.vcxproj</VidiShellExtensionProject>
+  </PropertyGroup>
   <ItemGroup Condition="'$(VidiShellExtensionBuild)' == 'true'">
-    <!-- Building it as a project reference keeps the DLL in the app package
-         before MSIX packaging runs. -->
-    <ProjectReference Include="..\ShellExtension\VidiStudio.ShellExtension.vcxproj">
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-      <LinkLibraryDependencies>false</LinkLibraryDependencies>
-      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
-    </ProjectReference>
+    <!-- The target below builds this DLL before the content is copied so it is
+         present for the loose debug layout and MSIX packaging. A ProjectReference
+         is avoided because the solution marks the native project as not building
+         (so machines without C++ still build); a plain reference would therefore
+         be skipped by solution builds. -->
     <Content Include="..\runtime\shell\$(Platform)\VidiStudio.ShellExtension.dll" Link="VidiStudio.ShellExtension.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- Build the native extension directly with the selected configuration and
+       platform. RemoveProperties keeps the solution's project configuration map
+       from falling back to Win32 for the project that is excluded from solution
+       builds. -->
+  <Target Name="BuildOptionalShellExtension"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(VidiShellExtensionBuild)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <MSBuild Projects="$(VidiShellExtensionProject)"
+             Targets="Build"
+             Properties="Configuration=$(Configuration);Platform=$(Platform);VCTargetsPath=$(VidiShellToolsetRoot)"
+             RemoveProperties="BuildingSolutionFile;CurrentSolutionConfigurationContents;SolutionDir;SolutionName;SolutionExt;SolutionPath" />
+  </Target>
   <Target Name="NoteOptionalShellExtension" BeforeTargets="PrepareForBuild"
           Condition="'$(VidiShellExtensionBuild)' != 'true' and '$(DesignTimeBuild)' != 'true'">
     <Message Importance="high" Text="The Visual C++ toolset for $(Platform) is not installed; building without the optional native Windows 11 context-menu extension. Install the Desktop development with C++ workload (including the $(Platform) build tools) and rebuild to include it." />

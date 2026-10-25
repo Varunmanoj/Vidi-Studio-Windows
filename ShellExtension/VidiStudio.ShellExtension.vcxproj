@@ -68,6 +68,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
+      <ModuleDefinitionFile>$(MSBuildThisFileDirectory)VidiStudio.ShellExtension.def</ModuleDefinitionFile>
       <AdditionalDependencies>ole32.lib;shell32.lib;shlwapi.lib;kernel32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <ResourceCompile>
@@ -102,6 +103,7 @@
   <ItemGroup>
     <ClCompile Include="VidiStudio.ShellExtension.cpp" />
     <ResourceCompile Include="VidiStudio.ShellExtension.rc" />
+    <None Include="VidiStudio.ShellExtension.def" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -56,7 +56,13 @@ if (Test-Path -LiteralPath $vcRoot) {
         Select-Object -First 1
 }
 $vcTargetsArgs = @()
-if ($vcTargets) { $vcTargetsArgs += "/p:VCTargetsPath=$($vcTargets.FullName)" }
+if ($vcTargets) {
+    # VC targets import $(VCTargetsPath)Platforms\... without a separator, so the
+    # property must keep its trailing backslash. MSBuild's command-line parser
+    # consumes one backslash before the closing quote, so pass two.
+    $vcTargetsPath = $vcTargets.FullName.TrimEnd('\') + '\\'
+    $vcTargetsArgs += "/p:VCTargetsPath=$vcTargetsPath"
+}
 $packageOptions = @()
 if ($Package) { $packageOptions = @('/p:GenerateAppxPackageOnBuild=true', '/p:AppxBundle=Never', '/p:UapAppxPackageBuildMode=SideloadOnly') }
 $target = if ($Rebuild) { '/t:Rebuild' } else { '/t:Build' }

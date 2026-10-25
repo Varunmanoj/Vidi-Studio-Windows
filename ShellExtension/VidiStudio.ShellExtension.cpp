@@ -6,10 +6,9 @@
 // Explorer loads the command in the shell surrogate; Invoke activates the
 // packaged app with --video and the selected file path.
 
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
 #include <windows.h>
 #include <appmodel.h>
+#include <shellapi.h>
 #include <shlobj.h>
 #include <shlwapi.h>
 #include <shobjidl.h>
@@ -356,10 +355,10 @@ BOOL WINAPI DllMain(HMODULE module, DWORD reason, LPVOID)
     return TRUE;
 }
 
-EXTERN_C __declspec(dllexport) HRESULT STDAPICALLTYPE DllGetClassObject(
+STDAPI DllGetClassObject(
     REFCLSID classId,
     REFIID interfaceId,
-    void** result)
+    LPVOID FAR* result)
 {
     if (result == nullptr)
         return E_POINTER;
@@ -375,7 +374,7 @@ EXTERN_C __declspec(dllexport) HRESULT STDAPICALLTYPE DllGetClassObject(
     return created;
 }
 
-EXTERN_C __declspec(dllexport) HRESULT STDAPICALLTYPE DllCanUnloadNow()
+STDAPI DllCanUnloadNow(void)
 {
     return (g_objectCount == 0 && g_lockCount == 0) ? S_OK : S_FALSE;
 }

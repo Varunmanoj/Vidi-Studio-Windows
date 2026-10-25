@@ -11,8 +11,8 @@
   <Project Path="ShellExtension/VidiStudio.ShellExtension.vcxproj" Id="2b5b0e8c-3a64-4f90-9d2a-5d6e7c1b8a41">
     <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />
-    <!-- Optional: the app project builds this through its conditioned project
-         reference only when the Visual C++ toolset for the platform exists. -->
+    <!-- Optional: the app project's BuildOptionalShellExtension target builds
+         this only when the matching Visual C++ toolset is installed. -->
     <Build Project="false" />
   </Project>
 </Solution>

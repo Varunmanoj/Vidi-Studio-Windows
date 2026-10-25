@@ -777,6 +777,7 @@ public sealed partial class MainWindow : Window
         if (EditorWorkspace.Visibility != Visibility.Visible || Model.Project is not { } p)
         {
             ProjectIntegrityBar.IsOpen = false;
+            UpdateInspectorIntegrityButton(null);
             return;
         }
         var report = p.Integrity ?? ProjectIntegrityAuditor.Audit(p.ToIntegrityManifest());
@@ -784,36 +785,29 @@ public sealed partial class MainWindow : Window
         if (report.IsHealthy)
         {
             ProjectIntegrityBar.IsOpen = false;
+            UpdateInspectorIntegrityButton(null);
             return;
         }
+        UpdateInspectorIntegrityButton(report);
         ProjectIntegrityBar.IsOpen = true;
         ProjectIntegrityBar.Severity = report.IsDamaged ? InfoBarSeverity.Error : InfoBarSeverity.Warning;
-        ProjectIntegrityBar.Title = report.Headline;
-        var summary = new List<string> { report.Message };
-        foreach (var problem in report.Problems.Take(4))
-        {
-            summary.Add($"{problem.Title}: {problem.Detail}");
-            var names = problem.MissingFiles.Take(4).Select(file => file.DisplayName).ToList();
-            if (names.Count > 0)
-            {
-                summary.Add("  " + string.Join(", ", names)
-                    + (problem.MissingFiles.Count > names.Count ? $" (+{problem.MissingFiles.Count - names.Count} more)" : ""));
-            }
-        }
-        if (report.Problems.Count > 4)
-            summary.Add($"…and {report.Problems.Count - 4} more issues. Choose Show details.");
-        ProjectIntegrityBar.Message = string.Join("\n", summary);
+        ProjectIntegrityBar.Title = report.IsDamaged
+            ? $"“{p.Name}” needs attention"
+            : $"“{p.Name}” has missing files";
+        ProjectIntegrityBar.Message = ProjectIntegrityBannerMessage(report);
 
         var folderExists = Directory.Exists(p.Folder);
         ProjectIntegrityPrimaryAction.Content = report.IsDamaged
             ? (folderExists ? "Delete project…" : "Remove project…")
-            : "Show details";
+            : "Review issues…";
         ProjectIntegrityPrimaryAction.Foreground = report.IsDamaged
             ? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 229, 43, 50))
             : null;
         ProjectIntegrityPrimaryAction.IsEnabled = Model.Idle;
+        ProjectIntegrityDetailsButton.Content = $"Review {report.Problems.Count} issue{(report.Problems.Count == 1 ? "" : "s")}…";
         ProjectIntegrityDetailsButton.Visibility = report.IsDamaged ? Visibility.Visible : Visibility.Collapsed;
         ProjectIntegrityDetailsButton.IsEnabled = Model.Idle;
+        ProjectIntegrityFinderButton.Visibility = report.CanShowInFinder ? Visibility.Visible : Visibility.Collapsed;
 
         var narration = report.CanRegenerateNarration
             && (Model.CurrentNarrationEngine() != "gemini" || (Model.HasApiKey && !Model.IsApiKeyInvalid));
@@ -822,6 +816,52 @@ public sealed partial class MainWindow : Window
         ProjectIntegrityRegenerateButton.Content = narration ? "Regenerate missing narration" : "Regenerate video details & pictures";
         ProjectIntegrityRegenerateButton.Tag = narration ? "narration" : "video";
         ProjectIntegrityRegenerateButton.IsEnabled = Model.Idle;
+    }
+
+    private static string ProjectIntegrityBannerMessage(ProjectIntegrityReport report)
+    {
+        if (report.FolderMissing)
+            return "The project folder is missing. Restore it, or remove this project entry.";
+        if (report.ManifestUnreadable)
+            return "project.json is missing or damaged. Restore it from a backup, or delete the project.";
+        if (report.Problems.Any(problem => problem.Category == ProjectFileCategory.Source))
+            return "The original video is missing. Playback, analysis, and video exports are unavailable.";
+        if (report.IsDamaged)
+            return "Most project files are missing. Review the remaining files or delete the project.";
+        if (report.Problems.Count == 1)
+        {
+            var problem = report.Problems[0];
+            return problem.Category switch
+            {
+                ProjectFileCategory.Narration => $"Narration audio is missing for {problem.MissingCount} AD segment{(problem.MissingCount == 1 ? "" : "s")}. It can be regenerated.",
+                ProjectFileCategory.Thumbnails => "Timeline pictures are missing. They can be regenerated from the original video.",
+                ProjectFileCategory.Metadata => "Video details are missing. They can be regenerated from the original video.",
+                ProjectFileCategory.Exports => $"{problem.MissingCount} exported file{(problem.MissingCount == 1 ? "" : "s")} missing. Export again to recreate {(problem.MissingCount == 1 ? "it" : "them")}.",
+                _ => "Some project files are missing."
+            };
+        }
+        return $"{report.MissingTrackedFiles} of {report.TotalTrackedFiles} tracked files are missing. Generated files can usually be regenerated.";
+    }
+
+    private void UpdateInspectorIntegrityButton(ProjectIntegrityReport? report)
+    {
+        if (InspectorIntegrityButton == null || InspectorIntegrityIcon == null) return;
+        var show = report != null && report.Problems.Count > 1;
+        InspectorIntegrityButton.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show || report == null) return;
+        var tint = report.IsDamaged
+            ? Windows.UI.Color.FromArgb(255, 229, 43, 50)
+            : Windows.UI.Color.FromArgb(255, 199, 122, 0);
+        InspectorIntegrityIcon.Foreground = new SolidColorBrush(tint);
+        var label = $"Show all {report.Problems.Count} project file issues";
+        ToolTipService.SetToolTip(InspectorIntegrityButton, label);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(InspectorIntegrityButton, label);
+    }
+
+    private async void OpenInspectorIntegrity_Click(object sender, RoutedEventArgs e)
+    {
+        if (Model.Project is not { } p) return;
+        await ShowProjectIntegrityDetailsAsync(p.Integrity ?? ProjectIntegrityAuditor.Audit(p.ToIntegrityManifest()));
     }
 
     private async void ProjectIntegrityPrimaryAction_Click(object sender, RoutedEventArgs e)
@@ -850,42 +890,188 @@ public sealed partial class MainWindow : Window
 
     private async Task ShowProjectIntegrityDetailsAsync(ProjectIntegrityReport report)
     {
-        var lines = new List<string> { report.Message, "" };
-        foreach (var problem in report.Problems)
+        var tint = report.IsDamaged
+            ? Windows.UI.Color.FromArgb(255, 229, 43, 50)
+            : Windows.UI.Color.FromArgb(255, 199, 122, 0);
+        var content = new StackPanel { Spacing = 14, MaxWidth = 700 };
+
+        var heading = new StackPanel { Spacing = 5 };
+        heading.Children.Add(new TextBlock
         {
-            lines.Add($"{problem.Title}: {problem.Detail}");
-            lines.Add(problem.Impact);
-            if (!string.IsNullOrWhiteSpace(problem.Recovery)) lines.Add(problem.Recovery);
-            if (problem.MissingFiles.Count > 0)
+            Text = report.ProjectName,
+            FontSize = 22,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        });
+        var statusRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+        statusRow.Children.Add(new Border
+        {
+            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(32, tint.R, tint.G, tint.B)),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(8, 2, 8, 2),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
             {
-                lines.Add("Missing files:");
-                foreach (var file in problem.MissingFiles.Take(500)) lines.Add("  " + file.DisplayName);
-                if (problem.MissingFiles.Count > 500)
-                    lines.Add($"  …and {problem.MissingFiles.Count - 500} more.");
+                Text = report.IsDamaged ? "Damaged" : "Needs Attention",
+                Foreground = new SolidColorBrush(tint),
+                FontSize = 12,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
             }
-            lines.Add("");
-        }
-        var text = new TextBlock
+        });
+        statusRow.Children.Add(new TextBlock
         {
-            Text = string.Join("\n", lines),
+            Text = $"{report.Problems.Count} issue{(report.Problems.Count == 1 ? "" : "s")} · {report.MissingTrackedFiles} of {report.TotalTrackedFiles} tracked files missing or unreadable",
+            FontSize = 12,
+            Opacity = .6,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        heading.Children.Add(statusRow);
+        heading.Children.Add(new TextBlock
+        {
+            Text = report.Message,
+            FontSize = 14,
             TextWrapping = TextWrapping.Wrap,
-            MaxWidth = 620,
-            IsTextSelectionEnabled = true
-        };
-        var scroll = new ScrollViewer
+            Opacity = .78
+        });
+        content.Children.Add(heading);
+
+        var issues = new StackPanel { Spacing = 10 };
+        foreach (var problem in report.Problems)
+            issues.Children.Add(ProjectIntegrityProblemCard(problem, tint));
+        content.Children.Add(new ScrollViewer
         {
-            Content = text,
-            MaxHeight = 420,
+            Content = issues,
+            MaxHeight = 430,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
-        };
+        });
+
         var dialog = new ContentDialog
         {
-            Title = report.Headline,
-            Content = scroll,
-            CloseButtonText = "Close"
+            Title = "Project File Issues",
+            Content = content,
+            CloseButtonText = "Done"
         };
-        await ShowDialogAsync(dialog, 720, 560);
+        await ShowDialogAsync(dialog, 780, 660);
+    }
+
+    private static UIElement ProjectIntegrityProblemCard(ProjectFileProblem problem, Windows.UI.Color tint)
+    {
+        var problemTint = problem.IsCritical
+            ? Windows.UI.Color.FromArgb(255, 229, 43, 50)
+            : tint;
+        var stack = new StackPanel { Spacing = 8 };
+
+        var titleRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+        titleRow.Children.Add(new Border
+        {
+            Width = 28,
+            Height = 28,
+            CornerRadius = new CornerRadius(14),
+            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(32, problemTint.R, problemTint.G, problemTint.B)),
+            Child = new FontIcon
+            {
+                Glyph = problem.IconGlyph,
+                FontSize = 13,
+                Foreground = new SolidColorBrush(problemTint),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            }
+        });
+        var titleText = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+        titleText.Children.Add(new TextBlock
+        {
+            Text = problem.Title,
+            FontSize = 15,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
+        });
+        titleText.Children.Add(new TextBlock
+        {
+            Text = problem.Detail,
+            FontSize = 13,
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = .7
+        });
+        titleRow.Children.Add(titleText);
+        stack.Children.Add(titleRow);
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = problem.Impact,
+            FontSize = 13,
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = .72
+        });
+
+        if (!string.IsNullOrWhiteSpace(problem.Recovery))
+        {
+            var recovery = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
+            recovery.Children.Add(new FontIcon
+            {
+                Glyph = "\uE82F",
+                FontSize = 12,
+                Foreground = new SolidColorBrush(problemTint),
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 2, 0, 0)
+            });
+            recovery.Children.Add(new TextBlock
+            {
+                Text = problem.Recovery,
+                FontSize = 13,
+                TextWrapping = TextWrapping.Wrap,
+                Opacity = .72
+            });
+            stack.Children.Add(recovery);
+        }
+
+        if (problem.MissingFiles.Count > 0)
+        {
+            var files = new StackPanel { Spacing = 3 };
+            files.Children.Add(new TextBlock
+            {
+                Text = "Missing files",
+                FontSize = 12,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Opacity = .65
+            });
+            var fileList = new StackPanel { Spacing = 3 };
+            foreach (var file in problem.MissingFiles)
+            {
+                fileList.Children.Add(new TextBlock
+                {
+                    Text = file.DisplayName,
+                    FontFamily = new FontFamily("Cascadia Mono"),
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                    IsTextSelectionEnabled = true
+                });
+            }
+            var fileScroll = new ScrollViewer
+            {
+                Content = fileList,
+                MaxHeight = 132,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+            };
+            files.Children.Add(fileScroll);
+            stack.Children.Add(new Border
+            {
+                Background = new SolidColorBrush(Windows.UI.Color.FromArgb(18, 128, 128, 128)),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(10),
+                Child = files
+            });
+        }
+
+        return new Border
+        {
+            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(18, tint.R, tint.G, tint.B)),
+            BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(45, tint.R, tint.G, tint.B)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(14),
+            Child = stack
+        };
     }
     private async void Reveal_Click(object sender, RoutedEventArgs e) { if (Model.Project != null) await Launcher.LaunchFolderPathAsync(Model.Project.Folder); }
     private void SelectAll_Click(object sender, RoutedEventArgs e) { if (!editMode) EditMode_Click(sender, e); Segments.SelectAll(); }

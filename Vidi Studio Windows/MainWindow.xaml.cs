@@ -1269,7 +1269,21 @@ public sealed partial class MainWindow : Window
         if (Model.Project is not { } p || string.IsNullOrWhiteSpace(p.Summary)) return;
         try
         {
-            await readback.SpeakAsync(p.Summary);
+            await readback.PlayFromStartAsync();
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { await ShowError(ex); }
+    }
+    private async void PreviousSummarySentence_Click(object sender, RoutedEventArgs e) => await NavigateSummaryAsync(readback.PreviousSentenceAsync);
+    private async void NextSummarySentence_Click(object sender, RoutedEventArgs e) => await NavigateSummaryAsync(readback.NextSentenceAsync);
+    private async void PreviousSummaryParagraph_Click(object sender, RoutedEventArgs e) => await NavigateSummaryAsync(readback.PreviousParagraphAsync);
+    private async void NextSummaryParagraph_Click(object sender, RoutedEventArgs e) => await NavigateSummaryAsync(readback.NextParagraphAsync);
+    private async Task NavigateSummaryAsync(Func<Task> navigation)
+    {
+        try
+        {
+            ClearSummaryHighlight();
+            await navigation();
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { await ShowError(ex); }

@@ -154,10 +154,19 @@
       <Grid x:Name="SummaryView" Visibility="Collapsed">
        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
        <Grid Padding="14,12">
-        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <Grid.ColumnDefinitions>
+         <ColumnDefinition Width="*"/>
+         <ColumnDefinition Width="Auto"/>
+         <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Grid.Column="0" Text="Summary readback" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+         <Button x:Name="SummaryPreviousParagraphButton" Content="&#xE70E;" FontFamily="Segoe Fluent Icons" Style="{StaticResource CompactButton}" Click="PreviousSummaryParagraph_Click" ToolTipService.ToolTip="Previous paragraph (Ctrl+Alt+[)" AutomationProperties.Name="Previous summary paragraph"/>
+         <Button x:Name="SummaryPreviousSentenceButton" Content="&#xE892;" FontFamily="Segoe Fluent Icons" Style="{StaticResource CompactButton}" Click="PreviousSummarySentence_Click" ToolTipService.ToolTip="Previous sentence (Ctrl+Shift+[)" AutomationProperties.Name="Previous summary sentence"/>
          <Button x:Name="SummaryPlayButton" Content="Play" Style="{StaticResource AccentButtonStyle}" Click="SpeakSummary_Click"/>
+         <Button x:Name="SummaryNextSentenceButton" Content="&#xE893;" FontFamily="Segoe Fluent Icons" Style="{StaticResource CompactButton}" Click="NextSummarySentence_Click" ToolTipService.ToolTip="Next sentence (Ctrl+Shift+])" AutomationProperties.Name="Next summary sentence"/>
+         <Button x:Name="SummaryNextParagraphButton" Content="&#xE70D;" FontFamily="Segoe Fluent Icons" Style="{StaticResource CompactButton}" Click="NextSummaryParagraph_Click" ToolTipService.ToolTip="Next paragraph (Ctrl+Alt+])" AutomationProperties.Name="Next summary paragraph"/>
          <Button x:Name="SummaryStopButton" Content="Stop" Click="StopSpeech_Click" IsEnabled="False"/>
-         <TextBlock Text="Summary readback" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
         </StackPanel>
        </Grid>
        <Grid Grid.Row="1">

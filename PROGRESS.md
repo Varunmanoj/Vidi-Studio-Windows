@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-25 — Summary sentence and paragraph navigation (1.0.119 / 1.0.119.0)
+
+The Summary page now centers Previous/Next Sentence and Previous/Next Paragraph buttons around Play/Pause and Stop. `SummaryReadback` parses the rendered summary into sentences grouped by Markdown-style paragraph blocks, tracks the active sentence index, and exposes boundary-aware navigation; every navigation call cancels current playback on the existing playback gate and reads the selected sentence through the same OneCore, SAPI 5, Piper, or Gemini path as continuous reading. `MainWindow` syncs the button and menu enabled states from the reader, resets the highlight search anchor when jumping, and rebuilds the reader source whenever the summary is rendered. Playback → Summary Reading now includes the four navigation commands with `Ctrl+Shift+[` / `]` for sentences and `Ctrl+Alt+[` / `]` for paragraphs. Website docs, Help pages, README, feature parity, and the desktop menu contract were updated.
+
+Validation: on this macOS host the macOS suite passed 151 tests and the Windows Python suite passed 199 tests (1 Windows-only skip); `script/check_menu_parity.py` and both `test_menu_parity` suites pass; the website `npm run lint` and `npm run build` passed; macOS `script/build_and_run.sh --verify` built and launched 1.0.119 with 13 Help pages. Not run: native Windows build/MSIX packaging, C# compilation, and interactive Windows UI/Narrator listening checks.
+
 ## 2026-10-24 — Summary playback stops on project or video changes (1.0.118 / 1.0.118.0)
 
 Summary read-aloud now stops automatically when the project changes or the video starts playing. `ProjectReloaded` — raised after every engine command reloads the project, including transcript and description saves, summary edits, analysis, and narration — calls `readback.Stop()` before the refreshed view appears, and the playback timer stops the reader on the transition into playback for both the local video and the YouTube player. macOS applies the same rule through `project.updatedAt` and `playback.playing`, so both desktops behave identically. Manual Play, Pause, and Stop are unchanged.

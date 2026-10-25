@@ -89,6 +89,11 @@ public sealed partial class MainWindow
         SummaryPlayButton.Content = state == Services.SummaryReadbackState.Stopped ? "Play" : state == Services.SummaryReadbackState.Preparing ? "Preparing…" : state == Services.SummaryReadbackState.Playing ? "Pause" : "Resume";
         SummaryPlayButton.IsEnabled = state != Services.SummaryReadbackState.Preparing;
         SummaryStopButton.IsEnabled = state != Services.SummaryReadbackState.Stopped;
+        var navigating = state != Services.SummaryReadbackState.Preparing;
+        SummaryPreviousSentenceButton.IsEnabled = navigating && readback.CanGoPreviousSentence;
+        SummaryNextSentenceButton.IsEnabled = navigating && readback.CanGoNextSentence;
+        SummaryPreviousParagraphButton.IsEnabled = navigating && readback.CanGoPreviousParagraph;
+        SummaryNextParagraphButton.IsEnabled = navigating && readback.CanGoNextParagraph;
         UpdateDesktopMenuStates();
         if (state == Services.SummaryReadbackState.Stopped) ClearSummaryHighlight();
     }
@@ -292,6 +297,8 @@ public sealed partial class MainWindow
             paragraph.SelectionChanged += (_, _) => UpdateDesktopMenuStates();
             summaryLines.Add((paragraph, Regex.Replace(value, @"\*\*(.+?)\*\*|`([^`]+)`", m => m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value)));
         }
+        readback.SetSource(string.Join("\n", summaryLines.Select(line => line.Text)));
+        UpdateSummaryControls();
     }
     private void UpdateCaptions(double? timestamp = null)
     {

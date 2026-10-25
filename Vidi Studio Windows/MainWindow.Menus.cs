@@ -69,6 +69,8 @@ public sealed partial class MainWindow
                 Submenu("Transcript Overlay", Command("caption-cycle"), Separator(),
                     Command("caption-off"), Command("caption-transcript"), Command("caption-ad-transcript")), Separator(),
                 Submenu("Summary Reading", Command("summary-play"), Command("summary-pause"), Command("summary-stop"), Separator(),
+                    Command("summary-previous-sentence"), Command("summary-next-sentence"),
+                    Command("summary-previous-paragraph"), Command("summary-next-paragraph"), Separator(),
                     Command("summary-from-start"), Command("summary-from-selection"), Command("summary-read-selection"))),
             Menu("Project",
                 Submenu("Editor Sections", Command("transcript"), Command("summary"), Command("descriptions"), Command("ad-overview"), Command("ad-transcript")),
@@ -143,6 +145,10 @@ public sealed partial class MainWindow
         ["summary-play"] = (VirtualKey.P, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+P"),
         ["summary-pause"] = (VirtualKey.P, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+P"),
         ["summary-stop"] = (VirtualKey.S, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+S"),
+        ["summary-previous-sentence"] = ((VirtualKey)219, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+["),
+        ["summary-next-sentence"] = ((VirtualKey)221, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+]"),
+        ["summary-previous-paragraph"] = ((VirtualKey)219, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+["),
+        ["summary-next-paragraph"] = ((VirtualKey)221, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+]"),
         ["undo"] = (VirtualKey.Z, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+Z"),
         ["redo"] = (VirtualKey.Z, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+Z"),
         ["analyze"] = (VirtualKey.A, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+A"),
@@ -251,6 +257,10 @@ public sealed partial class MainWindow
                 "summary-pause" => readback.State == SummaryReadbackState.Playing,
                 "summary-stop" => readback.State != SummaryReadbackState.Stopped,
                 "summary-from-selection" or "summary-read-selection" => SummarySelection().Selected.Length > 0,
+                "summary-previous-sentence" => readback.State != SummaryReadbackState.Preparing && readback.CanGoPreviousSentence,
+                "summary-next-sentence" => readback.State != SummaryReadbackState.Preparing && readback.CanGoNextSentence,
+                "summary-previous-paragraph" => readback.State != SummaryReadbackState.Preparing && readback.CanGoPreviousParagraph,
+                "summary-next-paragraph" => readback.State != SummaryReadbackState.Preparing && readback.CanGoNextParagraph,
                 _ => true
             };
         }
@@ -275,6 +285,8 @@ public sealed partial class MainWindow
             "caption-cycle" => "Cycle Transcript Overlay", "caption-off" => "Turn Transcript Overlay Off",
             "caption-transcript" => "Show Transcript Overlay", "caption-ad-transcript" => "Show AD Transcript Overlay",
             "summary-play" => "Play or Resume Summary Reading", "summary-pause" => "Pause Summary Reading", "summary-stop" => "Stop Summary Reading",
+            "summary-previous-sentence" => "Previous Summary Sentence", "summary-next-sentence" => "Next Summary Sentence",
+            "summary-previous-paragraph" => "Previous Summary Paragraph", "summary-next-paragraph" => "Next Summary Paragraph",
             "summary-from-start" => "Read Summary from Start", "summary-from-selection" => "Read Summary from Selection", "summary-read-selection" => "Read Selected Summary Text",
             "transcript" => "Show Transcript", "summary" => "Show Summary", "descriptions" => "Show Descriptions",
             "ad-overview" => "Show AD Overview", "ad-transcript" => "Show AD Transcript",
@@ -324,7 +336,10 @@ public sealed partial class MainWindow
             "close-window" => "Close window", "help" => "Help and keyboard shortcuts", "about" => "About Vidi Studio",
             "back" => "Rewind five seconds", "forward" => "Forward five seconds", "follow" => "Follow active segment",
             "summary-play" or "summary-from-start" or "summary-from-selection" or "summary-read-selection" => "Play summary",
-            "summary-pause" => "Pause summary", "Summary Reading" or "Narration" or "Narration Audio" or "narration" or "synthesize-tts" or "synthesize-changed" => "Narration",
+            "summary-pause" => "Pause summary",
+            "summary-previous-sentence" => "Previous summary sentence", "summary-next-sentence" => "Next summary sentence",
+            "summary-previous-paragraph" => "Previous summary paragraph", "summary-next-paragraph" => "Next summary paragraph",
+            "Summary Reading" or "Narration" or "Narration Audio" or "narration" or "synthesize-tts" or "synthesize-changed" => "Narration",
             "AD Segment Generation" => "Generate descriptions", "delete-descriptions" => "Delete selected",
             "review-narration-issues" => "Review Narration Issues…", "delete-narration" or "delete-current" or "segment-delete-selected" => "Delete narration",
             "review-narration-voices" => "Review Narration Voices…",
@@ -418,10 +433,14 @@ public sealed partial class MainWindow
             case "delete-descriptions": await DeleteMenuContentAsync("descriptions"); break;
             case "delete-current": await DeleteMenuContentAsync(Section.SelectedIndex switch { 0 => "transcript", 1 => "summary", _ => "descriptions" }); break;
             case "show-in-finder": Reveal_Click(this, e); break;
-            case "summary-play": if (readback.State == SummaryReadbackState.Paused) readback.Resume(); else await readback.SpeakAsync(Model.Project!.Summary); break;
+            case "summary-play": if (readback.State == SummaryReadbackState.Paused) readback.Resume(); else await readback.PlayFromStartAsync(); break;
             case "summary-pause": readback.Pause(); break;
             case "summary-stop": readback.Stop(); break;
-            case "summary-from-start": await readback.SpeakAsync(Model.Project!.Summary); break;
+            case "summary-previous-sentence": ClearSummaryHighlight(); await readback.PreviousSentenceAsync(); break;
+            case "summary-next-sentence": ClearSummaryHighlight(); await readback.NextSentenceAsync(); break;
+            case "summary-previous-paragraph": ClearSummaryHighlight(); await readback.PreviousParagraphAsync(); break;
+            case "summary-next-paragraph": ClearSummaryHighlight(); await readback.NextParagraphAsync(); break;
+            case "summary-from-start": await readback.PlayFromStartAsync(); break;
             case "summary-from-selection": var selection = SummarySelection(); await readback.SpeakAsync(selection.Text[selection.Start..]); break;
             case "summary-read-selection": await readback.SpeakAsync(SummarySelection().Selected); break;
             default: throw new InvalidOperationException("Unknown desktop menu command: " + id);

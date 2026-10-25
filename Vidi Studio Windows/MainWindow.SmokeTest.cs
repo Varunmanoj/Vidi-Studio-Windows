@@ -109,6 +109,12 @@ public sealed partial class MainWindow
             SetCaptionMode(oldOverlayMode);
             if (desktopMenuItems["summary-play"].Last().IsEnabled)
                 throw new InvalidOperationException("Summary menu reading was enabled outside Summary.");
+            if (desktopMenuItems["summary-next-sentence"].Last() is not { Text: "Next Summary Sentence", KeyboardAcceleratorTextOverride: "Ctrl+Shift+]" } ||
+                desktopMenuItems["summary-previous-paragraph"].Last() is not { Text: "Previous Summary Paragraph", KeyboardAcceleratorTextOverride: "Ctrl+Alt+[" })
+                throw new InvalidOperationException("Summary sentence and paragraph menu commands or shortcuts are missing.");
+            if (SummaryPreviousSentenceButton.Content as string != "\uE892" || SummaryNextSentenceButton.Content as string != "\uE893" ||
+                SummaryPreviousParagraphButton.Content as string != "\uE70E" || SummaryNextParagraphButton.Content as string != "\uE70D")
+                throw new InvalidOperationException("Summary previous and next sentence or paragraph buttons are missing.");
             UpdateDesktopMenuStates();
             var originalTheme = Model.Settings.Get("theme", "system");
             var thumbnailProject = Models.StudioProject.Load(folder);

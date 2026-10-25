@@ -42,6 +42,21 @@ if (Test-Path -LiteralPath $frozenEngine) {
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
 if (!$msbuild) { throw 'Install Visual Studio with WinUI application development tools.' }
+# The modern File Explorer context menu uses a native C++ COM surrogate. Resolve
+# the VC targets from the selected Visual Studio installation so scripted builds
+# work with VS 2022 (v170), newer Visual Studio releases (v180), and the toolset
+# installed with that release. Do not hard-code v143.
+$msbuildRoot = Split-Path (Split-Path (Split-Path $msbuild -Parent) -Parent) -Parent
+$vcRoot = Join-Path $msbuildRoot 'Microsoft\VC'
+$vcTargets = $null
+if (Test-Path -LiteralPath $vcRoot) {
+    $vcTargets = Get-ChildItem -LiteralPath $vcRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^v\d+$' } |
+        Sort-Object { [int]$_.Name.Substring(1) } -Descending |
+        Select-Object -First 1
+}
+$vcTargetsArgs = @()
+if ($vcTargets) { $vcTargetsArgs += "/p:VCTargetsPath=$($vcTargets.FullName)" }
 $packageOptions = @()
 if ($Package) { $packageOptions = @('/p:GenerateAppxPackageOnBuild=true', '/p:AppxBundle=Never', '/p:UapAppxPackageBuildMode=SideloadOnly') }
 $target = if ($Rebuild) { '/t:Rebuild' } else { '/t:Build' }
@@ -50,5 +65,5 @@ if ($Rebuild) {
         if ($cache -and (Test-Path $cache)) { Remove-Item $cache -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
-& $msbuild (Join-Path $projectRoot 'Vidi Studio Windows\Vidi Studio Windows.csproj') /restore $target /p:Configuration=$Configuration /p:Platform=$Platform /p:AppxPackageSigningEnabled=false /verbosity:minimal @packageOptions
+& $msbuild (Join-Path $projectRoot 'Vidi Studio Windows\Vidi Studio Windows.csproj') /restore $target /p:Configuration=$Configuration /p:Platform=$Platform /p:AppxPackageSigningEnabled=false /verbosity:minimal @packageOptions @vcTargetsArgs
 if ($LASTEXITCODE -ne 0) { throw 'Windows build failed.' }

@@ -25,7 +25,7 @@ VidiStudio is maintained across dedicated desktop repositories and an online sho
 
 ## Build and run in Visual Studio on Windows ARM64
 
-1. Install Visual Studio with WinUI application development support, .NET desktop tools, and the Windows SDK. This project retains the template's Microsoft.WindowsAppSDK 2.5.1 and SDK BuildTools 10.0.28000.2705 references. NuGet restore needs network access.
+1. Install Visual Studio with WinUI application development support, .NET desktop tools, the Windows SDK, and the **Desktop development with C++** workload. The native Windows 11 File Explorer context-menu extension uses the installed Visual Studio C++ toolset; the project inherits `<DefaultPlatformToolset>` rather than pinning v143, so VS 2022 and newer releases build with their installed toolset. This project retains the template's Microsoft.WindowsAppSDK 2.5.1 and SDK BuildTools 10.0.28000.2705 references. NuGet restore needs network access.
 2. Install Python 3.11 or later. FFmpeg and FFprobe can use your existing Winget installation. Restart Visual Studio after installing tools so its PATH is refreshed.
 3. Open PowerShell in this repository and run:
 

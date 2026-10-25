@@ -137,6 +137,12 @@ class TestFileExplorerActivation(unittest.TestCase):
         project = (self.root / "Vidi Studio Windows" / "Vidi Studio Windows.csproj").read_text(encoding="utf-8")
         self.assertIn(r"..\ShellExtension\VidiStudio.ShellExtension.vcxproj", project)
         self.assertIn("VidiStudio.ShellExtension.dll", project)
+        vcxproj = (extension_root / "VidiStudio.ShellExtension.vcxproj").read_text(encoding="utf-8")
+        self.assertIn("$(DefaultPlatformToolset)", vcxproj)
+        self.assertNotIn("<PlatformToolset>v143</PlatformToolset>", vcxproj)
+        build_script = (self.root / "script" / "build-windows.ps1").read_text(encoding="utf-8")
+        self.assertIn("VCTargetsPath", build_script)
+        self.assertIn("DefaultPlatformToolset", (self.root / "README.md").read_text(encoding="utf-8"))
 
         settings = (self.root / "Vidi Studio Windows" / "Views" / "SettingsDialog.cs").read_text(encoding="utf-8")
         self.assertIn("Repair legacy File Explorer context menu", settings)

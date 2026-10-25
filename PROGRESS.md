@@ -1,10 +1,12 @@
 # Windows migration progress
 
-## 2026-10-25 — Version sync for macOS Finder context menu (1.0.128 / 1.0.128.0)
+## 2026-10-25 — Version sync and Visual Studio toolset compatibility (1.0.128 / 1.0.128.0)
 
-No Windows behavior changed in this task. The desktop version was advanced in lockstep for the macOS Finder Sync **Describe with Vidi Studio** context-menu extension and Settings enablement controls; the Windows modern **Describe with Vidi Studio** IExplorerCommand integration from 1.0.127 remains unchanged.
+The desktop version was advanced in lockstep for the macOS Finder Sync **Describe with Vidi Studio** context-menu extension and Settings enablement controls. The Windows modern context-menu integration from 1.0.127 is unchanged.
 
-Validation: on this macOS host the Windows Python suite passed 200 tests (1 Windows-only skip), the macOS suite passed 155 tests, and menu parity passed. macOS `script/build_and_run.sh --verify` built and launched 1.0.128 with 13 Help pages, and the Finder context menu was verified in Finder. Windows native build, MSIX packaging, and Windows UI checks were not run on this host.
+The native shell-extension project no longer pins Platform Toolset v143. It now inherits `$(DefaultPlatformToolset)` from the installed Visual Studio and detects v170/v180 VC targets, so Visual Studio 2022 and newer releases build with their installed C++ toolset. `script/build-windows.ps1` discovers the VC targets beside the selected MSBuild installation and passes `VCTargetsPath`, covering command-line builds as well. The README now lists the **Desktop development with C++** workload as a build requirement. This resolves the Visual Studio error that v143 build tools could not be found.
+
+Validation: on this macOS host the Windows Python suite passed 200 tests (1 Windows-only skip), the macOS suite passed 155 tests, and menu parity passed. macOS `script/build_and_run.sh --verify` built and launched 1.0.128 with 13 Help pages, and the Finder context menu was verified in Finder. Not run on this host: native Windows/MSBuild compilation, MSIX packaging, and Windows UI checks of the toolset change.
 
 ## 2026-10-25 — Modern Windows context menu and developer-only repair action (1.0.127 / 1.0.127.0)
 

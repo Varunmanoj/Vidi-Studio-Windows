@@ -25,14 +25,15 @@
     <ProjectGuid>{2B5B0E8C-3A64-4F90-9D2A-5D6E7C1B8A41}</ProjectGuid>
     <RootNamespace>VidiStudioShellExtension</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <VCTargetsPath Condition="'$(VCTargetsPath)' == ''">$(MSBuildExtensionsPath32)\Microsoft\VC\v170\</VCTargetsPath>
+    <VCTargetsPath Condition="'$(VCTargetsPath)' == '' and Exists('$(MSBuildExtensionsPath32)\Microsoft\VC\v180\Microsoft.Cpp.Default.props')">$(MSBuildExtensionsPath32)\Microsoft\VC\v180\</VCTargetsPath>
+    <VCTargetsPath Condition="'$(VCTargetsPath)' == '' and Exists('$(MSBuildExtensionsPath32)\Microsoft\VC\v170\Microsoft.Cpp.Default.props')">$(MSBuildExtensionsPath32)\Microsoft\VC\v170\</VCTargetsPath>
   </PropertyGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
 
   <PropertyGroup Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>$(DefaultPlatformToolset)</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">

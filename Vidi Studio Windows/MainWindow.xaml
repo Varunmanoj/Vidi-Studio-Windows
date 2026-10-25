@@ -10,6 +10,14 @@
      <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="6" Height="132"><Image Source="{Binding ThumbnailUri}" Stretch="UniformToFill" AutomationProperties.Name="Project thumbnail"/></Border>
      <TextBlock Text="{Binding Name}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2"/>
      <TextBlock Text="{Binding ProjectSubtitle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12"/>
+     <StackPanel Orientation="Horizontal" Spacing="4" Visibility="{Binding IntegrityIsDamaged, Converter={StaticResource VisibleWhenTrue}}" AutomationProperties.Name="{Binding IntegrityStatus}">
+      <FontIcon Glyph="&#xE7BA;" FontSize="12" Foreground="#E52B32"/>
+      <TextBlock Text="{Binding IntegrityStatus}" Foreground="#E52B32" FontSize="11" FontWeight="SemiBold"/>
+     </StackPanel>
+     <StackPanel Orientation="Horizontal" Spacing="4" Visibility="{Binding IntegrityHasWarning, Converter={StaticResource VisibleWhenTrue}}" AutomationProperties.Name="{Binding IntegrityStatus}">
+      <FontIcon Glyph="&#xE7BA;" FontSize="12" Foreground="#C77A00"/>
+      <TextBlock Text="{Binding IntegrityStatus}" Foreground="#C77A00" FontSize="11" FontWeight="SemiBold"/>
+     </StackPanel>
      <StackPanel Orientation="Horizontal" Spacing="20" Margin="2,2,0,5">
       <SymbolIcon Symbol="Document" Opacity="{Binding TranscriptOpacity}" ToolTipService.ToolTip="{Binding TranscriptStatus}" AutomationProperties.Name="{Binding TranscriptStatus}"/>
       <SymbolIcon Symbol="AlignLeft" Opacity="{Binding SummaryOpacity}" ToolTipService.ToolTip="{Binding SummaryStatus}" AutomationProperties.Name="{Binding SummaryStatus}"/>
@@ -41,13 +49,28 @@
   </Grid.Resources>
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
   <MenuBar x:Name="MainMenu"/>
-  <InfoBar x:Name="ApiKeyWarningBar" Grid.Row="1" Severity="Warning" IsOpen="False" IsClosable="False" Margin="16,8,16,8"
-           Title="Gemini API Key Required"
-           Message="Application features are disabled until a personal Gemini API key is configured. Please enter your API key in Settings (Gemini API tab) to enable project creation, transcription, video analysis, summaries, descriptions, narration, and exports.">
-   <InfoBar.ActionButton>
-    <Button Content="Enter API Key" Style="{StaticResource AccentButtonStyle}" Click="OpenGeminiSettings_Click"/>
-   </InfoBar.ActionButton>
-  </InfoBar>
+  <StackPanel Grid.Row="1">
+   <InfoBar x:Name="ApiKeyWarningBar" Severity="Warning" IsOpen="False" IsClosable="False" Margin="16,8,16,0"
+            Title="Gemini API Key Required"
+            Message="Application features are disabled until a personal Gemini API key is configured. Please enter your API key in Settings (Gemini API tab) to enable project creation, transcription, video analysis, summaries, descriptions, narration, and exports.">
+    <InfoBar.ActionButton>
+     <Button Content="Enter API Key" Style="{StaticResource AccentButtonStyle}" Click="OpenGeminiSettings_Click"/>
+    </InfoBar.ActionButton>
+   </InfoBar>
+   <InfoBar x:Name="ProjectIntegrityBar" Severity="Warning" IsOpen="False" IsClosable="False" Margin="16,8,16,8"
+            Title="Project Files Missing"
+            Message="Some files that belong to this project are missing.">
+    <InfoBar.ActionButton>
+     <Button x:Name="ProjectIntegrityPrimaryAction" Click="ProjectIntegrityPrimaryAction_Click"/>
+    </InfoBar.ActionButton>
+    <InfoBar.Content>
+     <StackPanel Orientation="Horizontal" Spacing="8">
+      <Button x:Name="ProjectIntegrityRegenerateButton" Click="ProjectIntegrityRegenerate_Click" Visibility="Collapsed"/>
+      <Button x:Name="ProjectIntegrityDetailsButton" Content="Show details" Click="ProjectIntegrityDetails_Click" Visibility="Collapsed"/>
+     </StackPanel>
+    </InfoBar.Content>
+   </InfoBar>
+  </StackPanel>
   <Grid Grid.Row="2" Padding="20,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" MinHeight="54">
    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="1.6*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
    <TextBlock x:Name="ProjectTitle" Grid.ColumnSpan="2" Text="All Projects" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -87,7 +110,7 @@
        <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="6" Margin="0,2">
         <Grid ColumnSpacing="8" Padding="12,8">
          <Grid.ColumnDefinitions><ColumnDefinition Width="2.5*"/><ColumnDefinition Width="0.8*"/><ColumnDefinition Width="0.9*"/><ColumnDefinition Width="1*"/><ColumnDefinition Width="1*"/><ColumnDefinition Width="0.7*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="1.1*"/></Grid.ColumnDefinitions>
-         <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><SymbolIcon Symbol="Video"/><TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/></Grid>
+         <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><SymbolIcon Symbol="Video"/><TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/><TextBlock Grid.Column="2" Text="{Binding IntegrityStatus}" Foreground="#E52B32" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" Visibility="{Binding IntegrityIsDamaged, Converter={StaticResource VisibleWhenTrue}}" AutomationProperties.Name="{Binding IntegrityStatus}"/><TextBlock Grid.Column="2" Text="{Binding IntegrityStatus}" Foreground="#C77A00" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" Visibility="{Binding IntegrityHasWarning, Converter={StaticResource VisibleWhenTrue}}" AutomationProperties.Name="{Binding IntegrityStatus}"/></Grid>
          <TextBlock Grid.Column="1" Text="{Binding DurationLabel}" VerticalAlignment="Center"/>
          <TextBlock Grid.Column="2" Text="{Binding AdSegmentLabel}" VerticalAlignment="Center"/>
          <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" ToolTipService.ToolTip="{Binding TranscriptStatus}"><SymbolIcon Symbol="Document" Opacity="{Binding TranscriptOpacity}"/><TextBlock Text="✓" Foreground="#209447" Visibility="{Binding HasTranscript, Converter={StaticResource VisibleWhenTrue}}"/></StackPanel>

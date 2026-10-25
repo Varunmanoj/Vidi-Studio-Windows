@@ -164,9 +164,13 @@ class TestFileExplorerActivation(unittest.TestCase):
         self.assertIn("New project from YouTube…", source)
         self.assertIn("IsEnabled = Model.Idle", source)
 
-        # In-app project AI actions are gated on activeApiKey
+        # In-app project AI actions are gated on activeApiKey and on the
+        # project still having a readable manifest and an available folder.
         self.assertIn("activeApiKey = Model.HasApiKey && !Model.IsApiKeyInvalid", source)
-        self.assertIn('Item("Export", Export_Click, activeApiKey)', source)
+        self.assertIn("usable = !project.IntegrityPlaceholder", source)
+        self.assertIn('Item("Export", Export_Click, activeApiKey && usable)', source)
+        self.assertIn('Item("Rename", Rename_Click, usable)', source)
+        self.assertIn('project.Integrity?.IsDamaged == true ? "Delete damaged project…"', source)
 
         # In-app segment actions
         self.assertIn("canSynthesize = Model.CurrentNarrationEngine() != \"gemini\" || (Model.HasApiKey && !Model.IsApiKeyInvalid)", source)

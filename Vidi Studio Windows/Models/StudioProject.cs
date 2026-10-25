@@ -191,6 +191,12 @@ public sealed class StudioProject
     public List<string> Exports { get; set; } = new();
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
     [JsonIgnore] public string Folder { get; set; } = "";
+    [JsonIgnore] public ProjectIntegrityReport? Integrity { get; set; }
+    [JsonIgnore] public bool IntegrityPlaceholder { get; set; }
+    [JsonIgnore] public bool HasIntegrityIssue => Integrity is { IsHealthy: false };
+    [JsonIgnore] public bool IntegrityIsDamaged => Integrity?.IsDamaged == true;
+    [JsonIgnore] public bool IntegrityHasWarning => Integrity?.HasWarnings == true;
+    [JsonIgnore] public string IntegrityStatus => Integrity?.BadgeText ?? "";
     [JsonIgnore] public bool IsYouTube => SourceType == "youtube";
     [JsonIgnore] public Uri? ThumbnailUri
     {
@@ -256,13 +262,121 @@ public sealed class StudioProject
     }
     public static StudioProject Load(string folder)
     {
-        var project = JsonSerializer.Deserialize<StudioProject>(File.ReadAllText(Path.Combine(folder, "project.json")), Json.Options)
+        var manifest = Path.Combine(folder, "project.json");
+        if (!File.Exists(manifest)) throw new FileNotFoundException("project.json is missing.", manifest);
+        var project = JsonSerializer.Deserialize<StudioProject>(File.ReadAllText(manifest), Json.Options)
             ?? throw new InvalidDataException("Invalid project.");
+        if (string.IsNullOrWhiteSpace(project.Id) || string.IsNullOrWhiteSpace(project.Name))
+            throw new InvalidDataException("project.json is missing required project fields.");
         project.Folder = Path.GetFullPath(folder);
+        project.IntegrityPlaceholder = false;
         for (var i = 0; i < project.Cues.Count; i++) { var cue = project.Cues[i]; cue.IsDescription = true; cue.AdNumber = i + 1; cue.ProjectFolder = project.Folder; }
         foreach (var item in project.Transcript) { item.IsDescription = false; item.ProjectFolder = project.Folder; }
         return project;
     }
+
+    public static StudioProject? TryLoad(string folder)
+    {
+        try { return Load(folder); }
+        catch (Exception) { return null; }
+    }
+
+    public static bool IsManifestReadable(string folder)
+    {
+        try { Load(folder); return true; }
+        catch (Exception) { return false; }
+    }
+
+    /// <summary>Builds a displayable in-memory project for a folder whose
+    /// project.json is missing or cannot be decoded.</summary>
+    public static StudioProject DamagedPlaceholder(string folder)
+    {
+        var fullFolder = Path.GetFullPath(folder);
+        string? name = null;
+        string? id = null;
+        var source = "";
+        string? sourceType = null;
+        string? youtubeUrl = null;
+        var summary = "";
+        var thumbnails = new List<string>();
+        var exports = new List<string>();
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(fullFolder, "project.json")));
+            var root = document.RootElement;
+            if (root.TryGetProperty("name", out var nameValue) && nameValue.ValueKind == JsonValueKind.String) name = nameValue.GetString();
+            if (root.TryGetProperty("id", out var idValue) && idValue.ValueKind == JsonValueKind.String) id = idValue.GetString();
+            if (root.TryGetProperty("source", out var sourceValue) && sourceValue.ValueKind == JsonValueKind.String) source = sourceValue.GetString() ?? "";
+            if (root.TryGetProperty("sourceType", out var typeValue) && typeValue.ValueKind == JsonValueKind.String) sourceType = typeValue.GetString();
+            if (root.TryGetProperty("youtubeURL", out var youtubeValue) && youtubeValue.ValueKind == JsonValueKind.String) youtubeUrl = youtubeValue.GetString();
+            if (root.TryGetProperty("summary", out var summaryValue) && summaryValue.ValueKind == JsonValueKind.String) summary = summaryValue.GetString() ?? "";
+            if (root.TryGetProperty("thumbnails", out var thumbsValue) && thumbsValue.ValueKind == JsonValueKind.Array)
+                thumbnails = thumbsValue.EnumerateArray().Where(v => v.ValueKind == JsonValueKind.String).Select(v => v.GetString() ?? "").Where(v => v.Length > 0).ToList();
+            if (root.TryGetProperty("exports", out var exportsValue) && exportsValue.ValueKind == JsonValueKind.Array)
+                exports = exportsValue.EnumerateArray().Where(v => v.ValueKind == JsonValueKind.String).Select(v => v.GetString() ?? "").Where(v => v.Length > 0).ToList();
+        }
+        catch (Exception) { }
+        return new StudioProject
+        {
+            Id = string.IsNullOrWhiteSpace(id) ? "damaged-" + StableId(fullFolder) : id!,
+            Name = string.IsNullOrWhiteSpace(name) ? DisplayName(fullFolder) : name!,
+            Source = source,
+            SourceType = sourceType,
+            YoutubeURL = youtubeUrl,
+            Summary = summary,
+            Thumbnails = thumbnails,
+            Exports = exports,
+            Status = "Damaged",
+            Folder = fullFolder,
+            IntegrityPlaceholder = true
+        };
+    }
+
+    public ProjectIntegrityManifest ToIntegrityManifest()
+    {
+        var narration = new List<ProjectNarrationReference>();
+        for (var i = 0; i < Cues.Count; i++)
+        {
+            var cue = Cues[i];
+            if (string.IsNullOrWhiteSpace(cue.Audio)) continue;
+            narration.Add(new ProjectNarrationReference(cue.Audio.Trim(), i + 1, $"{cue.StartLabel}–{cue.EndLabel}"));
+        }
+        var manifestReadable = IsManifestReadable(Folder);
+        return new ProjectIntegrityManifest
+        {
+            Folder = string.IsNullOrEmpty(Folder) ? null : Folder,
+            ProjectName = Name,
+            IsYouTubeProject = IsYouTube,
+            SourceRelativePath = string.IsNullOrWhiteSpace(Source) ? null : Source,
+            ThumbnailPaths = Thumbnails,
+            NarrationReferences = narration,
+            ExportPaths = Exports,
+            KnownManifestUnreadable = IntegrityPlaceholder && !manifestReadable
+        };
+    }
+
+    private static string DisplayName(string folder)
+    {
+        var name = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (name.Length <= 9) return name;
+        var suffix = name[^9..];
+        return suffix[0] == '-' && suffix[1..].All(IsHexDigit) ? name[..^9] : name;
+    }
+
+    private static bool IsHexDigit(char value) =>
+        value is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
+
+    private static string StableId(string folder)
+    {
+        ulong hash = 0xcbf29ce484222325;
+        foreach (var value in System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(folder)))
+        {
+            hash ^= value;
+            hash = unchecked(hash * 0x100000001b3UL);
+        }
+        return hash.ToString("x");
+    }
+
     public override string ToString() => Name;
 }
 

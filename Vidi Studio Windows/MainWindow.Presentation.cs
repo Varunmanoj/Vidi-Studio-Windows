@@ -257,7 +257,7 @@ public sealed partial class MainWindow
         TopOpenFolderButton.Visibility = TopInspectorToggle.Visibility = Visibility.Collapsed;
         GallerySearchHost.Visibility = Visibility.Visible;
         GalleryImport.Visibility = Visibility.Visible;
-        Model.Reload(); RefreshGalleryCount();
+        Model.Reload(); RefreshGalleryCount(); UpdateProjectIntegrityUi();
     }
     private void StopProjectPlayback()
     {

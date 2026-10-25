@@ -110,26 +110,55 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         Changed(nameof(ApiPlan));
         var library = Settings.Get("libraryPath");
         Directory.CreateDirectory(library);
-        var folders = Directory.EnumerateDirectories(library).Concat(externalFolders).Distinct(StringComparer.OrdinalIgnoreCase);
-        Projects.Clear();
+        var folders = Directory.EnumerateDirectories(library).Concat(externalFolders).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var loaded = new List<StudioProject>();
         foreach (var folder in folders)
         {
-            if (!File.Exists(Path.Combine(folder, "project.json"))) continue;
-            try
-            {
-                var p = StudioProject.Load(folder);
-                if (p.Name.Contains(search, StringComparison.CurrentCultureIgnoreCase) && (source == "all" || p.IsYouTube == (source == "youtube"))) Projects.Add(p);
-            }
-            catch (Exception ex) { Engine.Log(ex.ToString()); }
+            var knownFolder = externalFolders.Contains(folder);
+            var exists = Directory.Exists(folder);
+            var project = StudioProject.TryLoad(folder);
+            if (project == null && exists && ProjectIntegrityAuditor.FolderLooksLikeProject(folder))
+                project = StudioProject.DamagedPlaceholder(folder);
+            else if (project == null && !exists && knownFolder)
+                project = StudioProject.DamagedPlaceholder(folder);
+            if (project == null) continue;
+            project.Integrity = ProjectIntegrityAuditor.Audit(project.ToIntegrityManifest());
+            loaded.Add(project);
         }
+        Projects.Clear();
+        foreach (var project in loaded.Where(p =>
+                     p.Name.Contains(search, StringComparison.CurrentCultureIgnoreCase)
+                     && (source == "all" || p.IsYouTube == (source == "youtube"))))
+        {
+            Projects.Add(project);
+        }
+        if (Project is { } current)
+            current.Integrity = ProjectIntegrityAuditor.Audit(current.ToIntegrityManifest());
     }
     public void Open(string folder)
     {
-        Project = StudioProject.Load(folder);
-        if (Idle) Status = "Ready";
-        externalFolders.Add(Project.Folder);
+        externalFolders.Add(Path.GetFullPath(folder));
+        var loaded = StudioProject.TryLoad(folder);
+        Project = loaded ?? StudioProject.DamagedPlaceholder(folder);
+        Project.Integrity = ProjectIntegrityAuditor.Audit(Project.ToIntegrityManifest());
+        if (Idle) Status = Project.Integrity.IsHealthy ? "Ready" : Project.Integrity.Headline;
         Reload();
         ProjectReloaded?.Invoke(this, EventArgs.Empty);
+    }
+    /// <summary>Removes a project entry whose folder no longer exists.</summary>
+    public void ForgetProject(StudioProject project)
+    {
+        externalFolders.Remove(project.Folder);
+        Projects.Remove(project);
+        if (Project != null && string.Equals(Project.Folder, project.Folder, StringComparison.OrdinalIgnoreCase))
+            Project = null;
+    }
+    public void RefreshProjectIntegrity()
+    {
+        if (Project is { } current)
+            current.Integrity = ProjectIntegrityAuditor.Audit(current.ToIntegrityManifest());
+        foreach (var project in Projects)
+            project.Integrity = ProjectIntegrityAuditor.Audit(project.ToIntegrityManifest());
     }
     public StudioProject? ExistingProjectForVideo(string filePath)
     {

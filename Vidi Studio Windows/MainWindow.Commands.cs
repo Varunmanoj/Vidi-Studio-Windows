@@ -151,11 +151,13 @@ public sealed partial class MainWindow
             item.Click += (s, args) => { Model.Open(project.Folder); handler(s, args); }; menu.Items.Add(item);
         }
         var activeApiKey = Model.HasApiKey && !Model.IsApiKeyInvalid;
-        Item("Open editor in new window", OpenEditor_Click); Item("Export", Export_Click, activeApiKey); Item("Open project folder", Reveal_Click);
+        var usable = !project.IntegrityPlaceholder && project.Integrity?.ManifestUnreadable != true && project.Integrity?.FolderMissing != true;
+        Item("Open editor in new window", OpenEditor_Click); Item("Export", Export_Click, activeApiKey && usable); Item("Open project folder", Reveal_Click);
         foreach (var pair in new[] { ("Analyze video", "analyze"), ("Generate transcript", "transcribe"), ("Generate summary", "generate-summary"), ("Generate descriptions", "generate-ad-cues") })
-            Item(pair.Item1, (_, args) => Command_Click(new Button { Tag = pair.Item2 }, args), activeApiKey);
-        Item("Refresh video details", (_, args) => Command_Click(new Button { Tag = "prepare-video" }, args));
-        Item("Rename", Rename_Click); Item("Move to Recycle Bin", DeleteProject_Click);
+            Item(pair.Item1, (_, args) => Command_Click(new Button { Tag = pair.Item2 }, args), activeApiKey && usable);
+        Item("Refresh video details", (_, args) => Command_Click(new Button { Tag = "prepare-video" }, args), usable);
+        Item("Rename", Rename_Click, usable);
+        Item(project.Integrity?.IsDamaged == true ? "Delete damaged project…" : "Move to Recycle Bin", DeleteProject_Click);
         if (pointerRequest) menu.ShowAt((FrameworkElement)sender, point);
         else menu.ShowAt(element ?? (FrameworkElement)sender);
         e.Handled = true;

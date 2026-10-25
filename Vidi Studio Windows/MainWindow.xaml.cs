@@ -30,6 +30,7 @@ public sealed partial class MainWindow : Window
     private readonly SummaryReadback readback;
     private readonly OnDeviceNarrator onDeviceNarrator;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(150) };
+    private readonly DispatcherTimer integrityTimer = new() { Interval = TimeSpan.FromSeconds(4) };
     private bool updatingPosition;
     private string? loadedProject;
     private string? activeCue;
@@ -73,12 +74,15 @@ public sealed partial class MainWindow : Window
         Model.ProjectReloaded += (_, _) => { readback.Stop(); RefreshProject(); };
         timer.Tick += Timer_Tick;
         timer.Start();
+        integrityTimer.Tick += (_, _) => RefreshProjectIntegrity();
+        integrityTimer.Start();
+        Activated += (_, _) => { if (ready) RefreshProjectIntegrity(); };
         Closed += (_, _) =>
         {
             App.ThemeChanged -= ApplyThemeFromApp;
             ActiveExports.Detach();
             Model.PropertyChanged -= UpdateStatusFooter;
-            Model.Cancel(); timer.Stop();
+            Model.Cancel(); timer.Stop(); integrityTimer.Stop();
             foreach (var cleanup in new Action[] { video.Dispose, speech.Dispose, narrationPlayer.Dispose, onDeviceNarrator.Dispose, readback.Dispose,
                 () => { if (YouTubePlayer.CoreWebView2 != null) YouTubePlayer.Close(); } })
             {
@@ -125,6 +129,8 @@ public sealed partial class MainWindow : Window
             UpdateProcessingChrome();
         if (e.PropertyName is nameof(Model.Busy) or nameof(Model.HasApiKey) or nameof(Model.Idle) or nameof(Model.IsSynthesizingNarration))
             UpdateApiKeyUi();
+        if (e.PropertyName is nameof(Model.Busy) or nameof(Model.Idle) or nameof(Model.Project))
+            UpdateProjectIntegrityUi();
     }
     private void UpdateProcessingChrome()
     {
@@ -394,8 +400,10 @@ public sealed partial class MainWindow : Window
     {
         if (Model.Project is not { } p) return;
         ShowEditor();
+        p.Integrity = ProjectIntegrityAuditor.Audit(p.ToIntegrityManifest());
         UpdateInspector(p);
         UpdateApiKeyUi();
+        UpdateProjectIntegrityUi();
         ProjectTitle.Text = p.Name;
         ProjectInformation.Text = $"{(p.IsYouTube ? "YouTube" : "Local video")}\n{p.Width} × {p.Height}\n{TimeSpan.FromSeconds(p.Duration):hh\\:mm\\:ss}\n{p.Folder}";
         Playhead.Maximum = Math.Max(1, p.Duration);
@@ -403,6 +411,15 @@ public sealed partial class MainWindow : Window
         UpdatePlaybackControls();
         RenderSection();
         RenderTimelineThumbnails(p);
+        if (p.IntegrityPlaceholder || p.Integrity?.ManifestUnreadable == true || p.Integrity?.FolderMissing == true)
+        {
+            loadedProject = p.Folder;
+            StopProjectPlayback();
+            Player.Visibility = Visibility.Collapsed;
+            YouTubePlayer.Visibility = Visibility.Collapsed;
+            video.Source = null;
+            return;
+        }
         if (loadedProject == p.Folder) return;
         loadedProject = p.Folder; activeCue = null; previewingSegment = null; speech.Pause(); narrationPlayer.Pause(); video.Pause(); onDeviceNarrator.Stop(); readback.Stop();
         Player.Visibility = p.IsYouTube ? Visibility.Collapsed : Visibility.Visible;
@@ -682,7 +699,10 @@ public sealed partial class MainWindow : Window
     private async void Command_Click(object sender, RoutedEventArgs e)
     {
         var command = (string)((FrameworkElement)sender).Tag;
-        if (Model.Project == null) return;
+        if (Model.Project is not { } activeProject
+            || activeProject.IntegrityPlaceholder
+            || activeProject.Integrity?.ManifestUnreadable == true
+            || activeProject.Integrity?.FolderMissing == true) return;
         if (command == "synthesize-tts")
         {
             await SynthesizeNarrationWithConfirmationAsync();
@@ -700,20 +720,172 @@ public sealed partial class MainWindow : Window
     private void Cancel_Click(object sender, RoutedEventArgs e) => Model.Cancel();
     private async void Rename_Click(object sender, RoutedEventArgs e)
     {
-        if (Model.Project == null) return;
+        if (Model.Project is not { IntegrityPlaceholder: false } || Model.Project.Integrity?.ManifestUnreadable == true) return;
         var name = new TextBox { Header = "Project name", Text = Model.Project.Name };
         if (await ShowDialogAsync(Dialog("Rename project", name)) == ContentDialogResult.Primary) await Model.RunAsync("rename-project", new[] { "--name", name.Text });
     }
     private async void DeleteProject_Click(object sender, RoutedEventArgs e)
     {
-        if (Model.Project is not { } p || !await Confirm("Move project to Recycle Bin", $"Move {p.Name} and all its media to the Recycle Bin?", "Move to Recycle Bin")) return;
+        if (Model.Project is { } p) await DeleteProjectAsync(p);
+    }
+
+    private async Task DeleteProjectAsync(StudioProject p)
+    {
+        var folderExists = Directory.Exists(p.Folder);
+        var damaged = p.Integrity?.IsDamaged == true || p.IntegrityPlaceholder;
+        var title = folderExists
+            ? (damaged ? "Delete damaged project" : "Move project to Recycle Bin")
+            : "Remove missing project";
+        var message = folderExists
+            ? (damaged
+                ? $"This project is marked as damaged. Move {p.Name} and all remaining files to the Recycle Bin?"
+                : $"Move {p.Name} and all its media to the Recycle Bin?")
+            : $"The project folder for {p.Name} no longer exists. Remove its entry from VidiStudio?";
+        var action = folderExists ? "Move to Recycle Bin" : "Remove project";
+        if (!await Confirm(title, message, action)) return;
         try
         {
             StopProjectPlayback(); video.Source = null; speech.Source = null; narrationPlayer.Source = null;
-            Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(p.Folder, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            if (folderExists)
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(p.Folder, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            Model.ForgetProject(p);
             ClearProject();
         }
         catch (Exception ex) { await ShowError(ex); }
+    }
+
+    private void RefreshProjectIntegrity()
+    {
+        if (!ready) return;
+        if (Model.Project is { IntegrityPlaceholder: true } placeholder && StudioProject.IsManifestReadable(placeholder.Folder))
+        {
+            Model.Open(placeholder.Folder);
+            return;
+        }
+        Model.RefreshProjectIntegrity();
+        if (GalleryPanel.Visibility == Visibility.Visible)
+        {
+            Model.Reload(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", _ => "all" });
+            RefreshGalleryCount();
+        }
+        UpdateProjectIntegrityUi();
+    }
+
+    private void UpdateProjectIntegrityUi()
+    {
+        if (ProjectIntegrityBar == null) return;
+        if (EditorWorkspace.Visibility != Visibility.Visible || Model.Project is not { } p)
+        {
+            ProjectIntegrityBar.IsOpen = false;
+            return;
+        }
+        var report = p.Integrity ?? ProjectIntegrityAuditor.Audit(p.ToIntegrityManifest());
+        p.Integrity = report;
+        if (report.IsHealthy)
+        {
+            ProjectIntegrityBar.IsOpen = false;
+            return;
+        }
+        ProjectIntegrityBar.IsOpen = true;
+        ProjectIntegrityBar.Severity = report.IsDamaged ? InfoBarSeverity.Error : InfoBarSeverity.Warning;
+        ProjectIntegrityBar.Title = report.Headline;
+        var summary = new List<string> { report.Message };
+        foreach (var problem in report.Problems.Take(4))
+        {
+            summary.Add($"{problem.Title}: {problem.Detail}");
+            var names = problem.MissingFiles.Take(4).Select(file => file.DisplayName).ToList();
+            if (names.Count > 0)
+            {
+                summary.Add("  " + string.Join(", ", names)
+                    + (problem.MissingFiles.Count > names.Count ? $" (+{problem.MissingFiles.Count - names.Count} more)" : ""));
+            }
+        }
+        if (report.Problems.Count > 4)
+            summary.Add($"…and {report.Problems.Count - 4} more issues. Choose Show details.");
+        ProjectIntegrityBar.Message = string.Join("\n", summary);
+
+        var folderExists = Directory.Exists(p.Folder);
+        ProjectIntegrityPrimaryAction.Content = report.IsDamaged
+            ? (folderExists ? "Delete project…" : "Remove project…")
+            : "Show details";
+        ProjectIntegrityPrimaryAction.Foreground = report.IsDamaged
+            ? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 229, 43, 50))
+            : null;
+        ProjectIntegrityPrimaryAction.IsEnabled = Model.Idle;
+        ProjectIntegrityDetailsButton.Visibility = report.IsDamaged ? Visibility.Visible : Visibility.Collapsed;
+        ProjectIntegrityDetailsButton.IsEnabled = Model.Idle;
+
+        var narration = report.CanRegenerateNarration
+            && (Model.CurrentNarrationEngine() != "gemini" || (Model.HasApiKey && !Model.IsApiKeyInvalid));
+        var videoArtifacts = report.CanRegenerateVideoArtifacts;
+        ProjectIntegrityRegenerateButton.Visibility = narration || videoArtifacts ? Visibility.Visible : Visibility.Collapsed;
+        ProjectIntegrityRegenerateButton.Content = narration ? "Regenerate missing narration" : "Regenerate video details & pictures";
+        ProjectIntegrityRegenerateButton.Tag = narration ? "narration" : "video";
+        ProjectIntegrityRegenerateButton.IsEnabled = Model.Idle;
+    }
+
+    private async void ProjectIntegrityPrimaryAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (Model.Project is not { } p) return;
+        var report = p.Integrity ?? ProjectIntegrityAuditor.Audit(p.ToIntegrityManifest());
+        if (report.IsDamaged) await DeleteProjectAsync(p);
+        else await ShowProjectIntegrityDetailsAsync(report);
+    }
+
+    private async void ProjectIntegrityDetails_Click(object sender, RoutedEventArgs e)
+    {
+        if (Model.Project is not { } p) return;
+        await ShowProjectIntegrityDetailsAsync(p.Integrity ?? ProjectIntegrityAuditor.Audit(p.ToIntegrityManifest()));
+    }
+
+    private async void ProjectIntegrityRegenerate_Click(object sender, RoutedEventArgs e)
+    {
+        if (Model.Busy || Model.Project == null) return;
+        if (((FrameworkElement)sender).Tag as string == "narration")
+            await SynthesizeNarrationWithConfirmationAsync(new[] { "--changed" });
+        else
+            await Model.RunAsync("prepare-video");
+        RefreshProject();
+    }
+
+    private async Task ShowProjectIntegrityDetailsAsync(ProjectIntegrityReport report)
+    {
+        var lines = new List<string> { report.Message, "" };
+        foreach (var problem in report.Problems)
+        {
+            lines.Add($"{problem.Title}: {problem.Detail}");
+            lines.Add(problem.Impact);
+            if (!string.IsNullOrWhiteSpace(problem.Recovery)) lines.Add(problem.Recovery);
+            if (problem.MissingFiles.Count > 0)
+            {
+                lines.Add("Missing files:");
+                foreach (var file in problem.MissingFiles.Take(500)) lines.Add("  " + file.DisplayName);
+                if (problem.MissingFiles.Count > 500)
+                    lines.Add($"  …and {problem.MissingFiles.Count - 500} more.");
+            }
+            lines.Add("");
+        }
+        var text = new TextBlock
+        {
+            Text = string.Join("\n", lines),
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 620,
+            IsTextSelectionEnabled = true
+        };
+        var scroll = new ScrollViewer
+        {
+            Content = text,
+            MaxHeight = 420,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+        };
+        var dialog = new ContentDialog
+        {
+            Title = report.Headline,
+            Content = scroll,
+            CloseButtonText = "Close"
+        };
+        await ShowDialogAsync(dialog, 720, 560);
     }
     private async void Reveal_Click(object sender, RoutedEventArgs e) { if (Model.Project != null) await Launcher.LaunchFolderPathAsync(Model.Project.Folder); }
     private void SelectAll_Click(object sender, RoutedEventArgs e) { if (!editMode) EditMode_Click(sender, e); Segments.SelectAll(); }
@@ -1106,7 +1278,10 @@ public sealed partial class MainWindow : Window
 
     private async Task SynthesizeNarrationWithConfirmationAsync(IEnumerable<string>? extra = null)
     {
-        if (Model.Project == null) return;
+        if (Model.Project is not { } narrationProject
+            || narrationProject.IntegrityPlaceholder
+            || narrationProject.Integrity?.ManifestUnreadable == true
+            || narrationProject.Integrity?.FolderMissing == true) return;
         var flags = extra?.ToList() ?? new List<string>();
         if (!flags.Contains("--segment") && !flags.Contains("--changed") && !flags.Contains("--regenerate-all")) flags.Add("--regenerate-all");
         if (Model.CurrentNarrationEngine() == "gemini" && !Model.HasApiKey)
@@ -1172,6 +1347,7 @@ public sealed partial class MainWindow : Window
     }
     private async void DeleteGenerated_Click(object sender, RoutedEventArgs e)
     {
+        if (Model.Project is not { IntegrityPlaceholder: false } || Model.Project.Integrity?.ManifestUnreadable == true) return;
         var panel = new StackPanel { Spacing = 8 };
         var boxes = new[] { "transcript", "summary", "descriptions", "narration", "thumbnails", "exports", "history" }.Select(c => new CheckBox { Content = c, Tag = c }).ToList();
         foreach (var box in boxes) panel.Children.Add(box);
@@ -1182,7 +1358,11 @@ public sealed partial class MainWindow : Window
     }
     private async void Export_Click(object sender, RoutedEventArgs e)
     {
-        if (Model.Project != null && Model.Idle) await ShowDialogAsync(new Views.ExportDialog(Model), 1040, 760);
+        if (Model.Project is { IntegrityPlaceholder: false } project
+            && project.Integrity?.ManifestUnreadable != true
+            && project.Integrity?.FolderMissing != true
+            && Model.Idle)
+            await ShowDialogAsync(new Views.ExportDialog(Model), 1040, 760);
     }
     private async void ExportOpen_Click(object sender, RoutedEventArgs e)
     {

@@ -34,6 +34,25 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
             Width = 18, Height = 18, IsActive = false,
             Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Center
         };
+        public FontIcon SamplePlaying { get; } = new()
+        {
+            Glyph = "\uE9D9", FontSize = 16, Width = 20, Height = 20,
+            Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Center
+        };
+        public Grid SampleStatus { get; } = new()
+        {
+            Width = 20, Height = 20, VerticalAlignment = VerticalAlignment.Center
+        };
+        public ProgressRing SampleLoading { get; } = new()
+        {
+            Width = 16, Height = 16, IsActive = false,
+            Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Center
+        };
+        public RowState()
+        {
+            SampleStatus.Children.Add(SampleLoading);
+            SampleStatus.Children.Add(SamplePlaying);
+        }
     }
 
     private readonly TextBox search = new() { Header = "Search voices", PlaceholderText = "Name, language, dialect, or quality" };
@@ -191,7 +210,7 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
         var locked = deleting || deletingVoiceId != null;
 
         var grid = new Grid { ColumnSpacing = 12, Padding = new Thickness(6) };
-        for (var column = 0; column < 4; column++)
+        for (var column = 0; column < 5; column++)
             grid.ColumnDefinitions.Add(column == 0 ? new ColumnDefinition() : new ColumnDefinition { Width = GridLength.Auto });
         var details = new StackPanel { Spacing = 2 };
         details.Children.Add(new TextBlock { Text = voice.DisplayName, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
@@ -204,13 +223,21 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
         Grid.SetColumn(state.Ring, 1);
         grid.Children.Add(state.Ring);
 
+        state.SamplePlaying.Visibility = sampleVoiceId == voice.Id ? Visibility.Visible : Visibility.Collapsed;
+        AutomationProperties.SetName(state.SamplePlaying, "Playing a sample of " + voice.DisplayName);
+        state.SampleLoading.IsActive = sampleLoadingId == voice.Id;
+        state.SampleLoading.Visibility = sampleLoadingId == voice.Id ? Visibility.Visible : Visibility.Collapsed;
+        AutomationProperties.SetName(state.SampleLoading, "Loading a sample of " + voice.DisplayName);
+        Grid.SetColumn(state.SampleStatus, 2);
+        grid.Children.Add(state.SampleStatus);
+
         state.Sample.Content = sampleLoadingId == voice.Id ? "Loading…" : sampleVoiceId == voice.Id ? "Stop sample" : "Play sample";
         state.Sample.IsEnabled = sampleLoadingId == null && !locked;
         AutomationProperties.SetName(state.Sample, (sampleVoiceId == voice.Id ? "Stop sample for " : "Play sample for ") + voice.DisplayName);
         AutomationProperties.SetHelpText(state.Sample,
             "Plays a short sample published with this voice. The preview needs the internet; a downloaded voice itself works offline.");
         state.Sample.Click += async (_, _) => await ToggleSampleAsync(voice);
-        Grid.SetColumn(state.Sample, 2);
+        Grid.SetColumn(state.Sample, 3);
         grid.Children.Add(state.Sample);
 
         IconButtonContent.Set(state.Action, removing ? "Deleting…" : "Delete", Symbol.Delete);
@@ -223,7 +250,7 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
             if (deleting || deletingVoiceId != null) return;
             await DeleteAsync(voice);
         };
-        Grid.SetColumn(state.Action, 3);
+        Grid.SetColumn(state.Action, 4);
         grid.Children.Add(state.Action);
         return grid;
     }

@@ -145,10 +145,21 @@ class PiperVoiceBrowser(unittest.TestCase):
         # Delete is red in the download catalog too, not only in the delete dialog.
         self.assertIn('IconButtonContent.SetDestructive(state.Action, downloaded || deleting);', dialog)
         self.assertIn('internal static void SetDestructive(Button button, bool destructive)', (ROOT / 'Vidi Studio Windows' / 'Views' / 'IconButtonContent.cs').read_text(encoding='utf-8'))
+        # Each playing row shows a fixed-width audio icon beside its sample button.
+        self.assertIn('public FontIcon SamplePlaying', dialog)
+        self.assertIn('Glyph = "\\uE9D9"', dialog)
+        self.assertIn('public Grid SampleStatus', dialog)
+        self.assertIn('public ProgressRing SampleLoading', dialog)
+        self.assertIn('Grid.SetColumn(state.SampleStatus, 2)', dialog)
         # Fixed button widths keep the sample and action columns aligned in every row.
         self.assertIn('public Button Sample { get; } = new() { Width = 120', dialog)
         self.assertIn('public Button Action { get; } = new() { Width = 150', dialog)
         delete_dialog = (ROOT / 'Vidi Studio Windows' / 'Views' / 'PiperDeleteVoicesDialog.cs').read_text(encoding='utf-8')
+        self.assertIn('public FontIcon SamplePlaying', delete_dialog)
+        self.assertIn('Glyph = "\\uE9D9"', delete_dialog)
+        self.assertIn('public Grid SampleStatus', delete_dialog)
+        self.assertIn('public ProgressRing SampleLoading', delete_dialog)
+        self.assertIn('Grid.SetColumn(state.SampleStatus, 2)', delete_dialog)
         self.assertIn('public Button Sample { get; } = new() { Width = 120', delete_dialog)
         self.assertIn('public Button Action { get; } = new() { Width = 110', delete_dialog)
         self.assertIn('IconButtonContent.Set(manage, "Download or remove voices…", Symbol.Download)', settings)

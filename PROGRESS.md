@@ -1,5 +1,17 @@
 # Windows migration progress
 
+## 2026-10-25 — Voice sample playback indicators (1.0.121 / 1.0.121.0)
+
+The Download or Remove Voices catalog and the Delete Piper Voices dialog now show a fixed-width per-row playback indicator beside each sample button. A progress ring appears while the sample loads, and the Fluent audio glyph appears only on the row whose sample is playing; the button itself continues to show Loading or Stop. The layout reserves the indicator column so sample and delete actions stay aligned when playback starts and stops. Both indicators have UI Automation names, while macOS uses an animated SF Symbol waveform with the same loading spinner.
+
+Validation: on this macOS host the macOS suite passed 151 tests and the Windows Python suite passed 199 tests (1 Windows-only skip); `script/check_menu_parity.py` and both `test_menu_parity` suites pass; macOS `script/build_and_run.sh --verify` built and launched 1.0.121 with 13 Help pages. Not run: native Windows build/MSIX packaging, C# compilation, and interactive validation of the new indicator.
+
+## 2026-10-25 — Timeline track colors aligned (1.0.120 / 1.0.120.0)
+
+The Transcript and Audio Description timeline tracks now use the same color roles on Windows and macOS. Windows transcript bars read the current system accent color through `UISettings.GetColorValue(UIColorType.Accent)` with a SteelBlue fallback; macOS uses SwiftUI `Color.accentColor`. Both description tracks use DarkGoldenrod (`#B8860B`). Seeking, labels, segment text, and the red playhead are unchanged, and the shared feature-parity record documents the color contract.
+
+Validation: on this macOS host the macOS suite passed 151 tests and the Windows Python suite passed 199 tests (1 Windows-only skip); `script/check_menu_parity.py` and both `test_menu_parity` suites pass; macOS `script/build_and_run.sh --verify` built and launched 1.0.120 with 13 Help pages. Not run: native Windows build/MSIX packaging, C# compilation, and visual verification of Windows accent-color changes.
+
 ## 2026-10-25 — Summary sentence and paragraph navigation (1.0.119 / 1.0.119.0)
 
 The Summary page now centers Previous/Next Sentence and Previous/Next Paragraph buttons around Play/Pause and Stop. `SummaryReadback` parses the rendered summary into sentences grouped by Markdown-style paragraph blocks, tracks the active sentence index, and exposes boundary-aware navigation; every navigation call cancels current playback on the existing playback gate and reads the selected sentence through the same OneCore, SAPI 5, Piper, or Gemini path as continuous reading. `MainWindow` syncs the button and menu enabled states from the reader, resets the highlight search anchor when jumping, and rebuilds the reader source whenever the summary is rendered. Playback → Summary Reading now includes the four navigation commands with `Ctrl+Shift+[` / `]` for sentences and `Ctrl+Alt+[` / `]` for paragraphs. Website docs, Help pages, README, feature parity, and the desktop menu contract were updated.

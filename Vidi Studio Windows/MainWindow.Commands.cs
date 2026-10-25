@@ -253,6 +253,22 @@ public sealed partial class MainWindow
         e.Handled = true;
     }
     private void Track_SizeChanged(object sender, SizeChangedEventArgs e) => RenderTracks();
+    private static Windows.UI.ViewManagement.UISettings? uiSettings;
+    // Spoken transcript bars use the Windows accent color, matching the Mac
+    // track's use of the macOS system accent. Description bars keep the
+    // DarkGoldenrod color mirrored by the Mac description track.
+    private static Windows.UI.Color SystemAccentColor()
+    {
+        try
+        {
+            uiSettings ??= new Windows.UI.ViewManagement.UISettings();
+            return uiSettings.GetColorValue(Windows.UI.ViewManagement.UIColorType.Accent);
+        }
+        catch
+        {
+            return Microsoft.UI.Colors.SteelBlue;
+        }
+    }
     private void RenderTracks()
     {
         if (Model.Project is not { } project || project.Duration <= 0) return;
@@ -271,7 +287,7 @@ public sealed partial class MainWindow
                 button.Click += (_, _) => Seek(segment.Start); canvas.Children.Add(button);
             }
         }
-        Draw(TranscriptTrack, project.Transcript, Microsoft.UI.Colors.SteelBlue);
+        Draw(TranscriptTrack, project.Transcript, SystemAccentColor());
         Draw(DescriptionTrack, project.Cues, Microsoft.UI.Colors.DarkGoldenrod);
     }
     private void RenderMarkdown(string markdown)

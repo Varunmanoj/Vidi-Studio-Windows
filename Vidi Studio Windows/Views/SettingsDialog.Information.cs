@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
 using Vidi_Studio_Windows.Services;
@@ -49,6 +50,28 @@ public sealed partial class SettingsDialog
         _ = ShowFfmpegDetailsAsync(ffmpegDetails);
         panel.Children.Add(new HyperlinkButton { Content = "FFmpeg license and source information", NavigateUri = new Uri("https://ffmpeg.org/legal.html") });
         panel.Children.Add(new TextBlock { Text = "FFmpeg is generally LGPL, but optional components can make a particular build GPL. The installed executable's configuration determines which terms apply.", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
+        panel.Children.Add(new TextBlock { Text = "Piper voices", FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 18, 0, 0) });
+        panel.Children.Add(new TextBlock { Text = "Vidi Studio includes the Piper speech engine (piper.exe and its runtime files) from the rhasspy/piper project, release 2023.11.14-2, for on-device neural narration.", TextWrapping = TextWrapping.Wrap });
+        AddInformationRow(panel, "License", "MIT License");
+        panel.Children.Add(new TextBlock { Text = "Piper is Copyright (c) 2022 Rhasspy and contributors.", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
+        panel.Children.Add(new HyperlinkButton { Content = "Piper source code and MIT license", NavigateUri = new Uri("https://github.com/rhasspy/piper") });
+        var piperNotice = new Button { Content = "Open bundled Piper notice" };
+        piperNotice.Click += async (_, _) =>
+        {
+            try
+            {
+                var path = Path.Combine(AppContext.BaseDirectory, "Assets", "piper-notice.txt");
+                var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
+                await Windows.System.Launcher.LaunchFileAsync(file);
+            }
+            catch (Exception ex)
+            {
+                model.Engine.Log(ex.ToString());
+                status.Text = "The bundled Piper notice could not be opened.";
+            }
+        };
+        panel.Children.Add(piperNotice);
+        panel.Children.Add(new TextBlock { Text = "Piper voices are downloaded on demand. Each voice remains subject to the license and terms published with that voice.", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
         panel.Children.Add(new TextBlock { Text = "Vidi Studio also uses the Windows App SDK, .NET, and Python packages listed in the project dependency files. Gemini is an external service used with your own API key, which is stored securely in Windows Credential Manager rather than in a plain file.", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
     }
 

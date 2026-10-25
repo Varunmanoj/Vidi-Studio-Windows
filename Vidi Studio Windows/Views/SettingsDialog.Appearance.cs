@@ -108,6 +108,29 @@ public sealed partial class SettingsDialog
         ColorRow("Word highlight color", "summaryWordHighlightColor", "#FFD54A");
         card.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb(24, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Child = summaryPreview });
         Preview();
+        var advanced = new StackPanel { Spacing = 12 };
+        advanced.Children.Add(new TextBlock { Text = "Advanced", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        var developerMode = new ToggleSwitch
+        {
+            IsOn = SettingsStore.GetBool(draft["developerMode"]),
+            OnContent = "On",
+            OffContent = "Off",
+            MinWidth = 0
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(developerMode, "Developer mode");
+        var developerRow = new Grid { ColumnSpacing = 14, MinHeight = 32 };
+        developerRow.ColumnDefinitions.Add(new ColumnDefinition());
+        developerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        developerRow.Children.Add(new TextBlock { Text = "Developer mode", VerticalAlignment = VerticalAlignment.Center });
+        Grid.SetColumn(developerMode, 1); developerRow.Children.Add(developerMode);
+        advanced.Children.Add(developerRow);
+        advanced.Children.Add(new TextBlock { Text = "Shows Developer prompts for editing model instructions and output requirements.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
+        developerMode.Toggled += (_, _) =>
+        {
+            draft["developerMode"] = developerMode.IsOn;
+            UpdateDeveloperPromptsVisibility();
+        };
+        panel.Children.Add(new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(16), Background = new SolidColorBrush(Color.FromArgb(15, 128, 128, 128)), Child = advanced });
         var restore = new Button { Content = "Restore caption defaults" };
         restore.Click += (_, _) =>
         {

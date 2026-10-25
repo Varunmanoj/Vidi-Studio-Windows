@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-25 — Developer mode gates Developer prompts and Piper licensing in About (1.0.125 / 1.0.125.0)
+
+The Appearance page now has an **Advanced** card with **Developer mode**, off by default. **Developer prompts** is hidden from the Settings sidebar and redirects to Appearance if selected while the switch is off. Enabling Developer mode reveals the prompts page; disabling it hides the page again, returns to Appearance when necessary, and keeps saved prompt edits. About gained a **Piper voices** section that identifies the bundled `rhasspy/piper` 2023.11.14-2 engine, states the MIT license and Rhasspy copyright, links to the source, opens the bundled notice, and notes that downloaded voices keep their published terms. The bundled `piper-notice.txt` now includes the complete MIT license text.
+
+Validation: on this macOS host the macOS suite passed 151 tests, the Windows Python suite passed 199 tests (1 Windows-only skip), both `test_parity` suites passed, and `script/check_menu_parity.py` passed. `VIDISTUDIO_CONFIGURATION=Release ./script/build_and_run.sh --verify` built, signed, and launched 1.0.125 with 13 Help pages; native accessibility inspection verified the Mac Developer mode gate and About Piper section. The Windows smoke test now asserts that Developer prompts is hidden, opens after Developer mode is enabled, and disappears again when it is disabled. Not run: native Windows build/MSIX packaging, full C# code-behind compilation, or interactive Windows UI/Narrator checks. No live Gemini request or API key change was made.
+
 ## 2026-10-25 — Compact issue InfoBar and project-named issue dialog (1.0.124 / 1.0.124.0)
 
 The project-integrity InfoBar is now compact: it names the project in its title, shows only the primary impact, and offers Delete Project, Review Issues, Show in Explorer, and regeneration actions according to the report. The full list moved into a structured **Project File Issues** dialog that shows the project name, a Damaged or Needs Attention capsule, issue and tracked-file counts, and one card per issue with detail, impact, recovery guidance, and selectable missing paths. The inspector warning icon opens the same dialog, so the editor viewer, timeline, and thumbnails keep their normal layout.

@@ -24,6 +24,7 @@ public sealed partial class SettingsDialog : Window
     private readonly Grid layout;
     private bool saved;
     private ListView? sectionList;
+    private ListViewItem? developerPromptsItem;
     private int requestedSection;
 #if DEBUG
     internal async Task VerifyWindowThemeAsync()
@@ -96,6 +97,24 @@ public sealed partial class SettingsDialog : Window
     }
     internal void NavigateForSmokeTest(int section) { if (sectionList != null) sectionList.SelectedIndex = section; }
     internal int SelectedSectionForSmokeTest => sectionList?.SelectedIndex ?? -1;
+    internal void VerifyDeveloperModeGateForSmokeTest()
+    {
+        NavigateForSmokeTest(0);
+        if (developerPromptsItem?.Visibility != Visibility.Collapsed)
+            throw new InvalidOperationException("Developer prompts must be hidden until Developer mode is enabled.");
+        SelectSection(3);
+        if (SelectedSectionForSmokeTest == 3)
+            throw new InvalidOperationException("Developer prompts opened while Developer mode was off.");
+        draft["developerMode"] = true; UpdateDeveloperPromptsVisibility();
+        if (developerPromptsItem.Visibility != Visibility.Visible)
+            throw new InvalidOperationException("Developer mode did not reveal Developer prompts.");
+        SelectSection(3);
+        if (SelectedSectionForSmokeTest != 3)
+            throw new InvalidOperationException("Developer prompts did not open after Developer mode was enabled.");
+        draft["developerMode"] = false; UpdateDeveloperPromptsVisibility();
+        if (developerPromptsItem.Visibility != Visibility.Collapsed || SelectedSectionForSmokeTest != 0)
+            throw new InvalidOperationException("Turning Developer mode off did not hide Developer prompts.");
+    }
 #endif
     private readonly StudioViewModel model;
     private readonly JsonObject draft;
@@ -126,6 +145,8 @@ public sealed partial class SettingsDialog : Window
         requestedSection = initialSection;
         menuOwner = window as MainWindow;
         this.model = model; draft = model.Settings.Data.DeepClone().AsObject();
+        // Developer prompts stay hidden until the user enables Developer mode in Appearance.
+        if (requestedSection == 3 && !DeveloperModeEnabled) requestedSection = 0;
         // Seed the key box from Windows Credential Manager; it is never part of config.json.
         var savedApiKey = model.Settings.Get("apiKey");
         if (savedApiKey.Length > 0) draft["apiKey"] = savedApiKey;
@@ -148,10 +169,13 @@ public sealed partial class SettingsDialog : Window
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
             row.Children.Add(new FontIcon { Glyph = glyphs[i], FontSize = 17 });
             row.Children.Add(new TextBlock { Text = labels[i], VerticalAlignment = VerticalAlignment.Center });
-            sections.Items.Add(new ListViewItem { Content = row, MinHeight = 42, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+            var item = new ListViewItem { Content = row, MinHeight = 42, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            if (i == 3) developerPromptsItem = item;
+            sections.Items.Add(item);
         }
         Grid.SetRow(sections, 1);
         sectionList = sections;
+        UpdateDeveloperPromptsVisibility();
         var host = new ScrollViewer(); Grid.SetColumn(host, 1); Grid.SetRow(host, 1); layout.Children.Add(sections); layout.Children.Add(host);
         var footer = new Grid { ColumnSpacing = 12, Margin = new Thickness(0, 12, 0, 0) };
         footer.ColumnDefinitions.Add(new ColumnDefinition()); footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -186,6 +210,12 @@ public sealed partial class SettingsDialog : Window
         layout.ActualThemeChanged += (_, _) => UpdateWindowTitleBar();
         sections.SelectionChanged += (_, _) =>
         {
+            // Developer prompts is hidden unless Developer mode is on in Appearance.
+            if (sections.SelectedIndex == 3 && !DeveloperModeEnabled)
+            {
+                sections.SelectedIndex = 0;
+                return;
+            }
             if (sampleState != SampleState.Stopped) StopSample(false);
             if (host.Content is Panel oldPanel) oldPanel.Children.Clear();
             host.Content = null;
@@ -253,8 +283,16 @@ public sealed partial class SettingsDialog : Window
         };
     }
     public Task<bool> ShowAsync() { Activate(); return completion.Task; }
+    private bool DeveloperModeEnabled => SettingsStore.GetBool(draft["developerMode"], model.Settings.GetBool("developerMode"));
+    private void UpdateDeveloperPromptsVisibility()
+    {
+        if (developerPromptsItem != null)
+            developerPromptsItem.Visibility = DeveloperModeEnabled ? Visibility.Visible : Visibility.Collapsed;
+        if (!DeveloperModeEnabled && sectionList?.SelectedIndex == 3) sectionList.SelectedIndex = 0;
+    }
     public void SelectSection(int section)
     {
+        if (section == 3 && !DeveloperModeEnabled) section = 0;
         if (sectionList == null || section < 0 || section >= sectionList.Items.Count)
             throw new ArgumentOutOfRangeException(nameof(section));
         requestedSection = section;

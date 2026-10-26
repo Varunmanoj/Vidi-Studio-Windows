@@ -81,7 +81,7 @@ public sealed partial class MainWindow
                 Submenu("Narration",
                     Submenu("AD Segment Generation", Command("generate-ad-cues"), Separator(), Command("delete-descriptions")),
                     Submenu("Narration Audio", Command("synthesize-tts"), Command("synthesize-changed"), Command("review-narration-issues"), Command("review-narration-voices"), Separator(), Command("delete-narration"))),
-                Command("delete-current"), Separator(), Command("show-in-finder")),
+                Command("delete-current"), Separator(), Command("show-in-finder"), Command("open-configuration")),
             Menu("Help", Command("help"), Command("about"))
         };
         galleryMenus.AddRange(Layout());
@@ -310,7 +310,7 @@ public sealed partial class MainWindow
             "review-narration-voices" => "Review Narration Voices…",
             "delete-descriptions" => "Delete Descriptions…",
             "delete-current" => Section.SelectedIndex switch { 0 => "Delete Transcript…", 1 => "Delete Summary…", 2 => "Delete Descriptions…", _ => "Delete Current Page…" },
-            "show-in-finder" => "Show Project in File Explorer", _ => id
+            "show-in-finder" => "Show Project in File Explorer", "open-configuration" => "Open Project Configuration", _ => id
         };
     }
 
@@ -334,6 +334,7 @@ public sealed partial class MainWindow
             "show-projects" => "Show / hide projects", "show-inspector" => "Show / hide inspector",
             "project-list" or "project-grid" or "Editor Sections" => "List / Grid projects",
             "new-project" or "add" => "New project", "open-project" or "show-in-finder" => "Open project folder",
+            "open-configuration" => "Open project configuration",
             "open-editor-window" => "Open editor in new window", "export" => "Export", "settings" => "Settings",
             "close-window" => "Close window", "help" => "Help and keyboard shortcuts", "about" => "About Vidi Studio",
             "back" => "Rewind five seconds", "forward" => "Forward five seconds", "follow" => "Follow active segment",
@@ -435,6 +436,7 @@ public sealed partial class MainWindow
             case "delete-descriptions": await DeleteMenuContentAsync("descriptions"); break;
             case "delete-current": await DeleteMenuContentAsync(Section.SelectedIndex switch { 0 => "transcript", 1 => "summary", _ => "descriptions" }); break;
             case "show-in-finder": Reveal_Click(this, e); break;
+            case "open-configuration": OpenConfiguration_Click(this, e); break;
             case "summary-play": if (readback.State == SummaryReadbackState.Paused) readback.Resume(); else await readback.PlayFromStartAsync(); break;
             case "summary-pause": readback.Pause(); break;
             case "summary-stop": readback.Stop(); break;

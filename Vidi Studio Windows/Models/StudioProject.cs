@@ -170,6 +170,17 @@ public sealed class Segment : INotifyPropertyChanged
     public override string ToString() => $"{Timing}  {(IsDescription ? "AD: " : "")}{Text}";
 }
 
+/// <summary>
+/// Project-specific playback choices persisted in the project's project.json.
+/// Both desktop apps read and write the same playback object, so the choices
+/// travel with the project folder instead of staying on one computer.
+/// </summary>
+public sealed class ProjectPlaybackSettings
+{
+    public bool? NarrationEnabled { get; set; }
+    public bool? FollowTranscript { get; set; }
+}
+
 public sealed class StudioProject : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -186,6 +197,7 @@ public sealed class StudioProject : INotifyPropertyChanged
     public string Status { get; set; } = "";
     public string? NarrationEngine { get; set; }
     public string? NarrationVoice { get; set; }
+    public ProjectPlaybackSettings? Playback { get; set; }
     public List<string> Thumbnails { get; set; } = new();
     public List<Segment> Transcript { get; set; } = new();
     public List<Segment> Cues { get; set; } = new();

@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using System;
+using Vidi_Studio_Windows.Models;
 using Vidi_Studio_Windows.Services;
 using Vidi_Studio_Windows.ViewModels;
 
@@ -63,13 +64,13 @@ public sealed partial class SettingsDialog
         projectNarrationToggle = AddProjectToggle(rows,
             "Narration during playback",
             "Turns synchronized narration on or off for " + project.Name + " and remembers the choice for this project",
-            ProjectPlaybackPreferences.NarrationEnabled(model.Settings, project.Id),
-            enabled => SetProjectNarration(project.Id, enabled));
+            ProjectPlaybackPreferences.NarrationEnabled(model.Settings, project),
+            enabled => SetProjectNarration(project, enabled));
         projectFollowToggle = AddProjectToggle(rows,
             "Follow synchronized transcript",
             "Follows the active transcript or description while " + project.Name + " plays",
-            ProjectPlaybackPreferences.FollowEnabled(model.Settings, project.Id),
-            enabled => SetProjectFollow(project.Id, enabled));
+            ProjectPlaybackPreferences.FollowEnabled(model.Settings, project),
+            enabled => SetProjectFollow(project, enabled));
         panel.Children.Add(card);
     }
 
@@ -106,19 +107,17 @@ public sealed partial class SettingsDialog
         return toggle;
     }
 
-    private void SetProjectNarration(string projectId, bool enabled)
+    private void SetProjectNarration(StudioProject project, bool enabled)
     {
-        draft[ProjectPlaybackPreferences.NarrationKey(projectId)] = enabled;
-        ProjectPlaybackPreferences.SetNarrationEnabled(model.Settings, projectId, enabled);
+        ProjectPlaybackPreferences.SetNarrationEnabled(model.Settings, project, enabled);
         status.Text = enabled
             ? "Narration will play during this project's video playback."
             : "Narration is off during this project's video playback.";
     }
 
-    private void SetProjectFollow(string projectId, bool enabled)
+    private void SetProjectFollow(StudioProject project, bool enabled)
     {
-        draft[ProjectPlaybackPreferences.FollowKey(projectId)] = enabled;
-        ProjectPlaybackPreferences.SetFollowEnabled(model.Settings, projectId, enabled);
+        ProjectPlaybackPreferences.SetFollowEnabled(model.Settings, project, enabled);
         status.Text = enabled
             ? "The active transcript or description will follow playback in this project."
             : "Playback will not follow the active transcript or description in this project.";
@@ -145,9 +144,6 @@ public sealed partial class SettingsDialog
         DispatcherQueue.TryEnqueue(() =>
         {
             if (closed || model.Project is not { } current || current.Id != change.ProjectId) return;
-            draft[change.Preference == ProjectPlaybackPreference.Narration
-                ? ProjectPlaybackPreferences.NarrationKey(change.ProjectId)
-                : ProjectPlaybackPreferences.FollowKey(change.ProjectId)] = change.Enabled;
             applyingProjectPlaybackPreference = true;
             try
             {
@@ -222,29 +218,26 @@ public sealed partial class SettingsDialog
             throw new InvalidOperationException("The Projects settings check needs an open project.");
         if (projectsPageEmpty || projectNarrationToggle == null || projectFollowToggle == null)
             throw new InvalidOperationException("Projects settings did not list the open project's playback toggles.");
-        var narrationKey = ProjectPlaybackPreferences.NarrationKey(project.Id);
-        var followKey = ProjectPlaybackPreferences.FollowKey(project.Id);
         var originalNarration = projectNarrationToggle.IsOn;
         var originalFollow = projectFollowToggle.IsOn;
         try
         {
             var expectedNarration = !originalNarration;
             projectNarrationToggle.IsOn = expectedNarration;
-            if (SettingsStore.GetBool(draft[narrationKey], originalNarration) != expectedNarration ||
-                model.Settings.GetBool(narrationKey, originalNarration) != expectedNarration)
-                throw new InvalidOperationException("Narration during playback was not saved for this project.");
+            if (ProjectPlaybackPreferences.NarrationEnabled(model.Settings, project) != expectedNarration)
+                throw new InvalidOperationException("Narration during playback was not saved in the project.");
             var expectedFollow = !originalFollow;
             projectFollowToggle.IsOn = expectedFollow;
-            if (SettingsStore.GetBool(draft[followKey], originalFollow) != expectedFollow ||
-                model.Settings.GetBool(followKey, originalFollow) != expectedFollow)
-                throw new InvalidOperationException("Follow synchronized transcript was not saved for this project.");
+            if (ProjectPlaybackPreferences.FollowEnabled(model.Settings, project) != expectedFollow)
+                throw new InvalidOperationException("Follow synchronized transcript was not saved in the project.");
         }
         finally
         {
             projectNarrationToggle.IsOn = originalNarration;
             projectFollowToggle.IsOn = originalFollow;
         }
-        if (model.Settings.GetBool(narrationKey) != originalNarration || model.Settings.GetBool(followKey, true) != originalFollow)
+        if (ProjectPlaybackPreferences.NarrationEnabled(model.Settings, project) != originalNarration ||
+            ProjectPlaybackPreferences.FollowEnabled(model.Settings, project) != originalFollow)
             throw new InvalidOperationException("Restoring the project playback toggles did not save the restored choices.");
     }
 #endif

@@ -655,8 +655,8 @@ public sealed partial class MainWindow : Window
     private void ApplyProjectPlaybackPreferences(StudioProject project)
     {
         if (string.IsNullOrWhiteSpace(project.Id)) return;
-        var narration = ProjectPlaybackPreferences.NarrationEnabled(Model.Settings, project.Id);
-        var follow = ProjectPlaybackPreferences.FollowEnabled(Model.Settings, project.Id);
+        var narration = ProjectPlaybackPreferences.NarrationEnabled(Model.Settings, project);
+        var follow = ProjectPlaybackPreferences.FollowEnabled(Model.Settings, project);
         applyingProjectPlaybackPreferences = true;
         try { Narration.IsOn = narration; Follow.IsOn = follow; }
         finally { applyingProjectPlaybackPreferences = false; }
@@ -689,7 +689,7 @@ public sealed partial class MainWindow : Window
     {
         if (!ready || applyingProjectPlaybackPreferences) return;
         if (Model.Project is not { } project || string.IsNullOrWhiteSpace(project.Id)) return;
-        ProjectPlaybackPreferences.SetNarrationEnabled(Model.Settings, project.Id, Narration.IsOn);
+        ProjectPlaybackPreferences.SetNarrationEnabled(Model.Settings, project, Narration.IsOn);
         if (!Narration.IsOn) StopLiveNarration();
         UpdateDesktopMenuStates();
     }
@@ -709,7 +709,7 @@ public sealed partial class MainWindow : Window
     {
         if (!ready || applyingProjectPlaybackPreferences) return;
         if (Model.Project is { } project && !string.IsNullOrWhiteSpace(project.Id))
-            ProjectPlaybackPreferences.SetFollowEnabled(Model.Settings, project.Id, Follow.IsOn);
+            ProjectPlaybackPreferences.SetFollowEnabled(Model.Settings, project, Follow.IsOn);
         if (!Follow.IsOn)
         {
             ClearFollowedSegments();
@@ -1147,6 +1147,15 @@ public sealed partial class MainWindow : Window
         };
     }
     private async void Reveal_Click(object sender, RoutedEventArgs e) { if (Model.Project != null) await Launcher.LaunchFolderPathAsync(Model.Project.Folder); }
+    /// <summary>Opens the project's project.json in the default app for JSON files.</summary>
+    private async void OpenConfiguration_Click(object sender, RoutedEventArgs e)
+    {
+        if (Model.Project is not { } project || string.IsNullOrWhiteSpace(project.Folder)) return;
+        var manifest = Path.Combine(project.Folder, "project.json");
+        if (!File.Exists(manifest)) return;
+        try { await Launcher.LaunchFileAsync(await Windows.Storage.StorageFile.GetFileFromPathAsync(manifest)); }
+        catch (Exception ex) { await ShowError(ex); }
+    }
     private void SelectAll_Click(object sender, RoutedEventArgs e) { if (!editMode) EditMode_Click(sender, e); Segments.SelectAll(); }
     private void Deselect_Click(object sender, RoutedEventArgs e) => Segments.SelectedItems.Clear();
     private async void Add_Click(object sender, RoutedEventArgs e) => await EditSegment(null);

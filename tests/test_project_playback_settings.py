@@ -22,18 +22,35 @@ class ProjectPlaybackSettings(unittest.TestCase):
     def read(self, relative):
         return (self.app / relative).read_text(encoding='utf-8')
 
-    def test_preferences_are_keyed_by_project_id_and_saved_outside_the_project(self):
+    def test_preferences_are_stored_in_the_portable_project_manifest(self):
         source = self.read('Services/ProjectPlaybackPreferences.cs')
-        # The keys match the macOS ProjectPlaybackPreferences user-defaults names.
+        project = self.read('Models/StudioProject.cs')
+        # Both desktops read and write the same project.json playback object.
+        self.assertIn('public const string NarrationField = "narrationEnabled";', source)
+        self.assertIn('public const string FollowField = "followTranscript";', source)
+        self.assertIn('playback.TryGetProperty(Field(preference), out var value)', source)
+        self.assertIn('playback[Field(preference)] = enabled;', source)
+        self.assertIn('root["playback"] = playback;', source)
+        self.assertIn('File.Move(temp, manifest, true);', source)
+        self.assertIn('public ProjectPlaybackSettings? Playback { get; set; }', project)
+        self.assertIn('public bool? NarrationEnabled { get; set; }', project)
+        self.assertIn('public bool? FollowTranscript { get; set; }', project)
+        # Old per-user keys are read once to migrate an existing choice.
         self.assertIn('"projectNarrationEnabled." + projectId', source)
         self.assertIn('"projectFollowTranscript." + projectId', source)
-        self.assertIn('settings.GetBool(NarrationKey(projectId), false)', source)
-        self.assertIn('settings.GetBool(FollowKey(projectId), true)', source)
-        self.assertIn('settings.Set(key, enabled);', source)
-        self.assertIn('settings.Save();', source)
+        self.assertIn('settings.Data[legacyKey] is null', source)
         self.assertIn('public static event Action<ProjectPlaybackPreferenceChange>? Changed;', source)
-        # Only a real project id can own a preference.
-        self.assertIn('if (string.IsNullOrWhiteSpace(projectId)) return;', source)
+        # Only a real project folder can own a preference.
+        self.assertIn('if (string.IsNullOrWhiteSpace(project.Folder)) return false;', source)
+
+    def test_mac_reads_and_writes_the_same_playback_object(self):
+        model = (ROOT.parent / 'VidiStudio Mac' / 'VidiStudio' / 'StudioModel.swift').read_text(encoding='utf-8')
+        self.assertIn('struct ProjectPlaybackSettings: Codable, Equatable {', model)
+        self.assertIn('var narrationEnabled: Bool?', model)
+        self.assertIn('var followTranscript: Bool?', model)
+        self.assertIn('root["playback"] = playback', model)
+        self.assertIn('try? updated.write(to: url, options: .atomic)', model)
+        self.assertIn('var playback: ProjectPlaybackSettings?', model)
 
     def test_settings_lists_projects_after_appearance_like_macos(self):
         dialog = self.read('Views/SettingsDialog.cs')
@@ -52,8 +69,8 @@ class ProjectPlaybackSettings(unittest.TestCase):
         self.assertIn('Text = "Open a project to manage its project-specific playback settings."', source)
         self.assertIn('"Narration during playback",', source)
         self.assertIn('"Follow synchronized transcript",', source)
-        self.assertIn('ProjectPlaybackPreferences.NarrationEnabled(model.Settings, project.Id)', source)
-        self.assertIn('ProjectPlaybackPreferences.FollowEnabled(model.Settings, project.Id)', source)
+        self.assertIn('ProjectPlaybackPreferences.NarrationEnabled(model.Settings, project)', source)
+        self.assertIn('ProjectPlaybackPreferences.FollowEnabled(model.Settings, project)', source)
         self.assertIn('ProjectPlaybackPreferences.SetNarrationEnabled(', source)
         self.assertIn('ProjectPlaybackPreferences.SetFollowEnabled(', source)
 
@@ -62,11 +79,11 @@ class ProjectPlaybackSettings(unittest.TestCase):
         xaml = self.read('MainWindow.xaml')
         self.assertIn('ApplyProjectPlaybackPreferences(p);', window)
         self.assertIn('private void ApplyProjectPlaybackPreferences(StudioProject project)', window)
-        self.assertIn('ProjectPlaybackPreferences.NarrationEnabled(Model.Settings, project.Id)', window)
-        self.assertIn('ProjectPlaybackPreferences.FollowEnabled(Model.Settings, project.Id)', window)
+        self.assertIn('ProjectPlaybackPreferences.NarrationEnabled(Model.Settings, project)', window)
+        self.assertIn('ProjectPlaybackPreferences.FollowEnabled(Model.Settings, project)', window)
         self.assertIn('private void Narration_Toggled(object sender, RoutedEventArgs e)', window)
-        self.assertIn('ProjectPlaybackPreferences.SetNarrationEnabled(Model.Settings, project.Id, Narration.IsOn);', window)
-        self.assertIn('ProjectPlaybackPreferences.SetFollowEnabled(Model.Settings, project.Id, Follow.IsOn);', window)
+        self.assertIn('ProjectPlaybackPreferences.SetNarrationEnabled(Model.Settings, project, Narration.IsOn);', window)
+        self.assertIn('ProjectPlaybackPreferences.SetFollowEnabled(Model.Settings, project, Follow.IsOn);', window)
         self.assertIn('private void ReceiveProjectPlaybackPreference(ProjectPlaybackPreferenceChange change)', window)
         self.assertIn('Toggled="Narration_Toggled"', xaml)
         self.assertIn('Toggled="Follow_Toggled"', xaml)

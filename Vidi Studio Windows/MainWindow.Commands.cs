@@ -290,7 +290,7 @@ public sealed partial class MainWindow
         }
         var activeApiKey = Model.HasApiKey && !Model.IsApiKeyInvalid;
         var usable = !project.IntegrityPlaceholder && project.Integrity?.ManifestUnreadable != true && project.Integrity?.FolderMissing != true;
-        Item("Open editor in new window", OpenEditor_Click); Item("Export", Export_Click, activeApiKey && usable); Item("Open project folder", Reveal_Click);
+        Item("Open editor in new window", OpenEditor_Click); Item("Export", Export_Click, activeApiKey && usable); Item("Open project folder", Reveal_Click); Item("Open project configuration", OpenConfiguration_Click);
         foreach (var pair in new[] { ("Analyze video", "analyze"), ("Generate transcript", "transcribe"), ("Generate summary", "generate-summary"), ("Generate descriptions", "generate-ad-cues") })
             Item(pair.Item1, (_, args) => Command_Click(new Button { Tag = pair.Item2 }, args), activeApiKey && usable);
         Item("Refresh video details", (_, args) => Command_Click(new Button { Tag = "prepare-video" }, args), usable);

@@ -1,5 +1,13 @@
 # Windows migration progress
 
+## 2026-10-26 - Project playback choices move into project.json; Open Project Configuration (1.0.136 / 1.0.136.0)
+
+The per-project **Narration during playback** and **Follow synchronized transcript** toggles no longer live in `%APPDATA%\VidiStudio\config.json`. Both desktops now read and write a `playback` object in the portable `project.json` (`narrationEnabled`, `followTranscript`), so the choice travels with the project folder between Windows and macOS. Missing values keep the existing defaults (narration off, follow on), and any earlier per-user `projectNarrationEnabled.<id>`/`projectFollowTranscript.<id>` value is migrated into the project once. Writes preserve every other manifest field, including fields this app does not model. This replaces the config-key storage described in the 1.0.135 entry below.
+
+The project right-click menu (list and grid), the Project menu, and the inspector footer now offer **Open Project Configuration** next to Open project folder, opening `project.json` in the default app for JSON files. The macOS Project menu and inspector gained the same action, and the macOS View menu now mirrors Windows' Full-Screen Video entry so menu parity passes again.
+
+Validation on this macOS host: menu parity PASS, Windows Python tests for project playback settings, menu parity, full-screen, and XAML references pass. The macOS app was built, signed, and launched with all 13 Help pages. Not run: native Windows/MSBuild compilation, Windows UI smoke tests, signed MSIX installation, or interactive Explorer/default-editor checks. Versions synchronized at 1.0.136 / Windows package 1.0.136.0 / Mac build 136.
+
 ## 2026-10-26 - Per-project playback settings in Settings → Projects (1.0.135 / 1.0.135.0)
 
 Windows now has the macOS **Settings → Projects** page. The sidebar order is Appearance, Projects, Narration, Gemini API, Developer prompts, Storage, Help, About. When a project is open the page shows that project's name with **Narration during playback** and **Follow synchronized transcript** toggles. With no project open it shows the macOS empty state instead: an **Open projects** heading and a card reading **No Open Projects** with "Open a project to manage its project-specific playback settings."

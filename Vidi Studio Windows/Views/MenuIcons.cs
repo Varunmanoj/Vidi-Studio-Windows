@@ -13,6 +13,7 @@ public static class MenuIcons
             "Import video" or "New project" => "\uE710",
             "New YouTube project" => "\uE71B",
             "Open project folder" => "\uE8B7",
+            "Open project configuration" => "\uE8A5",
             "Open editor in new window" => "\uE8A7",
             "Export" => "\uE74E",
             "Settings" => "\uE713",

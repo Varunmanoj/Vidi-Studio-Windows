@@ -22,8 +22,8 @@ public sealed partial class MainWindow
             if (folder == null) throw new InvalidOperationException("Smoke project is required.");
             Model.Open(folder);
             if (Model.Project is not { } openedProject ||
-                Narration.IsOn != ProjectPlaybackPreferences.NarrationEnabled(Model.Settings, openedProject.Id) ||
-                Follow.IsOn != ProjectPlaybackPreferences.FollowEnabled(Model.Settings, openedProject.Id))
+                Narration.IsOn != ProjectPlaybackPreferences.NarrationEnabled(Model.Settings, openedProject) ||
+                Follow.IsOn != ProjectPlaybackPreferences.FollowEnabled(Model.Settings, openedProject))
                 throw new InvalidOperationException("Opening a project did not restore its saved playback toggles.");
             if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Playback", "Project", "Help" }))
                 throw new InvalidOperationException("Editor menu set does not match the active page.");

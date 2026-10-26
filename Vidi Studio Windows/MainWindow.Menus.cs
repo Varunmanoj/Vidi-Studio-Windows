@@ -87,8 +87,6 @@ public sealed partial class MainWindow
         galleryMenus.AddRange(Layout());
         editorMenus.AddRange(Layout());
         videoPlayMenuItem = desktopMenuItems["play"].Last();
-        summaryPlayMenuItem = desktopMenuItems["summary-play"].Last();
-        summaryStopMenuItem = desktopMenuItems["summary-stop"].Last();
         foreach (var (id, shortcut) in DesktopShortcuts)
             AddShortcut(shortcut.Key, shortcut.Modifiers, async (_, _) =>
             {
@@ -390,7 +388,7 @@ public sealed partial class MainWindow
             case "settings": Settings_Click(this, e); break;
             case "help": HelpSettings_Click(this, e); break;
             case "about": AboutSettings_Click(this, e); break;
-            case "close-window": Close(); break;
+            case "close-window": CloseWindowDeferred(); return;
             case "open-editor-window": OpenEditor_Click(this, e); break;
             case "preview": TogglePreview_Click(this, e); break;
             case "toggle-timeline": ToggleTimeline_Click(this, e); break;
@@ -450,6 +448,25 @@ public sealed partial class MainWindow
             default: throw new InvalidOperationException("Unknown desktop menu command: " + id);
         }
         UpdateDesktopMenuStates();
+    }
+
+    /// <summary>
+    /// Closes after the current menu or keyboard handler returns. Calling Window.Close()
+    /// synchronously from a menu click can abort with E_ABORT while the flyout is still
+    /// dismissing, which previously surfaced as an "Action could not finish" dialog.
+    /// </summary>
+    private void CloseWindowDeferred()
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            try { Close(); }
+            catch (Exception ex)
+            {
+                Model.Engine.Log(ex.ToString());
+                try { AppWindow.Destroy(); }
+                catch (Exception fallback) { Model.Engine.Log(fallback.ToString()); }
+            }
+        });
     }
 
     private void SetCaptionMode(string mode)

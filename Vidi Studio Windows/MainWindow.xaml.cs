@@ -126,7 +126,7 @@ public sealed partial class MainWindow : Window
             Model.Reload();
             ApplyTheme();
             if (Model.Settings.Get("showPreview", "true") == "false") PreviewPanel.Visibility = Visibility.Collapsed;
-            if (folder != null) Model.Open(folder);
+            if (folder != null) { Model.Open(folder); ShowEditor(); }
             if (Model.Settings.Get("projectPresentation") == "grid") ToggleGrid_Click(this, new RoutedEventArgs());
             UpdateApiKeyUi();
             UpdateSectionOverlay(Model.IsAnalyzing);
@@ -261,9 +261,35 @@ public sealed partial class MainWindow : Window
     }
     private ContentDialog Dialog(string title, object content, string action = "Save") => new()
     { Title = title, Content = content, PrimaryButtonText = action, CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
+    private static StackPanel DialogMessage(string text)
+    {
+        var panel = new StackPanel { Width = 400 };
+        foreach (var line in WrapDialogLines(text))
+            panel.Children.Add(new TextBlock { Text = line, TextWrapping = TextWrapping.NoWrap });
+        return panel;
+    }
+
+    private static List<string> WrapDialogLines(string text, int lineLength = 52)
+    {
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var lines = new List<string>();
+        var current = new System.Text.StringBuilder();
+        foreach (var word in words)
+        {
+            if (current.Length > 0 && current.Length + 1 + word.Length > lineLength)
+            {
+                lines.Add(current.ToString());
+                current.Clear();
+            }
+            if (current.Length > 0) current.Append(' ');
+            current.Append(word);
+        }
+        if (current.Length > 0) lines.Add(current.ToString());
+        return lines;
+    }
     private Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog, int width = 680, int height = 460)
         => Views.WindowedDialog.ShowAsync(dialog, this, width, height);
-    private async Task<bool> Confirm(string title, string text, string action = "Continue") => await ShowDialogAsync(Dialog(title, new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, MaxWidth = 520 }, action)) == ContentDialogResult.Primary;
+    private async Task<bool> Confirm(string title, string text, string action = "Continue") => await ShowDialogAsync(Dialog(title, DialogMessage(text), action)) == ContentDialogResult.Primary;
     private async Task ShowError(Exception ex)
     {
         Model.Engine.Log(ex.ToString());
@@ -271,14 +297,14 @@ public sealed partial class MainWindow : Window
         var message = ex is ProcessingException or SpeechFailedException
             ? ex.Message
             : "Check your settings and the diagnostic log, then retry. Your saved project remains available.";
-        await ShowDialogAsync(new ContentDialog { Title = "Action could not finish", Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, MaxWidth = 520 }, CloseButtonText = "Close" });
+        await ShowDialogAsync(new ContentDialog { Title = "Action could not finish", Content = DialogMessage(message), CloseButtonText = "Close" });
     }
     private async Task ShowErrorMessage(string title, string message)
     {
         await ShowDialogAsync(new ContentDialog
         {
             Title = title,
-            Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, MaxWidth = 520 },
+            Content = DialogMessage(message),
             CloseButtonText = "OK"
         });
     }
@@ -331,10 +357,12 @@ public sealed partial class MainWindow : Window
             if (existing != null)
             {
                 Model.Open(existing.Folder);
+                ShowEditor();
                 return;
             }
 
             await Model.RunAsync("import-video", new[] { "--video", videoPath, "--library", Model.Settings.Get("libraryPath") }, false);
+            if (Model.Project != null) ShowEditor();
         }
         catch (Exception ex)
         {
@@ -366,10 +394,12 @@ public sealed partial class MainWindow : Window
             if (existing != null)
             {
                 Model.Open(existing.Folder);
+                ShowEditor();
                 return;
             }
 
             await Model.RunAsync("import-youtube", new[] { "--url", url, "--library", Model.Settings.Get("libraryPath") }, false);
+            if (Model.Project != null) ShowEditor();
         }
         catch (Exception ex)
         {
@@ -384,13 +414,7 @@ public sealed partial class MainWindow : Window
     }
     private async void ImportVideo_Click(object sender, RoutedEventArgs e) => await ShowNewProjectDialogAsync(false);
     private async void OpenProject_Click(object sender, RoutedEventArgs e)
-    { if (Model.Busy) return; try { if (await PickFolder() is { } folder) Model.Open(folder); } catch (Exception ex) { await ShowError(ex); } }
-    private async void TopOpenFolder_Click(object sender, RoutedEventArgs e)
-    {
-        if (Model.Project is not { } project) return;
-        try { await Launcher.LaunchFolderPathAsync(project.Folder); }
-        catch (Exception ex) { await ShowError(ex); }
-    }
+    { if (Model.Busy) return; try { if (await PickFolder() is { } folder) { Model.Open(folder); ShowEditor(); } } catch (Exception ex) { await ShowError(ex); } }
     private async void YouTube_Click(object sender, RoutedEventArgs e) => await ShowNewProjectDialogAsync(true);
     private async Task ShowNewProjectDialogAsync(bool youtube)
     {
@@ -403,23 +427,23 @@ public sealed partial class MainWindow : Window
                 await Model.RunAsync("import-youtube", new[] { "--url", dialog.YouTubeUrl, "--library", Model.Settings.Get("libraryPath") }, false);
             else if (dialog.VideoPath is { } path)
                 await Model.RunAsync("import-video", new[] { "--video", path, "--library", Model.Settings.Get("libraryPath") }, false);
+            if (Model.Project != null) ShowEditor();
         }
         catch (Exception ex) { await ShowError(ex); }
     }
     private void Search_Changed(object sender, TextChangedEventArgs e) { if (ready) Filter(); }
     private void Filter_Changed(object sender, SelectionChangedEventArgs e) { if (ready) Filter(); }
     private void Filter() => Model.Reload(Search.Text, SourceFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", _ => "all" });
-    private void Project_Changed(object sender, SelectionChangedEventArgs e) { if (Model.Idle && ProjectList.SelectedItem is StudioProject p) Model.Open(p.Folder); }
+    private void Project_Changed(object sender, SelectionChangedEventArgs e) { if (Model.Idle && ProjectList.SelectedItem is StudioProject p) { Model.Open(p.Folder); ShowEditor(); } }
     private async void RefreshProject()
     {
         if (Model.Project is not { } p) return;
         ApplyProjectPlaybackPreferences(p);
-        ShowEditor();
         p.Integrity = ProjectIntegrityAuditor.Audit(p.ToIntegrityManifest());
         UpdateInspector(p);
         UpdateApiKeyUi();
         UpdateProjectIntegrityUi();
-        ProjectTitle.Text = p.Name;
+        if (EditorWorkspace.Visibility == Visibility.Visible) ProjectTitle.Text = p.Name;
         ProjectInformation.Text = $"{(p.IsYouTube ? "YouTube" : "Local video")}\n{p.Width} × {p.Height}\n{TimeSpan.FromSeconds(p.Duration):hh\\:mm\\:ss}\n{p.Folder}";
         Playhead.Maximum = Math.Max(1, p.Duration);
         UpdateTimelineCursor();
@@ -794,9 +818,17 @@ public sealed partial class MainWindow : Window
     private void Cancel_Click(object sender, RoutedEventArgs e) => Model.Cancel();
     private async void Rename_Click(object sender, RoutedEventArgs e)
     {
-        if (Model.Project is not { IntegrityPlaceholder: false } || Model.Project.Integrity?.ManifestUnreadable == true) return;
-        var name = new TextBox { Header = "Project name", Text = Model.Project.Name };
-        if (await ShowDialogAsync(Dialog("Rename project", name)) == ContentDialogResult.Primary) await Model.RunAsync("rename-project", new[] { "--name", name.Text });
+        if (Model.Project is { } project) await RenameProjectAsync(project);
+    }
+
+    private async Task RenameProjectAsync(StudioProject project)
+    {
+        if (project.IntegrityPlaceholder || project.Integrity?.ManifestUnreadable == true) return;
+        var name = new TextBox { Header = "Project name", Text = project.Name };
+        if (await ShowDialogAsync(Dialog("Rename project", name)) != ContentDialogResult.Primary) return;
+        if (Model.Project is not { } current || !string.Equals(current.Folder, project.Folder, StringComparison.OrdinalIgnoreCase))
+            Model.Open(project.Folder);
+        await Model.RunAsync("rename-project", new[] { "--name", name.Text });
     }
     private async void DeleteProject_Click(object sender, RoutedEventArgs e)
     {
@@ -819,11 +851,17 @@ public sealed partial class MainWindow : Window
         if (!await Confirm(title, message, action)) return;
         try
         {
-            StopProjectPlayback(); video.Source = null; speech.Source = null; narrationPlayer.Source = null;
+            var deletingLoadedProject = Model.Project is { } current
+                && string.Equals(current.Folder, p.Folder, StringComparison.OrdinalIgnoreCase);
+            if (deletingLoadedProject)
+            {
+                StopProjectPlayback(); video.Source = null; speech.Source = null; narrationPlayer.Source = null;
+            }
             if (folderExists)
                 Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(p.Folder, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
             Model.ForgetProject(p);
-            ClearProject();
+            if (deletingLoadedProject) ClearProject();
+            else { RefreshGalleryCount(); UpdateProjectIntegrityUi(); }
         }
         catch (Exception ex) { await ShowError(ex); }
     }
@@ -833,7 +871,9 @@ public sealed partial class MainWindow : Window
         if (!ready) return;
         if (Model.Project is { IntegrityPlaceholder: true } placeholder && StudioProject.IsManifestReadable(placeholder.Folder))
         {
+            var wasEditorVisible = EditorWorkspace.Visibility == Visibility.Visible;
             Model.Open(placeholder.Folder);
+            if (wasEditorVisible) ShowEditor();
             return;
         }
         if (EditorWorkspace.Visibility == Visibility.Visible)
@@ -1146,11 +1186,23 @@ public sealed partial class MainWindow : Window
             Child = stack
         };
     }
-    private async void Reveal_Click(object sender, RoutedEventArgs e) { if (Model.Project != null) await Launcher.LaunchFolderPathAsync(Model.Project.Folder); }
+    private async void Reveal_Click(object sender, RoutedEventArgs e)
+    {
+        if (Model.Project is { } project) await RevealProjectAsync(project);
+    }
+    private async Task RevealProjectAsync(StudioProject project)
+    {
+        try { await Launcher.LaunchFolderPathAsync(project.Folder); }
+        catch (Exception ex) { await ShowError(ex); }
+    }
     /// <summary>Opens the project's project.json in the default app for JSON files.</summary>
     private async void OpenConfiguration_Click(object sender, RoutedEventArgs e)
     {
-        if (Model.Project is not { } project || string.IsNullOrWhiteSpace(project.Folder)) return;
+        if (Model.Project is { } project) await OpenProjectConfigurationAsync(project);
+    }
+    private async Task OpenProjectConfigurationAsync(StudioProject project)
+    {
+        if (string.IsNullOrWhiteSpace(project.Folder)) return;
         var manifest = Path.Combine(project.Folder, "project.json");
         if (!File.Exists(manifest)) return;
         try { await Launcher.LaunchFileAsync(await Windows.Storage.StorageFile.GetFileFromPathAsync(manifest)); }
@@ -1616,13 +1668,41 @@ public sealed partial class MainWindow : Window
     private async void DeleteGenerated_Click(object sender, RoutedEventArgs e)
     {
         if (Model.Project is not { IntegrityPlaceholder: false } || Model.Project.Integrity?.ManifestUnreadable == true) return;
-        var panel = new StackPanel { Spacing = 8 };
-        var boxes = new[] { "transcript", "summary", "descriptions", "narration", "thumbnails", "exports", "history" }.Select(c => new CheckBox { Content = c, Tag = c }).ToList();
-        foreach (var box in boxes) panel.Children.Add(box);
+        var (dialog, boxes) = CreateDeleteGeneratedDialog();
+        if (await ShowDialogAsync(dialog, 620, 820) == ContentDialogResult.Primary)
+        {
+            var selected = boxes.Where(b => b.IsChecked == true).Select(b => (string)b.Tag).ToList();
+            if (selected.Count == 0) return;
+            StopSegmentPreview();
+            await Model.RunAsync("delete-generated", selected.SelectMany(component => new[] { "--component", component }));
+        }
+    }
+    private static (ContentDialog Dialog, List<CheckBox> Boxes) CreateDeleteGeneratedDialog()
+    {
+        var content = new StackPanel { MinWidth = 360 };
+        var options = new StackPanel { Spacing = 4 };
+        var boxes = new[] { "transcript", "summary", "descriptions", "narration", "thumbnails", "exports", "history" }
+            .Select(component => new CheckBox { Content = component, Tag = component }).ToList();
+        foreach (var box in boxes) options.Children.Add(box);
+        content.Children.Add(options);
         boxes[2].Checked += (_, _) => { boxes[3].IsChecked = true; boxes[3].IsEnabled = false; };
         boxes[2].Unchecked += (_, _) => boxes[3].IsEnabled = true;
-        if (await ShowDialogAsync(Dialog("Permanently delete generated content", panel, "Delete selected")) == ContentDialogResult.Primary)
-        { StopSegmentPreview(); await Model.RunAsync("delete-generated", boxes.Where(b => b.IsChecked == true).SelectMany(b => new[] { "--component", (string)b.Tag })); }
+        var dialog = new ContentDialog
+        {
+            Title = "Permanently delete generated content",
+            Content = content,
+            PrimaryButtonText = "Delete selected",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary
+        };
+        void SyncPrimaryButton() => dialog.IsPrimaryButtonEnabled = boxes.Any(box => box.IsChecked == true);
+        foreach (var box in boxes)
+        {
+            box.Checked += (_, _) => SyncPrimaryButton();
+            box.Unchecked += (_, _) => SyncPrimaryButton();
+        }
+        SyncPrimaryButton();
+        return (dialog, boxes);
     }
     private async void Export_Click(object sender, RoutedEventArgs e)
     {

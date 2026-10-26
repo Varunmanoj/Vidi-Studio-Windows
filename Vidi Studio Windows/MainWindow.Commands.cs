@@ -16,8 +16,6 @@ public sealed partial class MainWindow
 {
     private readonly List<MenuBarItem> galleryMenus = new();
     private readonly List<MenuBarItem> editorMenus = new();
-    private MenuFlyoutItem? summaryPlayMenuItem;
-    private MenuFlyoutItem? summaryStopMenuItem;
     private MenuFlyoutItem? videoPlayMenuItem;
     private readonly List<(TextBlock Block, string Text)> summaryLines = new();
     private TextBlock? activeSummaryBlock;
@@ -98,7 +96,7 @@ public sealed partial class MainWindow
         if (state == Services.SummaryReadbackState.Stopped) ClearSummaryHighlight();
     }
     private void OpenEditor_Click(object sender, RoutedEventArgs e) { if (Model.Project is { } p) App.OpenWindow(p.Folder); }
-    private void ProjectGrid_Changed(object sender, SelectionChangedEventArgs e) { if (ProjectGrid.SelectedItem is StudioProject p) Model.Open(p.Folder); }
+    private void ProjectGrid_Changed(object sender, SelectionChangedEventArgs e) { if (ProjectGrid.SelectedItem is StudioProject p) { Model.Open(p.Folder); ShowEditor(); } }
     private void ToggleGrid_Click(object sender, RoutedEventArgs e)
     {
         var grid = ProjectGrid.Visibility != Visibility.Visible;
@@ -283,19 +281,30 @@ public sealed partial class MainWindow
             return;
         }
         var menu = new MenuFlyout();
-        void Item(string label, RoutedEventHandler handler, bool enabled = true)
+        void Item(string label, Action<object, RoutedEventArgs> handler, bool enabled = true)
         {
             var item = new MenuFlyoutItem { Text = label, Icon = Views.MenuIcons.Create(label), IsEnabled = Model.Idle && enabled };
-            item.Click += (s, args) => { Model.Open(project.Folder); handler(s, args); }; menu.Items.Add(item);
+            item.Click += (s, args) => handler(s, args);
+            menu.Items.Add(item);
+        }
+        void LoadForEditorAction()
+        {
+            // Context actions must not navigate the window into the editor. Load the project only so
+            // commands that need it can run, and leave the current page (gallery or editor) in place.
+            if (Model.Project is not { } current || !string.Equals(current.Folder, project.Folder, StringComparison.OrdinalIgnoreCase))
+                Model.Open(project.Folder);
         }
         var activeApiKey = Model.HasApiKey && !Model.IsApiKeyInvalid;
         var usable = !project.IntegrityPlaceholder && project.Integrity?.ManifestUnreadable != true && project.Integrity?.FolderMissing != true;
-        Item("Open editor in new window", OpenEditor_Click); Item("Export", Export_Click, activeApiKey && usable); Item("Open project folder", Reveal_Click); Item("Open project configuration", OpenConfiguration_Click);
+        Item("Open editor in new window", (_, _) => App.OpenWindow(project.Folder));
+        Item("Export", (_, args) => { LoadForEditorAction(); Export_Click(this, args); }, activeApiKey && usable);
+        Item("Open project folder", (_, _) => _ = RevealProjectAsync(project));
+        Item("Open project configuration", (_, _) => _ = OpenProjectConfigurationAsync(project));
         foreach (var pair in new[] { ("Analyze video", "analyze"), ("Generate transcript", "transcribe"), ("Generate summary", "generate-summary"), ("Generate descriptions", "generate-ad-cues") })
-            Item(pair.Item1, (_, args) => Command_Click(new Button { Tag = pair.Item2 }, args), activeApiKey && usable);
-        Item("Refresh video details", (_, args) => Command_Click(new Button { Tag = "prepare-video" }, args), usable);
-        Item("Rename", Rename_Click, usable);
-        Item(project.Integrity?.IsDamaged == true ? "Delete damaged project…" : "Move to Recycle Bin", DeleteProject_Click);
+            Item(pair.Item1, (_, args) => { LoadForEditorAction(); Command_Click(new Button { Tag = pair.Item2 }, args); }, activeApiKey && usable);
+        Item("Refresh video details", (_, args) => { LoadForEditorAction(); Command_Click(new Button { Tag = "prepare-video" }, args); }, usable);
+        Item("Rename", (_, _) => _ = RenameProjectAsync(project), usable);
+        Item(project.Integrity?.IsDamaged == true ? "Delete damaged project…" : "Move to Recycle Bin", (_, _) => _ = DeleteProjectAsync(project));
         if (pointerRequest) menu.ShowAt((FrameworkElement)sender, point);
         else menu.ShowAt(element ?? (FrameworkElement)sender);
         e.Handled = true;

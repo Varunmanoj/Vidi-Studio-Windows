@@ -1,5 +1,6 @@
 #if DEBUG
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using System;
 using System.IO;
 using System.Linq;
@@ -21,6 +22,7 @@ public sealed partial class MainWindow
             var folder = Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT");
             if (folder == null) throw new InvalidOperationException("Smoke project is required.");
             Model.Open(folder);
+            ShowEditor();
             if (Model.Project is not { } openedProject ||
                 Narration.IsOn != ProjectPlaybackPreferences.NarrationEnabled(Model.Settings, openedProject) ||
                 Follow.IsOn != ProjectPlaybackPreferences.FollowEnabled(Model.Settings, openedProject))
@@ -44,14 +46,23 @@ public sealed partial class MainWindow
             if (!generationMenu.Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().Select(item => (string)item.Tag)
                 .SequenceEqual(new[] { "generate-ad-cues", "delete-descriptions" }))
                 throw new InvalidOperationException("AD generation and deletion must be grouped separately from narration audio.");
-            if (!audioMenu.Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>()
-                .Any(item => item.Text == "Review Narration Issues…" && item.IsEnabled && item.Icon != null))
-                throw new InvalidOperationException("Project → Narration is missing the narration issue review action.");
+            var reviewIssueItem = audioMenu.Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>()
+                .FirstOrDefault(item => item.Text == "Review Narration Issues…");
+            // Nested MenuFlyoutSubItem children report IsEnabled=false until their flyout is
+            // opened, so verify the command gate and the item metadata instead of the unfocused
+            // flyout's effective enabled state.
+            if (reviewIssueItem is not { Icon: not null } || (string?)reviewIssueItem.Tag != "review-narration-issues" ||
+                !CanRunDesktopCommand("review-narration-issues"))
+                throw new InvalidOperationException(
+                    $"Project → Narration is missing the narration issue review action. " +
+                    $"text={reviewIssueItem?.Text ?? "<missing>"}, enabled={reviewIssueItem?.IsEnabled}, " +
+                    $"icon={reviewIssueItem?.Icon is not null}, editor={desktopEditorVisible}, idle={Model.Idle}.");
             var narrationReviewItems = audioMenu.Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().ToList();
-            var issuesIndex = narrationReviewItems.FindIndex(item => (string)item.Tag == "review-narration-issues");
+            var issuesIndex = narrationReviewItems.FindIndex(item => (string?)item.Tag == "review-narration-issues");
             if (issuesIndex < 0 || issuesIndex + 1 >= narrationReviewItems.Count ||
-                narrationReviewItems[issuesIndex + 1].Text != "Review Narration Voices…" ||
-                !narrationReviewItems[issuesIndex + 1].IsEnabled || narrationReviewItems[issuesIndex + 1].Icon == null)
+                (string?)narrationReviewItems[issuesIndex + 1].Tag != "review-narration-voices" ||
+                narrationReviewItems[issuesIndex + 1].Icon == null ||
+                !CanRunDesktopCommand("review-narration-voices"))
                 throw new InvalidOperationException("Review Narration Voices must follow Review Narration Issues.");
             var projectGroups = editorMenus.First(menu => menu.Title == "Project").Items
                 .OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutSubItem>().Select(item => item.Text);
@@ -67,15 +78,21 @@ public sealed partial class MainWindow
             var savedMenuTts = Model.Settings.Get("ttsMode", "windows-core");
             Model.Settings.Set("apiKey", ""); Model.Settings.Set("ttsMode", "windows-core");
             UpdateDesktopMenuStates();
-            if (!desktopMenuItems["export"].Last().IsEnabled || !desktopMenuItems["synthesize-tts"].Last().IsEnabled ||
-                !desktopMenuItems["review-narration-issues"].Last().IsEnabled || !desktopMenuItems["review-narration-voices"].Last().IsEnabled || desktopMenuItems["transcribe"].Last().IsEnabled ||
-                !desktopMenuItems["new-project"].Last().IsEnabled)
+            var canExportOffline = CanRunDesktopCommand("export");
+            var canSynthesizeOffline = CanRunDesktopCommand("synthesize-tts");
+            var canReviewIssuesOffline = CanRunDesktopCommand("review-narration-issues");
+            var canReviewVoicesOffline = CanRunDesktopCommand("review-narration-voices");
+            var canTranscribeOffline = CanRunDesktopCommand("transcribe");
+            var canCreateOffline = CanRunDesktopCommand("new-project");
+            if (!canExportOffline || !canSynthesizeOffline ||
+                !canReviewIssuesOffline || !canReviewVoicesOffline || canTranscribeOffline ||
+                !canCreateOffline)
                 // New Project stays available without an API key, matching the Mac menu; its dialog applies the key gate.
                 throw new InvalidOperationException(
                     $"Offline menu actions and AI prerequisites are not independently guarded. " +
-                    $"export={desktopMenuItems["export"].Last().IsEnabled}, synthesize={desktopMenuItems["synthesize-tts"].Last().IsEnabled}, " +
-                    $"issues={desktopMenuItems["review-narration-issues"].Last().IsEnabled}, voices={desktopMenuItems["review-narration-voices"].Last().IsEnabled}, " +
-                    $"transcribe={desktopMenuItems["transcribe"].Last().IsEnabled}, new-project={desktopMenuItems["new-project"].Last().IsEnabled}, idle={Model.Idle}, editor={desktopEditorVisible}, cues={Model.Project?.Cues.Count}");
+                    $"export={canExportOffline}, synthesize={canSynthesizeOffline}, " +
+                    $"issues={canReviewIssuesOffline}, voices={canReviewVoicesOffline}, " +
+                    $"transcribe={canTranscribeOffline}, new-project={canCreateOffline}, idle={Model.Idle}, editor={desktopEditorVisible}, cues={Model.Project?.Cues.Count}");
             var originalAudio = Model.Project!.Cues.Select(c => (Cue: c, Audio: c.Audio)).ToList();
             try
             {
@@ -117,7 +134,7 @@ public sealed partial class MainWindow
             if (Model.Settings.Get("captionDisplayMode") != "transcript")
                 throw new InvalidOperationException("Transcript overlay command is not connected.");
             SetCaptionMode(oldOverlayMode);
-            if (desktopMenuItems["summary-play"].Last().IsEnabled)
+            if (CanRunDesktopCommand("summary-play"))
                 throw new InvalidOperationException("Summary menu reading was enabled outside Summary.");
             if (desktopMenuItems["summary-next-sentence"].Last() is not { Text: "Next Summary Sentence", KeyboardAcceleratorTextOverride: "Ctrl+Shift+]" } ||
                 desktopMenuItems["summary-previous-paragraph"].Last() is not { Text: "Previous Summary Paragraph", KeyboardAcceleratorTextOverride: "Ctrl+Alt+[" })
@@ -244,10 +261,8 @@ public sealed partial class MainWindow
             ShowGallery_Click(this, new RoutedEventArgs());
             if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Playback", "Project", "Help" }))
                 throw new InvalidOperationException("Gallery menu hierarchy drifted from the shared desktop layout.");
-            if (desktopMenuItems["export"].Any(item => item.IsEnabled) || desktopMenuItems["review-narration-issues"].Any(item => item.IsEnabled) || desktopMenuItems["review-narration-voices"].Any(item => item.IsEnabled))
+            if (CanRunDesktopCommand("export") || CanRunDesktopCommand("review-narration-issues") || CanRunDesktopCommand("review-narration-voices"))
                 throw new InvalidOperationException("Project-only menu commands remained enabled in the gallery.");
-            if (TopOpenFolderButton.Visibility != Visibility.Collapsed)
-                throw new InvalidOperationException("All Projects still shows the editor's Open folder button.");
             PreviewTheme("dark"); await Task.Delay(80);
             var searchOrigin = GallerySearchHost.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point());
             if (GallerySearchHost.Visibility != Visibility.Visible ||
@@ -288,8 +303,9 @@ public sealed partial class MainWindow
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "gallery-table.png"));
             GalleryLayout_Click(this, new RoutedEventArgs());
             Model.Open(folder);
-            if (TopOpenFolderButton.Visibility != Visibility.Visible)
-                throw new InvalidOperationException("The editor does not show its project folder button.");
+            ShowEditor();
+            if (InspectorSettingsButton.Visibility != Visibility.Visible || (string)InspectorSettingsButton.Content != "\uE713")
+                throw new InvalidOperationException("The inspector footer does not expose its Settings gear.");
             if (GallerySearchHost.Visibility != Visibility.Collapsed)
                 throw new InvalidOperationException("All Projects search remained in the editor header.");
             for (var i = 0; i < 6; i++) { Section.SelectedIndex = i; await Task.Delay(50); }
@@ -458,6 +474,63 @@ public sealed partial class MainWindow
             if (webExport.Command != "export-hls" || !webExport.Arguments.Contains("dual-closed") || !webExport.Arguments.Contains("original"))
                 throw new InvalidOperationException("Web Playback export is misrouted.");
             export.Hide(); await exportDisplay;
+            PreviewTheme("light");
+            var (deleteDialog, deleteBoxes) = CreateDeleteGeneratedDialog();
+            var deleteDisplay = ShowDialogAsync(deleteDialog, 620, 820);
+            await Task.Delay(200);
+            if (deleteDialog.IsPrimaryButtonEnabled)
+                throw new InvalidOperationException("Delete generated content allowed deletion with nothing selected.");
+            deleteBoxes[0].IsChecked = true;
+            Button? deleteButton = null;
+            for (var attempt = 0; attempt < 40; attempt++)
+            {
+                deleteButton = FindButton(deleteDialog, "Delete selected");
+                if (deleteButton is { IsEnabled: true }) break;
+                await Task.Delay(25);
+            }
+            if (deleteButton is not { IsEnabled: true })
+                throw new InvalidOperationException("Delete generated content did not enable its primary action in the template.");
+            await Task.Delay(100);
+            if (!deleteDialog.IsPrimaryButtonEnabled)
+                throw new InvalidOperationException("Delete generated content did not enable deletion after a selection.");
+            var deletePositions = deleteBoxes.Select(box =>
+                $"{box.Content}:h{box.ActualHeight:F0}@y{box.TransformToVisual(deleteDialog).TransformPoint(new Windows.Foundation.Point()).Y:F0}/{box.Visibility}");
+            if (deleteBoxes.Any(box => box.ActualHeight <= 0 || box.Visibility != Visibility.Visible))
+                throw new InvalidOperationException("Delete generated content did not render every option: " + string.Join(", ", deletePositions));
+            if (deleteDialog.XamlRoot?.Content is not Panel deleteRoot ||
+                deleteRoot.Background is not Microsoft.UI.Xaml.Media.SolidColorBrush deleteSurface ||
+                deleteSurface.Color.A != 255)
+                throw new InvalidOperationException("The light-mode dialog did not use an opaque Fluent surface.");
+            if (FindSmokeRectangle(deleteDialog) is { } smokeRectangle &&
+                smokeRectangle.Fill is Microsoft.UI.Xaml.Media.SolidColorBrush smokeBrush && smokeBrush.Color.A != 0)
+                throw new InvalidOperationException("The light-mode dialog still has a dimming smoke layer.");
+            await CaptureSmokeImage(deleteDialog, Path.Combine(Path.GetDirectoryName(report)!, "delete-generated-light.png"));
+            deleteDialog.Hide(); await deleteDisplay;
+            var errorDialog = new ContentDialog
+            {
+                Title = "Action could not finish",
+                Content = DialogMessage("Check your settings and the diagnostic log, then retry. Your saved project remains available."),
+                CloseButtonText = "Close"
+            };
+            var errorDisplay = ShowDialogAsync(errorDialog);
+            await Task.Delay(250);
+            var errorLines = ((StackPanel)errorDialog.Content).Children.OfType<TextBlock>().ToList();
+            if (errorLines.Count < 2 || errorLines.Any(line => line.ActualHeight <= 0))
+                throw new InvalidOperationException(
+                    $"The error message did not wrap: lines={errorLines.Count}, " +
+                    $"heights={string.Join(',', errorLines.Select(line => line.ActualHeight.ToString("F0")))}, " +
+                    $"text={string.Join(" / ", errorLines.Select(line => line.Text))}, " +
+                    $"dialog={errorDialog.ActualWidth:F0}x{errorDialog.ActualHeight:F0}.");
+            if (errorDialog.XamlRoot?.Content is not Panel errorRoot ||
+                errorRoot.Background is not Microsoft.UI.Xaml.Media.SolidColorBrush errorSurface ||
+                errorSurface.Color.A != 255)
+                throw new InvalidOperationException("The light-mode error dialog did not use an opaque Fluent surface.");
+            if (FindSmokeRectangle(errorDialog) is { } errorSmoke &&
+                errorSmoke.Fill is Microsoft.UI.Xaml.Media.SolidColorBrush errorSmokeBrush && errorSmokeBrush.Color.A != 0)
+                throw new InvalidOperationException("The light-mode error dialog still has a dimming smoke layer.");
+            await CaptureSmokeImage(errorDialog, Path.Combine(Path.GetDirectoryName(report)!, "error-dialog-light.png"));
+            errorDialog.Hide(); await errorDisplay;
+            PreviewTheme(originalTheme);
             var result = await Model.RunAsync("doctor", needsProject: false);
             if (result.Count == 0) throw new InvalidOperationException("Engine doctor failed.");
             var original = Model.Project!.Cues[0].Text;
@@ -533,7 +606,11 @@ public sealed partial class MainWindow
             var replacementDialog = new Views.ExportDialog(Model);
             replacementDialog.RequestForSmokeTest(1, 0, 0);
             if (replacementDialog.CanSaveForSmokeTest) throw new InvalidOperationException("Existing export replacement did not require an explicit selection.");
-            child.Close();
+            var childClosed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            child.Closed += (_, _) => childClosed.TrySetResult(true);
+            await child.RunDesktopCommandAsync("close-window");
+            if (await Task.WhenAny(childClosed.Task, Task.Delay(3000)) != childClosed.Task || !childClosed.Task.Result)
+                throw new InvalidOperationException("Close Window did not close the editor window.");
             await Model.RunAsync("export-subtitles", new[] { "--content", "combined", "--format", "srt", "--replace-existing" });
             if (Model.Status != "Complete") throw new InvalidOperationException("Native subtitle export failed: " + Model.Status);
             var subtitle = Model.Project!.Exports.FirstOrDefault(path => path.EndsWith(".srt", StringComparison.OrdinalIgnoreCase));
@@ -602,15 +679,15 @@ public sealed partial class MainWindow
             await Task.Delay(150);
             if (readback.State == Services.SummaryReadbackState.Playing)
             {
-                if (SummaryPlayButton.Content as string != "Pause" || summaryPlayMenuItem?.IsEnabled != false || !desktopMenuItems["summary-pause"].Last().IsEnabled)
+                if (SummaryPlayButton.Content as string != "Pause" || CanRunDesktopCommand("summary-play") || !CanRunDesktopCommand("summary-pause"))
                     throw new InvalidOperationException("Summary Play did not become Pause in the view and menu.");
                 readback.Pause(); await Task.Delay(50);
-                if (SummaryPlayButton.Content as string != "Resume" || summaryPlayMenuItem?.IsEnabled != true || desktopMenuItems["summary-pause"].Last().IsEnabled)
+                if (SummaryPlayButton.Content as string != "Resume" || !CanRunDesktopCommand("summary-play") || CanRunDesktopCommand("summary-pause"))
                     throw new InvalidOperationException("Summary Pause did not become Resume in the view and menu.");
                 readback.Resume();
             }
             readback.Stop(); await Task.Delay(50);
-            if (SummaryPlayButton.Content as string != "Play" || summaryStopMenuItem?.IsEnabled != false)
+            if (SummaryPlayButton.Content as string != "Play" || CanRunDesktopCommand("summary-stop"))
                 throw new InvalidOperationException("Summary Stop did not reset playback controls.");
             foreach (var task in new[] { firstReadback, nextReadback })
             {
@@ -888,6 +965,28 @@ public sealed partial class MainWindow
             Math.Abs(tiles.Sum(tile => tile.ActualWidth) + (count - 1) * 2 - ThumbnailScrubSurface.ActualWidth) > 2 ||
             Math.Abs(Thumbnails.ActualWidth - TranscriptTrack.ActualWidth) > 2)
             throw new InvalidOperationException("Timeline thumbnails did not fill and align with the timeline tracks.");
+    }
+    private static Button? FindButton(DependencyObject root, string content)
+    {
+        var count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is Button button && string.Equals(button.Content as string, content, StringComparison.Ordinal)) return button;
+            if (FindButton(child, content) is { } found) return found;
+        }
+        return null;
+    }
+    private static Microsoft.UI.Xaml.Shapes.Rectangle? FindSmokeRectangle(DependencyObject root)
+    {
+        var count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is Microsoft.UI.Xaml.Shapes.Rectangle { Name: "SmokeLayerBackground" } rectangle) return rectangle;
+            if (FindSmokeRectangle(child) is { } found) return found;
+        }
+        return null;
     }
     private static async Task CaptureSmokeImage(FrameworkElement element, string path)
     {

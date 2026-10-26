@@ -259,7 +259,6 @@ public sealed partial class MainWindow
         GalleryPanel.Visibility = Visibility.Visible; EditorWorkspace.Visibility = Visibility.Collapsed;
         UpdateMenuBar(false);
         ProjectTitle.Text = "All Projects"; Title = "All Projects — Vidi Studio";
-        TopOpenFolderButton.Visibility = TopInspectorToggle.Visibility = Visibility.Collapsed;
         GallerySearchHost.Visibility = Visibility.Visible;
         GalleryImport.Visibility = Visibility.Visible;
         Model.Reload(); Model.RefreshProjectIntegrity(true); RefreshGalleryCount(); UpdateProjectIntegrityUi();
@@ -300,9 +299,9 @@ public sealed partial class MainWindow
     {
         GalleryPanel.Visibility = Visibility.Collapsed; EditorWorkspace.Visibility = Visibility.Visible;
         UpdateMenuBar(true);
-        TopOpenFolderButton.Visibility = TopInspectorToggle.Visibility = Visibility.Visible;
         GallerySearchHost.Visibility = Visibility.Collapsed;
         GalleryImport.Visibility = Visibility.Collapsed;
+        ProjectTitle.Text = Model.Project?.Name ?? "All Projects";
         Title = (Model.Project?.Name ?? "Project") + " — Vidi Studio";
         UpdateEditorProjectButtons();
     }

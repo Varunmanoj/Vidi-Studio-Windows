@@ -205,6 +205,12 @@ internal static class WindowAppearance
             : Windows.UI.Color.FromArgb(255, 243, 243, 243);
     }
 
+    /// <summary>
+    /// Opaque Fluent surface used by companion dialog windows. Dialogs keep a solid layer so
+    /// their white card does not turn gray over a dark desktop wallpaper or Mica backdrop.
+    /// </summary>
+    internal static Windows.UI.Color DialogSurfaceColor(ElementTheme theme) => BaseColor(theme);
+
     private static bool HighContrast
     {
         get
@@ -378,10 +384,21 @@ internal static class WindowedDialog
         {
             var requested = theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
             WindowAppearance.ApplyTheme(window, root, requested);
+            // Keep the companion dialog on an opaque Fluent layer. The shared ContentDialog already
+            // paints a smoke layer; a translucent Mica surface made light-mode dialogs look gray.
+            var actual = requested == ElementTheme.Default
+                ? (root.ActualTheme == ElementTheme.Dark ? ElementTheme.Dark : ElementTheme.Light)
+                : requested;
+            root.Background = new SolidColorBrush(WindowAppearance.DialogSurfaceColor(actual));
             dialog.RequestedTheme = requested;
             FlattenDialogSurface(dialog);
         }
-        root.ActualThemeChanged += (_, _) => { WindowAppearance.Refresh(window, root); FlattenDialogSurface(dialog); };
+        root.ActualThemeChanged += (_, _) =>
+        {
+            WindowAppearance.Refresh(window, root);
+            root.Background = new SolidColorBrush(WindowAppearance.DialogSurfaceColor(root.ActualTheme == ElementTheme.Dark ? ElementTheme.Dark : ElementTheme.Light));
+            FlattenDialogSurface(dialog);
+        };
         App.ThemeChanged += ApplyTheme;
         ApplyTheme(App.ActiveTheme ?? ((owner.Content as FrameworkElement)?.ActualTheme == ElementTheme.Dark ? "dark" : "light"));
         // The template's smoke rectangle is what dims the whole dialog window in light mode. Clear
@@ -462,8 +479,13 @@ internal static class WindowedDialog
             var logicalHeight = cardHeight + card.Margin.Top + card.Margin.Bottom + 2;
             var pixelWidth = (int)Math.Ceiling(Math.Min(logicalWidth * scale, area.Size.Width - 24));
             var pixelHeight = (int)Math.Ceiling(Math.Min(logicalHeight * scale, area.Size.Height - 24));
-            var targetWidth = Math.Min(Math.Max(480, pixelWidth), Math.Max(400, area.Size.Width - 24));
-            var targetHeight = Math.Min(Math.Max(240, pixelHeight), Math.Max(220, area.Size.Height - 24));
+            // AppWindow sizes are physical pixels. Scale the logical minimums too; using an
+            // unscaled 480/240 px minimum shrank high-DPI dialogs below their XAML content
+            // width/height, which clipped wrapped messages and lower list rows.
+            var minPixelWidth = (int)Math.Ceiling(560 * scale);
+            var minPixelHeight = (int)Math.Ceiling(320 * scale);
+            var targetWidth = Math.Min(Math.Max(minPixelWidth, pixelWidth), Math.Max(400, area.Size.Width - 24));
+            var targetHeight = Math.Min(Math.Max(minPixelHeight, pixelHeight), Math.Max(220, area.Size.Height - 24));
             if (Math.Abs(targetWidth - window.AppWindow.Size.Width) < 4 && Math.Abs(targetHeight - window.AppWindow.Size.Height) < 4) return;
             window.AppWindow.Resize(new Windows.Graphics.SizeInt32(targetWidth, targetHeight));
             window.AppWindow.Move(new Windows.Graphics.PointInt32(
@@ -488,7 +510,14 @@ internal static class WindowedDialog
     {
         var transparent = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         if (FindTemplateElement<Microsoft.UI.Xaml.Shapes.Rectangle>(dialog, "SmokeLayerBackground") is { } smoke)
-            smoke.Fill = transparent;
+        {
+            // Removing the rectangle is stronger than clearing its fill: a visual state or a
+            // template refresh can re-apply the theme brush, which is what previously left the
+            // light-mode dialog covered by a 30% black smoke layer.
+            if (VisualTreeHelper.GetParent(smoke) is Panel smokeHost) smokeHost.Children.Remove(smoke);
+            else smoke.Fill = transparent;
+        }
+        ClearSmokeLayers(dialog, dialog, transparent);
         if (FindTemplateElement<Border>(dialog, "BackgroundElement") is { } card)
         {
             // The smoke layer is the rectangle that shares the template layout with the card. Clearing
@@ -507,6 +536,11 @@ internal static class WindowedDialog
             commands.Background = transparent;
         if (FindTemplateElement<ScrollViewer>(dialog, "ContentScrollViewer") is { } contentScroller)
         {
+            // The stock template disables vertical scrolling because a normal ContentDialog sizes
+            // itself to its content. The windowed host has a fixed window, so allow the internal
+            // scroller to measure/scroll content instead of clipping wrapped text or lower rows.
+            contentScroller.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+            contentScroller.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
             if (contentScroller.Content is Grid contentGrid)
             {
                 contentGrid.Background = transparent;
@@ -517,6 +551,26 @@ internal static class WindowedDialog
             {
                 contentPanel.Background = transparent;
             }
+        }
+    }
+
+    /// <summary>
+    /// Clears every full-surface smoke rectangle in the dialog template, including rectangles
+    /// that a template refresh recreated after the named lookup. Only the host-wide dimming layer
+    /// is affected; dialog content is never a full-window rectangle.
+    /// </summary>
+    private static void ClearSmokeLayers(DependencyObject node, ContentDialog dialog, Brush transparent)
+    {
+        var hasDialogSize = dialog.ActualWidth > 0 && dialog.ActualHeight > 0;
+        var count = VisualTreeHelper.GetChildrenCount(node);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(node, i);
+            if (child is Microsoft.UI.Xaml.Shapes.Rectangle rectangle &&
+                (rectangle.Name == "SmokeLayerBackground" ||
+                 (hasDialogSize && rectangle.Fill is not null && rectangle.ActualWidth >= dialog.ActualWidth - 1 && rectangle.ActualHeight >= dialog.ActualHeight - 1)))
+                rectangle.Fill = transparent;
+            ClearSmokeLayers(child, dialog, transparent);
         }
     }
 

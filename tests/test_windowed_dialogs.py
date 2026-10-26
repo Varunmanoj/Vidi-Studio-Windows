@@ -43,10 +43,20 @@ class WindowedDialogs(unittest.TestCase):
     def test_light_surface_removes_the_smoke_and_separator(self):
         self.assertIn('FindTemplateElement<Microsoft.UI.Xaml.Shapes.Rectangle>(dialog, "SmokeLayerBackground")', self.host)
         self.assertIn('smoke.Fill = transparent;', self.host)
+        self.assertIn('smokeHost.Children.Remove(smoke);', self.host)
+        self.assertIn('ClearSmokeLayers(dialog, dialog, transparent);', self.host)
         self.assertIn('card.Background = transparent;', self.host)
         self.assertIn('contentGrid.Background = transparent;', self.host)
         self.assertIn('contentGrid.BorderThickness = new Thickness(0);', self.host)
         self.assertIn('dialog.Loaded += (_, _) => FlattenDialogSurface(dialog);', self.host)
+
+    def test_dialog_window_uses_an_opaque_fluent_surface(self):
+        self.assertIn('root.Background = new SolidColorBrush(WindowAppearance.DialogSurfaceColor(actual));', self.host)
+        self.assertIn('internal static Windows.UI.Color DialogSurfaceColor(ElementTheme theme) => BaseColor(theme);', self.host)
+
+    def test_dialog_minimum_size_is_scaled_to_the_display(self):
+        self.assertIn('var minPixelWidth = (int)Math.Ceiling(560 * scale);', self.host)
+        self.assertIn('var minPixelHeight = (int)Math.Ceiling(320 * scale);', self.host)
 
     def test_card_lookup_prefers_the_named_template_card(self):
         self.assertIn('if (border.Name == "BackgroundElement") return border;', self.host)

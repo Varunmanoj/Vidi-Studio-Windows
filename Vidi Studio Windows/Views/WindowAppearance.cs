@@ -206,10 +206,12 @@ internal static class WindowAppearance
     }
 
     /// <summary>
-    /// Opaque Fluent surface used by companion dialog windows. Dialogs keep a solid layer so
-    /// their white card does not turn gray over a dark desktop wallpaper or Mica backdrop.
+    /// Flat, opaque surface for companion dialog windows. Dialogs do not use Mica/Acrylic or a
+    /// translucent Fluent layer: light mode is plain white and dark mode is plain black, so the
+    /// card never shows a gray wash over the desktop.
     /// </summary>
-    internal static Windows.UI.Color DialogSurfaceColor(ElementTheme theme) => BaseColor(theme);
+    internal static Windows.UI.Color DialogSurfaceColor(ElementTheme theme) =>
+        theme == ElementTheme.Dark ? Microsoft.UI.Colors.Black : Microsoft.UI.Colors.White;
 
     private static bool HighContrast
     {
@@ -339,7 +341,9 @@ internal static class WindowedDialog
         var root = new Grid();
         window.Content = root;
         WindowAppearance.ApplyIcon(window);
-        WindowAppearance.ApplyMaterial(window);
+        // Dialogs are flat companion windows: no Mica/Acrylic backdrop, so light mode is white and
+        // dark mode is black instead of a translucent Fluent wash.
+        window.SystemBackdrop = null;
         if (window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
         {
             // A dialog is a fixed-size companion; only the system Close button belongs in its caption.
@@ -384,23 +388,34 @@ internal static class WindowedDialog
         {
             var requested = theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
             WindowAppearance.ApplyTheme(window, root, requested);
-            // Keep the companion dialog on an opaque Fluent layer. The shared ContentDialog already
-            // paints a smoke layer; a translucent Mica surface made light-mode dialogs look gray.
             var actual = requested == ElementTheme.Default
                 ? (root.ActualTheme == ElementTheme.Dark ? ElementTheme.Dark : ElementTheme.Light)
                 : requested;
-            root.Background = new SolidColorBrush(WindowAppearance.DialogSurfaceColor(actual));
+            ApplyFlatSurface(actual);
             dialog.RequestedTheme = requested;
             FlattenDialogSurface(dialog);
         }
         root.ActualThemeChanged += (_, _) =>
         {
             WindowAppearance.Refresh(window, root);
-            root.Background = new SolidColorBrush(WindowAppearance.DialogSurfaceColor(root.ActualTheme == ElementTheme.Dark ? ElementTheme.Dark : ElementTheme.Light));
+            ApplyFlatSurface(root.ActualTheme == ElementTheme.Dark ? ElementTheme.Dark : ElementTheme.Light);
             FlattenDialogSurface(dialog);
         };
         App.ThemeChanged += ApplyTheme;
         ApplyTheme(App.ActiveTheme ?? ((owner.Content as FrameworkElement)?.ActualTheme == ElementTheme.Dark ? "dark" : "light"));
+
+        void ApplyFlatSurface(ElementTheme theme)
+        {
+            var surface = WindowAppearance.DialogSurfaceColor(theme);
+            root.Background = new SolidColorBrush(surface);
+            if (window.AppWindow?.TitleBar is { } titleBar && Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
+            {
+                titleBar.BackgroundColor = surface;
+                titleBar.InactiveBackgroundColor = surface;
+                titleBar.ButtonBackgroundColor = surface;
+                titleBar.ButtonInactiveBackgroundColor = surface;
+            }
+        }
         // The template's smoke rectangle is what dims the whole dialog window in light mode. Clear
         // it in the visual tree as well as through the resource, because the template can resolve
         // its ThemeResource before the dialog-level override is observed.
@@ -482,8 +497,8 @@ internal static class WindowedDialog
             // AppWindow sizes are physical pixels. Scale the logical minimums too; using an
             // unscaled 480/240 px minimum shrank high-DPI dialogs below their XAML content
             // width/height, which clipped wrapped messages and lower list rows.
-            var minPixelWidth = (int)Math.Ceiling(560 * scale);
-            var minPixelHeight = (int)Math.Ceiling(320 * scale);
+            var minPixelWidth = (int)Math.Ceiling(480 * scale);
+            var minPixelHeight = (int)Math.Ceiling(240 * scale);
             var targetWidth = Math.Min(Math.Max(minPixelWidth, pixelWidth), Math.Max(400, area.Size.Width - 24));
             var targetHeight = Math.Min(Math.Max(minPixelHeight, pixelHeight), Math.Max(220, area.Size.Height - 24));
             if (Math.Abs(targetWidth - window.AppWindow.Size.Width) < 4 && Math.Abs(targetHeight - window.AppWindow.Size.Height) < 4) return;
@@ -536,11 +551,6 @@ internal static class WindowedDialog
             commands.Background = transparent;
         if (FindTemplateElement<ScrollViewer>(dialog, "ContentScrollViewer") is { } contentScroller)
         {
-            // The stock template disables vertical scrolling because a normal ContentDialog sizes
-            // itself to its content. The windowed host has a fixed window, so allow the internal
-            // scroller to measure/scroll content instead of clipping wrapped text or lower rows.
-            contentScroller.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
-            contentScroller.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
             if (contentScroller.Content is Grid contentGrid)
             {
                 contentGrid.Background = transparent;

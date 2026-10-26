@@ -499,8 +499,8 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Delete generated content did not render every option: " + string.Join(", ", deletePositions));
             if (deleteDialog.XamlRoot?.Content is not Panel deleteRoot ||
                 deleteRoot.Background is not Microsoft.UI.Xaml.Media.SolidColorBrush deleteSurface ||
-                deleteSurface.Color.A != 255)
-                throw new InvalidOperationException("The light-mode dialog did not use an opaque Fluent surface.");
+                deleteSurface.Color.R != 255 || deleteSurface.Color.G != 255 || deleteSurface.Color.B != 255)
+                throw new InvalidOperationException("The light-mode dialog did not use a flat white surface.");
             if (FindSmokeRectangle(deleteDialog) is { } smokeRectangle &&
                 smokeRectangle.Fill is Microsoft.UI.Xaml.Media.SolidColorBrush smokeBrush && smokeBrush.Color.A != 0)
                 throw new InvalidOperationException("The light-mode dialog still has a dimming smoke layer.");
@@ -523,8 +523,8 @@ public sealed partial class MainWindow
                     $"dialog={errorDialog.ActualWidth:F0}x{errorDialog.ActualHeight:F0}.");
             if (errorDialog.XamlRoot?.Content is not Panel errorRoot ||
                 errorRoot.Background is not Microsoft.UI.Xaml.Media.SolidColorBrush errorSurface ||
-                errorSurface.Color.A != 255)
-                throw new InvalidOperationException("The light-mode error dialog did not use an opaque Fluent surface.");
+                errorSurface.Color.R != 255 || errorSurface.Color.G != 255 || errorSurface.Color.B != 255)
+                throw new InvalidOperationException("The light-mode error dialog did not use a flat white surface.");
             if (FindSmokeRectangle(errorDialog) is { } errorSmoke &&
                 errorSmoke.Fill is Microsoft.UI.Xaml.Media.SolidColorBrush errorSmokeBrush && errorSmokeBrush.Color.A != 0)
                 throw new InvalidOperationException("The light-mode error dialog still has a dimming smoke layer.");

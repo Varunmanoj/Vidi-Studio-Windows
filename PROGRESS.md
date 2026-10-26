@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-26 - Flat white/black dialogs, no Fluent material (1.0.144 / 1.0.144.0)
+
+Companion dialog windows no longer use Mica/Acrylic or a translucent Fluent surface. `WindowedDialog` sets `SystemBackdrop = null` and paints the whole window — content and caption — with a plain flat color: white in light mode, black in dark mode. The dialog still keeps only its system Close button (`IsMinimizable`/`IsMaximizable`/`IsResizable` are false), and the ContentDialog smoke layer and card chrome remain flattened so the flat surface is the dialog surface. This removes the gray "grew" wash that Fluent material put behind dialogs, and the DPI-scaled minimum window size was reduced back to 480/240 logical so dialogs do not grow larger than their content. Confirmation/error copy stays as explicit wrapped lines so text is never clipped.
+
+Validation on this Windows ARM64 host: `powershell script/build-windows.ps1 -Platform ARM64 -Configuration Debug`; `powershell script/test-windows-ui.ps1 -Platform ARM64` PASS; `python -m unittest tests.test_close_window tests.test_project_context_menu tests.test_inspector_footer tests.test_windowed_dialogs tests.test_xaml_references` (21 tests); `python script/check_xaml_references.py`; `python script/sync_version.py --status` reports 1.0.144 / 1.0.144.0. Not run: the combined Mac/Windows menu-parity check or a macOS build, because the Mac checkout is unavailable in this workspace.
+
 ## 2026-10-26 - Close Window command and light-mode error dialogs (1.0.143 / 1.0.143.0)
 
 **File > Close Window** threw `E_ABORT (0x80004004)` from `Window.Close()` because the command closed the window synchronously while its menu flyout was still dismissing. The generic menu handler caught that exception and opened the **Action could not finish** dialog, which is the gray dialog in the report. `CloseWindowDeferred` now dispatches `Close()` after the menu/keyboard handler returns and falls back to `AppWindow.Destroy()` if WinUI still aborts. The native UI smoke test opens a second editor window, closes it through the same `close-window` command, and waits for its `Closed` event.

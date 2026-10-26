@@ -50,13 +50,15 @@ class WindowedDialogs(unittest.TestCase):
         self.assertIn('contentGrid.BorderThickness = new Thickness(0);', self.host)
         self.assertIn('dialog.Loaded += (_, _) => FlattenDialogSurface(dialog);', self.host)
 
-    def test_dialog_window_uses_an_opaque_fluent_surface(self):
-        self.assertIn('root.Background = new SolidColorBrush(WindowAppearance.DialogSurfaceColor(actual));', self.host)
-        self.assertIn('internal static Windows.UI.Color DialogSurfaceColor(ElementTheme theme) => BaseColor(theme);', self.host)
+    def test_dialog_window_uses_an_opaque_flat_surface(self):
+        self.assertIn('root.Background = new SolidColorBrush(surface);', self.host)
+        self.assertIn('internal static Windows.UI.Color DialogSurfaceColor(ElementTheme theme) =>', self.host)
+        self.assertIn('theme == ElementTheme.Dark ? Microsoft.UI.Colors.Black : Microsoft.UI.Colors.White;', self.host)
+        self.assertIn('window.SystemBackdrop = null;', self.host)
 
     def test_dialog_minimum_size_is_scaled_to_the_display(self):
-        self.assertIn('var minPixelWidth = (int)Math.Ceiling(560 * scale);', self.host)
-        self.assertIn('var minPixelHeight = (int)Math.Ceiling(320 * scale);', self.host)
+        self.assertIn('var minPixelWidth = (int)Math.Ceiling(480 * scale);', self.host)
+        self.assertIn('var minPixelHeight = (int)Math.Ceiling(240 * scale);', self.host)
 
     def test_card_lookup_prefers_the_named_template_card(self):
         self.assertIn('if (border.Name == "BackgroundElement") return border;', self.host)

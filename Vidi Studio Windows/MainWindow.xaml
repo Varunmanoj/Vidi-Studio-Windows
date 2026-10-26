@@ -134,15 +134,15 @@
    </Grid>
   </Grid>
   <ContentControl x:Name="EditorWorkspace" Grid.Row="4" Visibility="Collapsed" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
-   <Grid><Grid.ColumnDefinitions><ColumnDefinition x:Name="LibraryColumn" Width="0"/><ColumnDefinition Width="*"/><ColumnDefinition x:Name="InspectorColumn" Width="310"/></Grid.ColumnDefinitions>
-    <Grid x:Name="LibraryPanel" Visibility="Collapsed" Padding="12" RowSpacing="10" Background="{ThemeResource LayerFillColorAltBrush}">
+   <Grid><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition x:Name="LibraryColumn" Width="0"/><ColumnDefinition Width="*"/><ColumnDefinition x:Name="InspectorColumn" Width="310"/></Grid.ColumnDefinitions>
+    <Grid x:Name="LibraryPanel" Grid.Row="0" Visibility="Collapsed" Padding="12" RowSpacing="10" Background="{ThemeResource LayerFillColorAltBrush}">
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
      <TextBox x:Name="Search" PlaceholderText="Search projects" TextChanged="Search_Changed" AutomationProperties.Name="Search projects"/>
      <ComboBox x:Name="SourceFilter" Grid.Row="1" SelectedIndex="0" SelectionChanged="Filter_Changed" HorizontalAlignment="Stretch" AutomationProperties.Name="Project source filter"><ComboBoxItem Content="All projects"/><ComboBoxItem Content="Local videos"/><ComboBoxItem Content="YouTube videos"/></ComboBox>
      <Grid Grid.Row="2"><GridView x:Name="ProjectGrid" Visibility="Collapsed" ItemsSource="{x:Bind Model.Projects}" ItemTemplate="{StaticResource ProjectCard}" SelectionChanged="ProjectGrid_Changed" ContextRequested="ProjectContext_Requested"/><ListView x:Name="ProjectList" ItemsSource="{x:Bind Model.Projects}" SelectionChanged="Project_Changed" ContextRequested="ProjectContext_Requested" AutomationProperties.Name="Projects"/></Grid>
      <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8"><Button Content="Rename" Click="Rename_Click"/><Button Content="Delete" Click="DeleteProject_Click"/></StackPanel>
     </Grid>
-    <Grid Grid.Column="1">
+    <Grid Grid.Column="1" Grid.Row="0">
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
      <Grid x:Name="PreviewPanel" Height="150" Background="Black"><MediaPlayerElement x:Name="Player" AreTransportControlsEnabled="True"/><WebView2 x:Name="YouTubePlayer" Visibility="Collapsed"/><StackPanel x:Name="CaptionOverlay" Visibility="Collapsed" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,16,16,48" Spacing="4" IsHitTestVisible="False"><Border x:Name="DialogueCaptionBox" Padding="12,6" CornerRadius="4"><TextBlock x:Name="CaptionText" TextWrapping="Wrap" TextAlignment="Center"/></Border><Border x:Name="DescriptionCaptionBox" Padding="12,6" CornerRadius="4"><TextBlock x:Name="DescriptionCaptionText" TextWrapping="Wrap" TextAlignment="Center"/></Border></StackPanel></Grid>
      <StackPanel Grid.Row="1" x:Name="TimelinePanel" Spacing="4" Padding="18,8">
@@ -249,7 +249,7 @@
       </Grid>
      <ScrollViewer x:Name="EditToolbar" Grid.Row="4" Visibility="Collapsed" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"><StackPanel Orientation="Horizontal" Spacing="6" Padding="14,8"><Button Content="Add segment" Click="Add_Click"/><Button Content="Edit selected" Click="Edit_Click"/><Button Content="Delete selected" Click="DeleteSegments_Click"/><Button Content="Select all" Click="SelectAll_Click"/><Button Content="Deselect" Click="Deselect_Click"/><Button Content="Undo" Click="Undo_Click"/><Button Content="Redo" Click="Redo_Click"/></StackPanel></ScrollViewer>
     </Grid>
-    <Grid Grid.Column="2" x:Name="InspectorPanel" Background="{ThemeResource LayerFillColorAltBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
+    <Grid Grid.Column="2" Grid.RowSpan="2" x:Name="InspectorPanel" Background="{ThemeResource LayerFillColorAltBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
      <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
      <ScrollViewer><StackPanel Padding="18,22" Spacing="18">
       <StackPanel Spacing="8">
@@ -289,6 +289,12 @@
      </StackPanel></ScrollViewer>
      <Grid Grid.Row="1" Padding="14,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><Button Content="&#xE8B7;" FontFamily="Segoe Fluent Icons" Click="Reveal_Click" AutomationProperties.Name="Open project folder"/><Button Content="&#xE713;" FontFamily="Segoe Fluent Icons" Click="Settings_Click" HorizontalAlignment="Right" AutomationProperties.Name="Settings"/></Grid>
     </Grid>
+     <Grid Grid.Row="1" Grid.ColumnSpan="2" Padding="10,4" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+      <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+       <Button x:Name="EditorProjectLayoutButton" Style="{StaticResource CompactButton}" Padding="8,4" Click="ToggleGrid_Click" ToolTipService.ToolTip="Switch project list view" AutomationProperties.Name="Switch project list view"><FontIcon x:Name="EditorProjectLayoutIcon" FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE80A;"/></Button>
+       <Button x:Name="EditorProjectListButton" Style="{StaticResource CompactButton}" Padding="8,4" Click="ToggleLibrary_Click" ToolTipService.ToolTip="Show or hide project list" AutomationProperties.Name="Show or hide project list"><FontIcon x:Name="EditorProjectListIcon" FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE8F1;"/></Button>
+      </StackPanel>
+     </Grid>
    </Grid>
   </ContentControl>
    <Border x:Name="StatusFooter" Grid.Row="5" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="14,7">

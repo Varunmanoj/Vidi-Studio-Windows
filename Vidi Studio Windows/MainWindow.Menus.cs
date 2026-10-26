@@ -60,7 +60,7 @@ public sealed partial class MainWindow
                 Command("new-project"), Command("open-project"), Separator(), Command("export"), Separator(),
                 Command("open-editor-window"), Command("settings"), Command("close-window")),
             Menu("View",
-                Command("preview"), Command("toggle-timeline"), Separator(),
+                Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Separator(),
                 Command("show-projects"), Command("show-inspector"), Separator(),
                 Command("project-list"), Command("project-grid")),
             Menu("Playback",
@@ -97,6 +97,7 @@ public sealed partial class MainWindow
                 catch (OperationCanceledException) { }
                 catch (Exception ex) { await ShowError(ex); }
             });
+        AddShortcut(VirtualKey.F11, VirtualKeyModifiers.None, (_, _) => FullScreen_Click(this, new RoutedEventArgs()));
         Segments.SelectionChanged += (_, _) => UpdateDesktopMenuStates();
         Narration.Toggled += (_, _) => UpdateDesktopMenuStates();
         Follow.Toggled += (_, _) => UpdateDesktopMenuStates();
@@ -280,7 +281,7 @@ public sealed partial class MainWindow
             "show-projects" => LibraryPanel.Visibility == Visibility.Visible ? "Hide Project List" : "Show Project List",
             "show-inspector" => InspectorPanel.Visibility == Visibility.Visible ? "Hide Inspector" : "Show Inspector",
             "project-list" => "Project List View", "project-grid" => "Project Grid View",
-            "fullscreen" => "Full-Screen Video", "play" => "Play or Pause", "stop" => "Stop Video",
+            "fullscreen" => fullScreenVideo ? "Exit Full-Screen Video" : "Full-Screen Video", "play" => "Play or Pause", "stop" => "Stop Video",
             "back" => "Rewind 5 Seconds", "forward" => "Fast Forward 5 Seconds", "narration" => "Toggle Narration",
             "caption-cycle" => "Cycle Transcript Overlay", "caption-off" => "Turn Transcript Overlay Off",
             "caption-transcript" => "Show Transcript Overlay", "caption-ad-transcript" => "Show AD Transcript Overlay",
@@ -316,6 +317,7 @@ public sealed partial class MainWindow
     private IconElement DesktopCommandIcon(string id)
     {
         if (id == "play") return new FontIcon { Glyph = IsVideoPlaying() ? "\uE769" : "\uE768" };
+        if (id == "fullscreen") return new FontIcon { Glyph = fullScreenVideo ? "\uE73F" : "\uE740" };
         if (id is "synthesize-tts" or "Narration" && Model.IsSynthesizingNarration)
             return Views.MenuIcons.Create("Preparing summary…");
         var checkedItem = id switch

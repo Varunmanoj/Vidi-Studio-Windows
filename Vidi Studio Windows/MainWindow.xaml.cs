@@ -47,6 +47,21 @@ public sealed partial class MainWindow : Window
     private readonly HashSet<Segment> activeSegmentRows = new();
     private bool timelineScrubbing;
     private bool playheadDragging;
+    private bool fullScreenVideo;
+    private Microsoft.UI.Windowing.OverlappedPresenter? windowedPresenter;
+    private bool windowedPresenterMaximized;
+    private Grid? previewFullScreenParent;
+    private int previewFullScreenIndex;
+    private int previewFullScreenRow;
+    private int previewFullScreenRowSpan;
+    private int previewFullScreenColumn;
+    private int previewFullScreenColumnSpan;
+    private double previewFullScreenHeight;
+    private HorizontalAlignment previewFullScreenHorizontalAlignment;
+    private VerticalAlignment previewFullScreenVerticalAlignment;
+    private Visibility previewFullScreenVisibility;
+    private readonly Dictionary<UIElement, Visibility> fullScreenHidden = new();
+    private Button? fullScreenExitButton;
     private Views.SettingsDialog? openSettings;
     private double Position => Model.Project?.IsYouTube == true ? youtubePosition : video.PlaybackSession.Position.TotalSeconds;
     public MainWindow(string? folder = null)
@@ -63,6 +78,15 @@ public sealed partial class MainWindow : Window
         Views.WindowAppearance.ApplyIcon(this);
         App.ThemeChanged += ApplyThemeFromApp;
         BuildMenus();
+        UpdateEditorProjectButtons();
+        var fullScreenEscape = new KeyboardAccelerator { Key = VirtualKey.Escape };
+        fullScreenEscape.Invoked += (_, args) =>
+        {
+            if (!fullScreenVideo) return;
+            ExitFullScreenVideo();
+            args.Handled = true;
+        };
+        Root.KeyboardAccelerators.Add(fullScreenEscape);
         video.PlaybackSession.PlaybackStateChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdatePlaybackControls);
         speech.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(ClearSegmentPreview);
         InitializePresentation();
@@ -82,6 +106,7 @@ public sealed partial class MainWindow : Window
         Activated += (_, _) => { if (ready) RefreshProjectIntegrity(); };
         Closed += (_, _) =>
         {
+            if (fullScreenVideo) { try { ExitFullScreenVideo(); } catch (Exception ex) { Model.Engine.Log(ex.ToString()); } }
             App.ThemeChanged -= ApplyThemeFromApp;
             ActiveExports.Detach();
             Model.PropertyChanged -= UpdateStatusFooter;

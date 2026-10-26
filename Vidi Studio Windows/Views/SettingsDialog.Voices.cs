@@ -92,20 +92,6 @@ public sealed partial class SettingsDialog
                 : $"{installed.Count} Piper voice{(installed.Count == 1 ? "" : "s")} downloaded and ready to use.";
     }
 
-    private static List<Voice> FilterWithGroupHeadings(IEnumerable<Voice> source, string text)
-    {
-        var result = new List<Voice>();
-        Voice? heading = null;
-        foreach (var item in source)
-        {
-            if (item.Group == VoiceGroups.Heading) { heading = item; continue; }
-            if (!item.ToString().Contains(text, StringComparison.CurrentCultureIgnoreCase)) continue;
-            if (heading != null) { result.Add(heading); heading = null; }
-            result.Add(item);
-        }
-        return result;
-    }
-
     private static Voice Heading(string id, string text) => new("heading:" + id, text, "", "", false, text, VoiceGroups.Heading);
 
     /// <summary>A copy of the draft for transient engine configs.</summary>

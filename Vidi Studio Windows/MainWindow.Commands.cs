@@ -105,12 +105,150 @@ public sealed partial class MainWindow
         ProjectGrid.Visibility = grid ? Visibility.Visible : Visibility.Collapsed;
         ProjectList.Visibility = grid ? Visibility.Collapsed : Visibility.Visible;
         Model.Settings.Set("projectPresentation", grid ? "grid" : "list"); Model.Settings.Save();
+        UpdateEditorProjectButtons();
     }
     private void ToggleLibrary_Click(object sender, RoutedEventArgs e)
-    { LibraryPanel.Visibility = LibraryPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible; LibraryColumn.Width = new GridLength(LibraryPanel.Visibility == Visibility.Visible ? 240 : 0); }
+    {
+        LibraryPanel.Visibility = LibraryPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+        LibraryColumn.Width = new GridLength(LibraryPanel.Visibility == Visibility.Visible ? 240 : 0);
+        UpdateEditorProjectButtons();
+    }
+    private void UpdateEditorProjectButtons()
+    {
+        if (EditorProjectLayoutButton == null || EditorProjectListButton == null) return;
+        var grid = ProjectGrid.Visibility == Visibility.Visible;
+        EditorProjectLayoutIcon.Glyph = grid ? "\uE8FD" : "\uE80A";
+        var layoutLabel = grid ? "Switch project list to list view" : "Switch project list to grid view";
+        ToolTipService.SetToolTip(EditorProjectLayoutButton, layoutLabel);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditorProjectLayoutButton, layoutLabel);
+        var visible = LibraryPanel.Visibility == Visibility.Visible;
+        var listLabel = visible ? "Hide project list" : "Show project list";
+        ToolTipService.SetToolTip(EditorProjectListButton, listLabel);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditorProjectListButton, listLabel);
+        EditorProjectListIcon.Glyph = "\uE8F1";
+    }
     private void ToggleInspector_Click(object sender, RoutedEventArgs e)
     { InspectorPanel.Visibility = InspectorPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible; InspectorColumn.Width = new GridLength(InspectorPanel.Visibility == Visibility.Visible ? 310 : 0); }
-    private void FullScreen_Click(object sender, RoutedEventArgs e) { if (Model.Project?.IsYouTube != true) Player.IsFullWindow = !Player.IsFullWindow; }
+    private void FullScreen_Click(object sender, RoutedEventArgs e)
+    {
+        if (Model.Project?.IsYouTube == true) return;
+        if (fullScreenVideo) ExitFullScreenVideo();
+        else EnterFullScreenVideo();
+    }
+
+    /// <summary>
+    /// WinUI 3 does not implement MediaPlayerElement.IsFullWindow (it is a UWP-only
+    /// feature), so full-screen video is implemented by moving the preview surface
+    /// to the window root, hiding the editor chrome, and switching the AppWindow
+    /// presenter to full screen.
+    /// </summary>
+    private void EnterFullScreenVideo()
+    {
+        if (fullScreenVideo || PreviewPanel.Parent is not Grid parent) return;
+        previewFullScreenParent = parent;
+        previewFullScreenIndex = parent.Children.IndexOf(PreviewPanel);
+        previewFullScreenRow = Grid.GetRow(PreviewPanel);
+        previewFullScreenRowSpan = Grid.GetRowSpan(PreviewPanel);
+        previewFullScreenColumn = Grid.GetColumn(PreviewPanel);
+        previewFullScreenColumnSpan = Grid.GetColumnSpan(PreviewPanel);
+        previewFullScreenHeight = PreviewPanel.Height;
+        previewFullScreenHorizontalAlignment = PreviewPanel.HorizontalAlignment;
+        previewFullScreenVerticalAlignment = PreviewPanel.VerticalAlignment;
+        previewFullScreenVisibility = PreviewPanel.Visibility;
+
+        fullScreenHidden.Clear();
+        foreach (var child in Root.Children.OfType<UIElement>().ToList())
+        {
+            if (ReferenceEquals(child, PreviewPanel)) continue;
+            fullScreenHidden[child] = child.Visibility;
+            child.Visibility = Visibility.Collapsed;
+        }
+
+        parent.Children.Remove(PreviewPanel);
+        Grid.SetRow(PreviewPanel, 0);
+        Grid.SetRowSpan(PreviewPanel, 6);
+        Grid.SetColumn(PreviewPanel, 0);
+        Grid.SetColumnSpan(PreviewPanel, 1);
+        PreviewPanel.Height = double.NaN;
+        PreviewPanel.HorizontalAlignment = HorizontalAlignment.Stretch;
+        PreviewPanel.VerticalAlignment = VerticalAlignment.Stretch;
+        PreviewPanel.Visibility = Visibility.Visible;
+        Root.Children.Add(PreviewPanel);
+        Canvas.SetZIndex(PreviewPanel, 1000);
+
+        fullScreenExitButton = new Button
+        {
+            Content = new FontIcon { Glyph = "\uE73F", FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 16 },
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 20, 20, 0),
+            Padding = new Thickness(10, 8, 10, 8),
+            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(170, 0, 0, 0)),
+            Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(6)
+        };
+        ToolTipService.SetToolTip(fullScreenExitButton, "Exit full screen (Esc)");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(fullScreenExitButton, "Exit full-screen video");
+        fullScreenExitButton.Click += (_, _) => ExitFullScreenVideo();
+        PreviewPanel.Children.Add(fullScreenExitButton);
+
+        fullScreenVideo = true;
+        windowedPresenterMaximized = AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter { State: Microsoft.UI.Windowing.OverlappedPresenterState.Maximized };
+        windowedPresenter = AppWindow.Presenter as Microsoft.UI.Windowing.OverlappedPresenter;
+        try { AppWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen); }
+        catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
+        Player.Focus(FocusState.Programmatic);
+        UpdateMenuBar(true);
+    }
+
+    private void ExitFullScreenVideo()
+    {
+        if (!fullScreenVideo) return;
+        fullScreenVideo = false;
+        if (fullScreenExitButton != null)
+        {
+            PreviewPanel.Children.Remove(fullScreenExitButton);
+            fullScreenExitButton = null;
+        }
+        Root.Children.Remove(PreviewPanel);
+        if (previewFullScreenParent is { } parent)
+        {
+            Grid.SetRow(PreviewPanel, previewFullScreenRow);
+            Grid.SetRowSpan(PreviewPanel, previewFullScreenRowSpan);
+            Grid.SetColumn(PreviewPanel, previewFullScreenColumn);
+            Grid.SetColumnSpan(PreviewPanel, previewFullScreenColumnSpan);
+            PreviewPanel.Height = previewFullScreenHeight;
+            PreviewPanel.HorizontalAlignment = previewFullScreenHorizontalAlignment;
+            PreviewPanel.VerticalAlignment = previewFullScreenVerticalAlignment;
+            PreviewPanel.Visibility = previewFullScreenVisibility;
+            parent.Children.Insert(Math.Clamp(previewFullScreenIndex, 0, parent.Children.Count), PreviewPanel);
+        }
+        foreach (var pair in fullScreenHidden) pair.Key.Visibility = pair.Value;
+        fullScreenHidden.Clear();
+        if (windowedPresenter is { } presenter)
+        {
+            try
+            {
+                AppWindow.SetPresenter(presenter);
+                if (windowedPresenterMaximized) presenter.Maximize();
+            }
+            catch (Exception ex)
+            {
+                Model.Engine.Log(ex.ToString());
+                try { AppWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.Default); }
+                catch (Exception fallback) { Model.Engine.Log(fallback.ToString()); }
+            }
+            windowedPresenter = null;
+        }
+        else
+        {
+            try { AppWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.Default); }
+            catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
+        }
+        Player.Focus(FocusState.Programmatic);
+        UpdateMenuBar(true);
+    }
     private void ProjectContext_Requested(UIElement sender, ContextRequestedEventArgs e)
     {
         if (!Model.Idle) return;

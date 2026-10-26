@@ -161,7 +161,6 @@ public sealed partial class SettingsDialog : Window
     private sealed record PlaybackOption(string Id, string Label) { public override string ToString() => Label; }
     private readonly ComboBox mode = new() { Header = "Speech engine", HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly VoiceComboBox voice = new() { Header = "Installed voice", HorizontalAlignment = HorizontalAlignment.Stretch };
-    private readonly TextBox search = new() { Header = "Filter voices" };
     private readonly TextBox sapiHost = new() { Header = "Optional SAPI host executable" };
     private readonly StackPanel localSpeechControls = new() { Spacing = 14 };
     private readonly StackPanel storageAdvancedControls = new() { Spacing = 12 };
@@ -454,7 +453,7 @@ public sealed partial class SettingsDialog : Window
     }
     private void BuildNarration(StackPanel panel)
     {
-        foreach (var element in new FrameworkElement[] { mode, voice, search, sapiHost, localSpeechControls }) if (element.Parent is Panel parent) parent.Children.Remove(element);
+        foreach (var element in new FrameworkElement[] { mode, voice, sapiHost, localSpeechControls }) if (element.Parent is Panel parent) parent.Children.Remove(element);
         localSpeechControls.Children.Clear();
         BuildVoiceEngineControls();
         UpdateNarrationEngineOptions();
@@ -489,10 +488,9 @@ public sealed partial class SettingsDialog : Window
                 else { draft[VoiceKey(provider)] = selected.Id; draft["systemVoice"] = selected.Id; }
                 UpdateSampleControls();
             };
-            search.TextChanged += (_, _) => FilterVoices();
         }
         panel.Children.Add(mode); panel.Children.Add(piperControls);
-        panel.Children.Add(search); panel.Children.Add(voice); panel.Children.Add(sapiHost);
+        panel.Children.Add(voice); panel.Children.Add(sapiHost);
         AddPlaybackChoice(panel);
         panel.Children.Add(new TextBlock { Text = "The selected engine generates saved narration audio; Gemini Voices stays selected in either playback mode.", TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(new TextBlock { Text = "Speaking with an on-device voice uses the selected Windows OneCore, SAPI 5, or Piper voice. With Gemini Voices selected, the default Windows voice speaks instead.", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
@@ -568,7 +566,7 @@ public sealed partial class SettingsDialog : Window
         var provider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
         var key = provider == "gemini" ? "geminiVoice" : VoiceKey(provider);
         var selected = SettingsStore.GetString(draft[key], provider == "gemini" ? "Kore" : "").Trim();
-        var filtered = provider == "gemini" ? voices.ToList() : FilterWithGroupHeadings(voices, search.Text);
+        var filtered = voices;
         voice.ItemsSource = filtered;
         var chosen = filtered.FirstOrDefault(v => v.Available && string.Equals(v.Id, selected, StringComparison.OrdinalIgnoreCase))
             ?? (provider == "gemini" ? filtered.FirstOrDefault(v => v.Id == "Kore") ?? filtered.FirstOrDefault() : filtered.FirstOrDefault(v => v.Available && v.Group != VoiceGroups.Heading));
@@ -590,7 +588,6 @@ public sealed partial class SettingsDialog : Window
             "piper" => "Downloaded Piper voice",
             _ => "Windows OneCore voice"
         };
-        search.Visibility = provider == "gemini" ? Visibility.Collapsed : Visibility.Visible;
         localSpeechControls.Visibility = provider == "gemini" ? Visibility.Collapsed : Visibility.Visible;
         sapiHost.Visibility = provider == "sapi5" && DeveloperModeEnabled ? Visibility.Visible : Visibility.Collapsed;
         UpdateVoiceEngineVisibility(provider);

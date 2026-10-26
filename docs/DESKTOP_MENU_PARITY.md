@@ -3,7 +3,7 @@
 Mac is the reference layout. Windows' shared menus follow this order:
 
 - **File:** New Project, Open Project Folder, Export. Native Windows additions: Open Editor in New Window, Settings, Close Window.
-- **View:** Preview, Timeline; Project List visibility, Inspector visibility; Project List View, Project Grid View.
+- **View:** Preview, Full-Screen Video, Timeline; Project List visibility, Inspector visibility; Project List View, Project Grid View.
 - **Playback:** Preview, Full-Screen Video, Play/Pause, Stop Video, Rewind/Fast Forward 5 Seconds, Toggle Narration.
   - **Transcript Overlay:** Cycle; Off, Transcript, AD Transcript.
   - **Summary Reading:** Play/Resume, Pause, Stop; Previous/Next Sentence; Previous/Next Paragraph; Read from Start, Read from Selection, Read Selected Text.
@@ -17,7 +17,7 @@ Mac is the reference layout. Windows' shared menus follow this order:
   - Delete Current Page; Show Project in Finder/File Explorer.
 - **Help:** VidiStudio Help; About is here on Windows and in the native app menu on Mac.
 
-The source declarations, not this summary, determine current labels, separators, and actions. Mac retains OS-owned app, standard Edit, and Window menus; Windows retains its system window menu/title-bar controls. Windows uses F1 for Help. Windows full-screen video is available for local media; the YouTube player owns its own full-screen action. Windows rendered-summary selection is paragraph based; Mac additionally supports a zero-length reading anchor.
+The source declarations, not this summary, determine current labels, separators, and actions. Mac retains OS-owned app, standard Edit, and Window menus; Windows retains its system window menu/title-bar controls. Windows uses F1 for Help. Windows full-screen video is available for local media from both View and Playback, with Ctrl+Alt+F or F11; the YouTube player owns its own full-screen action. The macOS View/Playback menus should mirror both entries when the combined workspace is available. Windows rendered-summary selection is paragraph based; Mac additionally supports a zero-length reading anchor.
 
 ## Shortcuts
 
@@ -29,6 +29,7 @@ Translate Command to Ctrl and Option to Alt. Standard text editing retains nativ
 | Delete selected segments | Command+Control+Delete | Ctrl+Shift+Delete |
 | Delete all narration | Command+Option+Delete | Ctrl+Alt+Backspace (Ctrl+Alt+Delete is reserved) |
 | Help | Command+Option+/ | F1 |
+| Full-screen video | Command+Option+F | Ctrl+Alt+F; F11 is an additional Windows shortcut |
 | Previous / next summary sentence | Command+Shift+[ / ] | Ctrl+Shift+[ / ] |
 | Previous / next summary paragraph | Command+Option+[ / ] | Ctrl+Alt+[ / ] |
 

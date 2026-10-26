@@ -304,6 +304,7 @@ public sealed partial class MainWindow
         GallerySearchHost.Visibility = Visibility.Collapsed;
         GalleryImport.Visibility = Visibility.Collapsed;
         Title = (Model.Project?.Name ?? "Project") + " — Vidi Studio";
+        UpdateEditorProjectButtons();
     }
     private void GalleryFilter_Changed(object sender, SelectionChangedEventArgs e) { if (galleryReady) FilterGallery(); }
     private void GallerySearch_Changed(object sender, TextChangedEventArgs e) { if (galleryReady) FilterGallery(); }

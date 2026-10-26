@@ -292,6 +292,27 @@ public sealed partial class MainWindow
             ToggleGrid_Click(this, new RoutedEventArgs());
             ToggleLibrary_Click(this, new RoutedEventArgs());
             ToggleLibrary_Click(this, new RoutedEventArgs());
+            var expectedGrid = ProjectGrid.Visibility;
+            ToggleGrid_Click(this, new RoutedEventArgs());
+            if (ProjectGrid.Visibility == expectedGrid ||
+                EditorProjectLayoutIcon.Glyph != (ProjectGrid.Visibility == Visibility.Visible ? "\uE8FD" : "\uE80A"))
+                throw new InvalidOperationException("The bottom-left project layout button did not switch grid and list views.");
+            ToggleGrid_Click(this, new RoutedEventArgs());
+            var expectedLibrary = LibraryPanel.Visibility;
+            ToggleLibrary_Click(this, new RoutedEventArgs());
+            if (LibraryPanel.Visibility == expectedLibrary || EditorProjectListButton.Visibility != Visibility.Visible)
+                throw new InvalidOperationException("The bottom-left project list button did not hide the project list while staying available.");
+            ToggleLibrary_Click(this, new RoutedEventArgs());
+            var titleBarVisibility = AppTitleBar.Visibility;
+            FullScreen_Click(this, new RoutedEventArgs());
+            if (!fullScreenVideo || !ReferenceEquals(PreviewPanel.Parent, Root) || AppTitleBar.Visibility != Visibility.Collapsed ||
+                MainMenu.Visibility != Visibility.Collapsed ||
+                AppWindow.Presenter.Kind != Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen)
+                throw new InvalidOperationException("Full-screen video did not promote the preview, hide the editor chrome, or switch the window presenter.");
+            FullScreen_Click(this, new RoutedEventArgs());
+            if (fullScreenVideo || ReferenceEquals(PreviewPanel.Parent, Root) || AppTitleBar.Visibility != titleBarVisibility ||
+                AppWindow.Presenter.Kind == Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen)
+                throw new InvalidOperationException("Exiting full-screen video did not restore the editor layout and window presenter.");
             ToggleInspector_Click(this, new RoutedEventArgs());
             ToggleInspector_Click(this, new RoutedEventArgs());
             var settings = new Views.SettingsDialog(Model, this);

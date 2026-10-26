@@ -27,7 +27,22 @@ def atomic_json(path, value):
     with tempfile.NamedTemporaryFile('w', encoding='utf-8', dir=path.parent, delete=False) as f:
         json.dump(value, f, ensure_ascii=False, indent=2, allow_nan=False)
         temp = f.name
-    os.replace(temp, path)
+    # The desktop app polls project.json for integrity and gallery updates. A
+    # reader can briefly hold the file open on Windows, where os.replace fails
+    # with PermissionError instead of retrying like POSIX rename. Retry briefly
+    # so an in-flight read never turns a completed change into a save failure.
+    for attempt in range(20):
+        try:
+            os.replace(temp, path)
+            return
+        except PermissionError:
+            if attempt == 19:
+                try:
+                    os.unlink(temp)
+                except OSError:
+                    pass
+                raise
+            time.sleep(0.05)
 
 
 def config_path():

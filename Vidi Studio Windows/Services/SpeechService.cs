@@ -1,12 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Vidi_Studio_Windows.Services;
+
+/// <summary>One sentence rendered by a single persistent Piper batch.</summary>
+public sealed record SpeechBatchItem(string Text, string Output);
 
 public sealed record Voice(string Id, string Name, string Language, string Gender, bool Available = true, string Note = "", string Group = "")
 {
@@ -71,6 +75,29 @@ public sealed class SpeechService
             }, cancellation);
         }
         return RequestAsync(host, new { command = "synthesize", engine, voice, text, output, rate }, cancellation);
+    }
+
+    /// <summary>
+    /// Renders several Piper lines in one process. Piper loads its voice model
+    /// once and stays alive for the whole batch, which removes the model-load
+    /// pause between summary sentences (especially under x64 emulation on ARM64).
+    /// </summary>
+    public static Task SynthesizeBatchAsync(string host, string voice, IReadOnlyList<SpeechBatchItem> items,
+        double rate, CancellationToken cancellation)
+    {
+        if (items.Count == 0) return Task.CompletedTask;
+        var voiceId = (voice ?? "").Trim();
+        if (voiceId.Length == 0 || !PiperService.IsVoiceDownloaded(voiceId))
+            throw new SpeechFailedException("The selected Piper voice is not downloaded. Download it in Settings, then try again.");
+        return RequestAsync(host, new
+        {
+            command = "synthesize-batch", engine = "piper", voice = voiceId, rate,
+            piperPath = PiperService.RuntimePath,
+            piperModel = PiperService.ModelPath(voiceId),
+            piperConfig = PiperService.ConfigPath(voiceId),
+            piperSpeaker = 0,
+            items = items.Select(item => new { text = item.Text, output = item.Output }).ToArray()
+        }, cancellation);
     }
 
     public static Task<List<Voice>> VoicesAsync(string host, string engine, CancellationToken cancellation = default)

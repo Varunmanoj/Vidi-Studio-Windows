@@ -272,6 +272,14 @@ public sealed partial class MainWindow
             if (GalleryList.ContainerFromIndex(0) is not Microsoft.UI.Xaml.Controls.ListViewItem tableRow ||
                 tableRow.ActualHeight < 30)
                 throw new InvalidOperationException("All Projects table row was not rendered.");
+            var cachedGalleryProject = Model.Projects[0];
+            Model.RefreshProjectIntegrity();
+            if (Model.ReloadIfProjectsChanged(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", _ => "all" }) ||
+                Model.Projects.Count != 1 || !ReferenceEquals(cachedGalleryProject, Model.Projects[0]))
+                throw new InvalidOperationException("An unchanged gallery was rebuilt while the app remained open.");
+            Model.Reload();
+            if (Model.Projects.Count != 1 || !ReferenceEquals(cachedGalleryProject, Model.Projects[0]))
+                throw new InvalidOperationException("A repeated gallery reload replaced an unchanged project instance.");
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "gallery-table.png"));
             GalleryLayout_Click(this, new RoutedEventArgs());
             Model.Open(folder);

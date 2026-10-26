@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,7 +19,7 @@ public enum SummaryReadbackState { Stopped, Preparing, Playing, Paused }
 /// <summary>One speakable summary sentence and the paragraph (markdown block) it belongs to.</summary>
 public sealed record SummarySpeechSentence(string Text, int Paragraph);
 
-/// <summary>Uses the selected provider for summary playback; temporary audio never enters projects.</summary>
+/// <summary>Uses the selected provider for summary playback; temporary audio and its local cache never enter projects.</summary>
 public sealed class SummaryReadback : IDisposable
 {
     private readonly MediaPlayer player = new();
@@ -191,6 +194,47 @@ public sealed class SummaryReadback : IDisposable
             var configData = settings.Data.DeepClone().AsObject();
             configData["ttsMode"] = mode;
             await File.WriteAllTextAsync(config, configData.ToJsonString(Models.Json.Options), token);
+
+            // Piper renders the whole run in one long-lived process so the voice
+            // model is loaded once. Cached sentences are used immediately and the
+            // batch only renders the rest.
+            string[]? piperPaths = null;
+            bool[]? piperCached = null;
+            string[]? piperKeys = null;
+            Task? piperBatch = null;
+            if (mode == "piper")
+            {
+                var piperVoice = settings.Get("piperVoice", settings.Get("systemVoice"));
+                var piperRate = settings.Number("systemSpeechRate");
+                PrepareReadbackCache();
+                piperPaths = new string[sentences.Count];
+                piperCached = new bool[sentences.Count];
+                piperKeys = new string[sentences.Count];
+                var batch = new List<SpeechBatchItem>();
+                for (var index = startIndex; index < sentences.Count; index++)
+                {
+                    var key = ReadbackCacheKey(mode, piperVoice, piperRate, sentences[index].Text);
+                    piperKeys[index] = key;
+                    var cached = ReadbackCachePath(key);
+                    if (File.Exists(cached) && new FileInfo(cached).Length > 64)
+                    {
+                        piperPaths[index] = cached;
+                        piperCached[index] = true;
+                    }
+                    else
+                    {
+                        var output = Path.Combine(folder, index.ToString(CultureInfo.InvariantCulture) + ".wav");
+                        piperPaths[index] = output;
+                        batch.Add(new SpeechBatchItem(sentences[index].Text, output));
+                    }
+                }
+                if (batch.Count > 0)
+                {
+                    var host = settings.Get("sapiHostPath"); if (string.IsNullOrWhiteSpace(host)) host = engine.SpeechHost;
+                    piperBatch = SpeechService.SynthesizeBatchAsync(host, piperVoice, batch, piperRate, token);
+                }
+            }
+
             for (var index = startIndex; index < sentences.Count; index++)
             {
                 token.ThrowIfCancellationRequested();
@@ -198,7 +242,14 @@ public sealed class SummaryReadback : IDisposable
                 var path = Path.Combine(folder, Guid.NewGuid() + ".wav");
                 MediaSource audioSource;
                 MediaPlaybackItem? coreItem = null;
-                if (mode is "windows-core" or "system")
+                if (mode == "piper")
+                {
+                    path = piperPaths![index];
+                    if (!piperCached![index])
+                        await WaitForReadbackAudioAsync(path, piperBatch, token);
+                    audioSource = MediaSource.CreateFromUri(new Uri(path));
+                }
+                else if (mode is "windows-core" or "system")
                 {
                     using var synthesizer = new SpeechSynthesizer();
                     var voiceId = settings.Get("systemVoice");
@@ -240,11 +291,11 @@ public sealed class SummaryReadback : IDisposable
                 else
                 {
                     var host = settings.Get("sapiHostPath"); if (string.IsNullOrWhiteSpace(host)) host = engine.SpeechHost;
-                    if (mode is "piper" or "sapi5")
+                    if (mode == "sapi5")
                     {
-                        // Piper and SAPI 5 speak through the same speech host as live narration,
+                        // SAPI 5 speaks through the same speech host as live narration,
                         // so summary playback does not depend on an extra engine process.
-                        var voice = mode == "piper" ? settings.Get("piperVoice", settings.Get("systemVoice")) : settings.Get("systemVoice");
+                        var voice = settings.Get("systemVoice");
                         await SpeechService.SynthesizeAsync(host, mode, voice, sentence, path, settings.Number("systemSpeechRate"), token);
                         audioSource = MediaSource.CreateFromUri(new Uri(path));
                     }
@@ -269,19 +320,135 @@ public sealed class SummaryReadback : IDisposable
                     player.Play();
                     await finished.Task;
                 }
-                finally { player.MediaEnded -= Ended; player.MediaFailed -= Failed; player.Source = null; audioSource.Dispose(); }
-                if (ReferenceEquals(cancellation, run)) { currentSentence = ""; currentIndex = -1; SetState(SummaryReadbackState.Preparing); }
-                File.Delete(path);
+                finally
+                {
+                    player.MediaEnded -= Ended; player.MediaFailed -= Failed; player.Source = null; audioSource.Dispose();
+                    if (mode != "piper") File.Delete(path);
+                }
+                if (mode == "piper" && !piperCached![index] && File.Exists(path))
+                    await CacheReadbackAudioAsync(path, ReadbackCachePath(piperKeys![index]), token);
             }
         }
         finally
         {
             if (ownsPlayback) SentenceChanged?.Invoke("");
-            try { Directory.Delete(folder, true); } catch (IOException) { }
+            try { run.Cancel(); } catch (ObjectDisposedException) { }
+            try { Directory.Delete(folder, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
             if (cancellation == run) { cancellation = null; currentIndex = -1; active = source; SetState(SummaryReadbackState.Stopped); }
             run.Dispose();
             if (ownsPlayback) playbackGate.Release();
         }
+    }
+
+    private const int MaxCachedReadbackFiles = 400;
+    private readonly object readbackCacheGate = new();
+    private bool readbackCacheReady;
+    private static string ReadbackCacheDirectory => Path.Combine(SettingsStore.DirectoryPath, "readback-cache");
+    private static string ReadbackCachePath(string key) => Path.Combine(ReadbackCacheDirectory, key + ".wav");
+
+    private static string ReadbackCacheKey(string mode, string voice, double rate, string text)
+    {
+        var signature = "";
+        if (mode == "piper")
+        {
+            try
+            {
+                var model = new FileInfo(PiperService.ModelPath(voice));
+                if (model.Exists) signature = $"{model.Length}:{model.LastWriteTimeUtc.Ticks}";
+            }
+            catch (IOException) { }
+        }
+        var material = $"{mode}|{voice}|{signature}|{(rate.ToString("0.###", CultureInfo.InvariantCulture))}|{text}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material)));
+    }
+
+    /// <summary>Keeps the most recent rendered sentences so replaying a summary is instant.</summary>
+    private void PrepareReadbackCache()
+    {
+        lock (readbackCacheGate)
+        {
+            if (readbackCacheReady) return;
+            readbackCacheReady = true;
+            try
+            {
+                Directory.CreateDirectory(ReadbackCacheDirectory);
+                var files = new DirectoryInfo(ReadbackCacheDirectory).GetFiles("*.wav")
+                    .OrderByDescending(file => file.LastWriteTimeUtc).ToArray();
+                foreach (var stale in files.Skip(MaxCachedReadbackFiles))
+                {
+                    try { stale.Delete(); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                }
+                // Playback stopped mid-batch can leave a temporary folder behind
+                // when the killed Piper process still had a file open. Remove old
+                // abandoned folders the next time summary playback starts.
+                var cutoff = DateTime.UtcNow.AddDays(-1);
+                foreach (var folder in Directory.EnumerateDirectories(SettingsStore.DirectoryPath, "readback-*"))
+                {
+                    try
+                    {
+                        if (Directory.GetLastWriteTimeUtc(folder) < cutoff) Directory.Delete(folder, true);
+                    }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                }
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    private static async Task CacheReadbackAudioAsync(string source, string destination, CancellationToken token)
+    {
+        string? temporary = null;
+        try
+        {
+            if (File.Exists(destination)) return;
+            Directory.CreateDirectory(ReadbackCacheDirectory);
+            temporary = destination + "." + Guid.NewGuid().ToString("N") + ".part";
+            await Task.Run(() => File.Copy(source, temporary, true), token);
+            token.ThrowIfCancellationRequested();
+            File.Move(temporary, destination, true);
+        }
+        catch (OperationCanceledException) { }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        finally
+        {
+            if (temporary != null)
+            {
+                try { if (File.Exists(temporary)) File.Delete(temporary); } catch (IOException) { }
+            }
+        }
+    }
+
+    /// <summary>Waits for the batch process to finish this sentence's WAV and marker.</summary>
+    private static async Task WaitForReadbackAudioAsync(string path, Task? batch, CancellationToken token)
+    {
+        var marker = path + ".done";
+        while (!File.Exists(marker))
+        {
+            token.ThrowIfCancellationRequested();
+            if (batch is { IsCompleted: true })
+            {
+                await batch;
+                if (File.Exists(marker)) break;
+                throw new IOException("The summary audio was not created. Try again or choose another voice.");
+            }
+            await Task.Delay(20, token);
+        }
+        var deadline = Environment.TickCount64 + 5000;
+        while (Environment.TickCount64 < deadline)
+        {
+            try
+            {
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                if (stream.Length > 64) return;
+            }
+            catch (IOException) { }
+            token.ThrowIfCancellationRequested();
+            await Task.Delay(10, token);
+        }
+        throw new IOException("The summary audio could not be read. Try again or choose another voice.");
     }
 
     private static List<SummarySpeechSentence> Parse(string text)

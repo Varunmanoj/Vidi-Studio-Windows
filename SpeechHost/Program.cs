@@ -59,6 +59,19 @@ internal static class Program
                 }
                 Console.WriteLine("{\"complete\":true}");
             }
+            else if (request.Command == "synthesize-batch")
+            {
+                if (request.Engine != "piper") throw new ArgumentException("Batch synthesis is only available for Piper.");
+                if (request.Items == null || request.Items.Count == 0) throw new ArgumentException("Batch items are required.");
+                foreach (var item in request.Items)
+                {
+                    if (string.IsNullOrWhiteSpace(item.Text) || string.IsNullOrWhiteSpace(item.Output))
+                        throw new ArgumentException("Text and output are required for every batch item.");
+                    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(item.Output))!);
+                }
+                PiperBatch(request);
+                Console.WriteLine("{\"complete\":true}");
+            }
             else throw new ArgumentException("Unknown speech command.");
             return 0;
         }
@@ -177,6 +190,7 @@ internal static class Program
     }
 
     private const int PiperTimeoutMs = 180_000;
+    private const int PiperBatchTimeoutMs = 30 * 60_000;
 
     /// <summary>
     /// Runs the bundled Piper engine. Piper receives the text on stdin and writes a mono
@@ -236,7 +250,102 @@ internal static class Program
         _ = output.GetAwaiter().GetResult();
     }
 
+    /// <summary>
+    /// Renders a list of lines with one Piper process. Piper's JSON input mode
+    /// keeps the voice model loaded, so later sentences are ready without the
+    /// process-start and model-load pause that single-sentence synthesis costs.
+    /// Each finished output gets a .done marker so the app can play the first
+    /// sentence as soon as it is written.
+    /// </summary>
+    private static void PiperBatch(Request r)
+    {
+        if (string.IsNullOrWhiteSpace(r.PiperPath) || !File.Exists(r.PiperPath))
+            throw new InvalidOperationException("The bundled Piper speech engine is missing. Reinstall Vidi Studio or run script\\fetch-piper.ps1, then build again.");
+        if (string.IsNullOrWhiteSpace(r.PiperModel) || !File.Exists(r.PiperModel))
+            throw new InvalidOperationException("The selected Piper voice is not downloaded. Download it in Settings, then try again.");
+        if (string.IsNullOrWhiteSpace(r.PiperConfig) || !File.Exists(r.PiperConfig))
+            throw new InvalidOperationException("The selected Piper voice is incomplete. Download it again in Settings.");
+        var rate = Math.Clamp(r.Rate, .5, 2);
+        var start = new ProcessStartInfo(r.PiperPath)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardInputEncoding = new UTF8Encoding(false),
+            StandardOutputEncoding = new UTF8Encoding(false),
+            WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(r.PiperPath))!
+        };
+        start.ArgumentList.Add("--model");
+        start.ArgumentList.Add(r.PiperModel);
+        start.ArgumentList.Add("--config");
+        start.ArgumentList.Add(r.PiperConfig);
+        start.ArgumentList.Add("--length_scale");
+        start.ArgumentList.Add((1 / rate).ToString("0.####", CultureInfo.InvariantCulture));
+        start.ArgumentList.Add("--json-input");
+        if (r.PiperSpeaker > 0)
+        {
+            start.ArgumentList.Add("--speaker");
+            start.ArgumentList.Add(r.PiperSpeaker.ToString(CultureInfo.InvariantCulture));
+        }
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("Piper did not start.");
+        var error = process.StandardError.ReadToEndAsync();
+        using (var input = process.StandardInput)
+        {
+            foreach (var item in r.Items!)
+            {
+                input.WriteLine(JsonSerializer.Serialize(new { text = item.Text, output_file = item.Output }));
+            }
+        }
+        var completed = new Task(() =>
+        {
+            while (process.StandardOutput.ReadLine() is { } line)
+            {
+                var output = line.Trim();
+                if (output.Length == 0) continue;
+                // Piper prints the path before its output stream closes; wait
+                // until the file is readable before telling the app it is ready.
+                WaitForAudioFile(output);
+                try { File.WriteAllText(output + ".done", "1"); }
+                catch (IOException) { }
+            }
+        });
+        completed.Start();
+        if (!process.WaitForExit(PiperBatchTimeoutMs))
+        {
+            try { process.Kill(true); } catch (InvalidOperationException) { }
+            throw new TimeoutException("Piper did not finish speaking in time. Try a shorter summary or choose another voice.");
+        }
+        completed.GetAwaiter().GetResult();
+        if (process.ExitCode != 0)
+        {
+            var detail = error.GetAwaiter().GetResult().Trim();
+            var first = detail.Split('\n', 2)[0].Trim();
+            throw new InvalidOperationException(string.IsNullOrEmpty(first)
+                ? "Piper could not create audio for the selected voice. Try again or choose another voice."
+                : "Piper could not create audio: " + first);
+        }
+    }
+
+    private static void WaitForAudioFile(string path)
+    {
+        var deadline = Environment.TickCount64 + 5000;
+        while (Environment.TickCount64 < deadline)
+        {
+            try
+            {
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                if (stream.Length > 64) return;
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            Thread.Sleep(10);
+        }
+    }
+
     private sealed record Voice(string Id, string Name, string Language, string Gender);
+    private sealed record BatchItem(string Text, string Output);
     private sealed record Request(string Command, string Engine, string Voice = "", string Text = "", string Output = "", double Rate = 1,
-        string PiperPath = "", string PiperModel = "", string PiperConfig = "", int PiperSpeaker = 0);
+        string PiperPath = "", string PiperModel = "", string PiperConfig = "", int PiperSpeaker = 0, List<BatchItem>? Items = null);
 }

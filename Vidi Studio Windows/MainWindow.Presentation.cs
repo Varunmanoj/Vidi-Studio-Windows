@@ -16,6 +16,7 @@ public sealed partial class MainWindow
 {
     private bool editMode;
     private bool galleryReady;
+    private int galleryCount = -1;
     private void InitializePresentation()
     {
         Model.Projects.CollectionChanged += (_, _) => RefreshGalleryCount();
@@ -244,8 +245,12 @@ public sealed partial class MainWindow
     private void RefreshGalleryCount()
     {
         if (ProjectCount == null) return;
-        ProjectCount.Text = $"{Model.Projects.Count} projects";
-        GalleryEmpty.Visibility = Model.Projects.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (galleryCount != Model.Projects.Count)
+        {
+            galleryCount = Model.Projects.Count;
+            ProjectCount.Text = $"{galleryCount} projects";
+            GalleryEmpty.Visibility = galleryCount == 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
         UpdateApiKeyUi();
     }
     private void ShowGallery_Click(object sender, RoutedEventArgs e)
@@ -257,7 +262,7 @@ public sealed partial class MainWindow
         TopOpenFolderButton.Visibility = TopInspectorToggle.Visibility = Visibility.Collapsed;
         GallerySearchHost.Visibility = Visibility.Visible;
         GalleryImport.Visibility = Visibility.Visible;
-        Model.Reload(); RefreshGalleryCount(); UpdateProjectIntegrityUi();
+        Model.Reload(); Model.RefreshProjectIntegrity(true); RefreshGalleryCount(); UpdateProjectIntegrityUi();
     }
     private void StopProjectPlayback()
     {

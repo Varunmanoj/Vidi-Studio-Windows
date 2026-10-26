@@ -27,6 +27,14 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public ObservableCollection<StudioProject> Projects { get; } = new();
     public ObservableCollection<ExportSession> ExportSessions => ExportSession.Active;
     private readonly HashSet<string> externalFolders = new(StringComparer.OrdinalIgnoreCase);
+    // Projects are cached by folder so refreshed views, filtering, and the
+    // integrity timer reuse the same instances instead of rebuilding every
+    // card. Rebuilding the collection made the gallery flicker while idle.
+    private readonly Dictionary<string, StudioProject> knownProjects = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ProjectStamp> projectStamps = new(StringComparer.OrdinalIgnoreCase);
+    private string appliedSearch = "";
+    private string appliedSource = "all";
+    private readonly record struct ProjectStamp(bool FolderExists, long ManifestTicks);
     private StudioProject? project;
     public StudioProject? Project { get => project; set { project = value; Changed(); } }
     private bool busy;
@@ -110,30 +118,140 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         Changed(nameof(ApiPlan));
         var library = Settings.Get("libraryPath");
         Directory.CreateDirectory(library);
-        var folders = Directory.EnumerateDirectories(library).Concat(externalFolders).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var folders = Directory.EnumerateDirectories(library).Concat(externalFolders)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var currentFolders = new HashSet<string>(folders, StringComparer.OrdinalIgnoreCase);
+        foreach (var stale in knownProjects.Keys.Where(folder => !currentFolders.Contains(folder)).ToList())
+        {
+            knownProjects.Remove(stale);
+            projectStamps.Remove(stale);
+        }
         var loaded = new List<StudioProject>();
         foreach (var folder in folders)
         {
             var knownFolder = externalFolders.Contains(folder);
-            var exists = Directory.Exists(folder);
+            var stamp = StampFor(folder);
+            if (knownProjects.TryGetValue(folder, out var cached) &&
+                projectStamps.TryGetValue(folder, out var cachedStamp) && cachedStamp == stamp)
+            {
+                // Nothing changed on disk: keep the existing instance so the
+                // grid and list rows (and their thumbnails) are not recreated.
+                if (cached.Integrity == null)
+                    cached.Integrity = ProjectIntegrityAuditor.Audit(cached.ToIntegrityManifest());
+                loaded.Add(cached);
+                continue;
+            }
+            var exists = stamp.FolderExists;
             var project = StudioProject.TryLoad(folder);
             if (project == null && exists && ProjectIntegrityAuditor.FolderLooksLikeProject(folder))
                 project = StudioProject.DamagedPlaceholder(folder);
             else if (project == null && !exists && knownFolder)
                 project = StudioProject.DamagedPlaceholder(folder);
-            if (project == null) continue;
+            if (project == null)
+            {
+                knownProjects.Remove(folder);
+                projectStamps.Remove(folder);
+                continue;
+            }
             project.Integrity = ProjectIntegrityAuditor.Audit(project.ToIntegrityManifest());
+            knownProjects[folder] = project;
+            projectStamps[folder] = stamp;
             loaded.Add(project);
         }
-        Projects.Clear();
-        foreach (var project in loaded.Where(p =>
-                     p.Name.Contains(search, StringComparison.CurrentCultureIgnoreCase)
-                     && (source == "all" || p.IsYouTube == (source == "youtube"))))
+        var desired = loaded.Where(p =>
+                p.Name.Contains(search, StringComparison.CurrentCultureIgnoreCase)
+                && (source == "all" || p.IsYouTube == (source == "youtube")))
+            .ToList();
+        ApplyProjectList(desired);
+        appliedSearch = search;
+        appliedSource = source;
+    }
+
+    /// <summary>
+    /// Reloads the gallery only when a project folder or manifest changed on
+    /// disk. The periodic integrity check calls this so an idle gallery is
+    /// never cleared and rebuilt.
+    /// </summary>
+    public bool ReloadIfProjectsChanged(string search = "", string source = "all")
+    {
+        if (!string.Equals(search, appliedSearch, StringComparison.Ordinal) ||
+            !string.Equals(source, appliedSource, StringComparison.Ordinal))
         {
-            Projects.Add(project);
+            Reload(search, source);
+            return true;
         }
-        if (Project is { } current)
-            current.Integrity = ProjectIntegrityAuditor.Audit(current.ToIntegrityManifest());
+        var library = Settings.Get("libraryPath");
+        var folders = (Directory.Exists(library)
+                ? Directory.EnumerateDirectories(library).Concat(externalFolders)
+                : externalFolders)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var current = new HashSet<string>(folders, StringComparer.OrdinalIgnoreCase);
+        if (knownProjects.Keys.Any(folder => !current.Contains(folder)))
+        {
+            Reload(search, source);
+            return true;
+        }
+        foreach (var folder in folders)
+        {
+            if (knownProjects.ContainsKey(folder))
+            {
+                if (!projectStamps.TryGetValue(folder, out var cached) || cached != StampFor(folder))
+                {
+                    Reload(search, source);
+                    return true;
+                }
+            }
+            else if (externalFolders.Contains(folder) || File.Exists(Path.Combine(folder, "project.json")))
+            {
+                Reload(search, source);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static ProjectStamp StampFor(string folder)
+    {
+        try
+        {
+            var exists = Directory.Exists(folder);
+            var manifest = Path.Combine(folder, "project.json");
+            var ticks = exists && File.Exists(manifest) ? File.GetLastWriteTimeUtc(manifest).Ticks : 0;
+            return new ProjectStamp(exists, ticks);
+        }
+        catch (Exception)
+        {
+            return new ProjectStamp(false, 0);
+        }
+    }
+
+    private void ApplyProjectList(IReadOnlyList<StudioProject> desired)
+    {
+        var unchanged = desired.Count == Projects.Count;
+        for (var i = 0; unchanged && i < desired.Count; i++)
+            unchanged = ReferenceEquals(Projects[i], desired[i]);
+        if (unchanged) return;
+
+        var wanted = new HashSet<StudioProject>(desired, ProjectReferenceComparer.Instance);
+        for (var i = Projects.Count - 1; i >= 0; i--)
+            if (!wanted.Contains(Projects[i])) Projects.RemoveAt(i);
+        for (var i = 0; i < desired.Count; i++)
+        {
+            if (i < Projects.Count && ReferenceEquals(Projects[i], desired[i])) continue;
+            var existing = -1;
+            for (var j = i + 1; j < Projects.Count; j++)
+                if (ReferenceEquals(Projects[j], desired[i])) { existing = j; break; }
+            if (existing >= 0) Projects.Move(existing, i);
+            else Projects.Insert(i, desired[i]);
+        }
+        while (Projects.Count > desired.Count) Projects.RemoveAt(Projects.Count - 1);
+    }
+
+    private sealed class ProjectReferenceComparer : IEqualityComparer<StudioProject>
+    {
+        public static readonly ProjectReferenceComparer Instance = new();
+        public bool Equals(StudioProject? x, StudioProject? y) => ReferenceEquals(x, y);
+        public int GetHashCode(StudioProject obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
     }
     public void Open(string folder)
     {
@@ -149,14 +267,17 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public void ForgetProject(StudioProject project)
     {
         externalFolders.Remove(project.Folder);
+        knownProjects.Remove(project.Folder);
+        projectStamps.Remove(project.Folder);
         Projects.Remove(project);
         if (Project != null && string.Equals(Project.Folder, project.Folder, StringComparison.OrdinalIgnoreCase))
             Project = null;
     }
-    public void RefreshProjectIntegrity()
+    public void RefreshProjectIntegrity(bool includeGallery = false)
     {
         if (Project is { } current)
             current.Integrity = ProjectIntegrityAuditor.Audit(current.ToIntegrityManifest());
+        if (!includeGallery) return;
         foreach (var project in Projects)
             project.Integrity = ProjectIntegrityAuditor.Audit(project.ToIntegrityManifest());
     }
@@ -637,7 +758,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     {
         var projectFile = Path.Combine(folder, "project.json");
         if (!File.Exists(projectFile)) return;
-        var json = File.ReadAllText(projectFile);
+        var json = StudioProject.ReadManifestText(projectFile);
         using var doc = System.Text.Json.JsonDocument.Parse(json);
         var dict = new Dictionary<string, object?>();
         foreach (var prop in doc.RootElement.EnumerateObject())

@@ -223,5 +223,24 @@ class AzureRemoval(unittest.TestCase):
                 self.assertNotIn('DefaultAzure', text)
 
 
+class PiperSummaryBatch(unittest.TestCase):
+    def test_summary_uses_one_long_lived_json_input_piper_process(self):
+        app = ROOT / 'Vidi Studio Windows'
+        service = (app / 'Services' / 'SpeechService.cs').read_text(encoding='utf-8')
+        reader = (app / 'Services' / 'SummaryReadback.cs').read_text(encoding='utf-8')
+        host = (ROOT / 'SpeechHost' / 'Program.cs').read_text(encoding='utf-8')
+        self.assertIn('public static Task SynthesizeBatchAsync', service)
+        self.assertIn('command = "synthesize-batch"', service)
+        self.assertIn('request.Command == "synthesize-batch"', host)
+        self.assertIn('"--json-input"', host)
+        self.assertIn('output + ".done"', host)
+        self.assertIn('piperBatch = SpeechService.SynthesizeBatchAsync', reader)
+        self.assertIn('WaitForReadbackAudioAsync', reader)
+        self.assertIn('CacheReadbackAudioAsync', reader)
+        self.assertIn('MaxCachedReadbackFiles', reader)
+        # Preparing is shown once at the start of a run, never between sentences.
+        self.assertEqual(reader.count('SetState(SummaryReadbackState.Preparing);'), 1)
+
+
 if __name__ == '__main__':
     unittest.main()

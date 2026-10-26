@@ -1290,6 +1290,20 @@ class Validation(unittest.TestCase):
             self.assertEqual(audio[1]['tags']['handler_name'], 'English - Audio Description')
     def test_path_escape(self):
         with self.assertRaises(ValueError): engine.local(Path('/tmp/project'),'../../etc/passwd')
+    def test_atomic_json_retries_a_transient_reader_lock(self):
+        with tempfile.TemporaryDirectory(prefix='vidistudio-test-') as temp:
+            target = Path(temp) / 'project.json'
+            real_replace = os.replace
+            attempts = []
+            def flaky_replace(source, destination):
+                attempts.append(destination)
+                if len(attempts) <= 2:
+                    raise PermissionError(13, 'Access is denied', str(destination))
+                real_replace(source, destination)
+            with patch.object(engine.os, 'replace', side_effect=flaky_replace):
+                engine.atomic_json(target, {'ok': True})
+            self.assertEqual(len(attempts), 3)
+            self.assertEqual(json.loads(target.read_text(encoding='utf-8')), {'ok': True})
     def test_pipeline(self):
         with tempfile.TemporaryDirectory(prefix='vidistudio-test-') as temp:
             root=Path(temp); source=root/'sample video.mp4'

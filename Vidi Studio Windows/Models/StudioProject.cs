@@ -170,8 +170,9 @@ public sealed class Segment : INotifyPropertyChanged
     public override string ToString() => $"{Timing}  {(IsDescription ? "AD: " : "")}{Text}";
 }
 
-public sealed class StudioProject
+public sealed class StudioProject : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Source { get; set; } = "";
@@ -191,7 +192,22 @@ public sealed class StudioProject
     public List<string> Exports { get; set; } = new();
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
     [JsonIgnore] public string Folder { get; set; } = "";
-    [JsonIgnore] public ProjectIntegrityReport? Integrity { get; set; }
+    private ProjectIntegrityReport? integrity;
+    [JsonIgnore]
+    public ProjectIntegrityReport? Integrity
+    {
+        get => integrity;
+        set
+        {
+            if (ReferenceEquals(integrity, value)) return;
+            integrity = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Integrity)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasIntegrityIssue)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IntegrityIsDamaged)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IntegrityHasWarning)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IntegrityStatus)));
+        }
+    }
     [JsonIgnore] public bool IntegrityPlaceholder { get; set; }
     [JsonIgnore] public bool HasIntegrityIssue => Integrity is { IsHealthy: false };
     [JsonIgnore] public bool IntegrityIsDamaged => Integrity?.IsDamaged == true;
@@ -264,7 +280,7 @@ public sealed class StudioProject
     {
         var manifest = Path.Combine(folder, "project.json");
         if (!File.Exists(manifest)) throw new FileNotFoundException("project.json is missing.", manifest);
-        var project = JsonSerializer.Deserialize<StudioProject>(File.ReadAllText(manifest), Json.Options)
+        var project = JsonSerializer.Deserialize<StudioProject>(ReadManifestText(manifest), Json.Options)
             ?? throw new InvalidDataException("Invalid project.");
         if (string.IsNullOrWhiteSpace(project.Id) || string.IsNullOrWhiteSpace(project.Name))
             throw new InvalidDataException("project.json is missing required project fields.");
@@ -273,6 +289,18 @@ public sealed class StudioProject
         for (var i = 0; i < project.Cues.Count; i++) { var cue = project.Cues[i]; cue.IsDescription = true; cue.AdNumber = i + 1; cue.ProjectFolder = project.Folder; }
         foreach (var item in project.Transcript) { item.IsDescription = false; item.ProjectFolder = project.Folder; }
         return project;
+    }
+
+    /// <summary>
+    /// Reads project.json without blocking the engine's atomic replace. Windows
+    /// refuses a rename while a reader omits FileShare.Delete, which is why a
+    /// background gallery/integrity read could surface as "Access is denied".
+    /// </summary>
+    internal static string ReadManifestText(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
+        return reader.ReadToEnd();
     }
 
     public static StudioProject? TryLoad(string folder)
@@ -302,7 +330,7 @@ public sealed class StudioProject
         var exports = new List<string>();
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(fullFolder, "project.json")));
+            using var document = JsonDocument.Parse(ReadManifestText(Path.Combine(fullFolder, "project.json")));
             var root = document.RootElement;
             if (root.TryGetProperty("name", out var nameValue) && nameValue.ValueKind == JsonValueKind.String) name = nameValue.GetString();
             if (root.TryGetProperty("id", out var idValue) && idValue.ValueKind == JsonValueKind.String) id = idValue.GetString();

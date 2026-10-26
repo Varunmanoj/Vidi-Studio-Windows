@@ -748,12 +748,11 @@ public sealed partial class MainWindow : Window
             Model.Open(placeholder.Folder);
             return;
         }
-        Model.RefreshProjectIntegrity();
-        if (GalleryPanel.Visibility == Visibility.Visible)
-        {
-            Model.Reload(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", _ => "all" });
+        if (EditorWorkspace.Visibility == Visibility.Visible)
+            Model.RefreshProjectIntegrity();
+        if (GalleryPanel.Visibility == Visibility.Visible &&
+            Model.ReloadIfProjectsChanged(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", _ => "all" }))
             RefreshGalleryCount();
-        }
         UpdateProjectIntegrityUi();
     }
 

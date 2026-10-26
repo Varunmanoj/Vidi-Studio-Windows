@@ -436,7 +436,7 @@ public static class ProjectIntegrityAuditor
         if (state != FileState.Ok) return state;
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            using var document = JsonDocument.Parse(StudioProject.ReadManifestText(path));
             return FileState.Ok;
         }
         catch (JsonException)
@@ -473,7 +473,7 @@ public static class ProjectIntegrityAuditor
         {
             var info = new FileInfo(path);
             if (info.Length == 0) return FileState.Empty;
-            using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             return FileState.Ok;
         }
         catch (UnauthorizedAccessException)

@@ -200,6 +200,19 @@ class NarrationPlaybackOptions(unittest.TestCase):
         # Summary playback speaks Piper and SAPI through the speech host, not a second engine process.
         self.assertIn('await SpeechService.SynthesizeAsync(host, mode, voice, sentence, path, settings.Number("systemSpeechRate"), token);', win_reader)
         self.assertIn('remaining.Any(char.IsLetterOrDigit)', win_reader)
+        # Piper sentences are rendered in one long-lived batch so the voice
+        # model is not reloaded between summary sentences.
+        win_speech = (ROOT/'Vidi-Studio-Windows/Vidi Studio Windows/Services/SpeechService.cs').read_text()
+        win_host = (ROOT/'Vidi-Studio-Windows/SpeechHost/Program.cs').read_text()
+        self.assertIn('public static Task SynthesizeBatchAsync', win_speech)
+        self.assertIn('command = "synthesize-batch"', win_speech)
+        self.assertIn('request.Command == "synthesize-batch"', win_host)
+        self.assertIn('"--json-input"', win_host)
+        self.assertIn('output + ".done"', win_host)
+        self.assertIn('piperBatch = SpeechService.SynthesizeBatchAsync', win_reader)
+        self.assertIn('WaitForReadbackAudioAsync', win_reader)
+        self.assertIn('CacheReadbackAudioAsync', win_reader)
+        self.assertEqual(win_reader.count('SetState(SummaryReadbackState.Preparing);'), 1)
         # Live on-device speech includes Piper and never creates project files.
         self.assertIn('if (mode is "sapi5" or "piper")', win_live)
         self.assertIn('public void Prepare(string text)', win_live)

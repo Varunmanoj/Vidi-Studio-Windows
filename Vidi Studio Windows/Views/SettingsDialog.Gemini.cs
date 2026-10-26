@@ -170,7 +170,7 @@ public sealed partial class SettingsDialog
                 DefaultButton = ContentDialogButton.Close
             };
 
-            var confirmResult = await WindowedDialog.ShowAsync(confirmDialog, this, width: 500, height: 240, fitToContent: true);
+            var confirmResult = await WindowedDialog.ShowAsync(confirmDialog, this, width: 500, height: 240);
             if (confirmResult != ContentDialogResult.Primary) return;
 
             checkDebounceTimer?.Stop();

@@ -394,7 +394,7 @@ public sealed partial class MainWindow
             openSettings.Hide(); await openFromButton;
             PreviewTheme("dark");
             var newProject = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings);
-            var newProjectDisplay = ShowDialogAsync(newProject, 700, 820, fitToContent: true); await Task.Delay(100);
+            var newProjectDisplay = ShowDialogAsync(newProject, 700, 820); await Task.Delay(100);
             if (newProjectDisplay.IsCompleted) await newProjectDisplay;
             PreviewTheme("light"); await Task.Delay(80);
             if (newProject.ActualTheme != ElementTheme.Light) throw new InvalidOperationException("An open New Project dialog did not switch to light appearance.");

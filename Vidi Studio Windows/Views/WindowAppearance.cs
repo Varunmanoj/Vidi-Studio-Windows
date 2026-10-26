@@ -316,10 +316,18 @@ internal sealed class MaterialBackdrop : SystemBackdrop
     }
 }
 
-/// <summary>Shows a WinUI content dialog in its own titled window with standard caption buttons.</summary>
+/// <summary>
+/// Shows a WinUI content dialog as a native Vidi Studio window. The dialog content fills the
+/// window on the same Mica-backed Fluent surface as the rest of the app instead of floating as
+/// a bordered card over a dimmed smoke layer.
+/// </summary>
 internal static class WindowedDialog
 {
-    internal static async Task<ContentDialogResult> ShowAsync(ContentDialog dialog, Window owner, int width = 680, int height = 460, bool fitToContent = false)
+    // Height of the extended title bar; the dialog content starts below its caption buttons.
+    private const double TitleBarHeight = 32;
+    private const double ContentTopInset = 36;
+
+    internal static async Task<ContentDialogResult> ShowAsync(ContentDialog dialog, Window owner, int width = 680, int height = 460)
     {
         var window = new Window { Title = dialog.Title?.ToString() ?? "Vidi Studio" };
         var root = new Grid();
@@ -328,32 +336,51 @@ internal static class WindowedDialog
         WindowAppearance.ApplyMaterial(window);
         if (window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
         {
-            // A dialog window only shows Close; only regular tool windows can be minimized/maximized.
-            presenter.IsMinimizable = !fitToContent;
-            presenter.IsMaximizable = !fitToContent;
-            presenter.IsResizable = !fitToContent;
+            // A dialog is a fixed-size companion; only the system Close button belongs in its caption.
+            presenter.IsMinimizable = false;
+            presenter.IsMaximizable = false;
+            presenter.IsResizable = false;
         }
-        // When the dialog should fill its own window, blend the ContentDialog smoke layer, card
-        // background, and border into the window background so no gray frame shows around the card.
-        var backdrop = new SolidColorBrush();
-        void ApplySeamless(ElementTheme theme)
+        // Flatten the ContentDialog chrome. The window surface is the dialog surface, so there is
+        // no smoke layer, card fill, border, divider, or floating card inside the window.
+        var transparent = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        dialog.Resources["ContentDialogSmokeFill"] = transparent;
+        dialog.Resources["ContentDialogTopOverlay"] = transparent;
+        dialog.Resources["ContentDialogBackground"] = transparent;
+        dialog.Resources["ContentDialogBorderBrush"] = transparent;
+        dialog.Resources["ContentDialogBorderWidth"] = new Thickness(0);
+        dialog.Resources["ContentDialogSeparatorThickness"] = new Thickness(0);
+        if (!dialog.Resources.ContainsKey("ContentDialogPadding"))
+            dialog.Resources["ContentDialogPadding"] = new Thickness(24, ContentTopInset, 24, 24);
+        // Allow wide editors to use the requested width instead of the 548 px ContentDialog default,
+        // leaving room for the card's 24 px side padding and an optional scrollbar. Dialogs that
+        // deliberately cap themselves with their own resource keep that cap.
+        var availableCardWidth = Math.Max(480.0, width - 24.0);
+        if (!dialog.Resources.ContainsKey("ContentDialogMinWidth"))
+            dialog.Resources["ContentDialogMinWidth"] = Math.Min(520.0, availableCardWidth);
+        if (dialog.Resources.ContainsKey("ContentDialogMaxWidth") && dialog.Resources["ContentDialogMaxWidth"] is double existingCap)
+            dialog.Resources["ContentDialogMaxWidth"] = Math.Max(existingCap, availableCardWidth);
+        else
+            dialog.Resources["ContentDialogMaxWidth"] = availableCardWidth;
+        // Extend the app surface into the caption so the window has the same material as the app
+        // and the dialog title is shown once, inside the content, rather than twice.
+        window.ExtendsContentIntoTitleBar = true;
+        var titleBarDrag = new Border
         {
-            if (!fitToContent) return;
-            backdrop.Color = WindowAppearance.BaseColor(theme);
-            root.Background = backdrop;
-            dialog.Resources["ContentDialogSmokeFill"] = backdrop;
-            dialog.Resources["ContentDialogBackground"] = backdrop;
-            dialog.Resources["ContentDialogBorderBrush"] = backdrop;
-            dialog.Resources["ContentDialogBorderWidth"] = new Thickness(0);
-        }
+            Height = TitleBarHeight,
+            VerticalAlignment = VerticalAlignment.Top,
+            Background = transparent
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(titleBarDrag, "Dialog title bar");
+        root.Children.Add(titleBarDrag);
+        window.SetTitleBar(titleBarDrag);
         void ApplyTheme(string theme)
         {
             var requested = theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
             WindowAppearance.ApplyTheme(window, root, requested);
             dialog.RequestedTheme = requested;
-            ApplySeamless(requested == ElementTheme.Default ? root.ActualTheme : requested);
         }
-        root.ActualThemeChanged += (_, _) => { WindowAppearance.Refresh(window, root); ApplySeamless(root.ActualTheme); };
+        root.ActualThemeChanged += (_, _) => WindowAppearance.Refresh(window, root);
         App.ThemeChanged += ApplyTheme;
         ApplyTheme(App.ActiveTheme ?? ((owner.Content as FrameworkElement)?.ActualTheme == ElementTheme.Dark ? "dark" : "light"));
         var area = owner.AppWindow;
@@ -375,6 +402,9 @@ internal static class WindowedDialog
         dialog.Closed += (_, _) => dialogVisible = false;
         void AddEscapeAccelerator(UIElement scope)
         {
+            // Escape still cancels, but the accelerator must not draw a key-tip badge in the
+            // dialog; native Windows dialogs do not advertise their Escape shortcut.
+            scope.KeyboardAcceleratorPlacementMode = Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;
             var accelerator = new Microsoft.UI.Xaml.Input.KeyboardAccelerator { Key = Windows.System.VirtualKey.Escape };
             accelerator.Invoked += (_, args) => { args.Handled = true; if (dialogVisible) dialog.Hide(); };
             scope.KeyboardAccelerators.Add(accelerator);
@@ -386,7 +416,7 @@ internal static class WindowedDialog
         {
             if (!await loaded.Task) return ContentDialogResult.None;
             dialog.XamlRoot = root.XamlRoot;
-            if (fitToContent) FitWindowToCard(dialog, window, root, owner);
+            FitWindowToCard(dialog, window, root, owner);
             return await dialog.ShowAsync();
         }
         finally { App.ThemeChanged -= ApplyTheme; window.Close(); }
@@ -405,23 +435,35 @@ internal static class WindowedDialog
             if (dialog.Content is not FrameworkElement content) return;
             card ??= FindCard(content, root);
             if (card is null) return;
-            var scroller = content as ScrollViewer;
-            // Prefer the full content extent so the window grows when a preview or extra fields appear.
-            var contentHeight = scroller is not null && scroller.ExtentHeight > 0
-                ? scroller.ExtentHeight + Math.Max(0, card.ActualHeight - scroller.ActualHeight)
-                : card.ActualHeight;
-            if (contentHeight <= 0 || card.ActualWidth <= 0) return;
+            // The content is measured with an unbounded height, so its desired height is the full
+            // dialog height even when a short initial window clipped it. An inner scroll viewer that
+            // sets MaxHeight deliberately stays scrollable instead of growing the window past it.
+            var contentHeight = Math.Max(content.DesiredSize.Height, content.ActualHeight);
+            if (content is ScrollViewer scroller && scroller.ExtentHeight > 0)
+            {
+                contentHeight = scroller.ExtentHeight;
+                if (!double.IsInfinity(scroller.MaxHeight) && scroller.MaxHeight > 0)
+                    contentHeight = Math.Min(contentHeight, scroller.MaxHeight);
+            }
+            // Add the card chrome (title, padding, and buttons) that surrounds the content.
+            var chromeHeight = Math.Max(0, card.ActualHeight - content.ActualHeight);
+            var cardHeight = contentHeight + chromeHeight;
+            if (!double.IsInfinity(card.MaxHeight) && card.MaxHeight > 0)
+                cardHeight = Math.Min(cardHeight, card.MaxHeight);
+            if (cardHeight <= 0 || card.ActualWidth <= 0) return;
             var scale = root.XamlRoot?.RasterizationScale ?? 1;
             var area = owner.AppWindow;
             var logicalWidth = card.ActualWidth + card.Margin.Left + card.Margin.Right + 2;
-            var logicalHeight = contentHeight + card.Margin.Top + card.Margin.Bottom + 2;
+            var logicalHeight = cardHeight + card.Margin.Top + card.Margin.Bottom + 2;
             var pixelWidth = (int)Math.Ceiling(Math.Min(logicalWidth * scale, area.Size.Width - 24));
             var pixelHeight = (int)Math.Ceiling(Math.Min(logicalHeight * scale, area.Size.Height - 24));
-            if (Math.Abs(pixelWidth - window.AppWindow.Size.Width) < 4 && Math.Abs(pixelHeight - window.AppWindow.Size.Height) < 4) return;
-            window.AppWindow.Resize(new Windows.Graphics.SizeInt32(Math.Max(360, pixelWidth), Math.Max(300, pixelHeight)));
+            var targetWidth = Math.Min(Math.Max(480, pixelWidth), Math.Max(400, area.Size.Width - 24));
+            var targetHeight = Math.Min(Math.Max(240, pixelHeight), Math.Max(220, area.Size.Height - 24));
+            if (Math.Abs(targetWidth - window.AppWindow.Size.Width) < 4 && Math.Abs(targetHeight - window.AppWindow.Size.Height) < 4) return;
+            window.AppWindow.Resize(new Windows.Graphics.SizeInt32(targetWidth, targetHeight));
             window.AppWindow.Move(new Windows.Graphics.PointInt32(
-                area.Position.X + Math.Max(0, (area.Size.Width - pixelWidth) / 2),
-                area.Position.Y + Math.Max(0, (area.Size.Height - pixelHeight) / 2)));
+                area.Position.X + Math.Max(0, (area.Size.Width - targetWidth) / 2),
+                area.Position.Y + Math.Max(0, (area.Size.Height - targetHeight) / 2)));
         }
         dialog.Opened += (_, _) =>
         {
@@ -434,21 +476,23 @@ internal static class WindowedDialog
     /// <summary>Finds the ContentDialog card border that wraps the dialog content.</summary>
     private static Border? FindCard(FrameworkElement? content, FrameworkElement root)
     {
-        // Walk the ancestors and keep the largest border that does not fill the whole host: that is
-        // the dialog card, not the full-size smoke layer above it or an inner frame below it.
+        // The template names the card BackgroundElement. Prefer it over the outer Container border,
+        // which fills the ContentDialog control and can be larger than the card when a dialog sets
+        // its own Width. Fall back to the largest border that does not fill the whole host.
         var rootArea = root.ActualWidth * root.ActualHeight;
-        Border? best = null;
-        var bestArea = 0.0;
+        Border? fallback = null;
+        var fallbackArea = 0.0;
         DependencyObject? node = content;
         while (node is not null)
         {
             if (node is Border border)
             {
+                if (border.Name == "BackgroundElement") return border;
                 var area = border.ActualWidth * border.ActualHeight;
-                if (area > 0 && area < rootArea - 1 && area > bestArea) { bestArea = area; best = border; }
+                if (area > 0 && area < rootArea - 1 && area > fallbackArea) { fallbackArea = area; fallback = border; }
             }
             node = VisualTreeHelper.GetParent(node);
         }
-        return best;
+        return fallback;
     }
 }

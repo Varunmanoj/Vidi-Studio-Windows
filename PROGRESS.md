@@ -1,5 +1,17 @@
 # Windows migration progress
 
+## 2026-10-26 - Duplicate Settings gears removed from the editor header and inspector (1.0.140 / 1.0.140.0)
+
+The project header no longer shows a Settings gear, and the inspector footer now shows only **Open project folder** and **Open project configuration**. The gear appeared twice around the inspector (header and footer); both are removed, and Settings remains available from **File > Settings** and **Ctrl+,**. The footer's folder and configuration buttons previously shared one Grid cell, so the stretched folder button was hidden beneath the configuration button; explicit Auto columns now keep both icons visible side by side.
+
+Validation on this macOS host: `MainWindow.xaml` parses as well-formed XML, `script/check_xaml_references.py` passes, `script/check_menu_parity.py` passes, and the targeted Windows suites pass (`tests.test_windowed_dialogs` 5, `tests.test_xaml_references` 6, `tests.test_menu_parity` 11, `tests.test_parity` 9). Not run: native Windows/MSBuild build (the XAML compiler is Windows-only) or an interactive visual check of the header and inspector footer. Versions synchronized at 1.0.140 / Windows package 1.0.140.0 / Mac build 140.
+
+## 2026-10-26 - Light-mode dialog smoke layer removed from the template (1.0.139 / 1.0.139.0)
+
+The windowed dialog now has the same white Mica/LayerFill surface as Settings in light mode instead of a gray dimmed background. The gray came from the instantiated ContentDialog template's `SmokeLayerBackground` rectangle: the dialog-level `ContentDialogSmokeFill` resource override did not reliably reach that template element at runtime, so the smoke layer (30% black) covered the transparent dialog surface. `FlattenDialogSurface` now walks the loaded template after `Loaded`, `Opened`, and theme changes and clears the actual `SmokeLayerBackground` fill (with a position-based fallback in case a template revision renames it), the `BackgroundElement` card fill/border, the `CommandSpace` background, and the content grid's top-overlay background and separator. Escape/cancel, focus, and the content layout are unchanged, and the same fix applies to every shared-host dialog, including error dialogs.
+
+Validation on this macOS host: the host compiles with Roslyn against the WinUI reference assemblies, and `tests.test_windowed_dialogs` (5), `tests.test_xaml_references` (6), `tests.test_menu_parity` (11), and `tests.test_parity` (9) pass. Not run: native Windows/MSBuild build (the XAML compiler is Windows-only), Windows UI smoke tests, or a light-mode visual capture. Versions synchronized at 1.0.139 / Windows package 1.0.139.0 / Mac build 139.
+
 ## 2026-10-26 - Dialog Escape key-tip badge hidden (1.0.138 / 1.0.138.0)
 
 The windowed dialog host keeps Escape-to-cancel but no longer draws the floating "Esc" key-tip badge over the dialog. `AddEscapeAccelerator` now sets `KeyboardAcceleratorPlacementMode.Hidden` on both the window root and the ContentDialog before registering the Escape accelerator. The accelerator still runs, so Escape closes the dialog with a None result wherever focus sits, but WinUI no longer paints the key-tip pill in any shared-host dialog: confirm, error, delete-generated, rename, export information, project-file issues, narration reports, the segment editor, New Project, Export, Piper voices, and the Gemini key-deletion confirmation.

@@ -89,7 +89,6 @@
     <Button x:Name="GalleryImport" Content="New project" Style="{StaticResource AccentButtonStyle}" Click="NewProject_Click"/>
     <Button x:Name="TopOpenFolderButton" Content="Open folder" Click="TopOpenFolder_Click" Visibility="Collapsed"/>
     <Button x:Name="TopInspectorToggle" Content="&#xE8A0;" FontFamily="Segoe Fluent Icons" Click="ToggleInspector_Click" Visibility="Collapsed" AutomationProperties.Name="Show or hide inspector"/>
-    <Button Content="&#xE713;" FontFamily="Segoe Fluent Icons" Click="Settings_Click" AutomationProperties.Name="Settings"/>
    </StackPanel>
   </Grid>
   <Grid x:Name="GalleryPanel" Grid.Row="4" Padding="28,24" RowSpacing="22">
@@ -287,7 +286,7 @@
       <StackPanel Spacing="8"><TextBlock Text="Video Analysis Availability" FontWeight="SemiBold"/><TextBlock x:Name="AnalysisAvailability" Text="Not checked" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><StackPanel Orientation="Horizontal" Spacing="8"><Button x:Name="PrepareAnalysisButton" Content="Prepare" Tag="prepare-analysis-video" Click="Command_Click"/><Button x:Name="RefreshAnalysisButton" Content="Refresh" Tag="check-video-availability" Click="Command_Click"/><Button x:Name="OcrFrameButton" Content="Read frame" Click="Ocr_Click"/></StackPanel></StackPanel>
       <StackPanel Spacing="8"><TextBlock Text="Export" FontWeight="SemiBold"/><Button x:Name="InspectorExportButton" Content="Export…" Style="{StaticResource InspectorButton}" Click="Export_Click"/><TextBlock Text="Created Exports" FontWeight="SemiBold"/><StackPanel x:Name="InspectorExports" Spacing="6"/></StackPanel>
      </StackPanel></ScrollViewer>
-     <Grid Grid.Row="1" Padding="14,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><Button Content="&#xE8B7;" FontFamily="Segoe Fluent Icons" Click="Reveal_Click" AutomationProperties.Name="Open project folder"/><Button Content="&#xE8A5;" FontFamily="Segoe Fluent Icons" Click="OpenConfiguration_Click" Margin="4,0,0,0" AutomationProperties.Name="Open project configuration" ToolTipService.ToolTip="Open project.json in the default editor"/><Button Content="&#xE713;" FontFamily="Segoe Fluent Icons" Click="Settings_Click" HorizontalAlignment="Right" AutomationProperties.Name="Settings"/></Grid>
+     <Grid Grid.Row="1" Padding="14,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Button Content="&#xE8B7;" FontFamily="Segoe Fluent Icons" Click="Reveal_Click" AutomationProperties.Name="Open project folder" ToolTipService.ToolTip="Open the project folder"/><Button Grid.Column="1" Content="&#xE8A5;" FontFamily="Segoe Fluent Icons" Click="OpenConfiguration_Click" Margin="4,0,0,0" AutomationProperties.Name="Open project configuration" ToolTipService.ToolTip="Open project.json in the default editor"/></Grid>
     </Grid>
      <Grid Grid.Row="1" Grid.ColumnSpan="2" Padding="10,4" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
       <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">

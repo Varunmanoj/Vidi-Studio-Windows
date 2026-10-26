@@ -379,10 +379,15 @@ internal static class WindowedDialog
             var requested = theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
             WindowAppearance.ApplyTheme(window, root, requested);
             dialog.RequestedTheme = requested;
+            FlattenDialogSurface(dialog);
         }
-        root.ActualThemeChanged += (_, _) => WindowAppearance.Refresh(window, root);
+        root.ActualThemeChanged += (_, _) => { WindowAppearance.Refresh(window, root); FlattenDialogSurface(dialog); };
         App.ThemeChanged += ApplyTheme;
         ApplyTheme(App.ActiveTheme ?? ((owner.Content as FrameworkElement)?.ActualTheme == ElementTheme.Dark ? "dark" : "light"));
+        // The template's smoke rectangle is what dims the whole dialog window in light mode. Clear
+        // it in the visual tree as well as through the resource, because the template can resolve
+        // its ThemeResource before the dialog-level override is observed.
+        dialog.Loaded += (_, _) => FlattenDialogSurface(dialog);
         var area = owner.AppWindow;
         // AppWindow uses physical pixels; dialog measurements and requested sizes use XAML pixels.
         var scale = (owner.Content as FrameworkElement)?.XamlRoot?.RasterizationScale ?? 1;
@@ -467,10 +472,65 @@ internal static class WindowedDialog
         }
         dialog.Opened += (_, _) =>
         {
+            FlattenDialogSurface(dialog);
             root.DispatcherQueue.TryEnqueue(Resize);
             if (dialog.Content is FrameworkElement content) content.SizeChanged += (_, _) => Resize();
             if ((dialog.Content as ScrollViewer)?.Content is FrameworkElement inner) inner.SizeChanged += (_, _) => Resize();
         };
+    }
+
+    /// <summary>
+    /// Removes the instantiated ContentDialog's dimming layer and card chrome. The dialog window
+    /// already paints the app's Fluent surface, so the template only needs to supply the title,
+    /// content, and buttons.
+    /// </summary>
+    private static void FlattenDialogSurface(ContentDialog dialog)
+    {
+        var transparent = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        if (FindTemplateElement<Microsoft.UI.Xaml.Shapes.Rectangle>(dialog, "SmokeLayerBackground") is { } smoke)
+            smoke.Fill = transparent;
+        if (FindTemplateElement<Border>(dialog, "BackgroundElement") is { } card)
+        {
+            // The smoke layer is the rectangle that shares the template layout with the card. Clearing
+            // it by position as well as by name keeps the white surface even if a template revision
+            // renames the element.
+            if (VisualTreeHelper.GetParent(card) is Panel layout)
+            {
+                foreach (var child in layout.Children)
+                    if (child is Microsoft.UI.Xaml.Shapes.Rectangle smokeLayer)
+                        smokeLayer.Fill = transparent;
+            }
+            card.Background = transparent;
+            card.BorderThickness = new Thickness(0);
+        }
+        if (FindTemplateElement<Grid>(dialog, "CommandSpace") is { } commands)
+            commands.Background = transparent;
+        if (FindTemplateElement<ScrollViewer>(dialog, "ContentScrollViewer") is { } contentScroller)
+        {
+            if (contentScroller.Content is Grid contentGrid)
+            {
+                contentGrid.Background = transparent;
+                // Remove the title/content separator that the template would otherwise draw.
+                contentGrid.BorderThickness = new Thickness(0);
+            }
+            else if (contentScroller.Content is Panel contentPanel)
+            {
+                contentPanel.Background = transparent;
+            }
+        }
+    }
+
+    /// <summary>Finds a named element in an instantiated control template.</summary>
+    private static T? FindTemplateElement<T>(DependencyObject root, string name) where T : FrameworkElement
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T element && element.Name == name) return element;
+            if (FindTemplateElement<T>(child, name) is { } found) return found;
+        }
+        return null;
     }
 
     /// <summary>Finds the ContentDialog card border that wraps the dialog content.</summary>

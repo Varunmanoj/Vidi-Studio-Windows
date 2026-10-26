@@ -40,6 +40,14 @@ class WindowedDialogs(unittest.TestCase):
         self.assertIn('scope.KeyboardAcceleratorPlacementMode = Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;', self.host)
         self.assertIn('new Microsoft.UI.Xaml.Input.KeyboardAccelerator { Key = Windows.System.VirtualKey.Escape }', self.host)
 
+    def test_light_surface_removes_the_smoke_and_separator(self):
+        self.assertIn('FindTemplateElement<Microsoft.UI.Xaml.Shapes.Rectangle>(dialog, "SmokeLayerBackground")', self.host)
+        self.assertIn('smoke.Fill = transparent;', self.host)
+        self.assertIn('card.Background = transparent;', self.host)
+        self.assertIn('contentGrid.Background = transparent;', self.host)
+        self.assertIn('contentGrid.BorderThickness = new Thickness(0);', self.host)
+        self.assertIn('dialog.Loaded += (_, _) => FlattenDialogSurface(dialog);', self.host)
+
     def test_card_lookup_prefers_the_named_template_card(self):
         self.assertIn('if (border.Name == "BackgroundElement") return border;', self.host)
         self.assertIn('var chromeHeight = Math.Max(0, card.ActualHeight - content.ActualHeight);', self.host)

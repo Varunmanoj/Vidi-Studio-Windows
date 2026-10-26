@@ -11,6 +11,23 @@ class NarrationPlaybackOptions(unittest.TestCase):
         if not (ROOT/'VidiStudio Mac/VidiStudio/StudioModel.swift').is_file() or not (ROOT/'Vidi-Studio-Windows/Vidi Studio Windows/Services/SettingsStore.cs').is_file():
             raise unittest.SkipTest('Playback option checks require both desktop checkouts.')
 
+    def test_project_playback_toggles_are_per_project_on_both_desktops(self):
+        mac_settings = (ROOT/'VidiStudio Mac/VidiStudio/SettingsView.swift').read_text()
+        mac_model = (ROOT/'VidiStudio Mac/VidiStudio/StudioModel.swift').read_text()
+        win_prefs = (ROOT/'Vidi-Studio-Windows/Vidi Studio Windows/Services/ProjectPlaybackPreferences.cs').read_text()
+        win_projects = (ROOT/'Vidi-Studio-Windows/Vidi Studio Windows/Views/SettingsDialog.Projects.cs').read_text()
+        self.assertIn('"Appearance", "Projects", "Narration", "Gemini API", "Developer prompts", "Storage", "Help", "About"', mac_settings)
+        self.assertIn('ContentUnavailableView("No Open Projects"', mac_settings)
+        self.assertIn('Toggle("Narration during playback", isOn: $narrationEnabled)', mac_settings)
+        self.assertIn('Toggle("Follow synchronized transcript", isOn: $followEnabled)', mac_settings)
+        self.assertIn('"projectNarrationEnabled.\\(projectID)"', mac_model)
+        self.assertIn('"projectFollowTranscript.\\(projectID)"', mac_model)
+        self.assertIn('"projectNarrationEnabled." + projectId', win_prefs)
+        self.assertIn('"projectFollowTranscript." + projectId', win_prefs)
+        self.assertIn('"No Open Projects"', win_projects)
+        self.assertIn('"Narration during playback"', win_projects)
+        self.assertIn('"Follow synchronized transcript"', win_projects)
+
     def test_mac_keeps_engine_selection_independent_of_playback_mode(self):
         settings = (ROOT/'VidiStudio Mac/VidiStudio/SettingsView.swift').read_text()
         overview = (ROOT/'VidiStudio Mac/VidiStudio/ADOverviewView.swift').read_text()

@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
     private bool updatingPosition;
     private string? loadedProject;
     private string? activeCue;
+    private bool applyingProjectPlaybackPreferences;
     private double youtubePosition;
     private bool youtubePlaying;
     private bool wasPlaying;
@@ -78,6 +79,7 @@ public sealed partial class MainWindow : Window
         Views.WindowAppearance.ApplyIcon(this);
         App.ThemeChanged += ApplyThemeFromApp;
         BuildMenus();
+        ProjectPlaybackPreferences.Changed += ReceiveProjectPlaybackPreference;
         UpdateEditorProjectButtons();
         var fullScreenEscape = new KeyboardAccelerator { Key = VirtualKey.Escape };
         fullScreenEscape.Invoked += (_, args) =>
@@ -108,6 +110,7 @@ public sealed partial class MainWindow : Window
         {
             if (fullScreenVideo) { try { ExitFullScreenVideo(); } catch (Exception ex) { Model.Engine.Log(ex.ToString()); } }
             App.ThemeChanged -= ApplyThemeFromApp;
+            ProjectPlaybackPreferences.Changed -= ReceiveProjectPlaybackPreference;
             ActiveExports.Detach();
             Model.PropertyChanged -= UpdateStatusFooter;
             Model.Cancel(); timer.Stop(); integrityTimer.Stop();
@@ -410,6 +413,7 @@ public sealed partial class MainWindow : Window
     private async void RefreshProject()
     {
         if (Model.Project is not { } p) return;
+        ApplyProjectPlaybackPreferences(p);
         ShowEditor();
         p.Integrity = ProjectIntegrityAuditor.Audit(p.ToIntegrityManifest());
         UpdateInspector(p);
@@ -644,15 +648,74 @@ public sealed partial class MainWindow : Window
         }
         else if (Model.Project != null) { video.Play(); UpdatePlaybackControls(); }
     }
+    /// <summary>
+    /// Restores the project's saved playback toggles whenever the editor loads or refreshes
+    /// that project, so the choice survives closing and reopening the app.
+    /// </summary>
+    private void ApplyProjectPlaybackPreferences(StudioProject project)
+    {
+        if (string.IsNullOrWhiteSpace(project.Id)) return;
+        var narration = ProjectPlaybackPreferences.NarrationEnabled(Model.Settings, project.Id);
+        var follow = ProjectPlaybackPreferences.FollowEnabled(Model.Settings, project.Id);
+        applyingProjectPlaybackPreferences = true;
+        try { Narration.IsOn = narration; Follow.IsOn = follow; }
+        finally { applyingProjectPlaybackPreferences = false; }
+        if (!follow) ClearFollowedSegments();
+        UpdateDesktopMenuStates();
+    }
+    private void ReceiveProjectPlaybackPreference(ProjectPlaybackPreferenceChange change)
+    {
+        if (Model.Project is not { } project || project.Id != change.ProjectId) return;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (Model.Project is not { } current || current.Id != change.ProjectId) return;
+            applyingProjectPlaybackPreferences = true;
+            try
+            {
+                if (change.Preference == ProjectPlaybackPreference.Narration) Narration.IsOn = change.Enabled;
+                else Follow.IsOn = change.Enabled;
+            }
+            finally { applyingProjectPlaybackPreferences = false; }
+            if (change.Preference == ProjectPlaybackPreference.Narration && !change.Enabled) StopLiveNarration();
+            else if (change.Preference == ProjectPlaybackPreference.Follow)
+            {
+                if (change.Enabled) UpdateActiveSegment(true);
+                else ClearFollowedSegments();
+            }
+            UpdateDesktopMenuStates();
+        });
+    }
+    private void Narration_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!ready || applyingProjectPlaybackPreferences) return;
+        if (Model.Project is not { } project || string.IsNullOrWhiteSpace(project.Id)) return;
+        ProjectPlaybackPreferences.SetNarrationEnabled(Model.Settings, project.Id, Narration.IsOn);
+        if (!Narration.IsOn) StopLiveNarration();
+        UpdateDesktopMenuStates();
+    }
+    private void StopLiveNarration()
+    {
+        narrationPlayer.Pause();
+        narrationPlayer.Source = null;
+        if (activeCue != null) onDeviceNarrator.Stop();
+        activeCue = null;
+    }
+    private void ClearFollowedSegments()
+    {
+        foreach (var active in activeSegmentRows) active.IsActive = false;
+        activeSegmentRows.Clear();
+    }
     private void Follow_Toggled(object sender, RoutedEventArgs e)
     {
-        if (!ready) return;
+        if (!ready || applyingProjectPlaybackPreferences) return;
+        if (Model.Project is { } project && !string.IsNullOrWhiteSpace(project.Id))
+            ProjectPlaybackPreferences.SetFollowEnabled(Model.Settings, project.Id, Follow.IsOn);
         if (!Follow.IsOn)
         {
-            foreach (var active in activeSegmentRows) active.IsActive = false;
-            activeSegmentRows.Clear();
+            ClearFollowedSegments();
         }
         else UpdateActiveSegment(true);
+        UpdateDesktopMenuStates();
     }
     private void UpdateActiveSegment(bool forceScroll = false)
     {
@@ -721,7 +784,7 @@ public sealed partial class MainWindow : Window
         }
         if (!Model.HasApiKey && command != "prepare-video")
         {
-            await ShowSettingsSectionAsync(2);
+            await ShowSettingsSectionAsync(3);
             return;
         }
         if (command is "analyze" or "transcribe" or "generate-summary" or "generate-ad-cues")
@@ -1242,7 +1305,7 @@ public sealed partial class MainWindow : Window
         {
             if (!Model.HasApiKey)
             {
-                await ShowSettingsSectionAsync(2);
+                await ShowSettingsSectionAsync(3);
                 return;
             }
             ocrButton.IsEnabled = false;
@@ -1482,12 +1545,12 @@ public sealed partial class MainWindow : Window
         if (!flags.Contains("--segment") && !flags.Contains("--changed") && !flags.Contains("--regenerate-all")) flags.Add("--regenerate-all");
         if (Model.CurrentNarrationEngine() == "gemini" && !Model.HasApiKey)
         {
-            await ShowSettingsSectionAsync(2);
+            await ShowSettingsSectionAsync(3);
             return;
         }
         if (Model.CurrentNarrationEngine() == "piper" && !PiperService.IsVoiceDownloaded(Model.CurrentNarrationVoice()))
         {
-            await ShowSettingsSectionAsync(1);
+            await ShowSettingsSectionAsync(2);
             return;
         }
         var hadPriorNarration = Model.Project.Cues.Any(c => c.HasAudioFile);
@@ -1517,7 +1580,7 @@ public sealed partial class MainWindow : Window
     }
     private async void Rewrite_Click(object sender, RoutedEventArgs e)
     {
-        if (!Model.HasApiKey) { await ShowSettingsSectionAsync(2); return; }
+        if (!Model.HasApiKey) { await ShowSettingsSectionAsync(3); return; }
         if (Segments.SelectedItem is Segment { IsDescription: true } c) await Model.RunAsync("rewrite-cue", new[] { "--segment", c.Id });
     }
     private void PreviewNarration_Click(object sender, RoutedEventArgs e)
@@ -1535,7 +1598,7 @@ public sealed partial class MainWindow : Window
     { if (Segments.SelectedItem is Segment { IsDescription: true } c && await Confirm("Delete narration", "Remove this segment's saved audio?", "Delete")) { StopSegmentPreview(); await Model.RunAsync("delete-segment-audio", new[] { "--segment", c.Id }); } }
     private async void Ocr_Click(object sender, RoutedEventArgs e)
     {
-        if (!Model.HasApiKey) { await ShowSettingsSectionAsync(2); return; }
+        if (!Model.HasApiKey) { await ShowSettingsSectionAsync(3); return; }
         video.Pause();
         var result = await Model.RunAsync("capture-frame", new[] { "--timestamp", Position.ToString(CultureInfo.InvariantCulture) });
         var evt = result.FirstOrDefault(x => x.Data.TryGetProperty("screenText", out _));
@@ -1630,13 +1693,13 @@ public sealed partial class MainWindow : Window
     {
         var section = ((sender as FrameworkElement)?.Tag as string) switch
         {
-            "Narration" => 1, "Gemini API" => 2, "Developer prompts" => 3,
-            "Storage" => 4, "Help" => 5, "About" => 6, _ => 0
+            "Projects" => 1, "Narration" => 2, "Gemini API" => 3, "Developer prompts" => 4,
+            "Storage" => 5, "Help" => 6, "About" => 7, _ => 0
         };
         await ShowSettingsSectionAsync(section);
     }
-    private async void HelpSettings_Click(object sender, RoutedEventArgs e) => await ShowSettingsSectionAsync(5);
-    private async void AboutSettings_Click(object sender, RoutedEventArgs e) => await ShowSettingsSectionAsync(6);
+    private async void HelpSettings_Click(object sender, RoutedEventArgs e) => await ShowSettingsSectionAsync(6);
+    private async void AboutSettings_Click(object sender, RoutedEventArgs e) => await ShowSettingsSectionAsync(7);
     private async void SpeakSummary_Click(object sender, RoutedEventArgs e)
     {
         if (readback.State == SummaryReadbackState.Playing) { readback.Pause(); return; }
@@ -1734,7 +1797,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void OpenGeminiSettings_Click(object sender, RoutedEventArgs e) => await ShowSettingsSectionAsync(2);
+    private async void OpenGeminiSettings_Click(object sender, RoutedEventArgs e) => await ShowSettingsSectionAsync(3);
 
     private void UpdateApiKeyUi()
     {

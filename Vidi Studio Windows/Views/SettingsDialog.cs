@@ -25,6 +25,7 @@ public sealed partial class SettingsDialog : Window
     private bool saved;
     private ListView? sectionList;
     private ListViewItem? developerPromptsItem;
+    private StackPanel? currentSectionPanel;
     private int requestedSection;
 #if DEBUG
     internal async Task VerifyWindowThemeAsync()
@@ -48,7 +49,7 @@ public sealed partial class SettingsDialog : Window
     }
     internal async Task VerifyProviderSwitchingAsync()
     {
-        NavigateForSmokeTest(1);
+        NavigateForSmokeTest(2);
         narrationPlaybackChoice!.SelectedItem = ((IEnumerable<PlaybackOption>)narrationPlaybackChoice.ItemsSource).First(option => option.Id == "generated");
         mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "sapi5");
         mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "windows-core");
@@ -82,7 +83,7 @@ public sealed partial class SettingsDialog : Window
     }
     internal async Task VerifyLocalVoiceSamplesAsync()
     {
-        NavigateForSmokeTest(1);
+        NavigateForSmokeTest(2);
         foreach (var provider in new[] { "windows-core", "sapi5" })
         {
             mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == provider);
@@ -109,14 +110,14 @@ public sealed partial class SettingsDialog : Window
         NavigateForSmokeTest(0);
         if (developerPromptsItem?.Visibility != Visibility.Collapsed)
             throw new InvalidOperationException("Developer prompts must be hidden until Developer mode is enabled.");
-        SelectSection(3);
-        if (SelectedSectionForSmokeTest == 3)
+        SelectSection(4);
+        if (SelectedSectionForSmokeTest == 4)
             throw new InvalidOperationException("Developer prompts opened while Developer mode was off.");
         draft["developerMode"] = true; UpdateDeveloperPromptsVisibility();
         if (developerPromptsItem.Visibility != Visibility.Visible)
             throw new InvalidOperationException("Developer mode did not reveal Developer prompts.");
-        SelectSection(3);
-        if (SelectedSectionForSmokeTest != 3)
+        SelectSection(4);
+        if (SelectedSectionForSmokeTest != 4)
             throw new InvalidOperationException("Developer prompts did not open after Developer mode was enabled.");
         draft["developerMode"] = false; UpdateDeveloperPromptsVisibility();
         if (developerPromptsItem.Visibility != Visibility.Collapsed || SelectedSectionForSmokeTest != 0)
@@ -125,13 +126,13 @@ public sealed partial class SettingsDialog : Window
     internal async Task VerifyAdvancedOptionsForSmokeTestAsync()
     {
         draft["developerMode"] = false; UpdateDeveloperPromptsVisibility();
-        NavigateForSmokeTest(4);
+        NavigateForSmokeTest(5);
         if (storageAdvancedControls.Visibility != Visibility.Collapsed || storageAdvancedControls.Children.Count == 0)
             throw new InvalidOperationException("Executable paths must be hidden until Developer mode is enabled.");
         draft["developerMode"] = true; UpdateDeveloperPromptsVisibility();
         if (storageAdvancedControls.Visibility != Visibility.Visible)
             throw new InvalidOperationException("Developer mode did not reveal the executable paths.");
-        NavigateForSmokeTest(1);
+        NavigateForSmokeTest(2);
         mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "sapi5");
         await RefreshVoices();
         if (sapiHost.Visibility != Visibility.Visible)
@@ -167,12 +168,12 @@ public sealed partial class SettingsDialog : Window
     private List<Voice> voices = new();
     public SettingsDialog(StudioViewModel model, Window window, int initialSection = 0)
     {
-        if (initialSection < 0 || initialSection > 6) throw new ArgumentOutOfRangeException(nameof(initialSection));
+        if (initialSection < 0 || initialSection > 7) throw new ArgumentOutOfRangeException(nameof(initialSection));
         requestedSection = initialSection;
         menuOwner = window as MainWindow;
         this.model = model; draft = model.Settings.Data.DeepClone().AsObject();
         // Developer prompts stay hidden until the user enables Developer mode in Appearance.
-        if (requestedSection == 3 && !DeveloperModeEnabled) requestedSection = 0;
+        if (requestedSection == 4 && !DeveloperModeEnabled) requestedSection = 0;
         // Seed the key box from Windows Credential Manager; it is never part of config.json.
         var savedApiKey = model.Settings.Get("apiKey");
         if (savedApiKey.Length > 0) draft["apiKey"] = savedApiKey;
@@ -188,15 +189,15 @@ public sealed partial class SettingsDialog : Window
         layout.ColumnDefinitions.Add(new ColumnDefinition());
         layout.Children.Add(new TextBlock { Text = "Settings", FontSize = 26, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(4, 4, 0, 18) });
         var sections = new ListView { SelectionMode = ListViewSelectionMode.Single };
-        var labels = new[] { "Appearance", "Narration", "Gemini API", "Developer prompts", "Storage", "Help", "About" };
-        var glyphs = new[] { "\uE790", "\uE767", "\uE734", "\uE8F2", "\uE8B7", "\uE897", "\uE946" };
+        var labels = new[] { "Appearance", "Projects", "Narration", "Gemini API", "Developer prompts", "Storage", "Help", "About" };
+        var glyphs = new[] { "\uE790", "\uE8F1", "\uE767", "\uE734", "\uE8F2", "\uE8B7", "\uE897", "\uE946" };
         for (var i = 0; i < labels.Length; i++)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
             row.Children.Add(new FontIcon { Glyph = glyphs[i], FontSize = 17 });
             row.Children.Add(new TextBlock { Text = labels[i], VerticalAlignment = VerticalAlignment.Center });
             var item = new ListViewItem { Content = row, MinHeight = 42, HorizontalContentAlignment = HorizontalAlignment.Stretch };
-            if (i == 3) developerPromptsItem = item;
+            if (i == 4) developerPromptsItem = item;
             sections.Items.Add(item);
         }
         Grid.SetRow(sections, 1);
@@ -229,6 +230,8 @@ public sealed partial class SettingsDialog : Window
         layout.Children.Add(titleBarDrag);
         SetTitleBar(titleBarDrag);
         App.ThemeChanged += ReceiveTheme;
+        ProjectPlaybackPreferences.Changed += ReceiveProjectPlaybackPreference;
+        model.PropertyChanged += ReceiveModelProjectChange;
         samplePlayer.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
             if (closed || sampleState != SampleState.Playing) return;
@@ -250,7 +253,7 @@ public sealed partial class SettingsDialog : Window
         sections.SelectionChanged += (_, _) =>
         {
             // Developer prompts is hidden unless Developer mode is on in Appearance.
-            if (sections.SelectedIndex == 3 && !DeveloperModeEnabled)
+            if (sections.SelectedIndex == 4 && !DeveloperModeEnabled)
             {
                 sections.SelectedIndex = 0;
                 return;
@@ -260,14 +263,16 @@ public sealed partial class SettingsDialog : Window
             host.Content = null;
             var panel = new StackPanel { Spacing = 12, Padding = new Thickness(0, 0, 16, 12) };
             host.Content = panel;
+            currentSectionPanel = panel;
             switch (sections.SelectedIndex)
             {
                 case 0:
                     BuildAppearance(panel);
                     break;
-                case 1: BuildNarration(panel); break;
-                case 2: BuildGemini(panel); break;
-                case 3:
+                case 1: BuildProjects(panel); break;
+                case 2: BuildNarration(panel); break;
+                case 3: BuildGemini(panel); break;
+                case 4:
                     if (draft["prompts"] is JsonObject prompts)
                         foreach (var stage in prompts.ToList())
                         {
@@ -280,7 +285,7 @@ public sealed partial class SettingsDialog : Window
                             panel.Children.Add(new Expander { Header = stage.Key, Content = fields, HorizontalAlignment = HorizontalAlignment.Stretch });
                         }
                     break;
-                case 4:
+                case 5:
                     AddText(panel, "Project library", "libraryPath");
                     storageAdvancedControls.Children.Clear();
                     storageAdvancedControls.Children.Add(new TextBlock { Text = "Advanced", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
@@ -308,8 +313,8 @@ public sealed partial class SettingsDialog : Window
                     var logs = new Button { Content = "Open diagnostics folder" };
                     logs.Click += async (_, _) => { Directory.CreateDirectory(SettingsStore.DirectoryPath); await Windows.System.Launcher.LaunchFolderPathAsync(SettingsStore.DirectoryPath); }; panel.Children.Add(logs);
                     break;
-                case 5: BuildHelp(panel); break;
-                case 6: BuildAbout(panel); break;
+                case 6: BuildHelp(panel); break;
+                case 7: BuildAbout(panel); break;
             }
         };
         sections.SelectedIndex = requestedSection;
@@ -319,6 +324,8 @@ public sealed partial class SettingsDialog : Window
         Closed += (_, _) =>
         {
             App.ThemeChanged -= ReceiveTheme;
+            ProjectPlaybackPreferences.Changed -= ReceiveProjectPlaybackPreference;
+            model.PropertyChanged -= ReceiveModelProjectChange;
             if (!saved) App.PreviewTheme(originalTheme);
             closed = true; voiceRequest++; lifetime.Cancel(); voiceCancellation?.Cancel(); sampleCancellation?.Cancel(); samplePlayer.Dispose();
             foreach (var file in temporaryFiles) { try { File.Delete(file); } catch (IOException) { } }
@@ -331,7 +338,7 @@ public sealed partial class SettingsDialog : Window
     {
         if (developerPromptsItem != null)
             developerPromptsItem.Visibility = DeveloperModeEnabled ? Visibility.Visible : Visibility.Collapsed;
-        if (!DeveloperModeEnabled && sectionList?.SelectedIndex == 3) sectionList.SelectedIndex = 0;
+        if (!DeveloperModeEnabled && sectionList?.SelectedIndex == 4) sectionList.SelectedIndex = 0;
         UpdateAdvancedControlsVisibility();
     }
     private void UpdateAdvancedControlsVisibility()
@@ -342,7 +349,7 @@ public sealed partial class SettingsDialog : Window
     }
     public void SelectSection(int section)
     {
-        if (section == 3 && !DeveloperModeEnabled) section = 0;
+        if (section == 4 && !DeveloperModeEnabled) section = 0;
         if (sectionList == null || section < 0 || section >= sectionList.Items.Count)
             throw new ArgumentOutOfRangeException(nameof(section));
         requestedSection = section;

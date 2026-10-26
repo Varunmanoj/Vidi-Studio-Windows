@@ -166,7 +166,7 @@
        <ComboBox x:Name="Section" Width="152" SelectedIndex="0" SelectionChanged="Section_Changed" AutomationProperties.Name="Editor section"><ComboBoxItem Content="Transcript"/><ComboBoxItem Content="Summary"/><ComboBoxItem Content="Descriptions"/><ComboBoxItem Content="AD Overview"/><ComboBoxItem Content="AD Transcript"/><ComboBoxItem Content="Created Exports"/></ComboBox>
        <Button Content="&#xE714;" FontFamily="Segoe Fluent Icons" Style="{StaticResource CompactButton}" Click="TogglePreview_Click" AutomationProperties.Name="Show or hide video preview"/>
        <Button Content="&#xE740;" FontFamily="Segoe Fluent Icons" Style="{StaticResource CompactButton}" Click="FullScreen_Click" AutomationProperties.Name="Full-screen video"/>
-       <ToggleSwitch x:Name="Narration" OnContent="Narration" OffContent="Narration" MinWidth="104" AutomationProperties.Name="Narration"/>
+       <ToggleSwitch x:Name="Narration" OnContent="Narration" OffContent="Narration" MinWidth="104" Toggled="Narration_Toggled" AutomationProperties.Name="Narration"/>
        <ToggleSwitch x:Name="Follow" OnContent="Follow" OffContent="Follow" MinWidth="85" IsOn="True" Toggled="Follow_Toggled" AutomationProperties.Name="Follow active segment"/>
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"><Button x:Name="GenerateCurrent" Content="Generate Transcript" Click="GenerateCurrent_Click"/><Button x:Name="EditModeButton" Content="Edit" Click="EditMode_Click"/><Button x:Name="EditorMoreButton" Content="&#xE712;" FontFamily="Segoe Fluent Icons" Click="SegmentMore_Click" Visibility="Collapsed" AutomationProperties.Name="More editor options" ToolTipService.ToolTip="More editor options"/></StackPanel>

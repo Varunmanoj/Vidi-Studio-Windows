@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Vidi_Studio_Windows.Services;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 
@@ -20,6 +21,10 @@ public sealed partial class MainWindow
             var folder = Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT");
             if (folder == null) throw new InvalidOperationException("Smoke project is required.");
             Model.Open(folder);
+            if (Model.Project is not { } openedProject ||
+                Narration.IsOn != ProjectPlaybackPreferences.NarrationEnabled(Model.Settings, openedProject.Id) ||
+                Follow.IsOn != ProjectPlaybackPreferences.FollowEnabled(Model.Settings, openedProject.Id))
+                throw new InvalidOperationException("Opening a project did not restore its saved playback toggles.");
             if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Playback", "Project", "Help" }))
                 throw new InvalidOperationException("Editor menu set does not match the active page.");
             if (galleryMenus.Concat(editorMenus).SelectMany(menu => menu.Items).OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().Any(item => item.Icon == null) ||
@@ -319,6 +324,7 @@ public sealed partial class MainWindow
             var display = settings.ShowAsync();
             await Task.Delay(250);
             settings.VerifyDeveloperModeGateForSmokeTest();
+            settings.VerifyProjectPlaybackSettingsForSmokeTest();
             await settings.VerifyAdvancedOptionsForSmokeTestAsync();
             PreviewTheme("dark"); await Task.Delay(80);
             if (((FrameworkElement)settings.Content).ActualTheme != ElementTheme.Dark || Root.ActualTheme != ElementTheme.Dark)
@@ -348,21 +354,24 @@ public sealed partial class MainWindow
             await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-gemini.png"));
             settings.NavigateForSmokeTest(1);
             await Task.Delay(100);
+            await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-projects.png"));
+            settings.NavigateForSmokeTest(2);
+            await Task.Delay(100);
             await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-narration.png"));
-            settings.NavigateForSmokeTest(4);
+            settings.NavigateForSmokeTest(5);
             await Task.Delay(100);
             await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-tools.png"));
-            foreach (var section in new[] { 1, 5, 6 })
+            foreach (var section in new[] { 2, 6, 7 })
             {
                 settings.SelectSection(section);
                 if (settings.SelectedSectionForSmokeTest != section)
                     throw new InvalidOperationException("Settings opened the wrong section.");
             }
-            foreach (var section in new[] { 0, 1, 2, 3, 4, 5, 1, 0 }) { settings.NavigateForSmokeTest(section); await Task.Delay(200); }
+            foreach (var section in new[] { 0, 1, 2, 3, 4, 5, 6, 7, 2, 0 }) { settings.NavigateForSmokeTest(section); await Task.Delay(200); }
             await settings.VerifyProviderSwitchingAsync();
             await settings.VerifyLocalVoiceSamplesAsync();
             settings.Hide(); await display;
-            foreach (var section in new[] { 1, 5, 6 })
+            foreach (var section in new[] { 2, 6, 7 })
             {
                 var targeted = new Views.SettingsDialog(Model, this, section);
                 var targetedDisplay = targeted.ShowAsync();
@@ -375,13 +384,13 @@ public sealed partial class MainWindow
             await Task.Delay(100);
             Settings_Click(new Microsoft.UI.Xaml.Controls.Button { Tag = "Narration" }, new RoutedEventArgs());
             await Task.Delay(100);
-            if (openSettings?.SelectedSectionForSmokeTest != 1) throw new InvalidOperationException("Narration button opened the wrong Settings page.");
+            if (openSettings?.SelectedSectionForSmokeTest != 2) throw new InvalidOperationException("Narration button opened the wrong Settings page.");
             HelpSettings_Click(this, new RoutedEventArgs());
             await Task.Delay(100);
-            if (openSettings?.SelectedSectionForSmokeTest != 5) throw new InvalidOperationException("Help menu opened the wrong Settings page.");
+            if (openSettings?.SelectedSectionForSmokeTest != 6) throw new InvalidOperationException("Help menu opened the wrong Settings page.");
             AboutSettings_Click(this, new RoutedEventArgs());
             await Task.Delay(100);
-            if (openSettings?.SelectedSectionForSmokeTest != 6) throw new InvalidOperationException("About menu opened the wrong Settings page.");
+            if (openSettings?.SelectedSectionForSmokeTest != 7) throw new InvalidOperationException("About menu opened the wrong Settings page.");
             openSettings.Hide(); await openFromButton;
             PreviewTheme("dark");
             var newProject = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings);
@@ -609,6 +618,12 @@ public sealed partial class MainWindow
             }
             ClearProject();
             if (Model.Project != null || EditorWorkspace.Visibility != Visibility.Collapsed || GalleryPanel.Visibility != Visibility.Visible || video.Source != null || narrationPlayer.Source != null || ProjectDetails.Children.Count != 0) throw new InvalidOperationException("Project close left stale editor state.");
+            var emptySettings = new Views.SettingsDialog(Model, this, 1);
+            var emptyDisplay = emptySettings.ShowAsync();
+            await Task.Delay(250);
+            emptySettings.VerifyEmptyProjectsSettingsForSmokeTest();
+            await CaptureSmokeImage((FrameworkElement)emptySettings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-projects-empty.png"));
+            emptySettings.Hide(); await emptyDisplay;
             await File.WriteAllTextAsync(report, "PASS: app-wide live light/dark themes across gallery, editor, Settings, New Project and Export; visible segment checkboxes and edit multi-selection, select all, deselect and Done in both themes; menu shortcut labels; video timeline playhead, synchronized Transcript and AD Transcript rows, summary highlighting and playback, New Project inspection, edit persistence, undo/redo, OneCore and SAPI narration, subtitle export, six editor sections, and engine invocation.");
         }
         catch (Exception ex) { await File.WriteAllTextAsync(report, ex.ToString()); }

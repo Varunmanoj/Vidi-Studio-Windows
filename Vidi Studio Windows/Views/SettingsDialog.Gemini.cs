@@ -719,7 +719,7 @@ public sealed partial class SettingsDialog
         var originalStatus = status.Text;
         try
         {
-            NavigateForSmokeTest(2);
+            NavigateForSmokeTest(3);
             availableModels.Clear();
             foreach (var id in new[] { "gemini-3.8-flash", "gemini-3.5-transcribe", "gemini-3.8-flash-lite-tts", "gemini-image", "gemini-embedding", "gemini-live", "gemini-computer-use", "gemini-robotics", "gemini-research" })
                 availableModels.Add(new GeminiModelOption(id, CleanModelName(id, id)));

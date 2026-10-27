@@ -205,14 +205,6 @@ internal static class WindowAppearance
             : Windows.UI.Color.FromArgb(255, 243, 243, 243);
     }
 
-    /// <summary>
-    /// Flat, opaque surface for companion dialog windows. Dialogs do not use Mica/Acrylic or a
-    /// translucent Fluent layer: light mode is plain white and dark mode is plain black, so the
-    /// card never shows a gray wash over the desktop.
-    /// </summary>
-    internal static Windows.UI.Color DialogSurfaceColor(ElementTheme theme) =>
-        theme == ElementTheme.Dark ? Microsoft.UI.Colors.Black : Microsoft.UI.Colors.White;
-
     private static bool HighContrast
     {
         get
@@ -334,16 +326,22 @@ internal static class WindowedDialog
     // Height of the extended title bar; the dialog content starts below its caption buttons.
     private const double TitleBarHeight = 32;
     private const double ContentTopInset = 36;
+    private static readonly ConditionalWeakTable<Border, object> FlatCards = new();
+#if DEBUG
+    internal static event Action<ContentDialog, Window>? Preparing;
+    internal static event Action<ContentDialog, Window>? ReadyToShow;
+#endif
 
     internal static async Task<ContentDialogResult> ShowAsync(ContentDialog dialog, Window owner, int width = 680, int height = 460)
     {
         var window = new Window { Title = dialog.Title?.ToString() ?? "Vidi Studio" };
+#if DEBUG
+        Preparing?.Invoke(dialog, window);
+#endif
         var root = new Grid();
         window.Content = root;
         WindowAppearance.ApplyIcon(window);
-        // Dialogs are flat companion windows: no Mica/Acrylic backdrop, so light mode is white and
-        // dark mode is black instead of a translucent Fluent wash.
-        window.SystemBackdrop = null;
+        WindowAppearance.ApplyMaterial(window);
         if (window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
         {
             // A dialog is a fixed-size companion; only the system Close button belongs in its caption.
@@ -354,6 +352,12 @@ internal static class WindowedDialog
         // Flatten the ContentDialog chrome. The window surface is the dialog surface, so there is
         // no smoke layer, card fill, border, divider, or floating card inside the window.
         var transparent = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        // Set local control values as well as template resources. Otherwise theme/style bindings
+        // can restore an opaque, rounded card above the window's own Fluent surface.
+        dialog.Background = transparent;
+        dialog.BorderBrush = transparent;
+        dialog.BorderThickness = new Thickness(0);
+        dialog.CornerRadius = new CornerRadius(0);
         dialog.Resources["ContentDialogSmokeFill"] = transparent;
         dialog.Resources["ContentDialogTopOverlay"] = transparent;
         dialog.Resources["ContentDialogBackground"] = transparent;
@@ -372,6 +376,12 @@ internal static class WindowedDialog
             dialog.Resources["ContentDialogMaxWidth"] = Math.Max(existingCap, availableCardWidth);
         else
             dialog.Resources["ContentDialogMaxWidth"] = availableCardWidth;
+        // InPlace requires a live visual parent. Unlike Popup placement, it never creates the
+        // separate smoke popup that dims this entire companion window (including its caption).
+        // That popup is outside the dialog's visual tree, so clearing template rectangles could
+        // not reliably remove it. Keep WinUI's native buttons, focus cycle, and async result.
+        root.Children.Add(dialog);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetIsDialog(dialog, true);
         // Extend the app surface into the caption so the window has the same material as the app
         // and the dialog title is shown once, inside the content, rather than twice.
         window.ExtendsContentIntoTitleBar = true;
@@ -388,38 +398,22 @@ internal static class WindowedDialog
         {
             var requested = theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
             WindowAppearance.ApplyTheme(window, root, requested);
-            var actual = requested == ElementTheme.Default
-                ? (root.ActualTheme == ElementTheme.Dark ? ElementTheme.Dark : ElementTheme.Light)
-                : requested;
-            ApplyFlatSurface(actual);
             dialog.RequestedTheme = requested;
             FlattenDialogSurface(dialog);
         }
-        root.ActualThemeChanged += (_, _) =>
+        void OnActualThemeChanged(FrameworkElement sender, object args)
         {
             WindowAppearance.Refresh(window, root);
-            ApplyFlatSurface(root.ActualTheme == ElementTheme.Dark ? ElementTheme.Dark : ElementTheme.Light);
             FlattenDialogSurface(dialog);
-        };
+        }
+        root.ActualThemeChanged += OnActualThemeChanged;
         App.ThemeChanged += ApplyTheme;
         ApplyTheme(App.ActiveTheme ?? ((owner.Content as FrameworkElement)?.ActualTheme == ElementTheme.Dark ? "dark" : "light"));
 
-        void ApplyFlatSurface(ElementTheme theme)
-        {
-            var surface = WindowAppearance.DialogSurfaceColor(theme);
-            root.Background = new SolidColorBrush(surface);
-            if (window.AppWindow?.TitleBar is { } titleBar && Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
-            {
-                titleBar.BackgroundColor = surface;
-                titleBar.InactiveBackgroundColor = surface;
-                titleBar.ButtonBackgroundColor = surface;
-                titleBar.ButtonInactiveBackgroundColor = surface;
-            }
-        }
-        // The template's smoke rectangle is what dims the whole dialog window in light mode. Clear
-        // it in the visual tree as well as through the resource, because the template can resolve
-        // its ThemeResource before the dialog-level override is observed.
-        dialog.Loaded += (_, _) => FlattenDialogSurface(dialog);
+        // Template resources can be resolved before local overrides; flatten only the native
+        // card chrome, leaving content brushes and Fluent control states untouched.
+        void OnDialogLoaded(object sender, RoutedEventArgs args) => FlattenDialogSurface(dialog);
+        dialog.Loaded += OnDialogLoaded;
         var area = owner.AppWindow;
         // AppWindow uses physical pixels; dialog measurements and requested sizes use XAML pixels.
         var scale = (owner.Content as FrameworkElement)?.XamlRoot?.RasterizationScale ?? 1;
@@ -430,14 +424,28 @@ internal static class WindowedDialog
             area.Position.X + Math.Max(0, (area.Size.Width - width) / 2),
             area.Position.Y + Math.Max(0, (area.Size.Height - height) / 2)));
         var loaded = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        root.Loaded += (_, _) => loaded.TrySetResult(true);
-        window.Closed += (_, _) => { loaded.TrySetResult(false); dialog.Hide(); };
+        void OnRootLoaded(object sender, RoutedEventArgs args) => loaded.TrySetResult(true);
+        root.Loaded += OnRootLoaded;
+        using var layout = new DialogWindowLayout(dialog, window, root, owner);
+        var closed = false;
+        void OnClosed(object sender, WindowEventArgs args)
+        {
+            closed = true;
+            layout.Dispose();
+            loaded.TrySetResult(false);
+            dialog.Hide();
+        }
+        void OnOwnerClosed(object sender, WindowEventArgs args) { if (!closed) window.Close(); }
+        window.Closed += OnClosed;
+        owner.Closed += OnOwnerClosed;
         // Escape cancels the dialog, matching the Mac sheet's Cancel action. The accelerator is
         // scoped to both the window and the dialog so it works wherever focus sits.
         var dialogVisible = false;
-        dialog.Opened += (_, _) => dialogVisible = true;
-        dialog.Closed += (_, _) => dialogVisible = false;
-        void AddEscapeAccelerator(UIElement scope)
+        void OnDialogOpened(ContentDialog sender, ContentDialogOpenedEventArgs args) => dialogVisible = true;
+        void OnDialogClosed(ContentDialog sender, ContentDialogClosedEventArgs args) => dialogVisible = false;
+        dialog.Opened += OnDialogOpened;
+        dialog.Closed += OnDialogClosed;
+        Microsoft.UI.Xaml.Input.KeyboardAccelerator AddEscapeAccelerator(UIElement scope)
         {
             // Escape still cancels, but the accelerator must not draw a key-tip badge in the
             // dialog; native Windows dialogs do not advertise their Escape shortcut.
@@ -445,33 +453,118 @@ internal static class WindowedDialog
             var accelerator = new Microsoft.UI.Xaml.Input.KeyboardAccelerator { Key = Windows.System.VirtualKey.Escape };
             accelerator.Invoked += (_, args) => { args.Handled = true; if (dialogVisible) dialog.Hide(); };
             scope.KeyboardAccelerators.Add(accelerator);
+            return accelerator;
         }
-        AddEscapeAccelerator(root);
-        AddEscapeAccelerator(dialog);
-        window.Activate();
+        var rootEscape = AddEscapeAccelerator(root);
+        var dialogEscape = AddEscapeAccelerator(dialog);
         try
         {
-            if (!await loaded.Task) return ContentDialogResult.None;
+            if (!await loaded.Task || closed) return ContentDialogResult.None;
             dialog.XamlRoot = root.XamlRoot;
-            FitWindowToCard(dialog, window, root, owner);
-            return await dialog.ShowAsync();
+            layout.MeasureHiddenWindow();
+            dialog.ApplyTemplate();
+            FlattenDialogSurface(dialog);
+            var showing = dialog.ShowAsync(ContentDialogPlacement.InPlace);
+            FlattenDialogSurface(dialog);
+            // Loaded handlers and native template preparation run while this single window is
+            // still hidden. Do not activate a large staging window and resize it on screen.
+            await layout.PrepareAsync();
+            if (closed || showing.Status != Windows.Foundation.AsyncStatus.Started) return await showing;
+#if DEBUG
+            ReadyToShow?.Invoke(dialog, window);
+#endif
+            window.Activate();
+            layout.ObserveContentChanges();
+            return await showing;
         }
-        finally { App.ThemeChanged -= ApplyTheme; window.Close(); }
+        finally
+        {
+            App.ThemeChanged -= ApplyTheme;
+            owner.Closed -= OnOwnerClosed;
+            root.ActualThemeChanged -= OnActualThemeChanged;
+            root.Loaded -= OnRootLoaded;
+            dialog.Loaded -= OnDialogLoaded;
+            dialog.Opened -= OnDialogOpened;
+            dialog.Closed -= OnDialogClosed;
+            root.KeyboardAccelerators.Remove(rootEscape);
+            dialog.KeyboardAccelerators.Remove(dialogEscape);
+            layout.Dispose();
+            dialog.Hide();
+            root.Children.Remove(dialog);
+            window.Closed -= OnClosed;
+            if (!closed) window.Close();
+        }
     }
 
     /// <summary>
-    /// Sizes the hosting window to the rendered dialog card so the window itself is the dialog and
-    /// no dimmed smoke area frames it. Runs once the card is on screen and follows later content
-    /// changes (for example a media preview), always clamped to the owner window.
+    /// Measures and fits the one native window before it is shown. Once visible, only genuine
+    /// content changes (such as loading a media preview) can request another fit.
     /// </summary>
-    private static void FitWindowToCard(ContentDialog dialog, Window window, Grid root, Window owner)
+    private sealed class DialogWindowLayout : IDisposable
     {
-        Border? card = null;
-        void Resize()
+        private readonly Window window;
+        private readonly Grid root;
+        private readonly Window owner;
+        private readonly FrameworkElement? content;
+        private readonly FrameworkElement? inner;
+        private Border? card;
+        private bool disposed;
+        private bool observing;
+        private bool fitQueued;
+
+        internal DialogWindowLayout(ContentDialog dialog, Window window, Grid root, Window owner)
         {
-            if (dialog.Content is not FrameworkElement content) return;
+            this.window = window;
+            this.root = root;
+            this.owner = owner;
+            content = dialog.Content as FrameworkElement;
+            inner = (dialog.Content as ScrollViewer)?.Content as FrameworkElement;
+        }
+
+        internal void MeasureHiddenWindow()
+        {
+            // A hidden WinUI window loads its tree but does not automatically arrange its root.
+            // Give it the real client bounds at the monitor DPI, never a visible/off-screen host.
+            var scale = root.XamlRoot?.RasterizationScale ?? 1;
+            var client = window.AppWindow.ClientSize;
+            var size = new Windows.Foundation.Size(Math.Max(1, client.Width / scale), Math.Max(1, client.Height / scale));
+            root.Width = size.Width;
+            root.Height = size.Height;
+            root.Measure(size);
+            root.Arrange(new Windows.Foundation.Rect(0, 0, size.Width, size.Height));
+            root.UpdateLayout();
+        }
+
+        internal async Task PrepareAsync()
+        {
+            // Let Loaded/template handlers settle through dispatcher layout turns, not a timed
+            // delay. Keep every measurement and resize hidden, including wide/scrolling editors.
+            for (var pass = 0; pass < 6 && !disposed; pass++)
+            {
+                await NextLayoutTurnAsync();
+                if (disposed) return;
+                MeasureHiddenWindow();
+                if (!FitToContent() && pass > 0) break;
+            }
+            if (disposed) return;
+            MeasureHiddenWindow();
+            root.ClearValue(FrameworkElement.WidthProperty);
+            root.ClearValue(FrameworkElement.HeightProperty);
+        }
+
+        private Task NextLayoutTurnAsync()
+        {
+            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!root.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                () => completion.TrySetResult(true))) completion.TrySetResult(false);
+            return completion.Task;
+        }
+
+        private bool FitToContent()
+        {
+            if (disposed || content is null) return false;
             card ??= FindCard(content, root);
-            if (card is null) return;
+            if (card is null) return false;
             // The content is measured with an unbounded height, so its desired height is the full
             // dialog height even when a short initial window clipped it. An inner scroll viewer that
             // sets MaxHeight deliberately stays scrollable instead of growing the window past it.
@@ -487,7 +580,7 @@ internal static class WindowedDialog
             var cardHeight = contentHeight + chromeHeight;
             if (!double.IsInfinity(card.MaxHeight) && card.MaxHeight > 0)
                 cardHeight = Math.Min(cardHeight, card.MaxHeight);
-            if (cardHeight <= 0 || card.ActualWidth <= 0) return;
+            if (cardHeight <= 0 || card.ActualWidth <= 0) return false;
             var scale = root.XamlRoot?.RasterizationScale ?? 1;
             var area = owner.AppWindow;
             var logicalWidth = card.ActualWidth + card.Margin.Left + card.Margin.Right + 2;
@@ -501,52 +594,72 @@ internal static class WindowedDialog
             var minPixelHeight = (int)Math.Ceiling(240 * scale);
             var targetWidth = Math.Min(Math.Max(minPixelWidth, pixelWidth), Math.Max(400, area.Size.Width - 24));
             var targetHeight = Math.Min(Math.Max(minPixelHeight, pixelHeight), Math.Max(220, area.Size.Height - 24));
-            if (Math.Abs(targetWidth - window.AppWindow.Size.Width) < 4 && Math.Abs(targetHeight - window.AppWindow.Size.Height) < 4) return;
-            window.AppWindow.Resize(new Windows.Graphics.SizeInt32(targetWidth, targetHeight));
+            if (Math.Abs(targetWidth - window.AppWindow.ClientSize.Width) < 4 && Math.Abs(targetHeight - window.AppWindow.ClientSize.Height) < 4) return false;
+            window.AppWindow.ResizeClient(new Windows.Graphics.SizeInt32(targetWidth, targetHeight));
+            var bounds = window.AppWindow.Size;
             window.AppWindow.Move(new Windows.Graphics.PointInt32(
-                area.Position.X + Math.Max(0, (area.Size.Width - targetWidth) / 2),
-                area.Position.Y + Math.Max(0, (area.Size.Height - targetHeight) / 2)));
+                area.Position.X + Math.Max(0, (area.Size.Width - bounds.Width) / 2),
+                area.Position.Y + Math.Max(0, (area.Size.Height - bounds.Height) / 2)));
+            return true;
         }
-        dialog.Opened += (_, _) =>
+
+        internal void ObserveContentChanges()
         {
-            FlattenDialogSurface(dialog);
-            root.DispatcherQueue.TryEnqueue(Resize);
-            if (dialog.Content is FrameworkElement content) content.SizeChanged += (_, _) => Resize();
-            if ((dialog.Content as ScrollViewer)?.Content is FrameworkElement inner) inner.SizeChanged += (_, _) => Resize();
-        };
+            if (disposed || observing) return;
+            observing = true;
+            if (content is not null) content.SizeChanged += ContentSizeChanged;
+            if (inner is not null) inner.SizeChanged += ContentSizeChanged;
+        }
+
+        private void ContentSizeChanged(object sender, SizeChangedEventArgs args)
+        {
+            if (disposed || fitQueued) return;
+            fitQueued = root.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                fitQueued = false;
+                if (!disposed) FitToContent();
+            });
+        }
+
+        public void Dispose()
+        {
+            disposed = true;
+            if (content is not null) content.SizeChanged -= ContentSizeChanged;
+            if (inner is not null) inner.SizeChanged -= ContentSizeChanged;
+        }
     }
 
     /// <summary>
-    /// Removes the instantiated ContentDialog's dimming layer and card chrome. The dialog window
+    /// Removes the instantiated ContentDialog's card chrome. The dialog window
     /// already paints the app's Fluent surface, so the template only needs to supply the title,
     /// content, and buttons.
     /// </summary>
     private static void FlattenDialogSurface(ContentDialog dialog)
     {
         var transparent = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        if (FindTemplateElement<Microsoft.UI.Xaml.Shapes.Rectangle>(dialog, "SmokeLayerBackground") is { } smoke)
-        {
-            // Removing the rectangle is stronger than clearing its fill: a visual state or a
-            // template refresh can re-apply the theme brush, which is what previously left the
-            // light-mode dialog covered by a 30% black smoke layer.
-            if (VisualTreeHelper.GetParent(smoke) is Panel smokeHost) smokeHost.Children.Remove(smoke);
-            else smoke.Fill = transparent;
-        }
-        ClearSmokeLayers(dialog, dialog, transparent);
+        // A separate native window already has its own opening/closing animation. Do not also
+        // zoom a ContentDialog card inside it, or wait for that animation before fitting it.
+        if (FindTemplateElement<Border>(dialog, "Container") is { } container)
+            foreach (var group in VisualStateManager.GetVisualStateGroups(container))
+                if (group.Name == "DialogShowingStates") group.Transitions.Clear();
         if (FindTemplateElement<Border>(dialog, "BackgroundElement") is { } card)
         {
-            // The smoke layer is the rectangle that shares the template layout with the card. Clearing
-            // it by position as well as by name keeps the white surface even if a template revision
-            // renames the element.
-            if (VisualTreeHelper.GetParent(card) is Panel layout)
-            {
-                foreach (var child in layout.Children)
-                    if (child is Microsoft.UI.Xaml.Shapes.Rectangle smokeLayer)
-                        smokeLayer.Fill = transparent;
-            }
             card.Background = transparent;
             card.BorderThickness = new Thickness(0);
+            card.CornerRadius = new CornerRadius(0);
+            // WinUI can prepare content again after fitting/loading, reapplying ThemeShadow and
+            // 128 px elevation without another Opened event. Keep this one template part flat at
+            // the property boundary, rather than relying on event timing or a per-frame sweep.
+            FlatCards.GetValue(card, static element =>
+            {
+                element.RegisterPropertyChangedCallback(UIElement.ShadowProperty,
+                    static (sender, _) => ClearDialogElevation((UIElement)sender));
+                return new object();
+            });
+            ClearDialogElevation(card);
         }
+        if (FindTemplateElement<Grid>(dialog, "DialogSpace") is { } dialogSpace)
+            dialogSpace.CornerRadius = new CornerRadius(0);
         if (FindTemplateElement<Grid>(dialog, "CommandSpace") is { } commands)
             commands.Background = transparent;
         if (FindTemplateElement<ScrollViewer>(dialog, "ContentScrollViewer") is { } contentScroller)
@@ -564,24 +677,10 @@ internal static class WindowedDialog
         }
     }
 
-    /// <summary>
-    /// Clears every full-surface smoke rectangle in the dialog template, including rectangles
-    /// that a template refresh recreated after the named lookup. Only the host-wide dimming layer
-    /// is affected; dialog content is never a full-window rectangle.
-    /// </summary>
-    private static void ClearSmokeLayers(DependencyObject node, ContentDialog dialog, Brush transparent)
+    private static void ClearDialogElevation(UIElement card)
     {
-        var hasDialogSize = dialog.ActualWidth > 0 && dialog.ActualHeight > 0;
-        var count = VisualTreeHelper.GetChildrenCount(node);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(node, i);
-            if (child is Microsoft.UI.Xaml.Shapes.Rectangle rectangle &&
-                (rectangle.Name == "SmokeLayerBackground" ||
-                 (hasDialogSize && rectangle.Fill is not null && rectangle.ActualWidth >= dialog.ActualWidth - 1 && rectangle.ActualHeight >= dialog.ActualHeight - 1)))
-                rectangle.Fill = transparent;
-            ClearSmokeLayers(child, dialog, transparent);
-        }
+        if (card.Shadow is not null) card.Shadow = null;
+        card.Translation = System.Numerics.Vector3.Zero;
     }
 
     /// <summary>Finds a named element in an instantiated control template.</summary>

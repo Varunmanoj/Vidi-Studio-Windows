@@ -81,7 +81,8 @@ public sealed partial class MainWindow
                 Submenu("Narration",
                     Submenu("AD Segment Generation", Command("generate-ad-cues"), Separator(), Command("delete-descriptions")),
                     Submenu("Narration Audio", Command("synthesize-tts"), Command("synthesize-changed"), Command("review-narration-issues"), Command("review-narration-voices"), Separator(), Command("delete-narration"))),
-                Command("delete-current"), Separator(), Command("show-in-finder"), Command("open-configuration")),
+                Command("delete-current"), Separator(), Command("show-in-finder"), Command("open-configuration"),
+                Separator(), Command("rename-project"), Command("trash-project")),
             Menu("Help", Command("help"), Command("about"))
         };
         galleryMenus.AddRange(Layout());
@@ -225,6 +226,8 @@ public sealed partial class MainWindow
         var tts = Model.Settings.Get("ttsMode", "windows-core") != "gemini" || ai;
         switch (id)
         {
+            case "rename-project": return !p.IntegrityPlaceholder && p.Integrity?.ManifestUnreadable != true && p.Integrity?.FolderMissing != true;
+            case "trash-project": return true;
             case "segment-edit-mode": return timed && Segments.Items.Count > 0 || Section.SelectedIndex == 1;
             case "add": return Section.SelectedIndex is 0 or 2;
             case "reanalyze-selection": return ai && (Section.SelectedIndex == 0 || Section.SelectedIndex == 2 && canDescribe);
@@ -308,7 +311,8 @@ public sealed partial class MainWindow
             "review-narration-voices" => "Review Narration Voices…",
             "delete-descriptions" => "Delete Descriptions…",
             "delete-current" => Section.SelectedIndex switch { 0 => "Delete Transcript…", 1 => "Delete Summary…", 2 => "Delete Descriptions…", _ => "Delete Current Page…" },
-            "show-in-finder" => "Show Project in File Explorer", "open-configuration" => "Open Project Configuration", _ => id
+            "show-in-finder" => "Show Project in File Explorer", "open-configuration" => "Open Project Configuration",
+            "rename-project" => "Rename Project…", "trash-project" => "Move Project to Recycle Bin…", _ => id
         };
     }
 
@@ -333,6 +337,7 @@ public sealed partial class MainWindow
             "project-list" or "project-grid" or "Editor Sections" => "List / Grid projects",
             "new-project" or "add" => "New project", "open-project" or "show-in-finder" => "Open project folder",
             "open-configuration" => "Open project configuration",
+            "rename-project" => "Rename", "trash-project" => "Move to Recycle Bin",
             "open-editor-window" => "Open editor in new window", "export" => "Export", "settings" => "Settings",
             "close-window" => "Close window", "help" => "Help and keyboard shortcuts", "about" => "About Vidi Studio",
             "back" => "Rewind five seconds", "forward" => "Forward five seconds", "follow" => "Follow active segment",
@@ -435,6 +440,8 @@ public sealed partial class MainWindow
             case "delete-current": await DeleteMenuContentAsync(Section.SelectedIndex switch { 0 => "transcript", 1 => "summary", _ => "descriptions" }); break;
             case "show-in-finder": Reveal_Click(this, e); break;
             case "open-configuration": OpenConfiguration_Click(this, e); break;
+            case "rename-project": if (Model.Project is { } renameProject) await RenameProjectAsync(renameProject); break;
+            case "trash-project": if (Model.Project is { } trashProject) await DeleteProjectAsync(trashProject); break;
             case "summary-play": if (readback.State == SummaryReadbackState.Paused) readback.Resume(); else await readback.PlayFromStartAsync(); break;
             case "summary-pause": readback.Pause(); break;
             case "summary-stop": readback.Stop(); break;

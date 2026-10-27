@@ -15,14 +15,23 @@ namespace Vidi_Studio_Windows;
 public sealed partial class MainWindow
 {
     private static int smokeTestClaimed;
+    private DialogPresentationVerifier? dialogPresentationVerifier;
     private async Task RunSmokeTestAsync(string report)
     {
+        using var presentation = new DialogPresentationVerifier();
+        dialogPresentationVerifier = presentation;
         try
         {
             var folder = Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT");
             if (folder == null) throw new InvalidOperationException("Smoke project is required.");
             Model.Open(folder);
             ShowEditor();
+            if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_DIALOGS_ONLY") == "1")
+            {
+                await VerifyCompanionDialogsForSmokeTestAsync(report);
+                await File.WriteAllTextAsync(report, "PASS: one hidden, content-fitted native window per dialog, no visible startup resize or nested animation; light/dark initial presentation and live light/dark/system themes; dynamic content growth, cancellation before presentation, delete gating, and Primary/Secondary/Cancel results.");
+                return;
+            }
             if (Model.Project is not { } openedProject ||
                 Narration.IsOn != ProjectPlaybackPreferences.NarrationEnabled(Model.Settings, openedProject) ||
                 Follow.IsOn != ProjectPlaybackPreferences.FollowEnabled(Model.Settings, openedProject))
@@ -79,6 +88,7 @@ public sealed partial class MainWindow
             Model.Settings.Set("apiKey", ""); Model.Settings.Set("ttsMode", "windows-core");
             UpdateDesktopMenuStates();
             var canExportOffline = CanRunDesktopCommand("export");
+            VerifyProjectMenuEntriesForSmokeTest();
             var canSynthesizeOffline = CanRunDesktopCommand("synthesize-tts");
             var canReviewIssuesOffline = CanRunDesktopCommand("review-narration-issues");
             var canReviewVoicesOffline = CanRunDesktopCommand("review-narration-voices");
@@ -113,6 +123,7 @@ public sealed partial class MainWindow
                 UpdateApiKeyUi();
             }
             Model.Settings.Set("apiKey", savedMenuKey); Model.Settings.Set("ttsMode", savedMenuTts);
+            await VerifyProjectMenuActionsForSmokeTestAsync();
             var originalSection = Section.SelectedIndex;
             foreach (var sectionIndex in new[] { 0, 2, 4 })
             {
@@ -263,6 +274,8 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Gallery menu hierarchy drifted from the shared desktop layout.");
             if (CanRunDesktopCommand("export") || CanRunDesktopCommand("review-narration-issues") || CanRunDesktopCommand("review-narration-voices"))
                 throw new InvalidOperationException("Project-only menu commands remained enabled in the gallery.");
+            if (CanRunDesktopCommand("rename-project") || CanRunDesktopCommand("trash-project"))
+                throw new InvalidOperationException("Project management remained enabled without an open editor.");
             PreviewTheme("dark"); await Task.Delay(80);
             var searchOrigin = GallerySearchHost.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point());
             if (GallerySearchHost.Visibility != Visibility.Visible ||
@@ -417,6 +430,8 @@ public sealed partial class MainWindow
             PreviewTheme("dark"); await Task.Delay(80);
             if (newProject.RequestedTheme != ElementTheme.Dark || newProject.IsPrimaryButtonEnabled)
                 throw new InvalidOperationException("New Project did not follow dark mode or disable Create without a source.");
+            await VerifyDialogThemesForSmokeTestAsync(newProject, report, "new-project-window");
+            PreviewTheme("dark");
             await newProject.InspectVideoForSmokeTestAsync(Model.Project!.Resolve(Model.Project.Source));
             if (!newProject.IsPrimaryButtonEnabled || newProject.VideoPath == null || !newProject.DetailsForSmokeTest.Contains("320 × 180"))
                 throw new InvalidOperationException("New Project did not preview local video details before creation: " + newProject.DetailsForSmokeTest);
@@ -440,6 +455,7 @@ public sealed partial class MainWindow
             if (export.ActualTheme != ElementTheme.Dark) throw new InvalidOperationException("An open Export dialog did not switch to dark appearance.");
             PreviewTheme("light"); await Task.Delay(80);
             if (export.ActualTheme != ElementTheme.Light) throw new InvalidOperationException("An open Export dialog did not switch to light appearance.");
+            await VerifyDialogThemesForSmokeTestAsync(export, report, "export-window");
             PreviewTheme(originalTheme);
             if (export.FooterForSmokeTest.HorizontalAlignment != HorizontalAlignment.Center ||
                 export.FooterForSmokeTest.Children.Count != 2)
@@ -497,13 +513,7 @@ public sealed partial class MainWindow
                 $"{box.Content}:h{box.ActualHeight:F0}@y{box.TransformToVisual(deleteDialog).TransformPoint(new Windows.Foundation.Point()).Y:F0}/{box.Visibility}");
             if (deleteBoxes.Any(box => box.ActualHeight <= 0 || box.Visibility != Visibility.Visible))
                 throw new InvalidOperationException("Delete generated content did not render every option: " + string.Join(", ", deletePositions));
-            if (deleteDialog.XamlRoot?.Content is not Panel deleteRoot ||
-                deleteRoot.Background is not Microsoft.UI.Xaml.Media.SolidColorBrush deleteSurface ||
-                deleteSurface.Color.R != 255 || deleteSurface.Color.G != 255 || deleteSurface.Color.B != 255)
-                throw new InvalidOperationException("The light-mode dialog did not use a flat white surface.");
-            if (FindSmokeRectangle(deleteDialog) is { } smokeRectangle &&
-                smokeRectangle.Fill is Microsoft.UI.Xaml.Media.SolidColorBrush smokeBrush && smokeBrush.Color.A != 0)
-                throw new InvalidOperationException("The light-mode dialog still has a dimming smoke layer.");
+            await VerifyDialogThemesForSmokeTestAsync(deleteDialog, report, "delete-generated-window");
             await CaptureSmokeImage(deleteDialog, Path.Combine(Path.GetDirectoryName(report)!, "delete-generated-light.png"));
             deleteDialog.Hide(); await deleteDisplay;
             var errorDialog = new ContentDialog
@@ -521,15 +531,10 @@ public sealed partial class MainWindow
                     $"heights={string.Join(',', errorLines.Select(line => line.ActualHeight.ToString("F0")))}, " +
                     $"text={string.Join(" / ", errorLines.Select(line => line.Text))}, " +
                     $"dialog={errorDialog.ActualWidth:F0}x{errorDialog.ActualHeight:F0}.");
-            if (errorDialog.XamlRoot?.Content is not Panel errorRoot ||
-                errorRoot.Background is not Microsoft.UI.Xaml.Media.SolidColorBrush errorSurface ||
-                errorSurface.Color.R != 255 || errorSurface.Color.G != 255 || errorSurface.Color.B != 255)
-                throw new InvalidOperationException("The light-mode error dialog did not use a flat white surface.");
-            if (FindSmokeRectangle(errorDialog) is { } errorSmoke &&
-                errorSmoke.Fill is Microsoft.UI.Xaml.Media.SolidColorBrush errorSmokeBrush && errorSmokeBrush.Color.A != 0)
-                throw new InvalidOperationException("The light-mode error dialog still has a dimming smoke layer.");
+            await VerifyDialogThemesForSmokeTestAsync(errorDialog, report, "error-dialog-window");
             await CaptureSmokeImage(errorDialog, Path.Combine(Path.GetDirectoryName(report)!, "error-dialog-light.png"));
             errorDialog.Hide(); await errorDisplay;
+            await VerifyDialogCommandsForSmokeTestAsync(report);
             PreviewTheme(originalTheme);
             var result = await Model.RunAsync("doctor", needsProject: false);
             if (result.Count == 0) throw new InvalidOperationException("Engine doctor failed.");
@@ -706,10 +711,122 @@ public sealed partial class MainWindow
         catch (Exception ex) { await File.WriteAllTextAsync(report, ex.ToString()); }
         finally
         {
+            dialogPresentationVerifier = null;
             // The final window can abort the Close call while dispatcher shutdown completes.
             try { Close(); }
             catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == unchecked((int)0x80004004)) { }
             Application.Current.Exit();
+        }
+    }
+    private async Task VerifyCompanionDialogsForSmokeTestAsync(string report)
+    {
+        // Focused dialog validation does not depend on speech engines or editor selection tests.
+        // It is opt-in; the full smoke suite still runs every existing assertion by default.
+        var originalTheme = Model.Settings.Get("theme", "system");
+        try
+        {
+            foreach (var initialTheme in new[] { "light", "dark" })
+            {
+                PreviewTheme(initialTheme);
+                var (deleteDialog, boxes) = CreateDeleteGeneratedDialog();
+                var dialogs = new (ContentDialog Dialog, int Width, int Height, string Image)[]
+                {
+                    (new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings), 700, 820, "new-project-window"),
+                    (new Views.ExportDialog(Model), 1040, 760, "export-window"),
+                    (deleteDialog, 620, 820, "delete-generated-window"),
+                    (new ContentDialog { Title = "Action could not finish", CloseButtonText = "Close",
+                        Content = DialogMessage("Check your settings and the diagnostic log, then retry. Your saved project remains available.") }, 680, 460, "error-dialog-window")
+                };
+                foreach (var (dialog, width, height, image) in dialogs)
+                {
+                    var acceleratorCount = dialog.KeyboardAccelerators.Count;
+                    var display = ShowDialogAsync(dialog, width, height);
+                    await Task.Delay(350);
+                    await VerifyDialogThemesForSmokeTestAsync(dialog, report, image);
+                    if (ReferenceEquals(dialog, deleteDialog))
+                    {
+                        if (dialog.IsPrimaryButtonEnabled) throw new InvalidOperationException("Delete was enabled without a selection.");
+                        boxes[0].IsChecked = true;
+                        await Task.Delay(80);
+                        if (FindButton(dialog, "Delete selected") is not { IsEnabled: true } ||
+                            boxes.Any(box => box.ActualHeight <= 0 || box.TransformToVisual(dialog).TransformPoint(new Windows.Foundation.Point()).Y + box.ActualHeight > dialog.ActualHeight))
+                            throw new InvalidOperationException("Delete selection gating or option layout failed.");
+                    }
+                    dialog.Hide();
+                    if (await display != ContentDialogResult.None) throw new InvalidOperationException("Hide did not cancel the dialog.");
+                    if (dialog.KeyboardAccelerators.Count != acceleratorCount)
+                        throw new InvalidOperationException("The closed dialog retained a host keyboard accelerator.");
+                }
+            }
+            await VerifyDialogCommandsForSmokeTestAsync(report);
+            await VerifyDialogContentGrowthForSmokeTestAsync(report);
+            await VerifyDialogCanceledBeforePresentationForSmokeTestAsync();
+        }
+        finally { PreviewTheme(originalTheme); }
+    }
+    private async Task VerifyDialogContentGrowthForSmokeTestAsync(string report)
+    {
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(new TextBox { Header = "Project name", Text = "Dialog layout fixture" });
+        var dialog = Dialog("Content changes", content);
+        var display = ShowDialogAsync(dialog);
+        await Task.Delay(350);
+        await VerifyDialogThemesForSmokeTestAsync(dialog, report, "dynamic-dialog-window");
+        var window = dialogPresentationVerifier!.WindowFor(dialog);
+        var before = window.AppWindow.Size.Height;
+        var added = new TextBlock { Text = "A preview loaded without opening a replacement window.", Height = 320, TextWrapping = TextWrapping.Wrap };
+        content.Children.Add(added);
+        for (var attempt = 0; attempt < 40 && window.AppWindow.Size.Height <= before + 40; attempt++) await Task.Delay(25);
+        if (window.AppWindow.Size.Height <= before + 40 || !window.AppWindow.IsVisible ||
+            !ReferenceEquals(window, dialogPresentationVerifier.WindowFor(dialog)))
+            throw new InvalidOperationException("A genuine content change did not resize the existing dialog window.");
+        dialog.Hide();
+        await display;
+    }
+    private async Task VerifyDialogCanceledBeforePresentationForSmokeTestAsync()
+    {
+        var dialog = Dialog("Canceled while preparing", new TextBox { Text = "Never shown" });
+        Window? canceledWindow = null;
+        void Cancel(ContentDialog candidate, Window window)
+        {
+            if (!ReferenceEquals(candidate, dialog)) return;
+            canceledWindow = window;
+            window.DispatcherQueue.TryEnqueue(() => window.Close());
+        }
+        Views.WindowedDialog.Preparing += Cancel;
+        try
+        {
+            if (await ShowDialogAsync(dialog) != ContentDialogResult.None || canceledWindow is null ||
+                dialogPresentationVerifier!.WasReadyToShow(dialog))
+                throw new InvalidOperationException("A dialog canceled during preparation was still presented.");
+        }
+        finally { Views.WindowedDialog.Preparing -= Cancel; }
+    }
+    private async Task VerifyDialogCommandsForSmokeTestAsync(string report)
+    {
+        foreach (var voiceDialog in new ContentDialog[] { new Views.PiperVoicesDialog(), new Views.PiperDeleteVoicesDialog() })
+        {
+            var voiceDisplay = ShowDialogAsync(voiceDialog, 820, 900);
+            await Task.Delay(350);
+            await VerifyDialogThemesForSmokeTestAsync(voiceDialog, report, voiceDialog.GetType().Name);
+            voiceDialog.Hide();
+            if (await voiceDisplay != ContentDialogResult.None)
+                throw new InvalidOperationException("Closing a voice dialog did not return the cancel result.");
+        }
+        // InPlace must preserve native command results, including secondary actions.
+        foreach (var expected in new[] { ContentDialogResult.Primary, ContentDialogResult.Secondary, ContentDialogResult.None })
+        {
+            var prompt = Dialog("Confirm project action", new TextBox { Header = "Project name", Text = "Smoke fixture" });
+            prompt.SecondaryButtonText = "Review";
+            var promptDisplay = ShowDialogAsync(prompt);
+            await Task.Delay(350);
+            await VerifyDialogThemesForSmokeTestAsync(prompt, report, "confirmation-window");
+            var label = expected switch { ContentDialogResult.Primary => "Save", ContentDialogResult.Secondary => "Review", _ => "Cancel" };
+            var button = FindButton(prompt, label) ?? throw new InvalidOperationException("Missing native dialog command: " + label);
+            var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(button);
+            ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+            if (await promptDisplay != expected)
+                throw new InvalidOperationException("In-place dialog returned the wrong command result: " + label);
         }
     }
     private async Task VerifySegmentSelectionForSmokeTestAsync(string report)
@@ -976,6 +1093,176 @@ public sealed partial class MainWindow
             if (FindButton(child, content) is { } found) return found;
         }
         return null;
+    }
+    private void VerifyProjectMenuEntriesForSmokeTest()
+    {
+        var projectMenu = editorMenus.Single(menu => menu.Title == "Project");
+        var tail = projectMenu.Items.TakeLast(3).Select(item => item is MenuFlyoutSeparator ? "-" : (string)((MenuFlyoutItem)item).Tag);
+        if (!tail.SequenceEqual(new[] { "-", "rename-project", "trash-project" }))
+            throw new InvalidOperationException("Project management actions have the wrong order or separator.");
+        foreach (var (id, title) in new[] { ("rename-project", "Rename Project…"), ("trash-project", "Move Project to Recycle Bin…") })
+            if (desktopMenuItems[id].Last() is not { IsEnabled: true, Icon: not null } item || item.Text != title || !CanRunDesktopCommand(id))
+                throw new InvalidOperationException("Project management must be available offline in the active editor: " + id);
+    }
+    private async Task VerifyProjectMenuActionsForSmokeTestAsync()
+    {
+        var originalName = Model.Project!.Name;
+        var folder = Model.Project.Folder;
+        foreach (var (id, name) in new (string Id, string? Name)[]
+            { ("rename-project", "Renamed project menu fixture"), ("rename-project", originalName), ("trash-project", null) })
+        {
+            var presented = new TaskCompletionSource<ContentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+            void Capture(ContentDialog dialog, Window window)
+            {
+                var title = id == "rename-project" ? "Rename project" : "Move project to Recycle Bin";
+                if (dialog.Title?.ToString() == title) presented.TrySetResult(dialog);
+            }
+            Views.WindowedDialog.ReadyToShow += Capture;
+            try
+            {
+                var command = RunDesktopCommandAsync(id);
+                var first = await Task.WhenAny(command, presented.Task);
+                if (first == command) { await command; throw new InvalidOperationException("Project menu action did not open its dialog: " + id); }
+                var dialog = await presented.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                if (name is not null) ((TextBox)dialog.Content).Text = name;
+                var button = FindButton(dialog, name is null ? "Cancel" : "Save")
+                    ?? throw new InvalidOperationException("Missing project dialog action.");
+                var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(button);
+                ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+                await command.WaitAsync(TimeSpan.FromSeconds(30));
+                if (Model.Project?.Name != (name ?? originalName) || Model.Project.Folder != folder || !Directory.Exists(folder))
+                    throw new InvalidOperationException("Project rename or canceled Recycle Bin action affected the wrong project.");
+            }
+            finally { Views.WindowedDialog.ReadyToShow -= Capture; }
+        }
+    }
+    private async Task VerifyDialogThemesForSmokeTestAsync(ContentDialog dialog, string report, string imageName)
+    {
+        var originalTheme = App.ActiveTheme ?? Model.Settings.Get("theme", "system");
+        if (dialogPresentationVerifier is { } presentation) await presentation.WaitUntilReadyAsync(dialog);
+        dialogPresentationVerifier?.Verify(dialog);
+        VerifySingleDialogSurfaceForSmokeTest(dialog);
+        if (dialog.XamlRoot?.Content is FrameworkElement initialSurface)
+            await CaptureSmokeImage(initialSurface, Path.Combine(Path.GetDirectoryName(report)!, $"{imageName}-initial-{originalTheme}.png"));
+        foreach (var theme in new[] { "dark", "light", "system" })
+        {
+            PreviewTheme(theme);
+            await Task.Delay(300);
+            if (dialog.XamlRoot?.Content is not Panel root || !ReferenceEquals(dialog.Parent, root))
+                throw new InvalidOperationException("The dialog is not hosted in the window's live visual tree.");
+            var expected = theme == "system" ? Root.ActualTheme : theme == "dark" ? ElementTheme.Dark : ElementTheme.Light;
+            if (dialog.ActualTheme != expected || root.ActualTheme != expected ||
+                root.Background is not Microsoft.UI.Xaml.Media.SolidColorBrush surface ||
+                surface.Color != Views.WindowAppearance.SurfaceColor(this, expected))
+                throw new InvalidOperationException($"{dialog.Title}: the {theme} surface does not match Settings and the app.");
+            // The original regression lived in a SECOND popup, not below the ContentDialog.
+            // Inspect the whole XamlRoot so a transparent card cannot hide a dimmed window.
+            if (Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(dialog.XamlRoot).Count != 0)
+                throw new InvalidOperationException($"{dialog.Title}: a dialog or smoke popup still covers the {theme} window.");
+            if (FindSmokeRectangle(root) is { Fill: Microsoft.UI.Xaml.Media.SolidColorBrush smoke } && smoke.Color.A != 0)
+                throw new InvalidOperationException($"{dialog.Title}: the {theme} window still has a dimming layer.");
+            if (dialog.Foreground is not Microsoft.UI.Xaml.Media.SolidColorBrush foreground ||
+                (expected == ElementTheme.Dark ? foreground.Color.R < 200 : foreground.Color.R > 80))
+                throw new InvalidOperationException($"{dialog.Title}: the {theme} text did not follow the Fluent theme.");
+            VerifySingleDialogSurfaceForSmokeTest(dialog);
+            await CaptureSmokeImage(root, Path.Combine(Path.GetDirectoryName(report)!, $"{imageName}-{theme}.png"));
+        }
+        PreviewTheme(originalTheme);
+    }
+    private sealed class DialogPresentationVerifier : IDisposable
+    {
+        private sealed class Presentation
+        {
+            internal required Window Window;
+            internal int ReadyCount;
+            internal Windows.Graphics.SizeInt32 ReadySize;
+            internal bool StartupVerified;
+            internal string? Failure;
+            internal readonly TaskCompletionSource<bool> Ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        private readonly System.Collections.Generic.Dictionary<ContentDialog, Presentation> dialogs = new();
+        internal DialogPresentationVerifier()
+        {
+            Views.WindowedDialog.Preparing += OnPreparing;
+            Views.WindowedDialog.ReadyToShow += OnReadyToShow;
+        }
+        private void OnPreparing(ContentDialog dialog, Window window)
+        {
+            if (dialogs.ContainsKey(dialog)) throw new InvalidOperationException("A second native window was created for the same dialog.");
+            var state = new Presentation { Window = window };
+            dialogs.Add(dialog, state);
+            window.AppWindow.Changed += (_, _) =>
+            {
+                if (window.AppWindow is not { } appWindow) return;
+                if (appWindow.IsVisible && state.ReadyCount == 0)
+                    state.Failure = "The dialog window became visible before content measurement finished.";
+                if (appWindow.IsVisible && state.ReadyCount > 0 && !state.StartupVerified &&
+                    (Math.Abs(appWindow.Size.Width - state.ReadySize.Width) > 2 ||
+                     Math.Abs(appWindow.Size.Height - state.ReadySize.Height) > 2))
+                    state.Failure = "The dialog changed size after becoming visible.";
+            };
+            window.Activated += (_, args) =>
+            {
+                // WinUI can report a focus activation while preparing a still-hidden tree.
+                // The regression is a visible staging window, not that internal notification.
+                if (window.AppWindow?.IsVisible == true && args.WindowActivationState != WindowActivationState.Deactivated && state.ReadyCount == 0)
+                    state.Failure = "The dialog window was activated before it was ready.";
+            };
+        }
+        private void OnReadyToShow(ContentDialog dialog, Window window)
+        {
+            var state = dialogs[dialog];
+            state.ReadyCount++;
+            state.ReadySize = window.AppWindow.Size;
+            if (window.AppWindow.IsVisible || !ReferenceEquals(state.Window, window) ||
+                dialog.Content is not FrameworkElement { ActualWidth: > 0, ActualHeight: > 0 })
+                state.Failure = "The final dialog must be fully laid out in its one hidden window before activation.";
+            state.Ready.TrySetResult(true);
+        }
+        internal async Task WaitUntilReadyAsync(ContentDialog dialog)
+        {
+            // Preparation is asynchronous, especially under x64 emulation. Observe the actual
+            // lifecycle boundary rather than assuming it completed within a fixed 350 ms.
+            await dialogs[dialog].Ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await Task.Delay(100);
+        }
+        internal void Verify(ContentDialog dialog)
+        {
+            if (!dialogs.TryGetValue(dialog, out var state) || state.ReadyCount != 1)
+                throw new InvalidOperationException("The dialog was not prepared exactly once before presentation.");
+            var size = state.Window.AppWindow.Size;
+            if (!state.Window.AppWindow.IsVisible || state.Failure is not null || Math.Abs(size.Width - state.ReadySize.Width) > 2 || Math.Abs(size.Height - state.ReadySize.Height) > 2)
+                throw new InvalidOperationException($"{dialog.Title}: startup resized a visible dialog: " +
+                    $"{state.ReadySize.Width}x{state.ReadySize.Height} -> {size.Width}x{size.Height}. {state.Failure}");
+            state.StartupVerified = true;
+        }
+        internal Window WindowFor(ContentDialog dialog) => dialogs[dialog].Window;
+        internal bool WasReadyToShow(ContentDialog dialog) => dialogs[dialog].ReadyCount != 0;
+        public void Dispose()
+        {
+            Views.WindowedDialog.Preparing -= OnPreparing;
+            Views.WindowedDialog.ReadyToShow -= OnReadyToShow;
+        }
+    }
+    private static void VerifySingleDialogSurfaceForSmokeTest(ContentDialog dialog)
+    {
+        Border? card = null;
+        for (DependencyObject? node = dialog.Content as DependencyObject; node is not null;
+             node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node))
+            if (node is Border { Name: "BackgroundElement" } border) { card = border; break; }
+        if (card is null) throw new InvalidOperationException("The native dialog card did not render.");
+        for (DependencyObject? node = card; node is not null; node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node))
+            if (node is Border { Name: "Container" } container &&
+                VisualStateManager.GetVisualStateGroups(container).Any(group => group.Name == "DialogShowingStates" && group.Transitions.Count != 0))
+                throw new InvalidOperationException("The native window still has a second dialog opening/closing animation.");
+        static bool Transparent(Microsoft.UI.Xaml.Media.Brush? brush) =>
+            brush is null || brush is Microsoft.UI.Xaml.Media.SolidColorBrush { Color.A: 0 };
+        if (!Transparent(dialog.Background) || !Transparent(card.Background) ||
+            card.BorderThickness != new Thickness(0) || card.CornerRadius != new CornerRadius(0) ||
+            card.Shadow is not null || Math.Abs(card.Translation.Z) > .001)
+            throw new InvalidOperationException($"{dialog.Title}: a second dialog surface remains: " +
+                $"background={dialog.Background}, card={card.Background}, corners={card.CornerRadius}, " +
+                $"shadow={card.Shadow is not null}, elevation={card.Translation.Z}.");
     }
     private static Microsoft.UI.Xaml.Shapes.Rectangle? FindSmokeRectangle(DependencyObject root)
     {

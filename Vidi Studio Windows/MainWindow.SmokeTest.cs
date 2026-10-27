@@ -79,6 +79,7 @@ public sealed partial class MainWindow
             Model.Settings.Set("apiKey", ""); Model.Settings.Set("ttsMode", "windows-core");
             UpdateDesktopMenuStates();
             var canExportOffline = CanRunDesktopCommand("export");
+            VerifyProjectMenuEntriesForSmokeTest();
             var canSynthesizeOffline = CanRunDesktopCommand("synthesize-tts");
             var canReviewIssuesOffline = CanRunDesktopCommand("review-narration-issues");
             var canReviewVoicesOffline = CanRunDesktopCommand("review-narration-voices");
@@ -263,6 +264,8 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Gallery menu hierarchy drifted from the shared desktop layout.");
             if (CanRunDesktopCommand("export") || CanRunDesktopCommand("review-narration-issues") || CanRunDesktopCommand("review-narration-voices"))
                 throw new InvalidOperationException("Project-only menu commands remained enabled in the gallery.");
+            if (CanRunDesktopCommand("rename-project") || CanRunDesktopCommand("trash-project"))
+                throw new InvalidOperationException("Project management remained enabled without an open editor.");
             PreviewTheme("dark"); await Task.Delay(80);
             var searchOrigin = GallerySearchHost.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point());
             if (GallerySearchHost.Visibility != Visibility.Visible ||
@@ -976,6 +979,16 @@ public sealed partial class MainWindow
             if (FindButton(child, content) is { } found) return found;
         }
         return null;
+    }
+    private void VerifyProjectMenuEntriesForSmokeTest()
+    {
+        var projectMenu = editorMenus.Single(menu => menu.Title == "Project");
+        var tail = projectMenu.Items.TakeLast(3).Select(item => item is MenuFlyoutSeparator ? "-" : (string)((MenuFlyoutItem)item).Tag);
+        if (!tail.SequenceEqual(new[] { "-", "rename-project", "trash-project" }))
+            throw new InvalidOperationException("Project management actions have the wrong order or separator.");
+        foreach (var (id, title) in new[] { ("rename-project", "Rename Project…"), ("trash-project", "Move Project to Recycle Bin…") })
+            if (desktopMenuItems[id].Last() is not { IsEnabled: true, Icon: not null } item || item.Text != title || !CanRunDesktopCommand(id))
+                throw new InvalidOperationException("Project management must be available offline in the active editor: " + id);
     }
     private static Microsoft.UI.Xaml.Shapes.Rectangle? FindSmokeRectangle(DependencyObject root)
     {

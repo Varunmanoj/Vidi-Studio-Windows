@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-27 - Project management menu actions (1.0.148 / 1.0.148.0)
+
+Added the shared Project-menu **Rename Project…** / **Move Project to Recycle Bin…** group after Open Project Configuration, using the existing guarded active-project rename and confirmed recycling workflows. Both work offline in an idle editor and are disabled in the gallery; invalid manifests disable rename. Mirrored the matching Mac actions and native Bin label, updated the shared checker/mutation tests, and documented the exception in both desktop contracts. No new shortcuts.
+
+Both combined desktop menu checkers and their 14-test parity suites pass; the standalone native Windows checkout at `C:/Users/personal/Documents/Vidi Studio Windows` additionally passes its ARM64 Debug build and full native UI smoke, including actual fixture rename/restore and canceled recycling. This combined Windows copy received only the menu/smoke-contract changes, not unrelated standalone dialog edits. Versions synchronized at Windows 1.0.148 / package 1.0.148.0 and Mac 1.0.148 / build 148. Not run: a native build of this shared Windows copy, native macOS validation, actual project recycling, live Gemini, or package installation.
+
 ## 2026-10-26 - Flat white/black dialogs, no Fluent material (1.0.144 / 1.0.144.0)
 
 Companion dialog windows no longer use Mica/Acrylic or a translucent Fluent surface. `WindowedDialog` sets `SystemBackdrop = null` and paints the whole window — content and caption — with a plain flat color: white in light mode, black in dark mode. The dialog still keeps only its system Close button (`IsMinimizable`/`IsMaximizable`/`IsResizable` are false), and the ContentDialog smoke layer and card chrome remain flattened so the flat surface is the dialog surface. This removes the gray "grew" wash that Fluent material put behind dialogs, and the DPI-scaled minimum window size was reduced back to 480/240 logical so dialogs do not grow larger than their content. Confirmation/error copy stays as explicit wrapped lines so text is never clipped.

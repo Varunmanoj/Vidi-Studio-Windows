@@ -12,6 +12,12 @@ Mirror the Mac menu hierarchy as closely as Windows native conventions allow: sh
 
 Build using `powershell script/build-windows.ps1`. UI smoke tests run via `powershell script/test-windows-ui.ps1`. Package inspection runs via `python script/verify-windows-package.py`. Python parity and engine tests run via `python -m unittest discover -s tests`.
 
+## Installed app updates
+
+When registering or installing a new build, first remove the previously registered or installed package and any stale unpacked copies (for example old development MSIX registrations and earlier `bin` outputs), so Start, taskbar, and Search show one current Vidi Studio entry and one current app path. `script/build-windows.ps1` builds and packages but does not install; registering or installing the package is a separate step that must delete the old copy first. After installing, confirm `Get-AppxPackage` lists one current version and old build/install paths are gone, and record the result in `PROGRESS.md`.
+
+Install on every version update. After bumping the version, do not stop at a package in `AppPackages` or `bin`: remove the previous package, register/install the new build on the Windows host, and confirm `Get-AppxPackage` reports the new version with only one entry remaining. A version bump is not complete until that install is done and recorded in `PROGRESS.md`.
+
 App versioning between Windows (`Vidi-Studio-Windows`) and macOS (`VidiStudio Mac`) must always remain strictly in sync. Every app fix or new feature must automatically advance the app version across both platforms before build and validation; do not wait for a separate version-bump request. Run `python script/sync_version.py --bump` to atomically increment the patch version across both Windows (`<Version>` in `Vidi Studio Windows.csproj` and `Version` in `Package.appxmanifest`) and macOS (`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `VidiStudio.xcodeproj/project.pbxproj`). If editing versions manually, ensure both platforms are updated to the exact same version `1.0.X` (with Windows package `1.0.X.0` and Mac build number aligned). The build scripts (`script/build-windows.ps1`), pre-commit hooks, and parity tests (`tests/test_parity.py`) automatically run `sync_version.py --sync` to maintain version parity. Record the resulting user-visible version in `PROGRESS.md` with the change's validation evidence.
 
 Record progress and release evidence in `PROGRESS.md`. Do not claim live Gemini or Mac validation without actually running those paths.

@@ -1,5 +1,11 @@
 # Windows migration progress
 
+## 2026-10-27 - Single installed app copy rule (1.0.148 / 1.0.148.0)
+
+Documented the required update behavior in `AGENTS.md` and the workspace guide: registering or installing a Windows build must first remove the previous registered/installed package and stale unpacked copies (old development MSIX registrations and earlier `bin` outputs), leaving one current Start-menu entry, taskbar entry, and app path. Every version update must be installed or registered on the Windows host before the bump counts as complete; do not stop at a package in `AppPackages` or `bin`. `script/build-windows.ps1` still only builds and packages; installing or registering remains a separate step that follows this rule. The same policy was added to the Mac guide, where `script/build_and_run.sh` now enforces it automatically (see the Mac `PROGRESS.md` entry). No Windows source, menu, or version change.
+
+Validation: documentation-only change in this checkout. The Mac workflow was validated on the Mac host, including single-copy Spotlight/LaunchServices discovery. Not run: Windows package registration or cleanup, Start-menu inspection, or MSIX installation on this host.
+
 ## 2026-10-27 - Project menu rename and Recycle Bin actions (1.0.148 / 1.0.148.0)
 
 The editor's Project menu now ends with a separated **Rename Project…** and **Move Project to Recycle Bin…** group. Both use the existing active-project workflows through the common guarded menu dispatcher, require an idle editor but no Gemini key, and are disabled in the gallery. Rename is unavailable for an unreadable/missing project; recycling retains the existing confirmation, recoverable Windows Recycle Bin behavior, playback cleanup, and return to the gallery. Both entries have Fluent icons; no shortcuts or existing actions were changed.

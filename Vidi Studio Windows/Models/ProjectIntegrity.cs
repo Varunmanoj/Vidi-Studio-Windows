@@ -21,6 +21,7 @@ public enum ProjectFileCategory
     Metadata,
     Thumbnails,
     Narration,
+    ImportedAssets,
     Exports,
     SignificantLoss
 }
@@ -48,6 +49,7 @@ public sealed class ProjectFileProblem
         ProjectFileCategory.Metadata => "\uE946",
         ProjectFileCategory.Thumbnails => "\uEB9F",
         ProjectFileCategory.Narration => "\uE8D6",
+        ProjectFileCategory.ImportedAssets => "\uE896",
         ProjectFileCategory.Exports => "\uE898",
         ProjectFileCategory.SignificantLoss => "\uE7BA",
         _ => "\uE7BA"
@@ -67,6 +69,7 @@ public sealed class ProjectIntegrityManifest
     public string? SourceRelativePath { get; init; }
     public IReadOnlyList<string> ThumbnailPaths { get; init; } = Array.Empty<string>();
     public IReadOnlyList<ProjectNarrationReference> NarrationReferences { get; init; } = Array.Empty<ProjectNarrationReference>();
+    public IReadOnlyList<string> ImportedPaths { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> ExportPaths { get; init; } = Array.Empty<string>();
     public bool KnownManifestUnreadable { get; init; }
 }
@@ -108,6 +111,7 @@ public sealed class ProjectIntegrityReport
                 return Problems[0].Category switch
                 {
                     ProjectFileCategory.Narration => "Narration Audio Is Missing",
+                    ProjectFileCategory.ImportedAssets => "Imported Assets Are Missing",
                     ProjectFileCategory.Thumbnails => "Timeline Pictures Are Missing",
                     ProjectFileCategory.Metadata => "Video Details Are Missing",
                     ProjectFileCategory.Exports => "Exports Are Missing",
@@ -141,6 +145,8 @@ public sealed class ProjectIntegrityReport
                 {
                     case ProjectFileCategory.Narration:
                         return $"Narration audio is missing for {problem.MissingCount} AD segment{(problem.MissingCount == 1 ? "" : "s")}. The description text and timing are safe, and the missing audio can be regenerated.";
+                    case ProjectFileCategory.ImportedAssets:
+                        return $"{problem.MissingCount} imported file{(problem.MissingCount == 1 ? "" : "s")} are missing. Project text stays available; restore the file or import it again.";
                     case ProjectFileCategory.Thumbnails:
                         return "Timeline pictures are missing. The project can still be edited, and the pictures can be regenerated from the original video.";
                     case ProjectFileCategory.Metadata:
@@ -308,6 +314,28 @@ public static class ProjectIntegrityAuditor
             });
         }
 
+        var importedPaths = UniquePaths(manifest.ImportedPaths);
+        var missingImports = importedPaths
+            .Where(path => Resolve(path, folder) is not { } url || FileStateOf(url, allowDirectory: false) != FileState.Ok)
+            .Select(path => new ProjectMissingFile(path, path))
+            .ToList();
+        trackedFiles += importedPaths.Count;
+        if (missingImports.Count > 0)
+        {
+            missingFiles += missingImports.Count;
+            problems.Add(new ProjectFileProblem
+            {
+                Category = ProjectFileCategory.ImportedAssets,
+                Severity = ProjectIntegrityLevel.Warning,
+                Title = "Imported assets are missing",
+                Detail = $"{missingImports.Count} of {importedPaths.Count} imported file{(importedPaths.Count == 1 ? "" : "s")} {(missingImports.Count == 1 ? "is" : "are")} missing or empty.",
+                Impact = "Existing text and descriptions remain in the project, but imported audio or a combined AD transcript cannot be used until it is restored.",
+                Recovery = "Restore the imported file from a backup, or use Project > Import Existing Assets… to import it again.",
+                MissingFiles = missingImports,
+                ExpectedCount = importedPaths.Count
+            });
+        }
+
         var exportPaths = UniquePaths(manifest.ExportPaths);
         var missingExports = exportPaths
             .Where(path => Resolve(path, folder) is not { } url || FileStateOf(url, allowDirectory: true) != FileState.Ok)
@@ -331,7 +359,7 @@ public static class ProjectIntegrityAuditor
         }
 
         var affectedGeneratedCategories = problems
-            .Where(p => p.Severity == ProjectIntegrityLevel.Warning && p.Category != ProjectFileCategory.Metadata)
+            .Where(p => p.Severity == ProjectIntegrityLevel.Warning && p.Category != ProjectFileCategory.Metadata && p.Category != ProjectFileCategory.ImportedAssets)
             .Select(p => p.Category)
             .Distinct()
             .Count();

@@ -223,16 +223,16 @@ class TestFileExplorerActivation(unittest.TestCase):
 
         # In-app project AI actions are gated on activeApiKey and on the
         # project still having a readable manifest and an available folder.
-        self.assertIn("activeApiKey = Model.HasApiKey && !Model.IsApiKeyInvalid", source)
+        self.assertIn("activeApiKey = Model.CanUseAI", source)
         self.assertIn("usable = !project.IntegrityPlaceholder", source)
-        self.assertIn('Item("Export", Export_Click, activeApiKey && usable)', source)
-        self.assertIn('Item("Rename", Rename_Click, usable)', source)
+        self.assertIn('Item("Export", (_, args) => { LoadForEditorAction(); Export_Click(this, args); }, activeApiKey && usable)', source)
+        self.assertIn('Item("Rename", (_, _) => _ = RenameProjectAsync(project), usable)', source)
         self.assertIn('project.Integrity?.IsDamaged == true ? "Delete damaged project…"', source)
 
         # In-app segment actions
-        self.assertIn("canSynthesize = Model.CurrentNarrationEngine() != \"gemini\" || (Model.HasApiKey && !Model.IsApiKeyInvalid)", source)
-        self.assertIn('Item("Rewrite description to fit", Rewrite_Click, Model.HasApiKey && !Model.IsApiKeyInvalid)', source)
-        self.assertIn('Item("Re-Analyze this segment", async (_, _) => await EditSegment(segment), Model.HasApiKey && !Model.IsApiKeyInvalid)', source)
+        self.assertIn("canSynthesize = Model.CurrentNarrationEngine() != \"gemini\" || Model.CanUseAI", source)
+        self.assertIn('Item("Rewrite description to fit", Rewrite_Click, Model.CanUseAI)', source)
+        self.assertIn('Item("Re-Analyze this segment", async (_, _) => await EditSegment(segment), Model.CanUseAI)', source)
 
     def test_startup_logs_launch_milestones_for_silent_failures(self):
         source = self.app_xaml_cs_path.read_text(encoding="utf-8")

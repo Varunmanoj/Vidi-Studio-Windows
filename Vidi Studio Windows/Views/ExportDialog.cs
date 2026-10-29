@@ -32,14 +32,17 @@ public sealed class ExportDialog : ContentDialog
     private readonly TextBlock captionNotice = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
     private string videoFormat = "mkv", audioFormat = "wav", lastTarget = "";
     private int videoAudio = 1, videoCaptions, audioChoice = 1, webAudio = 1, webCaptions, textContent, textFormat;
+    private int adSource;
 
     public ExportDialog(StudioViewModel model)
     {
         this.model = model;
         var ready = model.Project?.HasCompleteExportNarration == true;
-        videoAudio = webAudio = ready ? 1 : 0;
-        videoCaptions = !ready && model.Project?.CanExportText("transcript") == true ? 1 : 0;
-        audioChoice = model.Project?.IsYouTube == true ? 0 : ready ? 1 : 0;
+        var imported = model.Project?.ImportedAudioDescription != null;
+        adSource = imported && !ready ? 1 : 0;
+        videoAudio = webAudio = ready || imported ? 1 : 0;
+        videoCaptions = !ready && !imported && model.Project?.CanExportText("transcript") == true ? 1 : 0;
+        audioChoice = model.Project?.IsYouTube == true ? 0 : ready || imported ? 1 : 0;
         textContent = Array.FindIndex(TextIds, id => model.Project?.CanExportText(id) == true);
         if (textContent < 0) textContent = 0;
         Title = "Export";
@@ -176,6 +179,7 @@ public sealed class ExportDialog : ContentDialog
         AddChoices("Audio", "Audio included in the video",
             new[] { "Original audio only", "Closed Audio Description", "Open Audio Description" },
             videoAudio, index => videoAudio = index, CanUseVideoAudio);
+        AddAdSource();
         AddChoices("Transcript and captions", "Transcript included in the video", CaptionLabels,
             videoCaptions, index => videoCaptions = index, CanUseCaptions);
     }
@@ -187,6 +191,7 @@ public sealed class ExportDialog : ContentDialog
         var labels = youtube ? new[] { "YouTube audio only", "Narration audio only", "YouTube audio with narration" } :
             new[] { "Original video audio", "Final audio with Audio Description", "Narration audio only" };
         AddChoices("Audio", "Audio to save", labels, audioChoice, index => audioChoice = index, CanUseAudio);
+        AddAdSource();
     }
 
     private void BuildText()
@@ -231,11 +236,36 @@ public sealed class ExportDialog : ContentDialog
     }
 
     private bool CanUseVideoAudio(int choice) => model.Project is { HasLocalSource: true } project &&
-        (choice == 0 || project.HasCompleteExportNarration);
+        (choice == 0 || (adSource == 1 ? project.ImportedAudioDescription != null : project.HasCompleteExportNarration));
     private bool CanUseAudio(int choice) => model.Project is { } project && (project.IsYouTube
         ? choice == 0 || project.HasCompleteExportNarration
         : choice == 0 ? project.HasLocalSource && project.HasAudio
-        : choice == 1 ? project.HasLocalSource && project.HasCompleteExportNarration : project.HasCompleteExportNarration);
+        : choice == 1 ? project.HasLocalSource && (adSource == 1 ? project.ImportedAudioDescription != null : project.HasCompleteExportNarration)
+        : project.HasCompleteExportNarration);
+    private void AddAdSource()
+    {
+        if (model.Project is not { } project || project.ImportedAudioDescription == null) return;
+        if (!project.HasCompleteExportNarration)
+        {
+            page.Children.Add(new TextBlock
+            {
+                Text = "Audio Description source: Imported AD audio (" + project.ImportedAudioDescription.ModeLabel + ")",
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap
+            });
+            return;
+        }
+        var picker = new ComboBox
+        {
+            Header = "Audio Description source",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            ItemsSource = new[] { "Generated narration", "Imported AD audio" },
+            SelectedIndex = adSource
+        };
+        ToolTipService.SetToolTip(picker, "Choose whether the described track uses generated narration or the imported AD audio.");
+        picker.SelectionChanged += (_, _) => { adSource = Math.Max(0, picker.SelectedIndex); UpdatePreview(); };
+        page.Children.Add(Card(picker));
+    }
+
     private bool CanUseCaptions(int choice) => model.Project is { } project && (choice switch
     {
         0 => true,
@@ -303,6 +333,11 @@ public sealed class ExportDialog : ContentDialog
                 }
                 else if (audio == 0)
                     command = captions switch { 0 => "export-original-video", 1 or 3 => "export-closed-caption-video", 2 or 4 => "export-open-caption-video", _ => "export-dual-closed-caption-video" };
+                else if (audio != 0 && adSource == 1)
+                {
+                    command = "combine-imported-audio";
+                    args.AddRange(new[] { "--audio-presentation", audio == 1 ? "selectable" : "open" });
+                }
                 else command = audio == 1 ? "export-closed-audio-description-video" : "export-open-audio-description-video";
                 args.AddRange(new[] { "--captions", captionMode, "--content", content });
                 if (sidebar.SelectedIndex == 0 && command != "export-original-video") args.AddRange(new[] { "--media-format", videoFormat });
@@ -310,7 +345,9 @@ public sealed class ExportDialog : ContentDialog
             case 1:
                 command = model.Project?.IsYouTube == true ? audioChoice switch
                 { 0 => "export-youtube-original-audio", 1 => "export-audio", _ => "export-youtube-described-audio" }
+                : audioChoice == 1 && adSource == 1 ? "combine-imported-audio"
                 : audioChoice switch { 0 => "export-original-audio", 1 => "export-described-audio", _ => "export-audio" };
+                if (audioChoice == 1 && adSource == 1) args.Add("--audio-only");
                 args.AddRange(new[] { "--media-format", audioFormat });
                 break;
             case 2:

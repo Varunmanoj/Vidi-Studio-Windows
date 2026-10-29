@@ -43,3 +43,12 @@ This is a work record, not a declaration that the full migration is finished.
 | ARM64/x64 builds | Debug and Release builds plus native UI smoke tests pass for both targets; ARM64 development registration/activation and packaged workflow pass; signed MSIX installation remains unverified |
 
 Complete these gaps and record interactive results before declaring full functionality parity.
+
+
+## Existing assets, provenance, and Markdown summary (1.0.149)
+
+Windows mirrors the Mac contract: New Project existing assets and Project → Import Existing Assets…, SRT/VTT/TXT transcripts and AD transcripts, Markdown/TXT summaries, WAV/MP3/M4A/AAC/FLAC AD audio, AD narration-only versus combined caption mode, narration-only versus full AD mix, TXT timing review, Create Project & Combine, two switchable tracks with Closed as the default and Open as an explicit single mix, import validation reports and overlap blocking, per-segment narration import, six provenance labels, AD Overview narration sources, and the Markdown summary toolbar/shortcuts. Native Windows build, package, and UI validation must run on a Windows host.
+
+## AI availability and key-free project creation (1.0.152)
+
+Project creation and existing-asset imports do not require a Gemini key; the YouTube Gemini access check runs only when a key is configured. Quota, credit/billing, permission, and service failures set a persistent AI issue, disable all AI reprocessing, and show a Retry AI warning. Existing transcripts, descriptions, narration, and exports remain unchanged. Native Windows build and runtime validation still require a Windows host.

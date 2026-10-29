@@ -158,7 +158,8 @@ public sealed partial class MainWindow : Window
             or nameof(Model.NarratingSegmentIndex) or nameof(Model.ActiveNarrationStatusText)
             or nameof(Model.ProcessingSection) or nameof(Model.VideoPreparation) or nameof(Model.Status))
             UpdateProcessingChrome();
-        if (e.PropertyName is nameof(Model.Busy) or nameof(Model.HasApiKey) or nameof(Model.Idle) or nameof(Model.IsSynthesizingNarration))
+        if (e.PropertyName is nameof(Model.Busy) or nameof(Model.HasApiKey) or nameof(Model.Idle) or nameof(Model.IsSynthesizingNarration)
+            or nameof(Model.AiIssueMessage) or nameof(Model.AiProcessingBlocked) or nameof(Model.CanUseAI))
             UpdateApiKeyUi();
         if (e.PropertyName is nameof(Model.Busy) or nameof(Model.Idle) or nameof(Model.Project))
             UpdateProjectIntegrityUi();
@@ -428,6 +429,7 @@ public sealed partial class MainWindow : Window
             else if (dialog.VideoPath is { } path)
                 await Model.RunAsync("import-video", new[] { "--video", path, "--library", Model.Settings.Get("libraryPath") }, false);
             if (Model.Project != null) ShowEditor();
+            if (dialog.ImportAssetsAfterCreation && Model.Project != null) await ImportExistingAssetsAsync();
         }
         catch (Exception ex) { await ShowError(ex); }
     }
@@ -806,7 +808,7 @@ public sealed partial class MainWindow : Window
             await SynthesizeNarrationWithConfirmationAsync();
             return;
         }
-        if (!Model.HasApiKey && command != "prepare-video")
+        if (!Model.CanUseAI && command != "prepare-video")
         {
             await ShowSettingsSectionAsync(3);
             return;
@@ -923,7 +925,7 @@ public sealed partial class MainWindow : Window
         ProjectIntegrityFinderButton.Visibility = report.CanShowInFinder ? Visibility.Visible : Visibility.Collapsed;
 
         var narration = report.CanRegenerateNarration
-            && (Model.CurrentNarrationEngine() != "gemini" || (Model.HasApiKey && !Model.IsApiKeyInvalid));
+            && (Model.CurrentNarrationEngine() != "gemini" || Model.CanUseAI);
         var videoArtifacts = report.CanRegenerateVideoArtifacts;
         ProjectIntegrityRegenerateButton.Visibility = narration || videoArtifacts ? Visibility.Visible : Visibility.Collapsed;
         ProjectIntegrityRegenerateButton.Content = narration ? "Regenerate missing narration" : "Regenerate video details & pictures";
@@ -1238,6 +1240,20 @@ public sealed partial class MainWindow : Window
     {
         if (Model.Project is not { } p) return;
         var isDescription = existing?.IsDescription ?? (Section.SelectedIndex != 0);
+        if (isDescription && p.Transcript.Count == 0)
+        {
+            await ShowDialogAsync(new ContentDialog
+            {
+                Title = "Transcript Required",
+                Content = new TextBlock
+                {
+                    Text = "Import or generate a transcript before adding or editing descriptions. It is required for overlap validation. Use Project > Import Existing Assets… to bring a transcript now.",
+                    TextWrapping = TextWrapping.Wrap
+                },
+                CloseButtonText = "Close"
+            });
+            return;
+        }
         var maxDuration = p.Duration;
         var initialStart = existing?.Start ?? Position;
         var initialEnd = existing?.End ?? Math.Min(maxDuration, initialStart + (isDescription ? 3.0 : 4.0));
@@ -1352,12 +1368,23 @@ public sealed partial class MainWindow : Window
             PlaceholderText = isDescription ? "Describe visual events or details in this scene..." : "Spoken words or dialogue..."
         };
 
+        var originPicker = new ComboBox
+        {
+            Header = "Provenance",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            ItemsSource = new[] { "AI-generated", "AI-generated · modified", "Imported", "Imported · modified", "Manually added", "Origin unknown" }
+        };
+        var originIds = new[] { "ai", "ai_modified", "imported", "imported_modified", "manual", "unknown" };
+        originPicker.SelectedIndex = Math.Max(0, Array.IndexOf(originIds, existing?.Origin ?? "manual"));
+        ToolTipService.SetToolTip(originPicker, "Choose a provenance label. The manual choice persists and is not overwritten by automatic inference.");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(originPicker, "Provenance");
+
         var ocrPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 10 };
         var ocrStatus = new TextBlock { FontSize = 12, Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
         var ocrButton = new Button
         {
             Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { new FontIcon { Glyph = "\uE7BA", FontSize = 13 }, new TextBlock { Text = "Read Frame Text at Start" } } },
-            IsEnabled = Model.HasApiKey
+            IsEnabled = Model.CanUseAI
         };
         ToolTipService.SetToolTip(ocrButton, Model.HasApiKey ? "Read text from the video frame at the segment start time and use it as the description" : "Configure your Gemini API key in Settings (Gemini API tab) to enable frame OCR");
         ocrPanel.Children.Add(ocrStatus);
@@ -1425,6 +1452,7 @@ public sealed partial class MainWindow : Window
 
         contentStack.Children.Add(new TextBlock { Text = isDescription ? "Audio Description" : "Transcript", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15 });
         contentStack.Children.Add(textBox);
+        contentStack.Children.Add(originPicker);
         if (isDescription) contentStack.Children.Add(ocrPanel);
 
         contentStack.Children.Add(new TextBlock { Text = "Hint for Gemini (Optional)", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15 });
@@ -1538,14 +1566,15 @@ public sealed partial class MainWindow : Window
         }
 
         var draft = existing == null
-            ? new Segment { Origin = isDescription ? "manual" : "transcript" }
+            ? new Segment { Origin = "manual" }
             : JsonSerializer.Deserialize<Segment>(JsonSerializer.Serialize(existing, Json.Options), Json.Options)!;
         draft.Start = startPicker.Value;
         draft.End = endPicker.Value;
         draft.Text = textBox.Text.Trim();
         draft.IsDescription = isDescription;
-        if (isDescription && existing != null && draft.Origin == "ai" && draft.Text != existing.Text)
-            draft.Origin = "ai_modified";
+        var selectedOrigin = originIds[Math.Clamp(originPicker.SelectedIndex, 0, originIds.Length - 1)];
+        draft.Origin = selectedOrigin;
+        draft.OriginOverride = true;
 
         var transcript = p.Transcript.ToList();
         var cues = p.Cues.ToList();
@@ -1604,7 +1633,7 @@ public sealed partial class MainWindow : Window
             || narrationProject.Integrity?.FolderMissing == true) return;
         var flags = extra?.ToList() ?? new List<string>();
         if (!flags.Contains("--segment") && !flags.Contains("--changed") && !flags.Contains("--regenerate-all")) flags.Add("--regenerate-all");
-        if (Model.CurrentNarrationEngine() == "gemini" && !Model.HasApiKey)
+        if (Model.CurrentNarrationEngine() == "gemini" && !Model.CanUseAI)
         {
             await ShowSettingsSectionAsync(3);
             return;
@@ -1833,6 +1862,11 @@ public sealed partial class MainWindow : Window
         {
             readback.Stop();
             SummaryEditorBox.Text = Model.Project?.Summary ?? "";
+            SummaryHeadingPicker.SelectedIndex = 0;
+            SummaryProvenance.SelectedIndex = Model.Project?.SummaryOrigin switch
+            {
+                "ai" => 0, "imported" => 1, "manual" => 2, _ => -1
+            };
             UpdateSummaryWordCount();
             SummaryEditNotice.Text = "";
             SummaryEditorBox.Focus(FocusState.Programmatic);
@@ -1877,9 +1911,14 @@ public sealed partial class MainWindow : Window
     {
         if (Model.Project is not { } p) return;
         var text = SummaryEditorBox.Text ?? "";
-        if (text != p.Summary)
+        var origin = SummaryProvenance.SelectedIndex switch
         {
-            await Model.SaveSummaryAsync(text);
+            0 => "ai", 1 => "imported", 2 => "manual", _ => null
+        };
+        var originChanged = origin != null && origin != p.SummaryOrigin;
+        if (text != p.Summary || originChanged)
+        {
+            await Model.SaveSummaryAsync(text, originChanged ? origin : null);
             SummaryEditNotice.Text = "";
             SummaryText.Text = text;
             RenderMarkdown(text);
@@ -1888,11 +1927,23 @@ public sealed partial class MainWindow : Window
 
     private async void OpenGeminiSettings_Click(object sender, RoutedEventArgs e) => await ShowSettingsSectionAsync(3);
 
+    private async void AiRetry_Click(object sender, RoutedEventArgs e)
+    {
+        if (Model.Busy) return;
+        try
+        {
+            var events = await Model.RunAsync("check-api-key", null, false);
+            if (events.Any(item => item.Data.TryGetProperty("models", out _))) Model.ClearAiIssue();
+            UpdateApiKeyUi();
+        }
+        catch (Exception ex) { await ShowError(ex); }
+    }
+
     private void UpdateApiKeyUi()
     {
         var hasKey = Model.HasApiKey;
         var isInvalid = Model.IsApiKeyInvalid;
-        var canUseAi = hasKey && !isInvalid && Model.Idle;
+        var canUseAi = hasKey && !isInvalid && !Model.AiProcessingBlocked && Model.Idle;
         try { Services.ShellIntegration.UpdateContextMenuState(); } catch { }
 
         if (ApiKeyWarningBar != null)
@@ -1910,6 +1961,14 @@ public sealed partial class MainWindow : Window
                 ApiKeyWarningBar.Title = "Gemini API Key Required";
                 ApiKeyWarningBar.Message = "Enter your personal Gemini API key in Settings to generate transcripts, summaries, audio descriptions, and narration.";
             }
+        }
+
+        if (AiWarningBar != null)
+        {
+            AiWarningBar.IsOpen = Model.AiProcessingBlocked;
+            AiWarningBar.Title = Model.AiIssueTitle ?? "Gemini AI Processing Paused";
+            AiWarningBar.Message = (Model.AiIssueMessage ?? "Gemini AI processing is paused.") +
+                " Existing transcripts, descriptions, narration, and exports are unchanged.";
         }
 
         if (GalleryImport != null)

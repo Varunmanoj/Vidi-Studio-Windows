@@ -1103,6 +1103,8 @@ public sealed partial class MainWindow
         foreach (var (id, title) in new[] { ("rename-project", "Rename Project…"), ("trash-project", "Move Project to Recycle Bin…") })
             if (desktopMenuItems[id].Last() is not { IsEnabled: true, Icon: not null } item || item.Text != title || !CanRunDesktopCommand(id))
                 throw new InvalidOperationException("Project management must be available offline in the active editor: " + id);
+        if (desktopMenuItems["import-assets"].Last() is not { IsEnabled: true, Icon: not null } importItem || importItem.Text != "Import Existing Assets…" || !CanRunDesktopCommand("import-assets"))
+            throw new InvalidOperationException("Import Existing Assets must be available offline in the active editor.");
     }
     private async Task VerifyProjectMenuActionsForSmokeTestAsync()
     {

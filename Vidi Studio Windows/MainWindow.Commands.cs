@@ -294,7 +294,7 @@ public sealed partial class MainWindow
             if (Model.Project is not { } current || !string.Equals(current.Folder, project.Folder, StringComparison.OrdinalIgnoreCase))
                 Model.Open(project.Folder);
         }
-        var activeApiKey = Model.HasApiKey && !Model.IsApiKeyInvalid;
+        var activeApiKey = Model.CanUseAI;
         var usable = !project.IntegrityPlaceholder && project.Integrity?.ManifestUnreadable != true && project.Integrity?.FolderMissing != true;
         Item("Open editor in new window", (_, _) => App.OpenWindow(project.Folder));
         Item("Export", (_, args) => { LoadForEditorAction(); Export_Click(this, args); }, activeApiKey && usable);
@@ -342,7 +342,7 @@ public sealed partial class MainWindow
             });
             if (segment.IsDescription)
             {
-                var canSynthesize = Model.CurrentNarrationEngine() != "gemini" || (Model.HasApiKey && !Model.IsApiKeyInvalid);
+                var canSynthesize = Model.CurrentNarrationEngine() != "gemini" || Model.CanUseAI;
                 var synthLabel = segment.IsNarrating
                     ? $"Generating audio for AD segment {segment.AdNumber}…"
                     : segment.IsQueuedForNarration
@@ -352,12 +352,13 @@ public sealed partial class MainWindow
                 Item(synthLabel, NarrateSelected_Click, canSynthesize);
                 if (Model.IsSynthesizingNarration && !segment.IsNarrating && Model.NarratingSegmentIndex is { } activeIdx)
                     Item($"Currently generating AD segment {activeIdx}…", (_, _) => { }, false);
-                Item("Rewrite description to fit", Rewrite_Click, Model.HasApiKey && !Model.IsApiKeyInvalid);
+                Item("Import narration audio…", async (_, _) => await ImportSegmentNarrationAsync(segment), Model.Idle);
+                Item("Rewrite description to fit", Rewrite_Click, Model.CanUseAI);
                 Item("Delete narration", DeleteNarration_Click, segment.Audio != null);
             }
             else
             {
-                Item("Re-Analyze this segment", async (_, _) => await EditSegment(segment), Model.HasApiKey && !Model.IsApiKeyInvalid);
+                Item("Re-Analyze this segment", async (_, _) => await EditSegment(segment), Model.CanUseAI);
             }
             menu.Items.Add(new MenuFlyoutSeparator());
             Item("Delete segment", async (_, _) =>
@@ -441,26 +442,14 @@ public sealed partial class MainWindow
     }
     private void RenderMarkdown(string markdown)
     {
-        ClearSummaryHighlight(); SummaryRichText.Children.Clear(); summaryLines.Clear();
-        foreach (var line in markdown.Split('\n'))
+        ClearSummaryHighlight();
+        SummaryRichText.Children.Clear();
+        summaryLines.Clear();
+        var view = BuildMarkdownView(markdown, trackReadback: true);
+        foreach (var child in view.Children.ToList())
         {
-            var heading = Regex.Match(line, @"^(#{1,6})\s+(.*)");
-            var paragraph = new TextBlock { FontSize = 16, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
-            var value = line;
-            if (heading.Success) { paragraph.FontSize = 28 - heading.Groups[1].Length * 2; paragraph.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold; value = heading.Groups[2].Value; }
-            else if (Regex.IsMatch(line, @"^\s*[-*]\s")) value = "• " + Regex.Replace(line, @"^\s*[-*]\s+", "");
-            var offset = 0;
-            foreach (Match match in Regex.Matches(value, @"\*\*(.+?)\*\*|`([^`]+)`"))
-            {
-                paragraph.Inlines.Add(new Run { Text = value[offset..match.Index] });
-                if (match.Groups[1].Success) { var bold = new Bold(); bold.Inlines.Add(new Run { Text = match.Groups[1].Value }); paragraph.Inlines.Add(bold); }
-                else paragraph.Inlines.Add(new Run { Text = match.Groups[2].Value, FontFamily = new FontFamily("Cascadia Mono") });
-                offset = match.Index + match.Length;
-            }
-            paragraph.Inlines.Add(new Run { Text = value[offset..] });
-            SummaryRichText.Children.Add(paragraph);
-            paragraph.SelectionChanged += (_, _) => UpdateDesktopMenuStates();
-            summaryLines.Add((paragraph, Regex.Replace(value, @"\*\*(.+?)\*\*|`([^`]+)`", m => m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value)));
+            view.Children.Remove(child);
+            SummaryRichText.Children.Add(child);
         }
         readback.SetSource(string.Join("\n", summaryLines.Select(line => line.Text)));
         UpdateSummaryControls();

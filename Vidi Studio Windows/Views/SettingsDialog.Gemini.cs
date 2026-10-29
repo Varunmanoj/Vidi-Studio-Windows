@@ -180,6 +180,7 @@ public sealed partial class SettingsDialog
             draft["apiPlan"] = "none";
             CredentialStore.Delete();
             model.Settings.Set("apiKey", "");
+            model.ClearAiIssue();
             model.Settings.Save();
             availableModels.Clear();
             ApplyGeminiModelChoices();
@@ -539,6 +540,7 @@ public sealed partial class SettingsDialog
 
             draft["apiKeyValid"] = true;
             draft["apiPlan"] = detectedPlan;
+            model.ClearAiIssue();
 
             // Automatically select values based on the detected plan without requiring user to choose them
             if (found.Data.TryGetProperty("selectedModels", out var smElem) && smElem.ValueKind == JsonValueKind.Object)

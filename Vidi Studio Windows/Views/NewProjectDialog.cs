@@ -33,6 +33,8 @@ public sealed class NewProjectDialog : ContentDialog
     private readonly MediaPlayerElement preview = new() { Height = 160, AreTransportControlsEnabled = true, Visibility = Visibility.Collapsed };
     private readonly TextBox youtubeUrl = new() { PlaceholderText = "https://youtu.be/…", Header = "YouTube video URL", Width = 290, HorizontalAlignment = HorizontalAlignment.Left };
     private readonly Button fetchDetails = new() { Content = "Fetch Details", Width = 120, VerticalAlignment = VerticalAlignment.Bottom };
+    private readonly CheckBox importAssets = new() { Content = "I already have Audio Description assets to import after creating", Width = 460 };
+    public bool ImportAssetsAfterCreation => importAssets.IsChecked == true;
     private readonly Border youtubePreview = new() { Visibility = Visibility.Collapsed, Width = 460, CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Background = new SolidColorBrush(Windows.UI.Color.FromArgb(24, 128, 128, 128)) };
     private readonly TextBlock youtubeStatus = new() { Width = 460, TextWrapping = TextWrapping.Wrap, Opacity = .7 };
     private readonly TextBlock sourceHeading = new() { Text = "Video File", FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(2, 4, 0, 0) };
@@ -100,6 +102,8 @@ public sealed class NewProjectDialog : ContentDialog
         contents.Children.Add(sourceHeading);
         contents.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = localFields });
         contents.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = youtubeFields });
+        ToolTipService.SetToolTip(importAssets, "Open Import Existing Assets after the project is created to bring a transcript, summary, AD transcript, or AD audio");
+        contents.Children.Add(importAssets);
         Content = new ScrollViewer { Content = contents, MinHeight = 470, MaxHeight = 900, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         local.Checked += (_, _) => UpdateSource(); youtube.Checked += (_, _) => UpdateSource();
         youtubeUrl.TextChanged += (_, _) => UpdateYouTubeDetails();

@@ -100,6 +100,25 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     }
     public bool HasApiKey => Settings.HasApiKey;
     public bool IsApiKeyInvalid => Settings.IsApiKeyInvalid;
+    public string? AiIssueTitle { get; private set; }
+    public string? AiIssueMessage { get; private set; }
+    public string? AiIssueKind { get; private set; }
+    public bool AiProcessingBlocked => AiIssueMessage != null;
+    public bool CanUseAI => HasApiKey && !IsApiKeyInvalid && !AiProcessingBlocked;
+    public void ClearAiIssue()
+    {
+        if (AiIssueMessage == null) return;
+        AiIssueTitle = null; AiIssueMessage = null; AiIssueKind = null;
+        Changed(nameof(AiIssueTitle)); Changed(nameof(AiIssueMessage)); Changed(nameof(AiIssueKind));
+        Changed(nameof(AiProcessingBlocked)); Changed(nameof(CanUseAI));
+    }
+    private void DetectAiIssue(string? detail)
+    {
+        if (AIServiceIssueDetector.Detect(detail) is not { } issue) return;
+        AiIssueTitle = issue.Title; AiIssueMessage = issue.Message; AiIssueKind = issue.Kind;
+        Changed(nameof(AiIssueTitle)); Changed(nameof(AiIssueMessage)); Changed(nameof(AiIssueKind));
+        Changed(nameof(AiProcessingBlocked)); Changed(nameof(CanUseAI));
+    }
     public string ApiPlan => Settings.ApiPlan;
     private CancellationTokenSource? operation;
     private NarrationFailureReport? pendingNarrationFailures;
@@ -370,21 +389,42 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     {
         if (Project is not { } p) return null;
         var narratedEntries = new List<(int Index, Segment Cue, string Engine, string Voice, string Path)>();
+        var importedEntries = new List<NarrationVoiceSegmentEntry>();
         for (var i = 0; i < p.Cues.Count; i++)
         {
             var cue = p.Cues[i];
             if (!cue.HasAudioFile || string.IsNullOrEmpty(cue.Audio)) continue;
-            var engine = cue.ResolvedAudioEngine ?? "windows-core";
-            var voice = cue.ResolvedAudioVoice ?? "System default";
+            if (cue.AudioOrigin == "imported")
+            {
+                var source = string.IsNullOrWhiteSpace(cue.AudioSourceName) ? "Unknown source file" : cue.AudioSourceName;
+                importedEntries.Add(new NarrationVoiceSegmentEntry
+                {
+                    Index = i + 1, Start = cue.Start, End = cue.End,
+                    Duration = Math.Max(0, cue.End - cue.Start),
+                    Engine = "imported", EngineDisplayName = "Imported audio",
+                    Voice = source, VoiceDisplayName = source, AudioFile = cue.Audio,
+                    UsesDifferentVoice = false,
+                    Reason = $"Imported audio from {source}. It is not generated narration and does not use a selected voice."
+                });
+                continue;
+            }
+            var engine = cue.ResolvedAudioEngine ?? "unknown";
+            var voice = cue.ResolvedAudioVoice ?? "Unknown voice";
             narratedEntries.Add((i + 1, cue, engine, voice, cue.Audio));
         }
         if (narratedEntries.Count == 0)
         {
             return new NarrationVoiceReport
             {
-                Title = "Narration voice details",
-                Detail = "No narration audio has been generated for this project yet.",
-                HasDifferentVoices = false
+                Title = importedEntries.Count > 0 ? "Imported narration audio" : "Narration voice details",
+                Detail = importedEntries.Count > 0
+                    ? "All narration audio in this project is imported. Generated voice settings do not apply to these segments."
+                    : "No narration audio has been generated for this project yet.",
+                HasDifferentVoices = false,
+                AllSegments = importedEntries,
+                ImportedCount = importedEntries.Count,
+                HasMixedSources = importedEntries.Count > 0,
+                ImportedFiles = importedEntries.Select(e => e.VoiceDisplayName).Distinct().OrderBy(v => v).ToList()
             };
         }
         string primaryEngine;
@@ -447,20 +487,28 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             IsDifferentVoice = g.IsDifferent
         }).ToList();
 
+        allSegments.AddRange(importedEntries);
         var hasDifferent = differentSegments.Count > 0 || summaries.Count(s => s.Count > 0) > 1;
+        var hasMixedSources = importedEntries.Count > 0 && narratedEntries.Count > 0;
+        var generatedCount = narratedEntries.Count;
         var detail = hasDifferent
-            ? $"{differentSegments.Count} of {allSegments.Count} narrated segment{(allSegments.Count == 1 ? "" : "s")} use a different voice from {primaryLabel}. ({string.Join("; ", summaries.Select(s => $"{s.CombinedLabel}: {s.Count} segment{(s.Count == 1 ? "" : "s")}"))})"
-            : $"All {allSegments.Count} narrated audio description segment{(allSegments.Count == 1 ? "" : "s")} use {primaryLabel}.";
+            ? $"{differentSegments.Count} of {generatedCount} generated segment{(generatedCount == 1 ? "" : "s")} use a different voice from {primaryLabel}. ({string.Join("; ", summaries.Select(s => $"{s.CombinedLabel}: {s.Count} segment{(s.Count == 1 ? "" : "s")}"))})"
+            : $"All {generatedCount} generated audio description segment{(generatedCount == 1 ? "" : "s")} use {primaryLabel}.";
+        if (importedEntries.Count > 0)
+            detail += $" {importedEntries.Count} segment{(importedEntries.Count == 1 ? "" : "s")} use imported audio.";
 
         return new NarrationVoiceReport
         {
-            Title = hasDifferent ? "Different narration voices in project" : "Narration voice details",
+            Title = hasDifferent || hasMixedSources ? "Narration sources need review" : "Narration voice details",
             Detail = detail,
             PrimaryVoiceLabel = primaryLabel,
             HasDifferentVoices = hasDifferent,
             VoiceSummaries = summaries,
             DifferentSegments = differentSegments,
-            AllSegments = allSegments
+            AllSegments = allSegments,
+            ImportedCount = importedEntries.Count,
+            HasMixedSources = hasMixedSources,
+            ImportedFiles = importedEntries.Select(e => e.VoiceDisplayName).Distinct().OrderBy(v => v).ToList()
         };
     }
     /// <summary>Builds the narration status report from the open project for on-demand review.</summary>
@@ -483,6 +531,16 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         report.Detail = total == 0 ? "There are no audio description segments in this project yet." : report.Failures.Count == 0
             ? $"All {total} audio description segments have current narration audio."
             : $"{report.Failures.Count} of {total} description{(total == 1 ? "" : "s")} need attention.";
+        if (p.GeneratedNarrationCount > 0 && p.ImportedNarrationCount > 0)
+            report.Warnings.Add($"This project mixes AI-generated narration ({p.GeneratedNarrationCount} segments) and imported narration ({p.ImportedNarrationCount} segments).");
+        if (p.ImportedNarrationFiles.Count > 1)
+            report.Warnings.Add($"Imported narration comes from {p.ImportedNarrationFiles.Count} different audio files: {string.Join(", ", p.ImportedNarrationFiles)}.");
+        if (p.ImportedNarrationCount > 0 && p.GeneratedNarrationCount == 0 && p.UnknownNarrationCount == 0)
+            report.Warnings.Add("All narration audio in this project is imported. Generated voice settings do not apply to these segments.");
+        if (p.GeneratedNarrationCount > 0 && p.ImportedNarrationCount == 0 && p.UnknownNarrationCount == 0)
+            report.Warnings.Add("This project uses only AI-generated narration.");
+        if (p.UnknownNarrationCount > 0)
+            report.Warnings.Add($"{p.UnknownNarrationCount} narration segment(s) have no recorded source and are labelled Unknown voice.");
         return report;
     }
     public async Task<List<EngineEvent>> RunAsync(string command, IEnumerable<string>? extra = null, bool needsProject = true)
@@ -644,12 +702,13 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             var folder = imported?.Data.GetProperty("project").GetString() ?? Project?.Folder;
             if (folder != null && File.Exists(Path.Combine(folder, "project.json"))) Open(folder);
             if (pendingNarrationFailures is { } narrationReport) { pendingNarrationFailures = null; NarrationFailures?.Invoke(this, narrationReport); }
+            if (command is "check-api-key" or "list-models" || IsAICommand(command)) ClearAiIssue();
             Status = "Complete";
             return result;
         }
         catch (OperationCanceledException) { Status = "Cancelled. Completed results remain saved."; }
-        catch (ProcessingException ex) { Status = ex.Message; }
-        catch (Exception ex) { Engine.Log(ex.ToString()); Status = "Could not finish. Check Settings and the diagnostic log, then retry."; }
+        catch (ProcessingException ex) { Status = ex.Message; DetectAiIssue(ex.Message); }
+        catch (Exception ex) { Engine.Log(ex.ToString()); Status = "Could not finish. Check Settings and the diagnostic log, then retry."; DetectAiIssue(ex.Message); }
         finally
         {
             if (Project != null && File.Exists(Path.Combine(Project.Folder, "project.json")))
@@ -681,6 +740,11 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         }
         return SectionProcessingState.Idle;
     }
+
+    private static bool IsAICommand(string command) => command is
+        "transcribe" or "generate-summary" or "generate-ad-cues" or "analyze" or "regenerate-all"
+        or "reanalyze-segment" or "reanalyze-transcript-segment" or "rewrite-cue" or "capture-frame"
+        or "import-youtube" or "align-imported-text" or "synthesize-tts" or "prepare-analysis-video";
 
     private static string? InitialProcessingSection(string command) => command switch
     {
@@ -726,15 +790,18 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         }
         finally { File.Delete(temporary); }
     }
-    public async Task SaveSummaryAsync(string summary)
+    public async Task SaveSummaryAsync(string summary, string? origin = null)
     {
         if (Project is not { } p) return;
         p.Summary = summary;
-        var temporary = Path.Combine(SettingsStore.DirectoryPath, Guid.NewGuid() + ".txt");
+        var temporary = Path.Combine(SettingsStore.DirectoryPath, Guid.NewGuid() + (origin == null ? ".txt" : ".json"));
         Directory.CreateDirectory(SettingsStore.DirectoryPath);
         try
         {
-            await File.WriteAllTextAsync(temporary, summary, System.Text.Encoding.UTF8);
+            if (origin == null)
+                await File.WriteAllTextAsync(temporary, summary, System.Text.Encoding.UTF8);
+            else
+                await File.WriteAllTextAsync(temporary, System.Text.Json.JsonSerializer.Serialize(new { summary, summaryOrigin = origin }, Json.Options), System.Text.Encoding.UTF8);
             var result = await RunAsync("save-summary", new[] { "--input", temporary });
             if (result.Count == 0)
             {

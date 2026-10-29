@@ -155,7 +155,7 @@ public sealed partial class MainWindow
     }
     private Task<ContentDialogResult> ShowNarrationFailuresAsync(NarrationFailureReport report)
     {
-        var healthy = report.Failures.Count == 0;
+        var healthy = report.Failures.Count == 0 && report.Warnings.Count == 0;
         var heading = new Grid { ColumnSpacing = 10, Margin = new Thickness(0, 0, 0, 8) };
         heading.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         heading.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -164,6 +164,27 @@ public sealed partial class MainWindow
         Grid.SetColumn(detail, 1); heading.Children.Add(detail);
         var panel = new StackPanel { Spacing = 6, MinWidth = healthy ? 0 : 760 };
         panel.Children.Add(heading);
+        if (report.Warnings.Count > 0)
+        {
+            var warningPanel = new StackPanel { Spacing = 4 };
+            warningPanel.Children.Add(new TextBlock
+            {
+                Text = "Warnings", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 216, 121, 25))
+            });
+            foreach (var warning in report.Warnings)
+                warningPanel.Children.Add(new TextBlock { Text = warning, TextWrapping = TextWrapping.Wrap, FontSize = 12 });
+            warningPanel.Children.Add(new TextBlock
+            {
+                Text = "Warnings do not count as narration errors and do not block export.",
+                FontSize = 11, Opacity = .65, TextWrapping = TextWrapping.Wrap
+            });
+            panel.Children.Add(new Border
+            {
+                Background = new SolidColorBrush(Windows.UI.Color.FromArgb(24, 216, 121, 25)),
+                CornerRadius = new CornerRadius(6), Padding = new Thickness(10), Child = warningPanel
+            });
+        }
         if (!healthy)
         {
             panel.Children.Add(new TextBlock
@@ -406,6 +427,7 @@ public sealed partial class MainWindow
         Narration.Visibility = index is 2 or 3 or 4 ? Visibility.Visible : Visibility.Collapsed;
         Follow.Visibility = index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
         EditModeButton.Visibility = index is 0 or 1 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        EditorAddButton.Visibility = index is 0 or 1 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
         EditModeButton.Content = (index == 1 ? summaryEditMode : editMode) ? "Done" : "Edit";
         EditToolbar.Visibility = editMode && index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
         OverviewPanel.Visibility = index == 3 ? Visibility.Visible : Visibility.Collapsed;
@@ -423,13 +445,31 @@ public sealed partial class MainWindow
                 ? $"{voiceReport.VoiceSummaries.Count(s => s.Count > 0)} voices ({voiceReport.DifferentSegments.Count} different)"
                 : voiceReport.PrimaryVoiceLabel ?? Model.CurrentNarrationSummary();
         AddInfo(OverviewStatistics, "Narration voices", voiceStat);
-        foreach (var origin in new[] { ("ai", "AI-generated"), ("ai_modified", "AI-generated · modified"), ("manual", "Manually added"), ("unknown", "Origin unknown") })
+        AddInfo(OverviewStatistics, "Narration sources", p.NarrationSourcesText);
+        if (p.ImportedNarrationFiles.Count > 0)
+            AddInfo(OverviewStatistics, "Imported audio", $"{p.ImportedNarrationFiles.Count} file{(p.ImportedNarrationFiles.Count == 1 ? "" : "s")}");
+        AddInfo(OverviewStatistics, "Description timing", p.HasDescriptionTimingIssues ? $"{p.DescriptionTimingIssueCount} need retiming" : "Ready");
+        foreach (var origin in new[]
+        {
+            ("ai", "AI-generated"), ("ai_modified", "AI-generated · modified"),
+            ("imported", "Imported"), ("imported_modified", "Imported · modified"),
+            ("manual", "Manually added"), ("unknown", "Origin unknown")
+        })
             AddInfo(OriginStatistics, origin.Item2, p.Cues.Count(c => c.Origin == origin.Item1).ToString());
-        OriginStatistics.Children.Add(new TextBlock { Text = "AI-generated and modified segments are counted separately. Manual descriptions stay manual when edited.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
+        OriginStatistics.Children.Add(new TextBlock { Text = "All six origin labels are counted. Manual choices persist; imported audio and legacy content are never guessed.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
         OverviewVoice.Text = "Speech engine: " + EngineTitle(Model.Settings.Get("ttsMode", "windows-core")) + "\nVoice: " + NarrationVoiceFormatting.VoiceDisplayName(Model.CurrentNarrationVoice());
         if (OverviewVoiceWarningBorder != null && OverviewVoiceWarningText != null)
         {
-            if (voiceReport is { HasDifferentVoices: true })
+            if (voiceReport is { HasMixedSources: true } or { ImportedFiles.Count: > 0 })
+            {
+                var lines = new List<string> { "Imported narration audio is in this project", voiceReport.Detail };
+                if (voiceReport.ImportedFiles.Count > 1)
+                    lines.Add($"Imported narration comes from {voiceReport.ImportedFiles.Count} different audio files: {string.Join(", ", voiceReport.ImportedFiles)}.");
+                lines.Add("Imported audio is never compared as a different generated voice. The selected voice applies only to new narration generation.");
+                OverviewVoiceWarningText.Text = string.Join("\n", lines);
+                OverviewVoiceWarningBorder.Visibility = Visibility.Visible;
+            }
+            else if (voiceReport is { HasDifferentVoices: true })
             {
                 var lines = new List<string> { "Different narration voices are used in this project", voiceReport.Detail };
                 foreach (var summary in voiceReport.VoiceSummaries)

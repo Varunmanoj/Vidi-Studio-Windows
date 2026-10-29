@@ -27,3 +27,8 @@ This checklist records remaining end-to-end verification. Passing builds and eng
 - Native rename/search, independent editor window, and summary replacement/cancellation checks.
 
 Record date, platform, app version, input fixture, expected/actual result, and relevant diagnostic excerpt for each additional check. Keep credentials and private media out of shared reports.
+
+
+## Existing assets, provenance, and Markdown summary (1.0.149)
+
+Acceptance includes existing-asset import validation (tolerant rows, duration, overlap flags, zero-valid preservation), two-track combine with correct metadata and defaults, open single-mix export, per-segment narration fit validation, provenance transitions and pickers, AD Overview source grouping and mixed-source warnings, Markdown summary transformations/toolbar/shortcuts, and described-export blocking while timing is unresolved. On Windows these require a Windows host for native build, package, and UI verification; the shared engine and Python suites run on the current host and are recorded in PROGRESS.md.

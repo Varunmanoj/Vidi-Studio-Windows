@@ -81,7 +81,9 @@ public sealed partial class MainWindow
                 Submenu("Narration",
                     Submenu("AD Segment Generation", Command("generate-ad-cues"), Separator(), Command("delete-descriptions")),
                     Submenu("Narration Audio", Command("synthesize-tts"), Command("synthesize-changed"), Command("review-narration-issues"), Command("review-narration-voices"), Separator(), Command("delete-narration"))),
-                Command("delete-current"), Separator(), Command("show-in-finder"), Command("open-configuration"),
+                Command("delete-current"), Separator(),
+                Submenu("Import", Command("import-transcript"), Command("import-summary"), Command("import-descriptions"), Separator(), Command("import-assets")),
+                Command("show-in-finder"), Command("open-configuration"),
                 Separator(), Command("rename-project"), Command("trash-project")),
             Menu("Help", Command("help"), Command("about"))
         };
@@ -154,7 +156,11 @@ public sealed partial class MainWindow
         ["analyze"] = (VirtualKey.A, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+A"),
         ["transcribe"] = (VirtualKey.T, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+T"),
         ["generate-summary"] = (VirtualKey.S, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+S"),
-        ["generate-ad-cues"] = (VirtualKey.D, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+D")
+        ["generate-ad-cues"] = (VirtualKey.D, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+D"),
+        ["import-transcript"] = (VirtualKey.I, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+I"),
+        ["import-summary"] = (VirtualKey.M, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+M"),
+        ["import-descriptions"] = (VirtualKey.D, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+D"),
+        ["import-assets"] = (VirtualKey.I, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+I")
     };
 
     private void UpdateMenuBar(bool editor)
@@ -222,11 +228,16 @@ public sealed partial class MainWindow
         var timed = Section.SelectedIndex is 0 or 2 or 4;
         var hasTranscript = p.HasTranscript || ExtraFlag(p, "transcriptGenerated");
         var canDescribe = hasTranscript && p.HasSummary;
-        var ai = Model.HasApiKey && !Model.IsApiKeyInvalid;
+        var ai = Model.CanUseAI;
         var tts = Model.Settings.Get("ttsMode", "windows-core") != "gemini" || ai;
         switch (id)
         {
             case "rename-project": return !p.IntegrityPlaceholder && p.Integrity?.ManifestUnreadable != true && p.Integrity?.FolderMissing != true;
+            case "import-assets":
+            case "import-transcript":
+            case "import-summary":
+            case "import-descriptions":
+                return !p.IntegrityPlaceholder && p.Integrity?.ManifestUnreadable != true && p.Integrity?.FolderMissing != true;
             case "trash-project": return true;
             case "segment-edit-mode": return timed && Segments.Items.Count > 0 || Section.SelectedIndex == 1;
             case "add": return Section.SelectedIndex is 0 or 2;
@@ -311,6 +322,8 @@ public sealed partial class MainWindow
             "review-narration-voices" => "Review Narration Voices…",
             "delete-descriptions" => "Delete Descriptions…",
             "delete-current" => Section.SelectedIndex switch { 0 => "Delete Transcript…", 1 => "Delete Summary…", 2 => "Delete Descriptions…", _ => "Delete Current Page…" },
+            "import-transcript" => "Import Transcript…", "import-summary" => "Import Summary…",
+            "import-descriptions" => "Import Descriptions…", "import-assets" => "Import Existing Assets…",
             "show-in-finder" => "Show Project in File Explorer", "open-configuration" => "Open Project Configuration",
             "rename-project" => "Rename Project…", "trash-project" => "Move Project to Recycle Bin…", _ => id
         };
@@ -336,6 +349,8 @@ public sealed partial class MainWindow
             "show-projects" => "Show / hide projects", "show-inspector" => "Show / hide inspector",
             "project-list" or "project-grid" or "Editor Sections" => "List / Grid projects",
             "new-project" or "add" => "New project", "open-project" or "show-in-finder" => "Open project folder",
+            "import-assets" => "Import existing assets", "import-transcript" => "Import transcript",
+            "import-summary" => "Import summary", "import-descriptions" => "Import descriptions",
             "open-configuration" => "Open project configuration",
             "rename-project" => "Rename", "trash-project" => "Move to Recycle Bin",
             "open-editor-window" => "Open editor in new window", "export" => "Export", "settings" => "Settings",
@@ -438,6 +453,10 @@ public sealed partial class MainWindow
             case "delete-narration": await DeleteMenuContentAsync("narration"); break;
             case "delete-descriptions": await DeleteMenuContentAsync("descriptions"); break;
             case "delete-current": await DeleteMenuContentAsync(Section.SelectedIndex switch { 0 => "transcript", 1 => "summary", _ => "descriptions" }); break;
+            case "import-assets": await ImportExistingAssetsAsync(Models.ImportScope.All); break;
+            case "import-transcript": await ImportExistingAssetsAsync(Models.ImportScope.Transcript); break;
+            case "import-summary": await ImportExistingAssetsAsync(Models.ImportScope.Summary); break;
+            case "import-descriptions": await ImportExistingAssetsAsync(Models.ImportScope.Descriptions); break;
             case "show-in-finder": Reveal_Click(this, e); break;
             case "open-configuration": OpenConfiguration_Click(this, e); break;
             case "rename-project": if (Model.Project is { } renameProject) await RenameProjectAsync(renameProject); break;

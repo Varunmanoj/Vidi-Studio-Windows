@@ -52,9 +52,11 @@ public sealed partial class HelpWindow : Window
     private bool treeSelectionSuppressed;
     private bool webReady;
 
-    public HelpWindow()
+    public HelpWindow(ElementTheme theme = ElementTheme.Default)
     {
         InitializeComponent();
+        Root.RequestedTheme = theme;
+        Root.ActualThemeChanged += (_, _) => ApplyWebTheme();
         Closed += (_, _) =>
         {
             try { if (webReady) ContentView.Close(); } catch { }
@@ -69,6 +71,20 @@ public sealed partial class HelpWindow : Window
         catch { }
         LoadManifest();
         RebuildToc();
+        UpdateNavigation();
+    }
+
+    public void SetTheme(ElementTheme theme)
+    {
+        Root.RequestedTheme = theme;
+        ApplyWebTheme();
+    }
+
+    private void ApplyWebTheme()
+    {
+        if (!webReady) return;
+        var scheme = Root.ActualTheme == ElementTheme.Dark ? "dark" : "light";
+        _ = ContentView.ExecuteScriptAsync($"document.documentElement.style.colorScheme='{scheme}'; document.body.style.colorScheme='{scheme}';");
     }
 
     private async void Root_Loaded(object sender, RoutedEventArgs e)
@@ -86,6 +102,7 @@ public sealed partial class HelpWindow : Window
             core.NavigationCompleted += Content_NavigationCompleted;
             core.NewWindowRequested += Content_NewWindowRequested;
             webReady = true;
+            ApplyWebTheme();
             NavigateTo(currentSlug, pendingAnchor);
         }
         catch (Exception ex)
@@ -125,10 +142,10 @@ public sealed partial class HelpWindow : Window
             if (!string.IsNullOrEmpty(query)
                 && !page.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
                 && matchingSections.Count == 0) continue;
-            var pageNode = new TreeViewNode { Content = new HelpNode { Title = page.Title, Slug = page.Slug }, IsExpanded = true };
+            var pageNode = new TreeViewNode { Content = NodeView(new HelpNode { Title = page.Title, Slug = page.Slug }), IsExpanded = true };
             foreach (var section in matchingSections)
             {
-                var sectionNode = new TreeViewNode { Content = new HelpNode { Title = section.Title, Slug = page.Slug, Anchor = section.Id } };
+                var sectionNode = new TreeViewNode { Content = NodeView(new HelpNode { Title = section.Title, Slug = page.Slug, Anchor = section.Id }) };
                 pageNode.Children.Add(sectionNode);
                 sectionNodes[page.Slug + "#" + section.Id] = sectionNode;
             }
@@ -144,9 +161,19 @@ public sealed partial class HelpWindow : Window
 
     private void Search_Changed(object sender, TextChangedEventArgs e) => RebuildToc();
 
+    private static FrameworkElement NodeView(HelpNode node)
+    {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Padding = new Thickness(2, 3, 2, 3) };
+        panel.Children.Add(new FontIcon { Glyph = node.Icon, FontSize = 13, Opacity = .8 });
+        panel.Children.Add(new TextBlock { Text = node.Title, TextWrapping = TextWrapping.Wrap, MaxWidth = 240 });
+        panel.Tag = node;
+        return panel;
+    }
+
     private void Toc_SelectionChanged(TreeView sender, TreeViewSelectionChangedEventArgs args)
     {
-        if (treeSelectionSuppressed || sender.SelectedNode?.Content is not HelpNode node) return;
+        if (treeSelectionSuppressed || sender.SelectedNode?.Content is not FrameworkElement element ||
+            element.Tag is not HelpNode node) return;
         NavigateTo(node.Slug, node.Anchor);
     }
 
@@ -171,6 +198,7 @@ public sealed partial class HelpWindow : Window
         currentSlug = slug;
         pendingAnchor = anchor;
         SelectToc(slug, anchor);
+        UpdateNavigation();
         if (!webReady)
         {
             pendingAnchor = anchor;
@@ -217,8 +245,10 @@ public sealed partial class HelpWindow : Window
             await ShowContentError("This Help page could not be displayed.", "The local Help page is missing or unreadable.");
             return;
         }
+        ApplyWebTheme();
         ScrollTo(pendingAnchor);
         pendingAnchor = null;
+        UpdateNavigation();
     }
 
     private void Content_NewWindowRequested(CoreWebView2 sender, CoreWebView2NewWindowRequestedEventArgs args)
@@ -240,10 +270,29 @@ public sealed partial class HelpWindow : Window
         await Task.CompletedTask;
     }
 
-    private void Home_Click(object sender, RoutedEventArgs e) => NavigateTo(pages.FirstOrDefault()?.Slug ?? "welcome", null);
+    private int CurrentPageIndex() => pages.FindIndex(page => page.Slug == currentSlug);
 
-    private void BrowserHelp_Click(object sender, RoutedEventArgs e) =>
-        OpenInBrowser(new Uri(Path.Combine(HelpFolder, currentSlug + ".html")).AbsoluteUri);
+    private void UpdateNavigation()
+    {
+        var index = CurrentPageIndex();
+        PreviousButton.IsEnabled = index > 0;
+        NextButton.IsEnabled = index >= 0 && index < pages.Count - 1;
+        PageIndicator.Text = index >= 0
+            ? $"{index + 1} of {pages.Count} · {pages[index].Title}"
+            : "";
+    }
+
+    private void Previous_Click(object sender, RoutedEventArgs e)
+    {
+        var index = CurrentPageIndex();
+        if (index > 0) NavigateTo(pages[index - 1].Slug, null);
+    }
+
+    private void Next_Click(object sender, RoutedEventArgs e)
+    {
+        var index = CurrentPageIndex();
+        if (index >= 0 && index < pages.Count - 1) NavigateTo(pages[index + 1].Slug, null);
+    }
 
     private static void OpenInBrowser(string uri)
     {

@@ -6,4 +6,3 @@ main.topic a:hover { background: transparent; }
 main.topic table { display: block; overflow-x: auto; }
 main.topic pre { overflow-x: auto; padding: 1rem; background: light-dark(#f4f4f6, #29292c); border-radius: 8px; }
 main.topic img { max-width: 100%; height: auto; }
-.platform-note { margin: 0 0 1.5rem; padding: .85rem 1rem; border: 1px solid light-dark(#c9a227, #8a7420); border-radius: 10px; background: light-dark(#fff8dd, #332d17); font-size: .92rem; }

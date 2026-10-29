@@ -1825,7 +1825,7 @@ public sealed partial class MainWindow : Window
         };
         await ShowSettingsSectionAsync(section);
     }
-    private void HelpSettings_Click(object sender, RoutedEventArgs e) => App.OpenHelpWindow();
+    private void HelpSettings_Click(object sender, RoutedEventArgs e) => App.OpenHelpWindow(Root.ActualTheme);
     private async void AboutSettings_Click(object sender, RoutedEventArgs e) => await ShowSettingsSectionAsync(7);
     private async void SpeakSummary_Click(object sender, RoutedEventArgs e)
     {

@@ -393,3 +393,6 @@ Windows summary Markdown controls are now icon-only with accessible tooltips/nam
 ## 2026-10-29 — New Project source/audio parity — 1.0.172 / 1.0.172.0
 
 Windows New Project now hides the inactive source card (YouTube URL no longer shows for Video File and vice versa) and replaces the audio-import checkbox with the Mac-style radio group: Create Audio Description in VidiStudio or I already have Audio Description files. Import-after-creation remains wired through ImportAssetsAfterCreation. Validation on this macOS host: Windows suite 304 tests pass (1 Windows-only skip); XAML, static tests, menu parity, and Help tests pass. Versions synchronized at 1.0.172 / 1.0.172.0. Not run: native Windows MSIX/install/UI validation.
+## 2026-10-29 — Help window navigation, theme, TOC rendering — 1.0.173 / 1.0.173.0
+
+Windows Help now shows a native TOC with visible chapter/topic text, supports light/dark theme propagation into WebView content, removes the Browser and Home buttons, and adds Previous/Next chapter navigation with a page indicator at the bottom. The Windows-edition banner was removed from all generated Help pages. Validation on this macOS host: Windows suite 304 tests pass (1 Windows-only skip); Help tests, XAML, and C# semantic compile pass. Versions synchronized at 1.0.173 / 1.0.173.0. Not run: native Windows MSIX/install/UI validation.

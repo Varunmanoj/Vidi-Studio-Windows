@@ -17,7 +17,10 @@ class HelpWindowTests(unittest.TestCase):
         self.assertIn('keyboard', slugs)
         self.assertIn('privacy', slugs)
         for page in pages:
-            self.assertTrue((HELP / f"{page['slug']}.html").is_file(), page['slug'])
+            html = (HELP / f"{page['slug']}.html").read_text(encoding='utf-8')
+            self.assertIn('<main class="topic"', html)
+            self.assertNotIn('platform-note', html)
+            self.assertNotIn('Windows edition.', html)
             self.assertTrue(page['sections'], page['slug'])
 
     def test_help_window_has_native_book_navigation_and_html_reader(self):
@@ -29,14 +32,20 @@ class HelpWindowTests(unittest.TestCase):
         self.assertIn('SetVirtualHostNameToFolderMapping', code)
         self.assertIn('manifest.json', code)
         self.assertIn('scrollIntoView', code)
+        self.assertIn('PreviousButton', xaml)
+        self.assertIn('NextButton', xaml)
+        self.assertIn('NodeView', code)
+        self.assertIn('ApplyWebTheme', code)
+        self.assertNotIn('BrowserHelpButton', xaml)
+        self.assertNotIn('HomeButton', xaml)
 
     def test_help_menu_and_settings_open_the_new_window(self):
         app = (APP / 'App.xaml.cs').read_text(encoding='utf-8')
         main = (APP / 'MainWindow.xaml.cs').read_text(encoding='utf-8')
         settings = (APP / 'Views' / 'SettingsDialog.Information.cs').read_text(encoding='utf-8')
-        self.assertIn('OpenHelpWindow', app)
-        self.assertIn('App.OpenHelpWindow()', main)
-        self.assertIn('App.OpenHelpWindow()', settings)
+        self.assertIn('OpenHelpWindow(ElementTheme theme', app)
+        self.assertIn('App.OpenHelpWindow(Root.ActualTheme)', main)
+        self.assertIn('App.OpenHelpWindow(menuOwner?.Root.ActualTheme', settings)
         self.assertIn('Content Include="Help\\**\\*"', (APP / 'Vidi Studio Windows.csproj').read_text(encoding='utf-8'))
 
 

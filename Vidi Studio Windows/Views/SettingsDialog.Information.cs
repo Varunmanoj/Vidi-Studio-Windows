@@ -36,7 +36,7 @@ public sealed partial class SettingsDialog
         openHelp.Click += (_, _) =>
         {
             Hide();
-            App.OpenHelpWindow();
+            App.OpenHelpWindow(menuOwner?.Root.ActualTheme ?? ElementTheme.Default);
         };
         panel.Children.Add(openHelp);
         panel.Children.Add(new TextBlock { Text = "Keyboard shortcuts", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });

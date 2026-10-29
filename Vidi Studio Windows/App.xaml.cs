@@ -48,13 +48,14 @@ public partial class App : Application
     {
         try { new Services.EngineClient(new Services.SettingsStore()).Log(message); } catch { }
     }
-    public static void OpenHelpWindow()
+    public static void OpenHelpWindow(ElementTheme theme = ElementTheme.Default)
     {
         if (helpWindow is null)
         {
-            helpWindow = new Views.HelpWindow();
+            helpWindow = new Views.HelpWindow(theme);
             helpWindow.Closed += (_, _) => helpWindow = null;
         }
+        else helpWindow.SetTheme(theme);
         helpWindow.Activate();
     }
 #if DEBUG

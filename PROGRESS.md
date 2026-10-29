@@ -387,3 +387,9 @@ Windows View > Sort Transcripts/Descriptions/AD Transcript now has a Fluent sort
 ## 2026-10-29 — Segment duration labels — 1.0.169 / 1.0.169.0
 
 Windows timed rows now show a two-decimal duration at the right of the origin row via Segment.DurationLabel, with an accessible name and tooltip. Mac mirrors the placement with a monospaced duration label. Validation on this macOS host: Windows suite 304 tests pass (1 Windows-only skip); XAML, Roslyn syntax, menu parity, and static tests pass. Versions synchronized at 1.0.169 / 1.0.169.0. Not run: native Windows MSIX/install/UI validation.
+## 2026-10-29 — Summary icons, top edit actions, and import icons — 1.0.171 / 1.0.171.0
+
+Windows summary Markdown controls are now icon-only with accessible tooltips/names, matching Mac. The edit-mode action toolbar now sits above the segment list. Project > Import and its Transcript, Summary, Descriptions, and Existing Assets children now have Fluent icons. Validation on this macOS host: Windows suite 304 tests pass (1 Windows-only skip); XAML, Roslyn syntax, menu parity, Help tests, and website build pass. Versions synchronized at 1.0.171 / 1.0.171.0. Not run: native Windows MSIX/install/UI validation.
+## 2026-10-29 — New Project source/audio parity — 1.0.172 / 1.0.172.0
+
+Windows New Project now hides the inactive source card (YouTube URL no longer shows for Video File and vice versa) and replaces the audio-import checkbox with the Mac-style radio group: Create Audio Description in VidiStudio or I already have Audio Description files. Import-after-creation remains wired through ImportAssetsAfterCreation. Validation on this macOS host: Windows suite 304 tests pass (1 Windows-only skip); XAML, static tests, menu parity, and Help tests pass. Versions synchronized at 1.0.172 / 1.0.172.0. Not run: native Windows MSIX/install/UI validation.

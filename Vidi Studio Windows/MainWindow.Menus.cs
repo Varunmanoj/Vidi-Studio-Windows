@@ -378,7 +378,7 @@ public sealed partial class MainWindow
             "show-projects" => "Show / hide projects", "show-inspector" => "Show / hide inspector",
             "project-list" or "project-grid" or "Editor Sections" => "List / Grid projects",
             "new-project" or "add" => "New project", "open-project" or "show-in-finder" => "Open project folder",
-            "import-assets" => "Import existing assets", "import-transcript" => "Import transcript",
+            "Import" => "Import", "import-assets" => "Import existing assets", "import-transcript" => "Import transcript",
             "import-summary" => "Import summary", "import-descriptions" => "Import descriptions", "filter-segments" => "Filter segments",
             "Sort Segments" => "Sort segments",
             "sort-start" => "Sort by start time", "sort-duration-asc" => "Shortest duration first",

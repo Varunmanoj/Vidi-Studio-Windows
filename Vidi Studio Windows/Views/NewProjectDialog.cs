@@ -33,8 +33,11 @@ public sealed class NewProjectDialog : ContentDialog
     private readonly MediaPlayerElement preview = new() { Height = 160, AreTransportControlsEnabled = true, Visibility = Visibility.Collapsed };
     private readonly TextBox youtubeUrl = new() { PlaceholderText = "https://youtu.be/…", Header = "YouTube video URL", Width = 290, HorizontalAlignment = HorizontalAlignment.Left };
     private readonly Button fetchDetails = new() { Content = "Fetch Details", Width = 120, VerticalAlignment = VerticalAlignment.Bottom };
-    private readonly CheckBox importAssets = new() { Content = "I already have Audio Description assets to import after creating", Width = 460 };
-    public bool ImportAssetsAfterCreation => importAssets.IsChecked == true;
+    private readonly RadioButton createDescription = new() { GroupName = "ad-mode", Content = "Create Audio Description in VidiStudio", IsChecked = true, Width = 460 };
+    private readonly RadioButton importDescription = new() { GroupName = "ad-mode", Content = "I already have Audio Description files", Width = 460 };
+    private readonly Border localCard;
+    private readonly Border youtubeCard;
+    public bool ImportAssetsAfterCreation => importDescription.IsChecked == true;
     private readonly Border youtubePreview = new() { Visibility = Visibility.Collapsed, Width = 460, CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Background = new SolidColorBrush(Windows.UI.Color.FromArgb(24, 128, 128, 128)) };
     private readonly TextBlock youtubeStatus = new() { Width = 460, TextWrapping = TextWrapping.Wrap, Opacity = .7 };
     private readonly TextBlock sourceHeading = new() { Text = "Video File", FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(2, 4, 0, 0) };
@@ -100,10 +103,21 @@ public sealed class NewProjectDialog : ContentDialog
         var contents = new StackPanel { Spacing = 14, Width = 490 };
         contents.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = sourceRow });
         contents.Children.Add(sourceHeading);
-        contents.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = localFields });
-        contents.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = youtubeFields });
-        ToolTipService.SetToolTip(importAssets, "Open Import Existing Assets after the project is created to bring a transcript, summary, AD transcript, or AD audio");
-        contents.Children.Add(importAssets);
+        localCard = new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = localFields };
+        youtubeCard = new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = youtubeFields };
+        contents.Children.Add(localCard);
+        contents.Children.Add(youtubeCard);
+        contents.Children.Add(new TextBlock { Text = "Audio Description", FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(2, 4, 0, 0) });
+        var audioPanel = new StackPanel { Spacing = 6, Width = 460 };
+        audioPanel.Children.Add(createDescription);
+        audioPanel.Children.Add(importDescription);
+        audioPanel.Children.Add(new TextBlock
+        {
+            Text = "Generate a transcript, summary, and descriptions after creating the project.",
+            TextWrapping = TextWrapping.Wrap, Opacity = .65, FontSize = 12
+        });
+        contents.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = audioPanel });
+        ToolTipService.SetToolTip(importDescription, "Open Import Existing Assets after the project is created to bring a transcript, summary, AD transcript, or AD audio");
         Content = new ScrollViewer { Content = contents, MinHeight = 470, MaxHeight = 900, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         local.Checked += (_, _) => UpdateSource(); youtube.Checked += (_, _) => UpdateSource();
         youtubeUrl.TextChanged += (_, _) => UpdateYouTubeDetails();
@@ -122,8 +136,8 @@ public sealed class NewProjectDialog : ContentDialog
     }
     private void UpdateSource()
     {
-        if (localFields.Parent is Border localCard) localCard.Visibility = IsYouTube ? Visibility.Collapsed : Visibility.Visible;
-        if (youtubeFields.Parent is Border youtubeCard) youtubeCard.Visibility = IsYouTube ? Visibility.Visible : Visibility.Collapsed;
+        localCard.Visibility = IsYouTube ? Visibility.Collapsed : Visibility.Visible;
+        youtubeCard.Visibility = IsYouTube ? Visibility.Visible : Visibility.Collapsed;
         sourceHeading.Text = IsYouTube ? "YouTube Video" : "Video File";
         if (IsYouTube) preview.MediaPlayer?.Pause();
         fetchDetails.IsEnabled = ValidYouTubeId(YouTubeUrl) != null && youtubeInspection == null;

@@ -20,6 +20,8 @@ public sealed partial class MainWindow
     private bool? desktopPlaybackWasPlaying;
     internal IEnumerable<(string Label, string Shortcut)> DesktopShortcutReference =>
         DesktopShortcuts.Select(entry => (DesktopCommandTitle(entry.Key), entry.Value.Text));
+    /// <summary>Current window appearance, shared with companion windows such as Help.</summary>
+    internal ElementTheme CurrentTheme => Root.ActualTheme;
 
     private void BuildMenus()
     {

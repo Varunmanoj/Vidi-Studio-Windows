@@ -189,8 +189,8 @@
           "title": "Saved audio or live speech?"
         },
         {
-          "id": "choose-an-windows-voice",
-          "title": "Choose an Windows voice"
+          "id": "choose-a-windows-voice",
+          "title": "Choose a Windows voice"
         },
         {
           "id": "use-piper-voices",
@@ -339,8 +339,8 @@
           "title": "Navigate without a mouse"
         },
         {
-          "id": "use-voiceover",
-          "title": "Use VoiceOver"
+          "id": "use-narrator",
+          "title": "Use Narrator"
         },
         {
           "id": "make-reading-comfortable",

@@ -24,7 +24,7 @@ public sealed partial class SettingsDialog
     private void BuildHelp(StackPanel panel)
     {
         panel.Children.Add(new TextBlock { Text = "Full Help book", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-        panel.Children.Add(new TextBlock { Text = "Open the complete Vidi Studio guide in its own window with a searchable table of contents, formatted tables, and every chapter from the Mac Help book.", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
+        panel.Children.Add(new TextBlock { Text = "Open the complete Vidi Studio guide in its own window with a searchable table of contents, formatted tables, and every chapter of the Vidi Studio Help book.", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
         var openHelp = new Button
         {
             Content = "Open the full Help book",
@@ -36,7 +36,7 @@ public sealed partial class SettingsDialog
         openHelp.Click += (_, _) =>
         {
             Hide();
-            App.OpenHelpWindow(menuOwner?.Root.ActualTheme ?? ElementTheme.Default);
+            App.OpenHelpWindow(menuOwner?.CurrentTheme ?? ElementTheme.Default);
         };
         panel.Children.Add(openHelp);
         panel.Children.Add(new TextBlock { Text = "Keyboard shortcuts", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
@@ -45,7 +45,7 @@ public sealed partial class SettingsDialog
             foreach (var (label, shortcut) in menuOwner.DesktopShortcutReference) AddInformationRow(panel, label, shortcut);
         panel.Children.Add(new TextBlock { Text = "File Explorer & desktop integration", FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 18, 0, 0) });
         panel.Children.Add(new TextBlock { Text = "Right-click any supported video file (.mp4, .mov, .m4v, .mkv, .avi, .webm, .wmv) in File Explorer to access \"Describe with Vidi Studio\" directly in the Windows 11 modern context menu, or under Show more options / Shift+F10 in the legacy menu. The packaged app registers the modern menu automatically. For unpackaged builds or a missing legacy entry, turn on Developer mode and use \"Repair legacy File Explorer context menu\" under Storage. You can also share video files to Vidi Studio through the Windows Share flyout.", TextWrapping = TextWrapping.Wrap, Opacity = .8 });
-        panel.Children.Add(new TextBlock { Text = "Menus follow the Mac layout: File, View, Playback, Project, Help. Creating new projects, local exports, and on-device narration do not require a Gemini API key; an active API key is only required when invoking automated AI features (transcription, summaries, audio description generation, and AI rewrites). Windows offers Windows OneCore, Windows SAPI 5, Piper, and Gemini voices; Piper voices download on demand and run offline. macOS offers Apple Voices and Gemini voices. Summary read-aloud always uses the same engine and voice chosen for narration.", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
+        panel.Children.Add(new TextBlock { Text = "Menus follow the native desktop layout: File, View, Playback, Project, Help. Creating new projects, local exports, and on-device narration do not require a Gemini API key; an active API key is only required when invoking automated AI features (transcription, summaries, audio description generation, and AI rewrites). Windows offers Windows OneCore, Windows SAPI 5, Piper, and Gemini voices; Piper voices download on demand and run offline. Summary read-aloud always uses the same engine and voice chosen for narration.", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
         panel.Children.Add(new TextBlock { Text = "AI availability", FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 18, 0, 0) });
         panel.Children.Add(new TextBlock { Text = "When Gemini reports that a key has no remaining quota or credits, denies access, or is temporarily unavailable, a persistent warning pauses all AI reprocessing: transcripts, summaries, Audio Descriptions, re-analysis, frame text, AI timing, and Gemini narration. Existing work is unchanged and non-AI editing, imports, playback, text exports, and Combine remain available. Choose Retry AI after fixing billing, quota, permissions, or availability. An invalid key is reported separately. Project creation does not require a Gemini API key.", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
         panel.Children.Add(new TextBlock { Text = "Existing assets", FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 18, 0, 0) });

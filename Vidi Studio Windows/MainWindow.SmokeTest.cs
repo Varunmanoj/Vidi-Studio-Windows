@@ -415,9 +415,25 @@ public sealed partial class MainWindow
             await Task.Delay(100);
             if (openSettings?.SelectedSectionForSmokeTest != 2) throw new InvalidOperationException("Narration button opened the wrong Settings page.");
             HelpSettings_Click(this, new RoutedEventArgs());
-            await Task.Delay(500);
-            if (App.HelpWindowForSmokeTest is not { } helpWindow)
+            Views.HelpWindow? helpWindow = null;
+            for (var attempt = 0; attempt < 100; attempt++)
+            {
+                helpWindow = App.HelpWindowForSmokeTest;
+                if (helpWindow?.LoadedPageForSmokeTest is not null) break;
+                await Task.Delay(100);
+            }
+            if (helpWindow is null)
                 throw new InvalidOperationException("Help menu did not open the Help book window.");
+            if (helpWindow.LoadedPageForSmokeTest is not { } loadedHelpPage ||
+                !loadedHelpPage.EndsWith("/welcome.html", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The Help book did not load its first page: " + (helpWindow.LoadedPageForSmokeTest ?? "<none>"));
+            if (helpWindow.ChapterCountForSmokeTest < 12 || helpWindow.TocRootCountForSmokeTest < 12)
+                throw new InvalidOperationException(
+                    $"The Help book contents did not load: chapters={helpWindow.ChapterCountForSmokeTest}, toc={helpWindow.TocRootCountForSmokeTest}.");
+            var tocTitles = helpWindow.TocTitlesForSmokeTest;
+            if (tocTitles.Count < 12 || tocTitles.Any(title => string.IsNullOrWhiteSpace(title) || title.Contains("TreeViewNode", StringComparison.Ordinal)))
+                throw new InvalidOperationException(
+                    "The Help table of contents did not show readable chapter titles: " + string.Join(" | ", tocTitles));
             helpWindow.Close();
             await Task.Delay(200);
             if (App.HelpWindowForSmokeTest != null)

@@ -41,6 +41,7 @@ public sealed partial class HelpWindow : Window
         public string? Anchor { get; init; }
         public bool IsPage => Anchor == null;
         public string Icon => IsPage ? "\uE8A5" : "\uE8FD";
+        public override string ToString() => Title;
     }
 
     private static readonly string HelpFolder = Path.Combine(AppContext.BaseDirectory, "Help");
@@ -51,6 +52,14 @@ public sealed partial class HelpWindow : Window
     private string? pendingAnchor;
     private bool treeSelectionSuppressed;
     private bool webReady;
+#if DEBUG
+    /// <summary>Exposes the loaded local page so the native smoke test can verify the book.</summary>
+    internal string? LoadedPageForSmokeTest { get; private set; }
+    internal int ChapterCountForSmokeTest => pages.Count;
+    internal int TocRootCountForSmokeTest => TocTree.RootNodes.Count;
+    internal IReadOnlyList<string> TocTitlesForSmokeTest =>
+        TocTree.RootNodes.Select(node => (node.Content as HelpNode)?.Title ?? "").ToList();
+#endif
 
     public HelpWindow(ElementTheme theme = ElementTheme.Default)
     {
@@ -142,10 +151,10 @@ public sealed partial class HelpWindow : Window
             if (!string.IsNullOrEmpty(query)
                 && !page.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
                 && matchingSections.Count == 0) continue;
-            var pageNode = new TreeViewNode { Content = NodeView(new HelpNode { Title = page.Title, Slug = page.Slug }), IsExpanded = true };
+            var pageNode = new TreeViewNode { Content = new HelpNode { Title = page.Title, Slug = page.Slug }, IsExpanded = true };
             foreach (var section in matchingSections)
             {
-                var sectionNode = new TreeViewNode { Content = NodeView(new HelpNode { Title = section.Title, Slug = page.Slug, Anchor = section.Id }) };
+                var sectionNode = new TreeViewNode { Content = new HelpNode { Title = section.Title, Slug = page.Slug, Anchor = section.Id } };
                 pageNode.Children.Add(sectionNode);
                 sectionNodes[page.Slug + "#" + section.Id] = sectionNode;
             }
@@ -161,19 +170,9 @@ public sealed partial class HelpWindow : Window
 
     private void Search_Changed(object sender, TextChangedEventArgs e) => RebuildToc();
 
-    private static FrameworkElement NodeView(HelpNode node)
-    {
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Padding = new Thickness(2, 3, 2, 3) };
-        panel.Children.Add(new FontIcon { Glyph = node.Icon, FontSize = 13, Opacity = .8 });
-        panel.Children.Add(new TextBlock { Text = node.Title, TextWrapping = TextWrapping.Wrap, MaxWidth = 240 });
-        panel.Tag = node;
-        return panel;
-    }
-
     private void Toc_SelectionChanged(TreeView sender, TreeViewSelectionChangedEventArgs args)
     {
-        if (treeSelectionSuppressed || sender.SelectedNode?.Content is not FrameworkElement element ||
-            element.Tag is not HelpNode node) return;
+        if (treeSelectionSuppressed || sender.SelectedNode?.Content is not HelpNode node) return;
         NavigateTo(node.Slug, node.Anchor);
     }
 
@@ -245,6 +244,9 @@ public sealed partial class HelpWindow : Window
             await ShowContentError("This Help page could not be displayed.", "The local Help page is missing or unreadable.");
             return;
         }
+#if DEBUG
+        LoadedPageForSmokeTest = sender.Source;
+#endif
         ApplyWebTheme();
         ScrollTo(pendingAnchor);
         pendingAnchor = null;

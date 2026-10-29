@@ -40,7 +40,16 @@
                         </TextBox.Header>
                     </TextBox>
                     <TextBlock Grid.Row="1" x:Name="SearchStatus" Opacity=".65" FontSize="12" TextWrapping="Wrap"/>
-                    <TreeView Grid.Row="2" x:Name="TocTree" SelectionMode="Single" SelectionChanged="Toc_SelectionChanged" AutomationProperties.Name="Help table of contents"/>
+                    <TreeView Grid.Row="2" x:Name="TocTree" SelectionMode="Single" SelectionChanged="Toc_SelectionChanged" AutomationProperties.Name="Help table of contents">
+                        <TreeView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="8" Padding="2,3" AutomationProperties.Name="{Binding Title}">
+                                    <FontIcon Glyph="{Binding Icon}" FontSize="13" Opacity=".8"/>
+                                    <TextBlock Text="{Binding Title}" TextWrapping="Wrap" MaxWidth="240"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </TreeView.ItemTemplate>
+                    </TreeView>
                 </Grid>
             </Border>
             <WebView2 Grid.Column="1" x:Name="ContentView" DefaultBackgroundColor="Transparent" AutomationProperties.Name="Help page content"/>

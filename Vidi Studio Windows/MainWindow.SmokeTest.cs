@@ -79,7 +79,7 @@ public sealed partial class MainWindow
                 "synthesize-tts", "synthesize-changed", "review-narration-issues", "review-narration-voices", "delete-narration" }) ||
                 (string)InspectorSynthesizeNarrationButton.Tag != "synthesize-tts")
                 throw new InvalidOperationException("Narration Audio must have exactly two bulk generation actions.");
-            if (!projectGroups.SequenceEqual(new[] { "Editor Sections", "Segments", "Analysis", "Narration" }))
+            if (!projectGroups.SequenceEqual(new[] { "Editor Sections", "Segments", "Analysis", "Narration", "Import" }))
                 throw new InvalidOperationException("Project submenu nesting/order drifted from Mac.");
             if (desktopMenuItems.SelectMany(pair => pair.Value).Any(item => item.Icon == null))
                 throw new InvalidOperationException("A nested desktop menu command has no icon.");
@@ -415,8 +415,13 @@ public sealed partial class MainWindow
             await Task.Delay(100);
             if (openSettings?.SelectedSectionForSmokeTest != 2) throw new InvalidOperationException("Narration button opened the wrong Settings page.");
             HelpSettings_Click(this, new RoutedEventArgs());
-            await Task.Delay(100);
-            if (openSettings?.SelectedSectionForSmokeTest != 6) throw new InvalidOperationException("Help menu opened the wrong Settings page.");
+            await Task.Delay(500);
+            if (App.HelpWindowForSmokeTest is not { } helpWindow)
+                throw new InvalidOperationException("Help menu did not open the Help book window.");
+            helpWindow.Close();
+            await Task.Delay(200);
+            if (App.HelpWindowForSmokeTest != null)
+                throw new InvalidOperationException("The Help book window did not close.");
             AboutSettings_Click(this, new RoutedEventArgs());
             await Task.Delay(100);
             if (openSettings?.SelectedSectionForSmokeTest != 7) throw new InvalidOperationException("About menu opened the wrong Settings page.");

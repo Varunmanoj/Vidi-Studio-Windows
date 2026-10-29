@@ -169,7 +169,7 @@ public sealed partial class MainWindow
         {
             Section.SelectedIndex = 0;
             if (!editMode) EditMode_Click(this, new RoutedEventArgs());
-            Status = "Import complete. Edit a transcript row to adjust its timing.";
+            Model.ReportStatus("Import complete. Edit a transcript row to adjust its timing.");
         }
     }
 

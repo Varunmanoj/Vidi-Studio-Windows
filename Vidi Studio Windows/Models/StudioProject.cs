@@ -27,6 +27,8 @@ public sealed class Segment : INotifyPropertyChanged
     public double Start { get; set; }
     public double End { get; set; }
     public string Text { get; set; } = "";
+    /// <summary>Optional diarization label shared with the engine and macOS; omitted when unset.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Speaker { get; set; }
     [JsonIgnore] public string DurationLabel => Math.Max(0, End - Start).ToString("0.00", CultureInfo.InvariantCulture) + "s";
     public string? Audio { get; set; }
     public string? AudioText { get; set; }
@@ -340,7 +342,7 @@ public sealed class StudioProject : INotifyPropertyChanged
             throw new InvalidDataException("project.json is missing required project fields.");
         project.Folder = Path.GetFullPath(folder);
         project.IntegrityPlaceholder = false;
-        var flagged = project.DescriptionTimingAudit?.Segments.Select(s => s.Id).Where(id => !string.IsNullOrEmpty(id)).ToHashSet() ?? new HashSet<string>();
+        var flagged = project.DescriptionTimingAudit?.Segments.Select(s => s.Id).Where(id => !string.IsNullOrEmpty(id)).ToHashSet() ?? new HashSet<string?>();
         for (var i = 0; i < project.Cues.Count; i++)
         {
             var cue = project.Cues[i];

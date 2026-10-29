@@ -57,6 +57,10 @@ public partial class App : Application
         }
         helpWindow.Activate();
     }
+#if DEBUG
+    /// <summary>Lets the native smoke test observe the Help book window lifecycle.</summary>
+    internal static Views.HelpWindow? HelpWindowForSmokeTest => helpWindow;
+#endif
 
     public static MainWindow OpenWindow(string? folder = null)
     {

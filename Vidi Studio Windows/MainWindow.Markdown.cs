@@ -77,7 +77,7 @@ public sealed partial class MainWindow
                 };
                 AddInlines(headingBlock, heading.Groups[2].Value);
                 panel.Children.Add(headingBlock);
-                if (trackReadback) Track(headingBlock, heading.Groups[2].Value);
+                if (trackReadback) Track(headingBlock, StripInline(heading.Groups[2].Value));
                 index++;
                 continue;
             }
@@ -85,7 +85,7 @@ public sealed partial class MainWindow
             var block = new TextBlock
             {
                 FontSize = 16, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
-                TextIndent = Regex.IsMatch(line, @"^\s*[-*]\s|^\s*\d+\.\s|^>\s") ? 18 : 0
+                Margin = new Thickness(Regex.IsMatch(line, @"^\s*[-*]\s|^\s*\d+\.\s|^>\s") ? 18 : 0, 0, 0, 0)
             };
             var value = line;
             string plain;
@@ -93,26 +93,26 @@ public sealed partial class MainWindow
             {
                 var bullet = task.Groups[1].Value.Trim().Length == 0 ? "☐ " : "☑ ";
                 AddInlines(block, bullet + task.Groups[2].Value);
-                plain = bullet + task.Groups[2].Value;
+                plain = bullet + StripInline(task.Groups[2].Value);
             }
             else if (Regex.IsMatch(line, @"^\s*\d+\.\s+"))
             {
                 var number = Regex.Match(line, @"^\s*(\d+)\.\s+(.*)");
                 AddInlines(block, number.Groups[1].Value + ". " + number.Groups[2].Value);
-                plain = number.Groups[1].Value + ". " + number.Groups[2].Value;
+                plain = number.Groups[1].Value + ". " + StripInline(number.Groups[2].Value);
             }
             else if (Regex.IsMatch(line, @"^\s*[-*]\s+"))
             {
                 var bulletText = Regex.Replace(line, @"^\s*[-*]\s+", "");
                 AddInlines(block, "• " + bulletText);
-                plain = "• " + bulletText;
+                plain = "• " + StripInline(bulletText);
             }
             else if (line.StartsWith("> ", StringComparison.Ordinal))
             {
                 block.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 120, 120, 120));
                 block.FontStyle = Windows.UI.Text.FontStyle.Italic;
                 AddInlines(block, line[2..]);
-                plain = line[2..];
+                plain = StripInline(line[2..]);
             }
             else
             {

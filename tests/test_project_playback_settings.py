@@ -93,7 +93,7 @@ class ProjectPlaybackSettings(unittest.TestCase):
         self.assertIn('"Projects" => 1, "Narration" => 2, "Gemini API" => 3, "Developer prompts" => 4,', window)
         self.assertIn('"Storage" => 5, "Help" => 6, "About" => 7, _ => 0', window)
         self.assertIn('await ShowSettingsSectionAsync(3);', window)
-        self.assertIn('await ShowSettingsSectionAsync(6);', window)
+        self.assertIn('App.OpenHelpWindow();', window)
         self.assertIn('await ShowSettingsSectionAsync(7);', window)
 
 

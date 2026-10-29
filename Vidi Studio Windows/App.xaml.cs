@@ -16,6 +16,7 @@ namespace Vidi_Studio_Windows;
 public partial class App : Application
 {
     private static readonly List<MainWindow> Windows = new();
+    private static Views.HelpWindow? helpWindow;
     private static AppInstance? mainInstance;
     internal static event Action<string>? ThemeChanged;
     internal static string? ActiveTheme { get; private set; }
@@ -47,6 +48,16 @@ public partial class App : Application
     {
         try { new Services.EngineClient(new Services.SettingsStore()).Log(message); } catch { }
     }
+    public static void OpenHelpWindow()
+    {
+        if (helpWindow is null)
+        {
+            helpWindow = new Views.HelpWindow();
+            helpWindow.Closed += (_, _) => helpWindow = null;
+        }
+        helpWindow.Activate();
+    }
+
     public static MainWindow OpenWindow(string? folder = null)
     {
         var window = new MainWindow(folder);

@@ -337,6 +337,14 @@ public sealed partial class MainWindow
     }
     private void GalleryProject_Click(object sender, ItemClickEventArgs e) { if (e.ClickedItem is StudioProject p) App.OpenWindow(p.Folder); }
     private async void NewProject_Click(object sender, RoutedEventArgs e) => await ShowNewProjectDialogAsync(false);
+    private void SetEditModeButton(bool editing)
+    {
+        EditModeButton.Content = new FontIcon { Glyph = editing ? "\uE73E" : "\uE70F" };
+        var label = editing ? "Done editing" : "Edit this section";
+        ToolTipService.SetToolTip(EditModeButton, label);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditModeButton, label);
+    }
+
     private void GenerateCurrent_Click(object sender, RoutedEventArgs e)
     {
         var command = Section.SelectedIndex switch { 0 => "transcribe", 1 => "generate-summary", 2 => "generate-ad-cues", _ => "synthesize-tts" };
@@ -357,9 +365,10 @@ public sealed partial class MainWindow
             }
             return;
         }
-        editMode = !editMode; EditModeButton.Content = editMode ? "Done" : "Edit";
+        editMode = !editMode; SetEditModeButton(editMode);
         EditToolbar.Visibility = editMode ? Visibility.Visible : Visibility.Collapsed;
         Segments.SelectionMode = editMode ? ListViewSelectionMode.Multiple : ListViewSelectionMode.None;
+        UpdateBulkActionState();
         RefreshEditingRows();
     }
     private void RefreshEditingRows()
@@ -417,7 +426,11 @@ public sealed partial class MainWindow
         // Reset the source so row templates see the combined-view labels.
         var name = index switch { 0 => "Transcript", 1 => "Summary", 2 => "Audio Descriptions", 3 => "Narration", 4 => "AD Transcript", _ => "Created Exports" };
         var existing = index switch { 0 => p.Transcript.Count > 0, 1 => p.Summary.Length > 0, 2 => p.Cues.Count > 0, _ => false };
-        GenerateCurrent.Content = InspectorGenerate.Content = (existing ? "Regenerate " : "Generate ") + name + "…";
+        var generateLabel = (existing ? "Regenerate " : "Generate ") + name + "…";
+        InspectorGenerate.Content = generateLabel;
+        GenerateCurrent.Content = new FontIcon { Glyph = "\uE8A5" };
+        ToolTipService.SetToolTip(GenerateCurrent, generateLabel);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(GenerateCurrent, generateLabel);
         GenerateCurrent.Visibility = InspectorGenerate.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
         InspectorSectionTitle.Text = index == 2 ? "AD Segment Generation" : name;
         UpdateSegmentMoreVisibility();
@@ -428,8 +441,10 @@ public sealed partial class MainWindow
         Follow.Visibility = index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
         EditModeButton.Visibility = index is 0 or 1 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
         EditorAddButton.Visibility = index is 0 or 1 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
-        EditModeButton.Content = (index == 1 ? summaryEditMode : editMode) ? "Done" : "Edit";
+        if (CaptionOverlayButton != null) CaptionOverlayButton.Visibility = index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        SetEditModeButton((index == 1 ? summaryEditMode : editMode));
         EditToolbar.Visibility = editMode && index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateBulkActionState();
         OverviewPanel.Visibility = index == 3 ? Visibility.Visible : Visibility.Collapsed;
         OverviewStatistics.Children.Clear(); OriginStatistics.Children.Clear();
         AddInfo(OverviewStatistics, "Description segments", p.Cues.Count.ToString());

@@ -1,0 +1,444 @@
+{
+  "pages": [
+    {
+      "slug": "welcome",
+      "title": "Welcome to VidiStudio",
+      "sections": [
+        {
+          "id": "understand-the-three-kinds-of-content",
+          "title": "Understand the three kinds of content"
+        },
+        {
+          "id": "how-a-project-works",
+          "title": "How a project works"
+        },
+        {
+          "id": "voices-are-platform-specific",
+          "title": "Voices are platform-specific"
+        },
+        {
+          "id": "start-with-a-short-video",
+          "title": "Start with a short video"
+        }
+      ]
+    },
+    {
+      "slug": "first-project",
+      "title": "Create your first accessible video",
+      "sections": [
+        {
+          "id": "bring-existing-assets-instead",
+          "title": "Bring existing assets instead"
+        },
+        {
+          "id": "before-sharing",
+          "title": "Before sharing"
+        }
+      ]
+    },
+    {
+      "slug": "projects",
+      "title": "Create and manage projects",
+      "sections": [
+        {
+          "id": "choose-a-source",
+          "title": "Choose a source"
+        },
+        {
+          "id": "bring-existing-assets",
+          "title": "Bring existing assets into a project"
+        },
+        {
+          "id": "share-or-open-a-video-in-vidistudio",
+          "title": "Share or open a video in VidiStudio"
+        },
+        {
+          "id": "find-and-open-a-project",
+          "title": "Find and open a project"
+        },
+        {
+          "id": "prepare-analyze-or-export-from-all-projects",
+          "title": "Prepare, analyze, or export from All Projects"
+        },
+        {
+          "id": "rename-reopen-or-locate-files",
+          "title": "Rename, reopen, or locate files"
+        },
+        {
+          "id": "check-project-file-health",
+          "title": "Check project file health"
+        },
+        {
+          "id": "keep-a-backup",
+          "title": "Keep a backup"
+        },
+        {
+          "id": "close-versus-delete",
+          "title": "Close versus delete"
+        }
+      ]
+    },
+    {
+      "slug": "editor",
+      "title": "Find your way around the editor",
+      "sections": [
+        {
+          "id": "play-and-seek",
+          "title": "Play and seek"
+        },
+        {
+          "id": "choose-an-editor-section",
+          "title": "Choose an editor section"
+        },
+        {
+          "id": "edit-and-select-timed-segments",
+          "title": "Edit and select timed segments"
+        },
+        {
+          "id": "edit-summary-markdown",
+          "title": "Edit the summary in Markdown"
+        },
+        {
+          "id": "import-existing-assets-and-review-timing",
+          "title": "Import existing assets and review timing"
+        },
+        {
+          "id": "use-the-context-aware-inspector",
+          "title": "Use the context-aware inspector"
+        },
+        {
+          "id": "read-frame-text",
+          "title": "Read Frame Text"
+        },
+        {
+          "id": "understand-disabled-commands",
+          "title": "Understand disabled commands"
+        },
+        {
+          "id": "add-manually-or-import-from-the-current-section",
+          "title": "Add manually or import from the current section"
+        }
+      ]
+    },
+    {
+      "slug": "descriptions",
+      "title": "Write and edit audio descriptions",
+      "sections": [
+        {
+          "id": "add-a-segment",
+          "title": "Add a segment"
+        },
+        {
+          "id": "correct-text-and-timing",
+          "title": "Correct text and timing"
+        },
+        {
+          "id": "delete-selected-descriptions",
+          "title": "Delete selected descriptions"
+        },
+        {
+          "id": "use-segment-actions",
+          "title": "Use segment actions"
+        },
+        {
+          "id": "track-changes",
+          "title": "Track changes"
+        },
+        {
+          "id": "resolve-description-timing",
+          "title": "Resolve description timing"
+        },
+        {
+          "id": "re-analyze-a-section",
+          "title": "Re-analyze a section"
+        }
+      ]
+    },
+    {
+      "slug": "analysis",
+      "title": "Analyze a video and manage generated content",
+      "sections": [
+        {
+          "id": "choose-the-action-you-need",
+          "title": "Choose the action you need"
+        },
+        {
+          "id": "generation-prerequisites",
+          "title": "Generation prerequisites"
+        },
+        {
+          "id": "when-analysis-fails",
+          "title": "When analysis fails"
+        },
+        {
+          "id": "delete-only-what-you-need",
+          "title": "Delete only what you need"
+        },
+        {
+          "id": "video-analysis-availability",
+          "title": "Video analysis availability"
+        }
+      ]
+    },
+    {
+      "slug": "narration",
+      "title": "Choose and listen to narration",
+      "sections": [
+        {
+          "id": "saved-audio-or-live-speech",
+          "title": "Saved audio or live speech?"
+        },
+        {
+          "id": "choose-an-windows-voice",
+          "title": "Choose an Windows voice"
+        },
+        {
+          "id": "use-piper-voices",
+          "title": "Use Piper voices"
+        },
+        {
+          "id": "generate-narration-files",
+          "title": "Generate narration files"
+        },
+        {
+          "id": "narration-sources-and-imported-audio",
+          "title": "Narration sources and imported audio"
+        },
+        {
+          "id": "understand-existing-files",
+          "title": "Understand existing files"
+        },
+        {
+          "id": "indication-sounds",
+          "title": "Indication sounds"
+        }
+      ]
+    },
+    {
+      "slug": "exports",
+      "title": "Export video, Web Playback, narration, and text",
+      "sections": [
+        {
+          "id": "follow-an-export-in-progress",
+          "title": "Follow an export in progress"
+        },
+        {
+          "id": "understand-closed-and-open-accessibility",
+          "title": "Understand closed and open accessibility"
+        },
+        {
+          "id": "export-video",
+          "title": "Export video"
+        },
+        {
+          "id": "choose-a-useful-video-combination",
+          "title": "Choose a useful video combination"
+        },
+        {
+          "id": "export-web-playback",
+          "title": "Export Web Playback"
+        },
+        {
+          "id": "export-audio",
+          "title": "Export audio"
+        },
+        {
+          "id": "audio-description-for-youtube-studio",
+          "title": "Audio Description for YouTube Studio"
+        },
+        {
+          "id": "export-text",
+          "title": "Export text"
+        },
+        {
+          "id": "closed-open-and-imported-described-audio",
+          "title": "Closed, open, and imported described audio"
+        },
+        {
+          "id": "resolve-timing-before-described-exports",
+          "title": "Resolve timing before described exports"
+        },
+        {
+          "id": "what-an-export-uses",
+          "title": "What an export uses"
+        },
+        {
+          "id": "open-or-delete-an-export",
+          "title": "Open or delete an export"
+        },
+        {
+          "id": "check-tracks-in-another-player",
+          "title": "Check tracks in another player"
+        }
+      ]
+    },
+    {
+      "slug": "settings",
+      "title": "Settings reference",
+      "sections": [
+        {
+          "id": "appearance",
+          "title": "Appearance"
+        },
+        {
+          "id": "projects",
+          "title": "Projects"
+        },
+        {
+          "id": "narration",
+          "title": "Narration"
+        },
+        {
+          "id": "gemini-api",
+          "title": "Gemini API"
+        },
+        {
+          "id": "developer-prompts",
+          "title": "Developer prompts"
+        },
+        {
+          "id": "storage-and-tools",
+          "title": "Storage and tools"
+        },
+        {
+          "id": "about",
+          "title": "About"
+        },
+        {
+          "id": "help",
+          "title": "Help"
+        }
+      ]
+    },
+    {
+      "slug": "keyboard",
+      "title": "Keyboard shortcuts and accessibility",
+      "sections": [
+        {
+          "id": "summary-markdown-editor",
+          "title": "Summary Markdown editor"
+        },
+        {
+          "id": "look-more-closely-at-a-section",
+          "title": "Look more closely at a section"
+        },
+        {
+          "id": "generate-transcript-segments-for-a-range",
+          "title": "Generate transcript segments for a range"
+        },
+        {
+          "id": "edit-text-and-segments",
+          "title": "Edit text and segments"
+        },
+        {
+          "id": "read-the-summary-from-the-keyboard",
+          "title": "Read the Summary from the keyboard"
+        },
+        {
+          "id": "navigate-without-a-mouse",
+          "title": "Navigate without a mouse"
+        },
+        {
+          "id": "use-voiceover",
+          "title": "Use VoiceOver"
+        },
+        {
+          "id": "make-reading-comfortable",
+          "title": "Make reading comfortable"
+        }
+      ]
+    },
+    {
+      "slug": "troubleshooting",
+      "title": "Solve common problems",
+      "sections": [
+        {
+          "id": "i-hear-sounds-instead-of-narration",
+          "title": "I hear sounds instead of narration"
+        },
+        {
+          "id": "the-voice-sounds-different-from-my-selection",
+          "title": "The voice sounds different from my selection"
+        },
+        {
+          "id": "i-cannot-save-a-description",
+          "title": "I cannot save a description"
+        },
+        {
+          "id": "descriptions-or-export-actions-are-disabled",
+          "title": "Descriptions or export actions are disabled"
+        },
+        {
+          "id": "analysis-fails",
+          "title": "Analysis fails"
+        },
+        {
+          "id": "vidistudio-says-it-is-not-ready",
+          "title": "VidiStudio says it is not ready"
+        },
+        {
+          "id": "a-project-or-source-is-missing",
+          "title": "A project or source is missing"
+        },
+        {
+          "id": "vidistudio-reports-missing-or-damaged-project-files",
+          "title": "VidiStudio reports missing or damaged project files"
+        },
+        {
+          "id": "some-imported-assets-were-omitted-or-flagged",
+          "title": "Some imported assets were omitted or flagged"
+        },
+        {
+          "id": "description-timing-needs-attention",
+          "title": "Description timing needs attention"
+        },
+        {
+          "id": "an-imported-ad-transcript-is-not-editable",
+          "title": "An imported AD transcript is not editable"
+        },
+        {
+          "id": "imported-narration-is-rejected",
+          "title": "Imported narration is rejected"
+        },
+        {
+          "id": "markdown-formatting-or-images-do-not-appear",
+          "title": "Markdown formatting or images do not appear"
+        },
+        {
+          "id": "the-final-export-differs-from-preview",
+          "title": "The final export differs from preview"
+        },
+        {
+          "id": "gemini-quota-billing-or-service-problems-pause-ai",
+          "title": "Gemini quota, billing, or service problems pause AI"
+        }
+      ]
+    },
+    {
+      "slug": "privacy",
+      "title": "Files, privacy, and key terms",
+      "sections": [
+        {
+          "id": "what-stays-on-this-pc",
+          "title": "What stays on this PC"
+        },
+        {
+          "id": "when-an-online-service-is-used",
+          "title": "When an online service is used"
+        },
+        {
+          "id": "reusable-video-uploads",
+          "title": "Reusable video uploads"
+        },
+        {
+          "id": "glossary",
+          "title": "Glossary"
+        },
+        {
+          "id": "youtube-audio-retrieval",
+          "title": "YouTube audio retrieval"
+        }
+      ]
+    }
+  ]
+}

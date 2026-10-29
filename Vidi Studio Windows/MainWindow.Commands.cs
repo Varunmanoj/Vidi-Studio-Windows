@@ -458,6 +458,7 @@ public sealed partial class MainWindow
     {
         var project = Model.Project;
         var mode = Model.Settings.Get("captionDisplayMode", "off");
+        UpdateCaptionOverlayButton();
         var position = timestamp ?? Position;
         string Active(IEnumerable<Segment> rows) => string.Join("\n", rows.Where(c => c.Start <= position && position < c.End).Select(c => c.Text));
         CaptionText.Text = project != null && mode is "transcript" or "combined" ? Active(project.Transcript) : "";

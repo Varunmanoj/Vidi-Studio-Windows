@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -26,6 +27,7 @@ public sealed class Segment : INotifyPropertyChanged
     public double Start { get; set; }
     public double End { get; set; }
     public string Text { get; set; } = "";
+    [JsonIgnore] public string DurationLabel => Math.Max(0, End - Start).ToString("0.00", CultureInfo.InvariantCulture) + "s";
     public string? Audio { get; set; }
     public string? AudioText { get; set; }
     public string? AudioSettings { get; set; }

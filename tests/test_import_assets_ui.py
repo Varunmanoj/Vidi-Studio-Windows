@@ -32,6 +32,43 @@ class ImportAssetsUI(unittest.TestCase):
         self.assertIn('Edit Transcript Timings…', imports)
         self.assertIn('ImportTimingInspector.ReadRows', imports)
 
+    def test_transcript_overlay_control_is_icon_only(self):
+        self.assertIn('x:Name="CaptionOverlayButton"', UI)
+        self.assertIn('<FontIcon x:Name="CaptionOverlayIcon"', UI)
+        self.assertIn('UpdateCaptionOverlayButton', (ROOT / 'Vidi Studio Windows' / 'MainWindow.CaptionOverlay.cs').read_text(encoding='utf-8'))
+
+    def test_editor_actions_are_icon_only(self):
+        self.assertIn('x:Name="EditorAddButton" Content="&#xE710;"', UI)
+        self.assertIn('x:Name="GenerateCurrent" Content="&#xE8A5;"', UI)
+        self.assertIn('x:Name="EditModeButton" Content="&#xE70F;"', UI)
+        self.assertIn('FontIcon { Glyph = "\\uE8A5" }', (ROOT / 'Vidi Studio Windows' / 'MainWindow.Presentation.cs').read_text(encoding='utf-8'))
+
+    def test_multi_select_has_bulk_origin_and_timing_actions(self):
+        bulk = (ROOT / 'Vidi Studio Windows' / 'MainWindow.BulkActions.cs').read_text(encoding='utf-8')
+        self.assertIn('BulkOrigin_Click', bulk)
+        self.assertIn('BulkShift_Click', bulk)
+        self.assertIn('BulkNarrate_Click', bulk)
+        self.assertIn('BulkNarrateButton', bulk)
+        self.assertIn('Generate Audio for', bulk)
+        self.assertIn('Regenerate Audio for', bulk)
+        self.assertIn('Select All Transcripts', UI)
+        self.assertIn('Select All Descriptions', UI)
+        self.assertIn('Select Descriptions with Audio', UI)
+        self.assertIn('Select by Origin', UI)
+        self.assertIn('SelectTranscripts_Click', (ROOT / 'Vidi Studio Windows' / 'MainWindow.BulkActions.cs').read_text(encoding='utf-8'))
+        self.assertIn('SelectionMenuButton', UI)
+        self.assertIn('Command("filter-segments")', MENUS)
+        self.assertIn('ShowSegmentFilterAsync', (ROOT / 'Vidi Studio Windows' / 'MainWindow.SegmentFilter.cs').read_text(encoding='utf-8'))
+        self.assertIn('Submenu("Sort Segments"', MENUS)
+        self.assertIn('"Sort Segments" => "Sort segments"', MENUS)
+        self.assertIn('"Sort segments" => "\\uE8CB"', (ROOT / 'Vidi Studio Windows' / 'Views' / 'MenuIcons.cs').read_text(encoding='utf-8'))
+        self.assertIn('SortOrigin_Click', (ROOT / 'Vidi Studio Windows' / 'MainWindow.SegmentSort.cs').read_text(encoding='utf-8'))
+        self.assertIn('DurationLabel', UI)
+        self.assertIn('DurationLabel', (ROOT / 'Vidi Studio Windows' / 'Models' / 'StudioProject.cs').read_text(encoding='utf-8'))
+        self.assertIn('MergeSelected_Click', bulk)
+        self.assertIn('BulkOriginButton', UI)
+        self.assertIn('BulkShiftButton', UI)
+
     def test_import_shortcuts_are_defined(self):
         self.assertIn('["import-transcript"] = (VirtualKey.I, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+I")', MENUS)
         self.assertIn('["import-summary"] = (VirtualKey.M, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+M")', MENUS)

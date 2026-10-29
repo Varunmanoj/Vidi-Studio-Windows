@@ -527,7 +527,16 @@ public sealed partial class MainWindow : Window
         SummaryView.Visibility = Section.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
         Overview.Visibility = Visibility.Collapsed;
         ExportList.Visibility = Section.SelectedIndex == 5 ? Visibility.Visible : Visibility.Collapsed;
-        Segments.ItemsSource = Section.SelectedIndex switch { 0 => p.Transcript, 2 => p.Cues, _ => p.Transcript.Concat(p.Cues).OrderBy(c => c.Start).ToList() };
+        IEnumerable<Segment> rows = Section.SelectedIndex switch
+        {
+            0 => p.Transcript,
+            2 => p.Cues,
+            _ => p.Transcript.Concat(p.Cues).OrderBy(c => c.Start)
+        };
+        rows = ApplySegmentSort(rows);
+        Segments.ItemsSource = segmentFilter.IsActive && Section.SelectedIndex is 0 or 2 or 4
+            ? rows.Where(segment => segmentFilter.Matches(segment, HasSegmentAudio(p, segment))).ToList()
+            : rows;
         RefreshEditingRows();
         SummaryText.Text = p.Summary;
         RenderMarkdown(p.Summary);
@@ -1816,7 +1825,7 @@ public sealed partial class MainWindow : Window
         };
         await ShowSettingsSectionAsync(section);
     }
-    private async void HelpSettings_Click(object sender, RoutedEventArgs e) => await ShowSettingsSectionAsync(6);
+    private void HelpSettings_Click(object sender, RoutedEventArgs e) => App.OpenHelpWindow();
     private async void AboutSettings_Click(object sender, RoutedEventArgs e) => await ShowSettingsSectionAsync(7);
     private async void SpeakSummary_Click(object sender, RoutedEventArgs e)
     {
@@ -1856,7 +1865,7 @@ public sealed partial class MainWindow : Window
         SummaryPanel.Visibility = edit ? Visibility.Collapsed : Visibility.Visible;
         if (Section.SelectedIndex == 1)
         {
-            EditModeButton.Content = edit ? "Done" : "Edit";
+            SetEditModeButton(edit);
         }
         if (edit)
         {

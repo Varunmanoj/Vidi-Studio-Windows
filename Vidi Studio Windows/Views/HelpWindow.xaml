@@ -1,0 +1,64 @@
+<Window
+    x:Class="Vidi_Studio_Windows.Views.HelpWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Vidi Studio Help">
+    <Grid x:Name="Root" Loaded="Root_Loaded" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Grid Padding="24,18,24,14" ColumnSpacing="18" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="3">
+                <TextBlock Text="Vidi Studio Help" FontSize="26" FontWeight="SemiBold"/>
+                <TextBlock Text="The complete guide to projects, descriptions, narration, exports, and keyboard shortcuts." Opacity=".72" TextWrapping="Wrap"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button x:Name="HomeButton" Click="Home_Click" ToolTipService.ToolTip="Go to the first Help page" AutomationProperties.Name="Help home">
+                    <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE80F;" FontSize="14"/><TextBlock Text="Home"/></StackPanel>
+                </Button>
+                <Button x:Name="BrowserHelpButton" Click="BrowserHelp_Click" ToolTipService.ToolTip="Open this page in your browser" AutomationProperties.Name="Open Help page in browser">
+                    <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE774;" FontSize="14"/><TextBlock Text="Browser"/></StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="330"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
+                <Grid Padding="16,14,16,10" RowSpacing="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBox x:Name="SearchBox" PlaceholderText="Search chapters and topics" TextChanged="Search_Changed" AutomationProperties.Name="Search Help chapters and topics">
+                        <TextBox.Header>
+                            <TextBlock Text="Contents" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,2"/>
+                        </TextBox.Header>
+                    </TextBox>
+                    <TextBlock Grid.Row="1" x:Name="SearchStatus" Opacity=".65" FontSize="12" TextWrapping="Wrap"/>
+                    <TreeView Grid.Row="2" x:Name="TocTree" SelectionMode="Single" SelectionChanged="Toc_SelectionChanged" AutomationProperties.Name="Help table of contents">
+                        <TreeView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="8" Padding="2,3">
+                                    <FontIcon x:Name="NodeIcon" Glyph="{Binding Icon}" FontSize="13" Opacity=".8"/>
+                                    <TextBlock Text="{Binding Title}" TextWrapping="Wrap" MaxWidth="240"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </TreeView.ItemTemplate>
+                    </TreeView>
+                </Grid>
+            </Border>
+            <WebView2 Grid.Column="1" x:Name="ContentView" DefaultBackgroundColor="Transparent" AutomationProperties.Name="Help page content"/>
+        </Grid>
+    </Grid>
+</Window>

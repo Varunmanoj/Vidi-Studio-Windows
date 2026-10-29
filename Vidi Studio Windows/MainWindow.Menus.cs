@@ -60,7 +60,8 @@ public sealed partial class MainWindow
                 Command("new-project"), Command("open-project"), Separator(), Command("export"), Separator(),
                 Command("open-editor-window"), Command("settings"), Command("close-window")),
             Menu("View",
-                Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Separator(),
+                Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("filter-segments"),
+                Submenu("Sort Segments", Command("sort-start"), Command("sort-duration-asc"), Command("sort-duration-desc"), Command("sort-origin")), Separator(),
                 Command("show-projects"), Command("show-inspector"), Separator(),
                 Command("project-list"), Command("project-grid")),
             Menu("Playback",
@@ -99,7 +100,7 @@ public sealed partial class MainWindow
                 catch (Exception ex) { await ShowError(ex); }
             });
         AddShortcut(VirtualKey.F11, VirtualKeyModifiers.None, (_, _) => FullScreen_Click(this, new RoutedEventArgs()));
-        Segments.SelectionChanged += (_, _) => UpdateDesktopMenuStates();
+        Segments.SelectionChanged += (_, _) => { UpdateDesktopMenuStates(); UpdateBulkActionState(); };
         Narration.Toggled += (_, _) => UpdateDesktopMenuStates();
         Follow.Toggled += (_, _) => UpdateDesktopMenuStates();
         UpdateMenuBar(false);
@@ -191,10 +192,21 @@ public sealed partial class MainWindow
                 item.Icon = DesktopCommandIcon(id);
                 item.IsEnabled = CanRunDesktopCommand(id);
             }
+        var timedSection = Section.SelectedIndex is 0 or 2 or 4;
+        foreach (var item in desktopMenuItems.TryGetValue("filter-segments", out var filterItems) ? filterItems : new List<MenuFlyoutItem>())
+            item.Visibility = timedSection ? Visibility.Visible : Visibility.Collapsed;
         foreach (var (name, group) in desktopMenuGroups)
         {
             group.IsEnabled = desktopEditorVisible && Model.Project != null && (Model.Idle || ((name is "Narration" or "Narration Audio") && Model.IsSynthesizingNarration));
             if (name == "Summary Reading") group.IsEnabled &= Section.SelectedIndex == 1 && !summaryEditMode;
+            if (name == "Sort Segments")
+            {
+                group.Text = Section.SelectedIndex switch
+                {
+                    0 => "Sort Transcripts…", 2 => "Sort Descriptions…", 4 => "Sort AD Transcript…", _ => "Sort Segments"
+                };
+                group.Visibility = timedSection && desktopEditorVisible ? Visibility.Visible : Visibility.Collapsed;
+            }
             if (name == "Transcript Overlay")
             {
                 var mode = Model.Settings.Get("captionDisplayMode", "off");
@@ -250,6 +262,11 @@ public sealed partial class MainWindow
             case "follow": return timed && Segments.Items.Count > 0;
             case "caption-cycle": case "caption-ad-transcript": return timed && (p.HasTranscript || p.Cues.Count > 0);
             case "caption-transcript": return timed && p.HasTranscript;
+            case "filter-segments":
+            case "sort-start":
+            case "sort-duration-asc":
+            case "sort-duration-desc":
+            case "sort-origin": return timed;
             case "caption-off": return timed;
             case "analyze": case "transcribe": case "generate-summary": return ai;
             case "generate-ad-cues": return ai && canDescribe;
@@ -324,6 +341,14 @@ public sealed partial class MainWindow
             "delete-current" => Section.SelectedIndex switch { 0 => "Delete Transcript…", 1 => "Delete Summary…", 2 => "Delete Descriptions…", _ => "Delete Current Page…" },
             "import-transcript" => "Import Transcript…", "import-summary" => "Import Summary…",
             "import-descriptions" => "Import Descriptions…", "import-assets" => "Import Existing Assets…",
+            "filter-segments" => Section.SelectedIndex switch
+            {
+                0 => "Filter Transcript…", 2 => "Filter Descriptions…", 4 => "Filter AD Transcript…", _ => "Filter Segments…"
+            },
+            "sort-start" => "Start Time",
+            "sort-duration-asc" => "Duration — Shortest First",
+            "sort-duration-desc" => "Duration — Longest First",
+            "sort-origin" => "Origin",
             "show-in-finder" => "Show Project in File Explorer", "open-configuration" => "Open Project Configuration",
             "rename-project" => "Rename Project…", "trash-project" => "Move Project to Recycle Bin…", _ => id
         };
@@ -340,7 +365,11 @@ public sealed partial class MainWindow
             "narration" => Narration.IsOn, "follow" => Follow.IsOn,
             "caption-off" => Model.Settings.Get("captionDisplayMode", "off") == "off",
             "caption-transcript" => Model.Settings.Get("captionDisplayMode") == "transcript",
-            "caption-ad-transcript" => Model.Settings.Get("captionDisplayMode") == "combined", _ => false
+            "caption-ad-transcript" => Model.Settings.Get("captionDisplayMode") == "combined",
+            "sort-start" => segmentSort == "start",
+            "sort-duration-asc" => segmentSort == "durationAscending",
+            "sort-duration-desc" => segmentSort == "durationDescending",
+            "sort-origin" => segmentSort == "origin", _ => false
         };
         return checkedItem ? new FontIcon { Glyph = "\uE73E" } : Views.MenuIcons.Create(id switch
         {
@@ -350,7 +379,10 @@ public sealed partial class MainWindow
             "project-list" or "project-grid" or "Editor Sections" => "List / Grid projects",
             "new-project" or "add" => "New project", "open-project" or "show-in-finder" => "Open project folder",
             "import-assets" => "Import existing assets", "import-transcript" => "Import transcript",
-            "import-summary" => "Import summary", "import-descriptions" => "Import descriptions",
+            "import-summary" => "Import summary", "import-descriptions" => "Import descriptions", "filter-segments" => "Filter segments",
+            "Sort Segments" => "Sort segments",
+            "sort-start" => "Sort by start time", "sort-duration-asc" => "Shortest duration first",
+            "sort-duration-desc" => "Longest duration first", "sort-origin" => "Sort by origin",
             "open-configuration" => "Open project configuration",
             "rename-project" => "Rename", "trash-project" => "Move to Recycle Bin",
             "open-editor-window" => "Open editor in new window", "export" => "Export", "settings" => "Settings",
@@ -407,6 +439,11 @@ public sealed partial class MainWindow
             case "export": Export_Click(this, e); break;
             case "settings": Settings_Click(this, e); break;
             case "help": HelpSettings_Click(this, e); break;
+            case "filter-segments": await ShowSegmentFilterAsync(); break;
+            case "sort-start": SortStart_Click(this, e); break;
+            case "sort-duration-asc": SortDurationAsc_Click(this, e); break;
+            case "sort-duration-desc": SortDurationDesc_Click(this, e); break;
+            case "sort-origin": SortOrigin_Click(this, e); break;
             case "about": AboutSettings_Click(this, e); break;
             case "close-window": CloseWindowDeferred(); return;
             case "open-editor-window": OpenEditor_Click(this, e); break;

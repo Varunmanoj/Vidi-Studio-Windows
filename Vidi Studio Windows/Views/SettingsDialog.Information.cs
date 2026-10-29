@@ -23,6 +23,22 @@ public sealed partial class SettingsDialog
 
     private void BuildHelp(StackPanel panel)
     {
+        panel.Children.Add(new TextBlock { Text = "Full Help book", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        panel.Children.Add(new TextBlock { Text = "Open the complete Vidi Studio guide in its own window with a searchable table of contents, formatted tables, and every chapter from the Mac Help book.", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
+        var openHelp = new Button
+        {
+            Content = "Open the full Help book",
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(0, 4, 0, 12)
+        };
+        ToolTipService.SetToolTip(openHelp, "Open the searchable Vidi Studio Help window (F1)");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(openHelp, "Open the full Help book");
+        openHelp.Click += (_, _) =>
+        {
+            Hide();
+            App.OpenHelpWindow();
+        };
+        panel.Children.Add(openHelp);
         panel.Children.Add(new TextBlock { Text = "Keyboard shortcuts", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         panel.Children.Add(new TextBlock { Text = "Shortcuts work when a project is open and processing is idle.", TextWrapping = TextWrapping.Wrap });
         if (menuOwner != null)

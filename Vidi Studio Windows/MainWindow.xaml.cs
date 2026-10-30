@@ -71,6 +71,7 @@ public sealed partial class MainWindow : Window
         onDeviceNarrator = new OnDeviceNarrator(Model.Settings, Model.Engine);
         onDeviceNarrator.Failed += message => Model.ReportStatus(message);
         InitializeComponent();
+        InitializeSummaryOriginOptions();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         Views.WindowAppearance.ApplyMaterial(this);
@@ -563,7 +564,7 @@ public sealed partial class MainWindow : Window
         Segments.Visibility = Section.SelectedIndex is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
         SummaryView.Visibility = Section.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
         Overview.Visibility = Visibility.Collapsed;
-        ExportList.Visibility = Section.SelectedIndex == 5 ? Visibility.Visible : Visibility.Collapsed;
+        ExportList.Visibility = Visibility.Collapsed;
         IEnumerable<Segment> rows = Section.SelectedIndex switch
         {
             0 => p.Transcript,
@@ -575,6 +576,7 @@ public sealed partial class MainWindow : Window
             ? rows.Where(segment => segmentFilter.Matches(segment, HasSegmentAudio(p, segment))).ToList()
             : rows;
         RefreshEditingRows();
+        RefreshSummarySourceBadge();
         SummaryText.Text = p.Summary;
         RenderMarkdown(p.Summary);
         if (!summaryEditMode || summaryDraftProjectId != p.Id)

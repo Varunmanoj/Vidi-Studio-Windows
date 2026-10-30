@@ -168,7 +168,7 @@
      <Grid Grid.Row="2" Padding="14,10" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,1">
       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <StackPanel Orientation="Horizontal" Spacing="8">
-       <ComboBox x:Name="Section" Width="152" SelectedIndex="0" SelectionChanged="Section_Changed" AutomationProperties.Name="Editor section"><ComboBoxItem Content="Transcript"/><ComboBoxItem Content="Summary"/><ComboBoxItem Content="Descriptions"/><ComboBoxItem Content="AD Overview"/><ComboBoxItem Content="AD Transcript"/><ComboBoxItem Content="Created Exports"/></ComboBox>
+       <ComboBox x:Name="Section" Width="152" SelectedIndex="0" SelectionChanged="Section_Changed" AutomationProperties.Name="Editor section"><ComboBoxItem Content="Transcript"/><ComboBoxItem Content="Summary"/><ComboBoxItem Content="Descriptions"/><ComboBoxItem Content="AD Overview"/><ComboBoxItem Content="AD Transcript"/></ComboBox>
        <Button Content="&#xE714;" FontFamily="Segoe Fluent Icons" Style="{StaticResource CompactButton}" Click="TogglePreview_Click" AutomationProperties.Name="Show or hide video preview"/>
        <Button Content="&#xE740;" FontFamily="Segoe Fluent Icons" Style="{StaticResource CompactButton}" Click="FullScreen_Click" AutomationProperties.Name="Full-screen video"/>
        <DropDownButton x:Name="CaptionOverlayButton" Visibility="Collapsed" Padding="10,5" MinHeight="30" ToolTipService.ToolTip="Transcript overlay" AutomationProperties.Name="Transcript overlay">
@@ -204,7 +204,13 @@
          <ColumnDefinition Width="Auto"/>
          <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
-        <TextBlock Grid.Column="0" Text="Summary readback" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="3">
+         <TextBlock Text="Summary readback" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+         <StackPanel x:Name="SummarySourceBadge" Orientation="Horizontal" Spacing="6" AutomationProperties.Name="Summary source">
+          <FontIcon x:Name="SummarySourceIcon" FontSize="13" VerticalAlignment="Center"/>
+          <TextBlock x:Name="SummarySourceText" FontSize="13" FontWeight="SemiBold"/>
+         </StackPanel>
+        </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
          <Button x:Name="SummaryPreviousParagraphButton" Content="&#xE70E;" FontFamily="Segoe Fluent Icons" Style="{StaticResource CompactButton}" Click="PreviousSummaryParagraph_Click" ToolTipService.ToolTip="Previous paragraph (Ctrl+Alt+[)" AutomationProperties.Name="Previous summary paragraph"/>
          <Button x:Name="SummaryPreviousSentenceButton" Content="&#xE892;" FontFamily="Segoe Fluent Icons" Style="{StaticResource CompactButton}" Click="PreviousSummarySentence_Click" ToolTipService.ToolTip="Previous sentence (Ctrl+Shift+[)" AutomationProperties.Name="Previous summary sentence"/>

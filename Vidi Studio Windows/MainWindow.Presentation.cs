@@ -428,7 +428,7 @@ public sealed partial class MainWindow
         var index = Section.SelectedIndex;
         foreach (var segment in p.Transcript.Concat(p.Cues)) segment.ShowKind = index == 4;
         // Reset the source so row templates see the combined-view labels.
-        var name = index switch { 0 => "Transcript", 1 => "Summary", 2 => "Audio Descriptions", 3 => "Narration", 4 => "AD Transcript", _ => "Created Exports" };
+        var name = index switch { 0 => "Transcript", 1 => "Summary", 2 => "Audio Descriptions", 3 => "Narration", 4 => "AD Transcript", _ => "AD Transcript" };
         var existing = index switch { 0 => p.Transcript.Count > 0, 1 => p.Summary.Length > 0, 2 => p.Cues.Count > 0, _ => false };
         var generateLabel = (existing ? "Regenerate " : "Generate ") + name + "…";
         InspectorGenerate.Content = generateLabel;

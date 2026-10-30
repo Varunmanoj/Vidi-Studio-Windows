@@ -65,3 +65,8 @@ The Summary editor yields Ctrl-Alt-1/2 to local heading commands, preserves nati
 ## Reported presentation regressions (1.0.177)
 
 Legacy summaries containing repeated leading U+FEFF marks now render their first heading correctly without rewriting the project on open; future saves clean the marks through the shared engine. The Help TOC binds through TreeViewNode.Content and is validated using actual visible chapter/topic labels in light/dark mode. Help initial sizing respects monitor DPI, and only the current chapter starts expanded. Both native target suites pass with the user's real summary copied into an isolated fixture. See PROGRESS.md for installation evidence and the correction to the earlier data-only TOC assertion.
+
+
+## Editor sections and Summary source (1.0.178)
+
+Windows matches Mac's five editor sections. Created Exports is available in the inspector rather than the section selector. A Summary source badge remains visible in reading mode and uses the same origin glyph/color mapping as the icon-bearing edit-mode choices. ARM64 native checks cover AI-generated, Imported, Manually added, and Origin unknown without entering edit mode.

@@ -243,7 +243,20 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Timeline playhead did not follow the video position.");
             if (ThumbnailScrubSurface.ActualWidth > 0 && Microsoft.UI.Xaml.Controls.Canvas.GetLeft(ThumbnailCursor) < ThumbnailScrubSurface.ActualWidth * .2)
                 throw new InvalidOperationException("Thumbnail playhead did not follow the video position.");
+            if (Section.Items.Count != 5 || Section.Items.OfType<ComboBoxItem>().Any(item => item.Content as string == "Created Exports"))
+                throw new InvalidOperationException("The editor section selector still offers Created Exports.");
             Section.SelectedIndex = 1;
+            var savedOrigin = Model.Project!.SummaryOrigin;
+            foreach (var origin in new[] { "ai", "manual", "imported", "unknown" })
+            {
+                Model.Project.SummaryOrigin = origin;
+                RefreshSummarySourceBadge();
+                var expectedOrigin = new Models.Segment { Origin = origin };
+                if (summaryEditMode || SummarySourceBadge.Visibility != Visibility.Visible || SummarySourceText.Text != expectedOrigin.OriginLabel || SummarySourceIcon.Glyph != expectedOrigin.OriginGlyph)
+                    throw new InvalidOperationException("Summary reading mode lost the source label/icon: " + origin);
+            }
+            Model.Project.SummaryOrigin = savedOrigin;
+            RefreshSummarySourceBadge();
             Model.Settings.Set("summarySentenceHighlightColor", "#C0D8FF"); Model.Settings.Set("summaryWordHighlightColor", "#FFDA57");
             var fixtureSentence = summaryLines.First(line => line.Text.Length > 7).Text;
             HighlightReadbackSentence(fixtureSentence); HighlightReadbackWord(0, 6);
@@ -381,7 +394,7 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("The inspector footer does not expose its Settings gear.");
             if (GallerySearchHost.Visibility != Visibility.Collapsed)
                 throw new InvalidOperationException("All Projects search remained in the editor header.");
-            for (var i = 0; i < 6; i++) { Section.SelectedIndex = i; await Task.Delay(50); }
+            for (var i = 0; i < 5; i++) { Section.SelectedIndex = i; await Task.Delay(50); }
             ToggleGrid_Click(this, new RoutedEventArgs());
             ToggleGrid_Click(this, new RoutedEventArgs());
             ToggleLibrary_Click(this, new RoutedEventArgs());
@@ -752,7 +765,7 @@ public sealed partial class MainWindow
                     throw new InvalidOperationException("Created exports were not grouped with matching format icons.");
             }
             var previousSection = Section.SelectedIndex;
-            Section.SelectedIndex = 5;
+            Section.SelectedIndex = 4;
             await Task.Delay(100);
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "export-groups.png"));
             Section.SelectedIndex = previousSection;
@@ -815,7 +828,7 @@ public sealed partial class MainWindow
             emptySettings.VerifyEmptyProjectsSettingsForSmokeTest();
             await CaptureSmokeImage((FrameworkElement)emptySettings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-projects-empty.png"));
             emptySettings.Hide(); await emptyDisplay;
-            await File.WriteAllTextAsync(report, "PASS: native light/dark UI, menus and segment selection; summary Markdown reading, saving, undo/redo and speech; New Project asset validation and optional Combine; external project folder persistence; SRT/VTT/TXT timing review; real transcript/description/summary/audio imports and two-track combination; Help search/navigation/theme; OneCore/SAPI narration, subtitle export, and six editor sections.");
+            await File.WriteAllTextAsync(report, "PASS: native light/dark UI, menus and segment selection; summary Markdown reading, saving, undo/redo and speech; New Project asset validation and optional Combine; external project folder persistence; SRT/VTT/TXT timing review; real transcript/description/summary/audio imports and two-track combination; Help search/navigation/theme; OneCore/SAPI narration, subtitle export, and five editor sections.");
         }
         catch (Exception ex) { await File.WriteAllTextAsync(report, ex.ToString()); }
         finally

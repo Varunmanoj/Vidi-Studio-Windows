@@ -18,6 +18,18 @@ class DesktopMenuParity(unittest.TestCase):
         cls.app = (root / 'VidiStudio Mac/VidiStudio/VidiStudioApp.swift').read_text(encoding='utf-8')
         cls.windows = (Path(__file__).resolve().parents[1] / 'Vidi Studio Windows/MainWindow.Menus.cs').read_text(encoding='utf-8')
 
+    def test_remove_from_list_context_action_matches_on_both_desktops(self):
+        root = Path(os.environ.get('VIDISTUDIO_DESKTOP_WORKSPACE', Path(__file__).resolve().parents[2]))
+        browser = (root/'VidiStudio Mac/VidiStudio/ProjectBrowserPage.swift').read_text()
+        grid = (root/'VidiStudio Mac/VidiStudio/ProjectGridView.swift').read_text()
+        commands = (root/'Vidi-Studio-Windows/Vidi Studio Windows/MainWindow.Commands.cs').read_text()
+        self.checker.compare_project_list_context_actions(browser, grid, commands)
+        for sources in ((browser.replace('Remove from List', 'Remove'), grid, commands),
+                        (browser, grid.replace('Remove from List', 'Remove'), commands),
+                        (browser, grid, commands.replace('commandId: "remove-from-list"', 'commandId: "remove"'))):
+            with self.assertRaises(ValueError):
+                self.checker.compare_project_list_context_actions(*sources)
+
     def test_actual_menus_and_shortcuts_match(self):
         self.assertGreater(self.checker.compare_sources(self.mac, self.app, self.windows), 30)
 

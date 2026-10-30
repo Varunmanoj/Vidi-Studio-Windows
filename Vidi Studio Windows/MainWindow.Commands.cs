@@ -280,11 +280,24 @@ public sealed partial class MainWindow
             e.Handled = true;
             return;
         }
+        var menu = ProjectMenu(project);
+        if (pointerRequest) menu.ShowAt((FrameworkElement)sender, point);
+        else menu.ShowAt(element ?? (FrameworkElement)sender);
+        e.Handled = true;
+    }
+    private MenuFlyout ProjectMenu(StudioProject project)
+    {
         var menu = new MenuFlyout();
-        void Item(string label, Action<object, RoutedEventArgs> handler, bool enabled = true)
+        void Item(string label, Action<object, RoutedEventArgs> handler, bool enabled = true, string? commandId = null)
         {
             var item = new MenuFlyoutItem { Text = label, Icon = Views.MenuIcons.Create(label), IsEnabled = Model.Idle && enabled };
-            item.Click += (s, args) => handler(s, args);
+            if (commandId != null)
+            {
+                item.Tag = commandId;
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(item, commandId);
+                ToolTipService.SetToolTip(item, "Remove this entry from the list. The project files stay in their folder. Use Open Project to add it again.");
+            }
+            item.Click += (s, args) => { if (Model.Idle) handler(s, args); };
             menu.Items.Add(item);
         }
         void LoadForEditorAction()
@@ -304,10 +317,20 @@ public sealed partial class MainWindow
             Item(pair.Item1, (_, args) => { LoadForEditorAction(); Command_Click(new Button { Tag = pair.Item2 }, args); }, activeApiKey && usable);
         Item("Refresh video details", (_, args) => { LoadForEditorAction(); Command_Click(new Button { Tag = "prepare-video" }, args); }, usable);
         Item("Rename", (_, _) => _ = RenameProjectAsync(project), usable);
+        Item("Remove from List", (_, _) => RemoveProjectFromList(project), commandId: "remove-from-list");
+        menu.Items.Add(new MenuFlyoutSeparator());
         Item(project.Integrity?.IsDamaged == true ? "Delete damaged project…" : "Move to Recycle Bin", (_, _) => _ = DeleteProjectAsync(project));
-        if (pointerRequest) menu.ShowAt((FrameworkElement)sender, point);
-        else menu.ShowAt(element ?? (FrameworkElement)sender);
-        e.Handled = true;
+        return menu;
+    }
+    private void RemoveProjectFromList(StudioProject project)
+    {
+        if (!Model.Idle) return;
+        try
+        {
+            Model.RemoveProjectFromList(project);
+            RefreshGalleryCount();
+        }
+        catch (Exception ex) { _ = ShowError(ex); }
     }
     private MenuFlyout SegmentMenu(Segment? segment = null)
     {

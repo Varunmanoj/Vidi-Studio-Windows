@@ -26,6 +26,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public EngineClient Engine { get; }
     public ObservableCollection<StudioProject> Projects { get; } = new();
     public ObservableCollection<ExportSession> ExportSessions => ExportSession.Active;
+    private readonly ProjectListVisibility projectListVisibility;
     private readonly HashSet<string> externalFolders = new(StringComparer.OrdinalIgnoreCase);
     // Projects are cached by folder so refreshed views, filtering, and the
     // integrity timer reuse the same instances instead of rebuilding every
@@ -126,9 +127,10 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public event EventHandler? ProjectReloaded;
     /// <summary>Raised after a narration run finished with one or more skipped descriptions.</summary>
     public event EventHandler<NarrationFailureReport>? NarrationFailures;
-    public StudioViewModel() { Engine = new(Settings); LoadExternalFolders(); }
+    public StudioViewModel() { Engine = new(Settings); projectListVisibility = new(Settings); LoadExternalFolders(); }
     private void LoadExternalFolders()
     {
+        externalFolders.Clear();
         if (Settings.Data["projectLocations"] is not System.Text.Json.Nodes.JsonArray saved) return;
         foreach (var entry in saved)
         {
@@ -150,6 +152,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     {
         Settings.Reload();
         LoadExternalFolders();
+        projectListVisibility.Reload();
         Changed(nameof(HasApiKey));
         Changed(nameof(IsApiKeyInvalid));
         Changed(nameof(ApiPlan));
@@ -160,6 +163,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         { Status = "The project library is unavailable. Choose a project location in Settings → Storage."; }
         var folders = libraryFolders.Concat(externalFolders)
+            .Where(folder => !projectListVisibility.IsRemoved(folder))
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var currentFolders = new HashSet<string>(folders, StringComparer.OrdinalIgnoreCase);
         foreach (var stale in knownProjects.Keys.Where(folder => !currentFolders.Contains(folder)).ToList())
@@ -215,6 +219,9 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     /// </summary>
     public bool ReloadIfProjectsChanged(string search = "", string source = "all")
     {
+        Settings.Reload();
+        LoadExternalFolders();
+        projectListVisibility.Reload();
         if (!string.Equals(search, appliedSearch, StringComparison.Ordinal) ||
             !string.Equals(source, appliedSource, StringComparison.Ordinal))
         {
@@ -225,6 +232,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         var folders = (Directory.Exists(library)
                 ? Directory.EnumerateDirectories(library).Concat(externalFolders)
                 : externalFolders)
+            .Where(folder => !projectListVisibility.IsRemoved(folder))
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var current = new HashSet<string>(folders, StringComparer.OrdinalIgnoreCase);
         if (knownProjects.Keys.Any(folder => !current.Contains(folder)))
@@ -297,6 +305,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public void Open(string folder)
     {
         Settings.Reload(); LoadExternalFolders();
+        projectListVisibility.Reload();
+        projectListVisibility.Restore(folder);
         if (externalFolders.Add(Path.GetFullPath(folder))) SaveExternalFolders();
         var loaded = StudioProject.TryLoad(folder);
         Project = loaded ?? StudioProject.DamagedPlaceholder(folder);
@@ -304,6 +314,16 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         if (Idle) Status = Project.Integrity.IsHealthy ? "Ready" : Project.Integrity.Headline;
         Reload();
         ProjectReloaded?.Invoke(this, EventArgs.Empty);
+    }
+    /// <summary>Hides a project from the gallery without changing its files or an open editor.</summary>
+    public void RemoveProjectFromList(StudioProject project)
+    {
+        if (!Idle) return;
+        Settings.Reload();
+        projectListVisibility.Reload();
+        projectListVisibility.Remove(project.Folder);
+        Reload(appliedSearch, appliedSource);
+        Status = "Removed from list. The project files are unchanged. Use Open Project to add it again.";
     }
     /// <summary>Removes a project entry whose folder no longer exists.</summary>
     public void ForgetProject(StudioProject project)

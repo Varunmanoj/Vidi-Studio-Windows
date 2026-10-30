@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using System;
@@ -74,10 +75,10 @@ public sealed class TimecodePicker : StackPanel
     private readonly TextBlock sepCol2 = CreateSeparator(":");
     private readonly TextBlock sepDot = CreateSeparator(".");
 
-    private readonly TextBlock lblHr = CreateSubLabel("hr");
-    private readonly TextBlock lblMin = CreateSubLabel("min");
-    private readonly TextBlock lblSec = CreateSubLabel("sec");
-    private readonly TextBlock lblMs = CreateSubLabel("ms");
+    private readonly TextBlock lblHr = CreateSubLabel("Hours");
+    private readonly TextBlock lblMin = CreateSubLabel("Minutes");
+    private readonly TextBlock lblSec = CreateSubLabel("Seconds");
+    private readonly TextBlock lblMs = CreateSubLabel("Milliseconds");
 
     private double valueInSeconds;
     private double maximumSeconds = 360000;
@@ -91,7 +92,18 @@ public sealed class TimecodePicker : StackPanel
     public string Header
     {
         get => headerLabel.Text;
-        set => headerLabel.Text = value;
+        set
+        {
+            headerLabel.Text = value;
+            AutomationProperties.SetName(this, value);
+            hoursField.SetAccessibleName(value + " hours");
+            minutesField.SetAccessibleName(value + " minutes");
+            secondsField.SetAccessibleName(value + " seconds");
+            msField.SetAccessibleName(value + " milliseconds");
+            AutomationProperties.SetName(copyButton, "Copy " + value.ToLowerInvariant());
+            AutomationProperties.SetName(pasteButton, "Paste " + value.ToLowerInvariant());
+            AutomationProperties.SetName(playheadButton, "Set " + value.ToLowerInvariant() + " to current playhead position");
+        }
     }
 
     public double Minimum
@@ -190,14 +202,17 @@ public sealed class TimecodePicker : StackPanel
         headerGrid.Children.Add(headerActions);
 
         // 2. Input Fields Row
-        var inputsGrid = new Grid { ColumnSpacing = 2 };
-        inputsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 50 }); // HH
+        // Labels and fields use the same columns so the units stay aligned.
+        var inputsGrid = new Grid { ColumnSpacing = 8, RowSpacing = 6 };
+        inputsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        inputsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        inputsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 64 }); // HH
         inputsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                                    // :
-        inputsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 50 }); // MM
+        inputsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 72 }); // MM
         inputsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                                    // :
-        inputsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 50 }); // SS
+        inputsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 72 }); // SS
         inputsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                                    // .
-        inputsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.3, GridUnitType.Star), MinWidth = 62 }); // MS
+        inputsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.3, GridUnitType.Star), MinWidth = 104 }); // MS
 
         Grid.SetColumn(hoursField, 0);
         Grid.SetColumn(sepCol1, 1);
@@ -215,29 +230,19 @@ public sealed class TimecodePicker : StackPanel
         inputsGrid.Children.Add(sepDot);
         inputsGrid.Children.Add(msField);
 
-        // 3. Sub-labels Row
-        var labelsGrid = new Grid { ColumnSpacing = 2, Margin = new Thickness(0, -1, 0, 0) };
-        labelsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        labelsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        labelsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        labelsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        labelsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        labelsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        labelsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.3, GridUnitType.Star) });
-
+        foreach (var field in new FrameworkElement[] { hoursField, sepCol1, minutesField, sepCol2, secondsField, sepDot, msField })
+            Grid.SetRow(field, 1);
         Grid.SetColumn(lblHr, 0);
         Grid.SetColumn(lblMin, 2);
         Grid.SetColumn(lblSec, 4);
         Grid.SetColumn(lblMs, 6);
-
-        labelsGrid.Children.Add(lblHr);
-        labelsGrid.Children.Add(lblMin);
-        labelsGrid.Children.Add(lblSec);
-        labelsGrid.Children.Add(lblMs);
+        inputsGrid.Children.Add(lblHr);
+        inputsGrid.Children.Add(lblMin);
+        inputsGrid.Children.Add(lblSec);
+        inputsGrid.Children.Add(lblMs);
 
         Children.Add(headerGrid);
         Children.Add(inputsGrid);
-        Children.Add(labelsGrid);
     }
 
     private static TextBlock CreateSeparator(string text) => new()
@@ -253,9 +258,9 @@ public sealed class TimecodePicker : StackPanel
     private static TextBlock CreateSubLabel(string text) => new()
     {
         Text = text,
-        FontSize = 10,
-        Opacity = 0.65,
-        HorizontalAlignment = HorizontalAlignment.Center
+        FontSize = 12,
+        Opacity = 0.8,
+        HorizontalAlignment = HorizontalAlignment.Left
     };
 
     private void UpdateThemeBrushes()
@@ -617,6 +622,13 @@ public sealed class TimecodePicker : StackPanel
             Value = 0;
 
             AttachEvents();
+        }
+
+        public void SetAccessibleName(string name)
+        {
+            AutomationProperties.SetName(textBox, name);
+            AutomationProperties.SetName(upButton, "Increase " + name.ToLowerInvariant());
+            AutomationProperties.SetName(downButton, "Decrease " + name.ToLowerInvariant());
         }
 
         public void FocusInput()

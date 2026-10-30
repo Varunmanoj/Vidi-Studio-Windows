@@ -1312,59 +1312,16 @@ public sealed partial class MainWindow : Window
             ? (isDescription ? "Add Audio Description Segment" : "Add Transcript Segment")
             : $"Edit {(isDescription ? "Audio Description" : "Transcript")} Segment";
 
-        var startPicker = new Views.TimecodePicker
-        {
-            Header = "Start time",
-            Value = initialStart,
-            Minimum = 0,
-            Maximum = maxDuration
-        };
-        startPicker.SetCurrentPositionProvider(() => Position, "Set start time to current playhead position");
-
-        var durationText = new TextBlock
-        {
-            Text = $"Duration {TimeSpan.FromSeconds(Math.Max(0, initialEnd - initialStart)):hh\\:mm\\:ss\\.fff} ({(Math.Max(0, initialEnd - initialStart)):F3}s)",
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Center,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            FontSize = 13,
-            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush,
-            FontFamily = new FontFamily("Consolas, Segoe UI")
-        };
-
-        var endPicker = new Views.TimecodePicker
-        {
-            Header = "End time",
-            Value = initialEnd,
-            Minimum = 0,
-            Maximum = maxDuration
-        };
-        endPicker.SetCurrentPositionProvider(() => Position, "Set end time to current playhead position");
-
-        var timingHeader = new Grid();
-        timingHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        timingHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var timingEditor = new Views.SegmentTimingEditor(initialStart, initialEnd, maxDuration, () => Position);
+        var startPicker = timingEditor.StartPicker;
+        var endPicker = timingEditor.EndPicker;
 
         var timingTitle = new TextBlock
         {
             Text = "Timing",
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            FontSize = 15,
-            VerticalAlignment = VerticalAlignment.Center
+            FontSize = 15
         };
-        Grid.SetColumn(timingTitle, 0);
-        Grid.SetColumn(durationText, 1);
-        timingHeader.Children.Add(timingTitle);
-        timingHeader.Children.Add(durationText);
-
-        var timingGrid = new Grid { ColumnSpacing = 16 };
-        timingGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        timingGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        Grid.SetColumn(startPicker, 0);
-        Grid.SetColumn(endPicker, 1);
-        timingGrid.Children.Add(startPicker);
-        timingGrid.Children.Add(endPicker);
 
         var errorIcon = new FontIcon
         {
@@ -1495,8 +1452,8 @@ public sealed partial class MainWindow : Window
         };
 
         var contentStack = new StackPanel { Width = 580, Spacing = 14 };
-        contentStack.Children.Add(timingHeader);
-        contentStack.Children.Add(timingGrid);
+        contentStack.Children.Add(timingTitle);
+        contentStack.Children.Add(timingEditor);
         contentStack.Children.Add(validationBorder);
 
         contentStack.Children.Add(new TextBlock { Text = isDescription ? "Audio Description" : "Transcript", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15 });
@@ -1563,10 +1520,6 @@ public sealed partial class MainWindow : Window
         {
             var s = startPicker.Value;
             var e = endPicker.Value;
-            var dur = (double.IsFinite(s) && double.IsFinite(e)) ? Math.Max(0, e - s) : 0;
-            var durTs = TimeSpan.FromSeconds(dur);
-            durationText.Text = $"Duration {durTs:hh\\:mm\\:ss\\.fff} ({dur:F3}s)";
-
             var errors = ValidateTiming(s, e);
             if (errors.Count > 0)
             {

@@ -45,6 +45,7 @@ public static class MenuIcons
             "Select all" => "\uE8B3",
             "Deselect all" => "\uE8B4",
             "Delete selected" or "Delete segment" or "Move to Recycle Bin" => "\uE74D",
+            "Remove from List" => "\uE738",
             "Delete narration" => "\uE74F",
             "Undo" => "\uE7A7",
             "Redo" => "\uE7A6",

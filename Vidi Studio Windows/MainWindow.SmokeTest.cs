@@ -125,6 +125,7 @@ public sealed partial class MainWindow
             }
             Model.Settings.Set("apiKey", savedMenuKey); Model.Settings.Set("ttsMode", savedMenuTts);
             await VerifyProjectMenuActionsForSmokeTestAsync();
+            VerifyRemoveFromListForSmokeTest();
             VerifyEditorActionMenusForSmokeTest();
             var originalSection = Section.SelectedIndex;
             foreach (var sectionIndex in new[] { 0, 2, 4 })
@@ -1084,21 +1085,8 @@ public sealed partial class MainWindow
             VerticalAlignment = VerticalAlignment.Center
         };
 
-        var startPicker = new Views.TimecodePicker { Header = "Start time", Value = 1.0, Maximum = 600 };
-        startPicker.SetCurrentPositionProvider(() => 1.5, "Set to playhead");
-        var endPicker = new Views.TimecodePicker { Header = "End time", Value = 3.0, Maximum = 600 };
-        endPicker.SetCurrentPositionProvider(() => 1.5, "Set to playhead");
-
-        var timingGrid = new Microsoft.UI.Xaml.Controls.Grid { ColumnSpacing = 16 };
-        timingGrid.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        timingGrid.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        Microsoft.UI.Xaml.Controls.Grid.SetColumn(startPicker, 0);
-        Microsoft.UI.Xaml.Controls.Grid.SetColumn(endPicker, 1);
-        timingGrid.Children.Add(startPicker);
-        timingGrid.Children.Add(endPicker);
-
-        testContainer.Child = timingGrid;
+        var timingEditor = new Views.SegmentTimingEditor(1.0, 3.0, 600, () => 1.5);
+        testContainer.Child = timingEditor;
         Root.Children.Add(testContainer);
         try
         {
@@ -1110,6 +1098,11 @@ public sealed partial class MainWindow
                     theme == "dark" ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 245, 245, 245));
                 await Task.Delay(100);
                 Root.UpdateLayout();
+                VerifyTimingEditorLayoutForSmokeTest(timingEditor);
+                timingEditor.EndPicker.Value = 4.25;
+                if (!timingEditor.DurationLabel.Text.Contains(3.25.ToString("F3")))
+                    throw new InvalidOperationException("Segment duration did not follow the end time.");
+                timingEditor.EndPicker.Value = 3.0;
                 await CaptureSmokeImage(testContainer, Path.Combine(Path.GetDirectoryName(report)!, $"timing-pickers-{theme}.png"));
             }
 
@@ -1137,51 +1130,40 @@ public sealed partial class MainWindow
             Root.Children.Remove(testContainer);
         }
     }
+    private static void VerifyTimingEditorLayoutForSmokeTest(Views.SegmentTimingEditor editor)
+    {
+        var start = editor.StartPicker;
+        var end = editor.EndPicker;
+        var duration = editor.DurationLabel;
+        var startY = start.TransformToVisual(editor).TransformPoint(new Windows.Foundation.Point()).Y;
+        var endY = end.TransformToVisual(editor).TransformPoint(new Windows.Foundation.Point()).Y;
+        var durationY = duration.TransformToVisual(editor).TransformPoint(new Windows.Foundation.Point()).Y;
+        if (startY + start.ActualHeight >= durationY || durationY + duration.ActualHeight >= endY ||
+            Math.Abs(start.ActualWidth - editor.ActualWidth) > 1 || Math.Abs(end.ActualWidth - editor.ActualWidth) > 1)
+            throw new InvalidOperationException("Start and end times must occupy separate full-width rows with duration between them.");
+        void CheckPicker(Views.TimecodePicker picker)
+        {
+            var grid = picker.Children.OfType<Grid>().Last();
+            var labels = grid.Children.OfType<TextBlock>().Where(label => Grid.GetRow(label) == 0).ToList();
+            if (!labels.Select(label => label.Text).SequenceEqual(new[] { "Hours", "Minutes", "Seconds", "Milliseconds" }))
+                throw new InvalidOperationException("Timing units must be fully named above their fields.");
+            void CheckFields(DependencyObject element)
+            {
+                if (element is TextBox field && (field.ActualWidth < 24 ||
+                    !Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(field).StartsWith(picker.Header)))
+                    throw new InvalidOperationException("A time field clips its digits or lacks its start/end accessibility label.");
+                for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(element); i++)
+                    CheckFields(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(element, i));
+            }
+            CheckFields(picker);
+        }
+        CheckPicker(start);
+        CheckPicker(end);
+    }
     private FrameworkElement CreateSampleSegmentDialogContent(bool isDescription, double start, double end, string text, string hint)
     {
-        var startPicker = new Views.TimecodePicker { Header = "Start time", Value = start, Maximum = 600 };
-        startPicker.SetCurrentPositionProvider(() => 1.5, "Set start time to current playhead position");
-
-        var dur = Math.Max(0, end - start);
-        var durTs = TimeSpan.FromSeconds(dur);
-        var durationText = new Microsoft.UI.Xaml.Controls.TextBlock
-        {
-            Text = $"Duration {durTs:hh\\:mm\\:ss\\.fff} ({dur:F3}s)",
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Center,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            FontSize = 13,
-            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Microsoft.UI.Xaml.Media.Brush,
-            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas, Segoe UI")
-        };
-
-        var endPicker = new Views.TimecodePicker { Header = "End time", Value = end, Maximum = 600 };
-        endPicker.SetCurrentPositionProvider(() => 1.5, "Set end time to current playhead position");
-
-        var timingHeader = new Microsoft.UI.Xaml.Controls.Grid();
-        timingHeader.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        timingHeader.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = GridLength.Auto });
-
-        var timingTitle = new Microsoft.UI.Xaml.Controls.TextBlock
-        {
-            Text = "Timing",
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            FontSize = 15,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        Microsoft.UI.Xaml.Controls.Grid.SetColumn(timingTitle, 0);
-        Microsoft.UI.Xaml.Controls.Grid.SetColumn(durationText, 1);
-        timingHeader.Children.Add(timingTitle);
-        timingHeader.Children.Add(durationText);
-
-        var timingGrid = new Microsoft.UI.Xaml.Controls.Grid { ColumnSpacing = 16 };
-        timingGrid.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        timingGrid.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        Microsoft.UI.Xaml.Controls.Grid.SetColumn(startPicker, 0);
-        Microsoft.UI.Xaml.Controls.Grid.SetColumn(endPicker, 1);
-        timingGrid.Children.Add(startPicker);
-        timingGrid.Children.Add(endPicker);
+        var timingEditor = new Views.SegmentTimingEditor(start, end, 600, () => 1.5);
+        var timingTitle = new TextBlock { Text = "Timing", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15 };
 
         var textBox = new Microsoft.UI.Xaml.Controls.TextBox
         {
@@ -1202,8 +1184,8 @@ public sealed partial class MainWindow
         };
 
         var contentStack = new Microsoft.UI.Xaml.Controls.StackPanel { Width = 580, Spacing = 14 };
-        contentStack.Children.Add(timingHeader);
-        contentStack.Children.Add(timingGrid);
+        contentStack.Children.Add(timingTitle);
+        contentStack.Children.Add(timingEditor);
         contentStack.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = isDescription ? "Audio Description" : "Transcript", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15 });
         contentStack.Children.Add(textBox);
         contentStack.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = "Hint for Gemini (Optional)", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15 });
@@ -1217,6 +1199,30 @@ public sealed partial class MainWindow
             Child = contentStack
         };
         return container;
+    }
+    private void VerifyRemoveFromListForSmokeTest()
+    {
+        var project = Model.Project!;
+        var manifest = Path.Combine(project.Folder, "project.json");
+        var original = File.ReadAllBytes(manifest);
+        var menu = ProjectMenu(project);
+        var item = menu.Items.OfType<MenuFlyoutItem>().SingleOrDefault(entry => (string?)entry.Tag == "remove-from-list");
+        if (item is not { Text: "Remove from List", Icon: not null } ||
+            Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(item) != "remove-from-list")
+            throw new InvalidOperationException("The project context menu is missing Remove from List.");
+        try
+        {
+            Model.RemoveProjectFromList(project);
+            Model.Reload();
+            if (Model.Projects.Any(entry => entry.Folder == project.Folder) || !Directory.Exists(project.Folder) ||
+                !File.ReadAllBytes(manifest).SequenceEqual(original) || Model.Project?.Folder != project.Folder)
+                throw new InvalidOperationException("Remove from List changed files, closed the editor, or returned after refresh.");
+            if (Model.ReloadIfProjectsChanged())
+                throw new InvalidOperationException("A hidden library folder caused repeated gallery refreshes.");
+        }
+        finally { Model.Open(project.Folder); }
+        if (!Model.Projects.Any(entry => entry.Folder == project.Folder))
+            throw new InvalidOperationException("Opening a removed project did not restore its list entry.");
     }
     private void VerifyEditorActionMenusForSmokeTest()
     {

@@ -125,6 +125,7 @@ public sealed partial class MainWindow
             }
             Model.Settings.Set("apiKey", savedMenuKey); Model.Settings.Set("ttsMode", savedMenuTts);
             await VerifyProjectMenuActionsForSmokeTestAsync();
+            VerifyEditorActionMenusForSmokeTest();
             var originalSection = Section.SelectedIndex;
             foreach (var sectionIndex in new[] { 0, 2, 4 })
             {
@@ -1216,6 +1217,77 @@ public sealed partial class MainWindow
             Child = contentStack
         };
         return container;
+    }
+    private void VerifyEditorActionMenusForSmokeTest()
+    {
+        var originalSection = Section.SelectedIndex;
+        var originalEditing = editMode;
+        var originalSummaryEditing = summaryEditMode;
+        var originalSelectionMode = Segments.SelectionMode;
+        var expectedActions = Array.Empty<string>();
+        void Verify(params string[] expected)
+        {
+            expectedActions = expected;
+            var menu = SegmentMenu();
+            var actual = menu.Items.Select(item => item is MenuFlyoutSeparator ? "-" : (string)((MenuFlyoutItem)item).Tag);
+            if (!actual.SequenceEqual(expected))
+                throw new InvalidOperationException($"Editor actions do not match section {Section.SelectedIndex} (editing={editMode}, summaryEditing={summaryEditMode}).");
+            foreach (var item in menu.Items.OfType<MenuFlyoutItem>())
+            {
+                var id = (string)item.Tag;
+                if (item.Icon == null || item.Text != DesktopCommandTitle(id) ||
+                    (bool)item.ReadLocalValue(Control.IsEnabledProperty) != CanRunDesktopCommand(id))
+                    throw new InvalidOperationException($"Editor action {id} has drifted from the shared command title, icon, or guard.");
+            }
+        }
+        try
+        {
+            foreach (var section in new[] { 0, 1, 2, 3, 4 })
+            {
+                Section.SelectedIndex = section;
+                editMode = false;
+                Segments.SelectionMode = ListViewSelectionMode.None;
+                summaryEditMode = false;
+                if (section == 1)
+                {
+                    Verify("segment-edit-mode", "generate-summary", "delete-current");
+                    summaryEditMode = true;
+                    Verify("segment-edit-mode");
+                    summaryEditMode = false;
+                }
+                else if (section == 3) Verify("synthesize-tts", "synthesize-changed");
+                else
+                {
+                    Verify();
+                    editMode = true;
+                    Segments.SelectionMode = ListViewSelectionMode.Multiple;
+                    if (section == 0)
+                        Verify("add", "segment-edit-selected", "segment-select-all", "segment-deselect-all", "segment-delete-selected", "undo", "redo");
+                    else if (section == 2)
+                        Verify("add", "segment-edit-selected", "segment-select-all", "segment-deselect-all", "segment-delete-selected", "undo", "redo", "-", "synthesize-tts", "synthesize-changed");
+                    else
+                        Verify("segment-edit-selected", "segment-select-all", "segment-deselect-all", "segment-delete-selected", "undo", "redo", "-", "synthesize-tts", "synthesize-changed");
+                    // Selection changes must refresh availability when the flyout is rebuilt.
+                    SelectAll_Click(this, new RoutedEventArgs());
+                    Verify(expectedActions);
+                    foreach (var id in new[] { "segment-edit-selected", "segment-deselect-all", "segment-delete-selected" })
+                        if (Segments.Items.Count > 0 && !CanRunDesktopCommand(id))
+                            throw new InvalidOperationException($"Editor action {id} is unavailable with selected rows.");
+                    Deselect_Click(this, new RoutedEventArgs());
+                    Verify(expectedActions);
+                    if (CanRunDesktopCommand("segment-edit-selected") || CanRunDesktopCommand("segment-delete-selected"))
+                        throw new InvalidOperationException("Selection actions stayed enabled after deselecting all rows.");
+                }
+            }
+        }
+        finally
+        {
+            editMode = originalEditing;
+            summaryEditMode = originalSummaryEditing;
+            Segments.SelectionMode = originalSelectionMode;
+            Section.SelectedIndex = originalSection;
+            RenderSection();
+        }
     }
     private void VerifySegmentMoreButtonsForSmokeTest(bool editing)
     {

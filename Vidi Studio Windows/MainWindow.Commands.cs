@@ -371,23 +371,52 @@ public sealed partial class MainWindow
         }
         else
         {
-            var timedSection = Section.SelectedIndex is 0 or 2 or 4;
-            Item("Add segment", Add_Click, timedSection);
-            Item("Edit selected", Edit_Click, timedSection && Segments.SelectedItems.Count > 0);
-            Item("Select all", SelectAll_Click, timedSection);
-            Item("Deselect all", Deselect_Click, timedSection && Segments.SelectedItems.Count > 0);
-            Item("Delete selected", DeleteSegments_Click, timedSection && Segments.SelectedItems.Count > 0);
-            Item("Undo", Undo_Click, timedSection);
-            Item("Redo", Redo_Click, timedSection);
-            Item(Model.Project?.AllADAudioTitle ?? "Generate All AD Audio", (_, args) => Command_Click(new Button { Tag = "synthesize-tts" }, args), CanRunDesktopCommand("synthesize-tts"));
-            Item("Generate Missing or Changed AD Audio", ChangedNarration_Click, CanRunDesktopCommand("synthesize-changed"));
+            var sectionIndex = Section.SelectedIndex;
+            var project = Model.Project;
+            foreach (var id in EditorActionIds(sectionIndex, editMode, summaryEditMode))
+            {
+                if (id == "-")
+                {
+                    menu.Items.Add(new MenuFlyoutSeparator());
+                    continue;
+                }
+                var item = new MenuFlyoutItem
+                {
+                    Text = DesktopCommandTitle(id), Icon = DesktopCommandIcon(id),
+                    IsEnabled = CanRunDesktopCommand(id), Tag = id
+                };
+                item.Click += async (_, _) =>
+                {
+                    // A flyout may outlive its tab, project, or editing mode.
+                    if (Section.SelectedIndex != sectionIndex || Model.Project != project ||
+                        !EditorActionIds(sectionIndex, editMode, summaryEditMode).Contains(id)) return;
+                    try { await RunDesktopCommandAsync(id); }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex) { await ShowError(ex); }
+                };
+                menu.Items.Add(item);
+            }
         }
         return menu;
     }
+    private static string[] EditorActionIds(int sectionIndex, bool editing, bool editingSummary) => sectionIndex switch
+    {
+        0 when editing => new[] { "add", "segment-edit-selected", "segment-select-all", "segment-deselect-all", "segment-delete-selected", "undo", "redo" },
+        1 when editingSummary => new[] { "segment-edit-mode" },
+        1 => new[] { "segment-edit-mode", "generate-summary", "delete-current" },
+        2 when editing => new[] { "add", "segment-edit-selected", "segment-select-all", "segment-deselect-all", "segment-delete-selected", "undo", "redo", "-", "synthesize-tts", "synthesize-changed" },
+        3 => new[] { "synthesize-tts", "synthesize-changed" },
+        4 when editing => new[] { "segment-edit-selected", "segment-select-all", "segment-deselect-all", "segment-delete-selected", "undo", "redo", "-", "synthesize-tts", "synthesize-changed" },
+        _ => Array.Empty<string>()
+    };
     private void SegmentMore_Click(object sender, RoutedEventArgs e)
     {
         if (Section.SelectedIndex is 0 or 2 or 4 && !editMode) return;
-        if (sender is FrameworkElement element) SegmentMenu(element.Tag as Segment).ShowAt(element);
+        if (sender is FrameworkElement element)
+        {
+            var menu = SegmentMenu(element.Tag as Segment);
+            if (menu.Items.Count > 0) menu.ShowAt(element);
+        }
     }
     private void SegmentContext_Requested(UIElement sender, ContextRequestedEventArgs e)
     {

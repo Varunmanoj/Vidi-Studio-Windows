@@ -1904,7 +1904,7 @@ public sealed partial class MainWindow : Window
     {
         UpdateSummaryWordCount();
         var original = Model.Project?.Summary ?? "";
-        var hasChanges = (SummaryEditorBox.Text ?? "") != original;
+        var hasChanges = NormalizeSummaryText(SummaryEditorBox.Text) != original;
         SummaryEditNotice.Text = hasChanges ? "• Unsaved changes" : "";
     }
 
@@ -1919,7 +1919,7 @@ public sealed partial class MainWindow : Window
     private async Task SaveSummaryChangesAsync()
     {
         if (Model.Project is not { } p) return;
-        var text = SummaryEditorBox.Text ?? "";
+        var text = NormalizeSummaryText(SummaryEditorBox.Text);
         var origin = SummaryProvenance.SelectedIndex switch
         {
             0 => "ai", 1 => "imported", 2 => "manual", _ => null
@@ -1929,10 +1929,16 @@ public sealed partial class MainWindow : Window
         {
             await Model.SaveSummaryAsync(text, originChanged ? origin : null);
             SummaryEditNotice.Text = "";
-            SummaryText.Text = text;
-            RenderMarkdown(text);
         }
+        // SaveSummaryAsync assigns Project.Summary before returning, so the comparison above
+        // cannot be reused to decide whether the reading view needs the saved Markdown.
+        SummaryText.Text = text;
+        RenderMarkdown(text);
     }
+
+    /// <summary>WinUI TextBoxes expose line breaks as '\r'; store and render one newline form.</summary>
+    private static string NormalizeSummaryText(string? text) =>
+        (text ?? "").Replace("\r\n", "\n").Replace('\r', '\n');
 
     private async void OpenGeminiSettings_Click(object sender, RoutedEventArgs e) => await ShowSettingsSectionAsync(3);
 

@@ -16,7 +16,7 @@ public sealed partial class MainWindow
     private StackPanel BuildMarkdownView(string markdown, bool trackReadback)
     {
         var panel = new StackPanel { Spacing = 8 };
-        var lines = markdown.Replace("\r\n", "\n").Split('\n');
+        var lines = markdown.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         var index = 0;
         while (index < lines.Length)
         {

@@ -41,7 +41,7 @@ public sealed partial class MainWindow
     private void ApplySummaryMarkdown(string command)
     {
         var (text, start, length) = MarkdownCommands.Apply(
-            SummaryEditorBox.Text ?? "", SummaryEditorBox.SelectionStart, SummaryEditorBox.SelectionLength, command);
+            NormalizeSummaryText(SummaryEditorBox.Text), SummaryEditorBox.SelectionStart, SummaryEditorBox.SelectionLength, command);
         SummaryEditorBox.Text = text;
         SummaryEditorBox.SelectionStart = Math.Clamp(start, 0, text.Length);
         SummaryEditorBox.SelectionLength = Math.Clamp(length, 0, text.Length - SummaryEditorBox.SelectionStart);
@@ -103,7 +103,7 @@ public sealed partial class MainWindow
             }
         }
         if (e.Key != VirtualKey.Enter) return;
-        var text = SummaryEditorBox.Text ?? "";
+        var text = NormalizeSummaryText(SummaryEditorBox.Text);
         var caret = SummaryEditorBox.SelectionStart;
         var lineStart = text.LastIndexOf('\n', Math.Max(0, caret - 1)) + 1;
         var lineEnd = text.IndexOf('\n', Math.Min(caret, text.Length));
@@ -150,7 +150,7 @@ public sealed partial class MainWindow
 
     private async void SummaryPreview_Click(object sender, RoutedEventArgs e)
     {
-        var text = SummaryEditorBox.Text ?? "";
+        var text = NormalizeSummaryText(SummaryEditorBox.Text);
         var preview = new ContentDialog
         {
             Title = "Markdown Preview",

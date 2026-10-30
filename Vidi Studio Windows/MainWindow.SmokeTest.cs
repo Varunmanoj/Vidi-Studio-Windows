@@ -1,6 +1,7 @@
 #if DEBUG
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using System;
 using System.IO;
 using System.Linq;
@@ -259,6 +260,40 @@ public sealed partial class MainWindow
             readback.Stop();
             try { await spokenSummary; } catch (OperationCanceledException) { }
             await Task.Delay(500);
+            var savedSummary = Model.Project!.Summary;
+            var carriageReturnView = BuildMarkdownView("# Heading\r\rA **bold** line.\r\r- Item", trackReadback: false);
+            if (carriageReturnView.Children.OfType<TextBlock>().Count() < 3)
+                throw new InvalidOperationException("Markdown using TextBox carriage-return line breaks did not render as separate blocks.");
+            try
+            {
+                SetSummaryEditMode(true);
+                SummaryEditorBox.Text = "# Edited summary\n\nA **bold** line.\n\n- First item";
+                await SaveSummaryChangesAsync();
+                SetSummaryEditMode(false);
+                if (SummaryPanel.Visibility != Visibility.Visible || SummaryEditorPanel.Visibility != Visibility.Collapsed)
+                    throw new InvalidOperationException("Saving the summary did not return to the reading view.");
+                var renderedSummary = SummaryRichText.Children.OfType<TextBlock>().ToList();
+                if (renderedSummary.Count < 3)
+                    throw new InvalidOperationException(
+                        $"Saving the summary did not render its Markdown blocks. children={SummaryRichText.Children.Count} textBlocks={renderedSummary.Count} " +
+                        $"editorLength={SummaryEditorBox.Text?.Length ?? -1} projectLength={Model.Project?.Summary?.Length ?? -1} " +
+                        $"summaryTextLength={SummaryText.Text?.Length ?? -1} panel={SummaryPanel.Visibility} editor={SummaryEditorPanel.Visibility} " +
+                        $"types={string.Join(",", SummaryRichText.Children.Select(child => child.GetType().Name))}");
+                if (renderedSummary.Any(block => (block.Text ?? "").Contains("**") || block.Inlines.OfType<Run>().Any(run => (run.Text ?? "").Contains("**"))))
+                    throw new InvalidOperationException("The saved summary still shows raw Markdown markers.");
+                if (!renderedSummary.Any(block => block.Inlines.OfType<Bold>().Any()))
+                    throw new InvalidOperationException("The saved summary did not render bold Markdown.");
+                if (!renderedSummary.Any(block => (block.Text ?? "").Contains('•') || block.Inlines.OfType<Run>().Any(run => (run.Text ?? "").Contains('•'))))
+                    throw new InvalidOperationException("The saved summary did not render its list item.");
+                if (!renderedSummary.Any(block => block.FontSize > 16))
+                    throw new InvalidOperationException("The saved summary did not render its heading.");
+            }
+            finally
+            {
+                SummaryEditorBox.Text = savedSummary ?? "";
+                await SaveSummaryChangesAsync();
+                SetSummaryEditMode(false);
+            }
             Section.SelectedIndex = 0;
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "editor-transcript.png"));
             Section.SelectedIndex = 2;

@@ -55,7 +55,7 @@ class YouTubeAudio(unittest.TestCase):
             return real_popen([sys.executable, '-c', script, str(directory), code or ''], **kwargs)
         return directories, patch.object(youtube_audio.subprocess, 'Popen', side_effect=start)
 
-    def test_temporary_failure_retries_once_with_new_worker_and_removes_partial_files(self):
+    def test_temporary_failure_retries_with_new_worker_and_removes_partial_files(self):
         directories, workers = self.run_download_workers(['blocked'])
         emit = Mock()
         with workers, youtube_audio.soundtrack('https://youtu.be/abcdefghijk', emit) as soundtrack:
@@ -64,8 +64,24 @@ class YouTubeAudio(unittest.TestCase):
         self.assertTrue(all(not folder.exists() for folder in directories))
         self.assertTrue(any('Retrying' in call.args[0] for call in emit.call_args_list))
 
+    def test_retry_backoff_matches_mac_and_remains_cancellable(self):
+        self.assertEqual(youtube_audio.DOWNLOAD_ATTEMPTS, 3)
+        self.assertEqual(youtube_audio.RETRY_DELAYS, (2, 4))
+        @contextlib.contextmanager
+        def failed(*args):
+            yield youtube_audio.DownloadError('network')
+        with tempfile.TemporaryDirectory() as folder:
+            marker = Path(folder) / 'cancel'
+            def cancel(_): marker.touch()
+            with patch.dict(os.environ, VIDISTUDIO_CANCEL_FILE=str(marker)), \
+                 patch.object(youtube_audio, 'soundtrack_attempt', failed), \
+                 patch.object(youtube_audio.time, 'sleep', side_effect=cancel), \
+                 self.assertRaisesRegex(RuntimeError, 'cancelled'):
+                with youtube_audio.soundtrack('https://youtu.be/abcdefghijk', Mock()):
+                    self.fail('Cancelled download yielded audio')
+
     def test_repeated_or_permanent_download_failure_stays_bounded_and_specific(self):
-        for failures, expected_count in ((['network', 'network'], 2), (['restricted'], 1), (['runtime'], 1)):
+        for failures, expected_count in ((['network', 'network', 'network'], 3), (['restricted'], 1), (['runtime'], 1)):
             with self.subTest(failures=failures):
                 directories, workers = self.run_download_workers(failures)
                 with workers, self.assertRaises(youtube_audio.DownloadError) as error:

@@ -1,4 +1,5 @@
 import unittest
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,7 +45,8 @@ class ProjectPlaybackSettings(unittest.TestCase):
         self.assertIn('if (string.IsNullOrWhiteSpace(project.Folder)) return false;', source)
 
     def test_mac_reads_and_writes_the_same_playback_object(self):
-        model = (ROOT.parent / 'VidiStudio Mac' / 'VidiStudio' / 'StudioModel.swift').read_text(encoding='utf-8')
+        workspace = Path(os.environ.get('VIDISTUDIO_DESKTOP_WORKSPACE', ROOT.parent))
+        model = (workspace / 'VidiStudio Mac' / 'VidiStudio' / 'StudioModel.swift').read_text(encoding='utf-8')
         self.assertIn('struct ProjectPlaybackSettings: Codable, Equatable {', model)
         self.assertIn('var narrationEnabled: Bool?', model)
         self.assertIn('var followTranscript: Bool?', model)

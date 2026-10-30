@@ -215,7 +215,7 @@
         </StackPanel>
        </Grid>
        <Grid Grid.Row="1">
-        <ScrollViewer x:Name="SummaryPanel" DoubleTapped="SummaryPanel_DoubleTapped" ToolTipService.ToolTip="Double-click to edit summary">
+        <ScrollViewer x:Name="SummaryPanel" DoubleTapped="SummaryPanel_DoubleTapped" AutomationProperties.Name="Project summary" AutomationProperties.HelpText="Use Edit this section to edit the summary, or double-click the text.">
          <StackPanel Padding="14,0,14,16" Spacing="18">
           <StackPanel x:Name="SummaryRichText" Spacing="8"/>
           <TextBlock x:Name="SummaryText" Visibility="Collapsed"/>

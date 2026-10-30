@@ -42,14 +42,29 @@ public sealed partial class MainWindow
     {
         var (text, start, length) = MarkdownCommands.Apply(
             NormalizeSummaryText(SummaryEditorBox.Text), SummaryEditorBox.SelectionStart, SummaryEditorBox.SelectionLength, command);
-        SummaryEditorBox.Text = text;
-        SummaryEditorBox.SelectionStart = Math.Clamp(start, 0, text.Length);
-        SummaryEditorBox.SelectionLength = Math.Clamp(length, 0, text.Length - SummaryEditorBox.SelectionStart);
+        ReplaceSummaryEditorText(text, start, length);
         SummaryEditorBox.Focus(FocusState.Programmatic);
+    }
+
+    private void ReplaceSummaryEditorText(string text, int start, int length)
+    {
+        var previous = NormalizeSummaryText(SummaryEditorBox.Text);
+        var prefix = 0;
+        while (prefix < previous.Length && prefix < text.Length && previous[prefix] == text[prefix]) prefix++;
+        var suffix = 0;
+        while (suffix < previous.Length - prefix && suffix < text.Length - prefix && previous[^(suffix + 1)] == text[^(suffix + 1)]) suffix++;
+        // A selection replacement joins the native TextBox undo history; assigning Text clears it.
+        if (previous != text)
+        {
+            SummaryEditorBox.Select(prefix, previous.Length - prefix - suffix);
+            SummaryEditorBox.SelectedText = text.Substring(prefix, text.Length - prefix - suffix);
+        }
+        SummaryEditorBox.Select(Math.Clamp(start, 0, text.Length), Math.Clamp(length, 0, text.Length - Math.Clamp(start, 0, text.Length)));
     }
 
     private void SummaryEditorBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (!summaryEditMode) return;
         var control = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
         var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift);
         var menu = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu);
@@ -61,8 +76,10 @@ public sealed partial class MainWindow
             string? command = e.Key switch
             {
                 VirtualKey.B when !shiftDown && !altDown => "bold",
+                (VirtualKey)192 when altDown && !shiftDown => "inlineCode",
+                (VirtualKey)189 when altDown && !shiftDown => "horizontalRule",
                 VirtualKey.I when !shiftDown && !altDown => "italic",
-                VirtualKey.I when shiftDown => "image",
+                VirtualKey.I when shiftDown && !altDown => "image",
                 VirtualKey.X when shiftDown => "strikethrough",
                 VirtualKey.K when !shiftDown && !altDown => "link",
                 VirtualKey.K when altDown && shiftDown => "clearFormatting",
@@ -102,23 +119,21 @@ public sealed partial class MainWindow
                 return;
             }
         }
-        if (e.Key != VirtualKey.Enter) return;
+        if (e.Key != VirtualKey.Enter || controlDown || shiftDown || altDown || SummaryEditorBox.SelectionLength > 0) return;
         var text = NormalizeSummaryText(SummaryEditorBox.Text);
         var caret = SummaryEditorBox.SelectionStart;
-        var lineStart = text.LastIndexOf('\n', Math.Max(0, caret - 1)) + 1;
+        var lineStart = caret == 0 ? 0 : text.LastIndexOf('\n', caret - 1) + 1;
         var lineEnd = text.IndexOf('\n', Math.Min(caret, text.Length));
         if (lineEnd < 0) lineEnd = text.Length;
         var line = text.Substring(lineStart, lineEnd - lineStart).TrimEnd('\r');
         if (MarkdownCommands.ListContinuation(line) is not { } prefix) return;
-        if (line.Trim() == prefix.Trim())
+        if (MarkdownCommands.IsEmptyListItem(line))
         {
-            SummaryEditorBox.Text = text.Remove(lineStart, lineEnd - lineStart);
-            SummaryEditorBox.SelectionStart = lineStart;
+            ReplaceSummaryEditorText(text.Remove(lineStart, lineEnd - lineStart), lineStart, 0);
         }
         else
         {
-            SummaryEditorBox.Text = text.Insert(caret, "\n" + prefix);
-            SummaryEditorBox.SelectionStart = caret + 1 + prefix.Length;
+            ReplaceSummaryEditorText(text.Insert(caret, "\n" + prefix), caret + 1 + prefix.Length, 0);
         }
         e.Handled = true;
     }

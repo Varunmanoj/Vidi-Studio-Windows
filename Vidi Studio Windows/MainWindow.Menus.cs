@@ -100,7 +100,7 @@ public sealed partial class MainWindow
                 try { await RunDesktopCommandAsync(id); }
                 catch (OperationCanceledException) { }
                 catch (Exception ex) { await ShowError(ex); }
-            });
+            }, () => CanRunDesktopCommand(id));
         AddShortcut(VirtualKey.F11, VirtualKeyModifiers.None, (_, _) => FullScreen_Click(this, new RoutedEventArgs()));
         Segments.SelectionChanged += (_, _) => { UpdateDesktopMenuStates(); UpdateBulkActionState(); };
         Narration.Toggled += (_, _) => UpdateDesktopMenuStates();
@@ -237,7 +237,7 @@ public sealed partial class MainWindow
         if (!Model.Idle) return false;
         if (id == "new-project") return true;
         if (id is "open-project" or "settings" or "help" or "about" or "close-window") return true;
-        if (id is "project-list" or "project-grid") return true;
+        if (id is "project-list" or "project-grid") return !(Section.SelectedIndex == 1 && summaryEditMode);
         if (!desktopEditorVisible || Model.Project is not { } p) return false;
         var timed = Section.SelectedIndex is 0 or 2 or 4;
         var hasTranscript = p.HasTranscript || ExtraFlag(p, "transcriptGenerated");

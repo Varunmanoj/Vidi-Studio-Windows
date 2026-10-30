@@ -126,18 +126,40 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public event EventHandler? ProjectReloaded;
     /// <summary>Raised after a narration run finished with one or more skipped descriptions.</summary>
     public event EventHandler<NarrationFailureReport>? NarrationFailures;
-    public StudioViewModel() { Engine = new(Settings); }
+    public StudioViewModel() { Engine = new(Settings); LoadExternalFolders(); }
+    private void LoadExternalFolders()
+    {
+        if (Settings.Data["projectLocations"] is not System.Text.Json.Nodes.JsonArray saved) return;
+        foreach (var entry in saved)
+        {
+            var path = entry is System.Text.Json.Nodes.JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+            if (string.IsNullOrWhiteSpace(path)) continue;
+            try { externalFolders.Add(Path.GetFullPath(path)); } catch (ArgumentException) { }
+        }
+    }
+    private void SaveExternalFolders()
+    {
+        Settings.Data["projectLocations"] = new System.Text.Json.Nodes.JsonArray(
+            externalFolders.OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .Select(path => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(path)).ToArray());
+        Settings.Save();
+    }
     private void Changed([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
 
     public void Reload(string search = "", string source = "all")
     {
         Settings.Reload();
+        LoadExternalFolders();
         Changed(nameof(HasApiKey));
         Changed(nameof(IsApiKeyInvalid));
         Changed(nameof(ApiPlan));
         var library = Settings.Get("libraryPath");
-        Directory.CreateDirectory(library);
-        var folders = Directory.EnumerateDirectories(library).Concat(externalFolders)
+        // Browsing must not create directories or fail startup when a drive is unavailable.
+        var libraryFolders = new List<string>();
+        try { if (Directory.Exists(library)) libraryFolders.AddRange(Directory.EnumerateDirectories(library)); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        { Status = "The project library is unavailable. Choose a project location in Settings → Storage."; }
+        var folders = libraryFolders.Concat(externalFolders)
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var currentFolders = new HashSet<string>(folders, StringComparer.OrdinalIgnoreCase);
         foreach (var stale in knownProjects.Keys.Where(folder => !currentFolders.Contains(folder)).ToList())
@@ -274,7 +296,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     }
     public void Open(string folder)
     {
-        externalFolders.Add(Path.GetFullPath(folder));
+        Settings.Reload(); LoadExternalFolders();
+        if (externalFolders.Add(Path.GetFullPath(folder))) SaveExternalFolders();
         var loaded = StudioProject.TryLoad(folder);
         Project = loaded ?? StudioProject.DamagedPlaceholder(folder);
         Project.Integrity = ProjectIntegrityAuditor.Audit(Project.ToIntegrityManifest());
@@ -286,6 +309,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public void ForgetProject(StudioProject project)
     {
         externalFolders.Remove(project.Folder);
+        SaveExternalFolders();
         knownProjects.Remove(project.Folder);
         projectStamps.Remove(project.Folder);
         Projects.Remove(project);
@@ -792,55 +816,20 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     }
     public async Task SaveSummaryAsync(string summary, string? origin = null)
     {
-        if (Project is not { } p) return;
-        p.Summary = summary;
-        var temporary = Path.Combine(SettingsStore.DirectoryPath, Guid.NewGuid() + (origin == null ? ".txt" : ".json"));
+        if (Project == null) throw new InvalidOperationException("Open a project before saving the summary.");
+        var temporary = Path.Combine(SettingsStore.DirectoryPath, Guid.NewGuid() + ".json");
         Directory.CreateDirectory(SettingsStore.DirectoryPath);
         try
         {
-            if (origin == null)
-                await File.WriteAllTextAsync(temporary, summary, System.Text.Encoding.UTF8);
-            else
-                await File.WriteAllTextAsync(temporary, System.Text.Json.JsonSerializer.Serialize(new { summary, summaryOrigin = origin }, Json.Options), System.Text.Encoding.UTF8);
+            // Only the engine writes project data, under its project lock with provenance updates.
+            await File.WriteAllTextAsync(temporary, System.Text.Json.JsonSerializer.Serialize(
+                new { summary, summaryOrigin = origin }, Json.Options), new System.Text.UTF8Encoding(false));
             var result = await RunAsync("save-summary", new[] { "--input", temporary });
-            if (result.Count == 0)
-            {
-                SaveSummaryDirectly(p.Folder, summary);
-                Project = StudioProject.Load(p.Folder);
-                ProjectReloaded?.Invoke(this, EventArgs.Empty);
-            }
-        }
-        catch
-        {
-            SaveSummaryDirectly(p.Folder, summary);
-            Project = StudioProject.Load(p.Folder);
-            ProjectReloaded?.Invoke(this, EventArgs.Empty);
+            if (result.Count == 0) throw new IOException(Status);
         }
         finally
         {
             if (File.Exists(temporary)) File.Delete(temporary);
         }
-    }
-    private static void SaveSummaryDirectly(string folder, string summary)
-    {
-        var projectFile = Path.Combine(folder, "project.json");
-        if (!File.Exists(projectFile)) return;
-        var json = StudioProject.ReadManifestText(projectFile);
-        using var doc = System.Text.Json.JsonDocument.Parse(json);
-        var dict = new Dictionary<string, object?>();
-        foreach (var prop in doc.RootElement.EnumerateObject())
-        {
-            if (prop.NameEquals("summary"))
-                dict["summary"] = summary;
-            else if (prop.NameEquals("summaryGenerated"))
-                dict["summaryGenerated"] = !string.IsNullOrWhiteSpace(summary);
-            else
-                dict[prop.Name] = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(prop.Value.GetRawText());
-        }
-        if (!dict.ContainsKey("summary")) dict["summary"] = summary;
-        if (!dict.ContainsKey("summaryGenerated")) dict["summaryGenerated"] = !string.IsNullOrWhiteSpace(summary);
-        var tempFile = Path.Combine(folder, "project." + Guid.NewGuid() + ".json");
-        File.WriteAllText(tempFile, System.Text.Json.JsonSerializer.Serialize(dict, Json.Options));
-        File.Move(tempFile, projectFile, overwrite: true);
     }
 }

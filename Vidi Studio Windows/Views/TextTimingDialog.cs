@@ -12,7 +12,7 @@ using Vidi_Studio_Windows.ViewModels;
 
 namespace Vidi_Studio_Windows.Views;
 
-/// <summary>Reviews one start and end time per TXT line before an import.</summary>
+/// <summary>Reviews TXT, SRT, and VTT timing before an import.</summary>
 public sealed class TextTimingDialog : ContentDialog
 {
     private sealed class TimingRow
@@ -34,6 +34,7 @@ public sealed class TextTimingDialog : ContentDialog
     private readonly StackPanel rowPanel = new() { Spacing = 6 };
     private readonly TextBlock summary = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .7 };
     private bool aiGenerated;
+    private bool refreshing, aligning;
 
     public string? TimingPath { get; private set; }
 
@@ -50,23 +51,29 @@ public sealed class TextTimingDialog : ContentDialog
         DefaultButton = ContentDialogButton.Primary;
         foreach (var row in parsedRows)
         {
-            rows.Add(new TimingRow
+            var item = new TimingRow
             {
                 SourceLine = row.SourceLine,
                 Text = row.Text,
                 Start = row.Start ?? 0,
                 End = row.End ?? 0
-            });
+            };
+            item.StartBox.TextChanged += (_, _) => { if (!refreshing) UpdateState(); };
+            item.EndBox.TextChanged += (_, _) => { if (!refreshing) UpdateState(); };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item.StartBox, $"Start time for source line {row.SourceLine}");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item.EndBox, $"End time for source line {row.SourceLine}");
+            rows.Add(item);
         }
         if (parsedRows.Any(row => row.Start == null || row.End == null)) Distribute();
         Content = BuildContent(sourceName);
         RefreshRows();
         PrimaryButtonClick += (_, args) =>
         {
-            if (!Validate()) { args.Cancel = true; return; }
+            if (aligning || !Validate()) { args.Cancel = true; return; }
             WriteTiming();
         };
         UpdateState();
+        Closing += (_, _) => { if (aligning) model.Cancel(); };
     }
 
     private UIElement BuildContent(string sourceName)
@@ -80,7 +87,7 @@ public sealed class TextTimingDialog : ContentDialog
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         var distribute = new Button { Content = "Distribute Evenly" };
         ToolTipService.SetToolTip(distribute, "Give every line an equal share of the video");
-        distribute.Click += (_, _) => { Distribute(); RefreshRows(); UpdateState(); };
+        distribute.Click += (_, _) => { if (!aligning) { Distribute(); RefreshRows(); UpdateState(); } };
         actions.Children.Add(distribute);
         var ai = new Button { Content = "Auto-time with Gemini", IsEnabled = model.CanUseAI };
         ToolTipService.SetToolTip(ai, model.HasApiKey
@@ -106,6 +113,9 @@ public sealed class TextTimingDialog : ContentDialog
 
     private void RefreshRows()
     {
+        refreshing = true;
+        try
+        {
         rowPanel.Children.Clear();
         foreach (var row in rows)
         {
@@ -136,9 +146,9 @@ public sealed class TextTimingDialog : ContentDialog
             grid.Children.Add(row.EndBox);
             grid.Children.Add(text);
             rowPanel.Children.Add(grid);
-            row.StartBox.TextChanged += (_, _) => UpdateState();
-            row.EndBox.TextChanged += (_, _) => UpdateState();
         }
+        }
+        finally { refreshing = false; }
     }
 
     private void Distribute()
@@ -150,7 +160,6 @@ public sealed class TextTimingDialog : ContentDialog
             rows[index].End = (index + 1) * duration / rows.Count;
         }
         aiGenerated = false;
-        if (rowPanel.Children.Count > 0) RefreshRows();
     }
 
     private bool Validate()
@@ -193,13 +202,15 @@ public sealed class TextTimingDialog : ContentDialog
             if (TryParse(row.StartBox.Text, out var start)) row.Start = start;
             if (TryParse(row.EndBox.Text, out var end)) row.End = end;
         }
-        IsPrimaryButtonEnabled = Validate();
+        IsPrimaryButtonEnabled = !aligning && Validate();
         summary.Text = $"{rows.Count} lines · {Format(duration)} video";
     }
 
     private async Task AlignAsync()
     {
-        if (!model.HasApiKey || rows.Count == 0) return;
+        if (!model.CanUseAI || model.Busy || aligning || rows.Count == 0) return;
+        aligning = true;
+        IsPrimaryButtonEnabled = false;
         var input = Path.Combine(Path.GetTempPath(), "vidistudio-align-" + Guid.NewGuid() + ".txt");
         var output = Path.Combine(Path.GetTempPath(), "vidistudio-align-" + Guid.NewGuid() + ".json");
         try
@@ -233,6 +244,8 @@ public sealed class TextTimingDialog : ContentDialog
         {
             if (File.Exists(input)) File.Delete(input);
             if (File.Exists(output)) File.Delete(output);
+            aligning = false;
+            UpdateState();
         }
     }
 

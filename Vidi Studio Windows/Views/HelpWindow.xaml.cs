@@ -16,6 +16,8 @@ namespace Vidi_Studio_Windows.Views;
 /// <summary>A native, searchable Help book window with a table of contents and HTML reader.</summary>
 public sealed partial class HelpWindow : Window
 {
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr window);
     private sealed class Manifest
     {
         public List<Page> Pages { get; set; } = new();
@@ -57,17 +59,38 @@ public sealed partial class HelpWindow : Window
     internal string? LoadedPageForSmokeTest { get; private set; }
     internal int ChapterCountForSmokeTest => pages.Count;
     internal int TocRootCountForSmokeTest => TocTree.RootNodes.Count;
+    internal FrameworkElement TocVisualForSmokeTest => TocTree;
+    internal async Task<string> ReaderStateForSmokeTest() => await ContentView.ExecuteScriptAsync("JSON.stringify({dark:matchMedia('(prefers-color-scheme: dark)').matches,background:getComputedStyle(document.body).backgroundColor})");
+    internal void NavigateForSmokeTest(string slug, string? anchor = null) => NavigateTo(slug, anchor);
+    internal void SearchForSmokeTest(string query) => SearchBox.Text = query;
     internal IReadOnlyList<string> TocTitlesForSmokeTest =>
         TocTree.RootNodes.Select(node => (node.Content as HelpNode)?.Title ?? "").ToList();
+    internal IReadOnlyList<string> RenderedTocTitlesForSmokeTest()
+    {
+        var titles = new List<string>();
+        void Visit(DependencyObject element)
+        {
+            if (element is TextBlock { Name: "HelpTocTitle", ActualWidth: > 0, ActualHeight: > 0 } text && !string.IsNullOrWhiteSpace(text.Text)) titles.Add(text.Text);
+            for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(element); i++)
+                Visit(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(element, i));
+        }
+        Visit(TocTree);
+        return titles;
+    }
 #endif
 
     public HelpWindow(ElementTheme theme = ElementTheme.Default)
     {
         InitializeComponent();
+        WindowAppearance.ApplyIcon(this);
+        WindowAppearance.ApplyMaterial(this);
         Root.RequestedTheme = theme;
-        Root.ActualThemeChanged += (_, _) => ApplyWebTheme();
+        App.ThemeChanged += ApplyAppTheme;
+        Root.ActualThemeChanged += (_, _) => { WindowAppearance.Refresh(this, Root); ApplyWebTheme(); };
+        WindowAppearance.ApplyTheme(this, Root, theme);
         Closed += (_, _) =>
         {
+            App.ThemeChanged -= ApplyAppTheme;
             try { if (webReady) ContentView.Close(); } catch { }
         };
         try
@@ -75,7 +98,12 @@ public sealed partial class HelpWindow : Window
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
             var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
-            appWindow.Resize(new SizeInt32(1180, 820));
+            var scale = Math.Max(1, GetDpiForWindow(hwnd) / 96d);
+            var area = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Nearest).WorkArea;
+            var width = Math.Min((int)Math.Round(1180 * scale), Math.Max(600, area.Width - 48));
+            var height = Math.Min((int)Math.Round(820 * scale), Math.Max(400, area.Height - 48));
+            appWindow.Resize(new SizeInt32(width, height));
+            appWindow.Move(new PointInt32(area.X + (area.Width - width) / 2, area.Y + (area.Height - height) / 2));
         }
         catch { }
         LoadManifest();
@@ -85,14 +113,20 @@ public sealed partial class HelpWindow : Window
 
     public void SetTheme(ElementTheme theme)
     {
-        Root.RequestedTheme = theme;
+        WindowAppearance.ApplyTheme(this, Root, theme);
         ApplyWebTheme();
     }
+
+    private void ApplyAppTheme(string theme) => SetTheme(theme switch
+    {
+        "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default
+    });
 
     private void ApplyWebTheme()
     {
         if (!webReady) return;
         var scheme = Root.ActualTheme == ElementTheme.Dark ? "dark" : "light";
+        ContentView.CoreWebView2.Profile.PreferredColorScheme = scheme == "dark" ? CoreWebView2PreferredColorScheme.Dark : CoreWebView2PreferredColorScheme.Light;
         _ = ContentView.ExecuteScriptAsync($"document.documentElement.style.colorScheme='{scheme}'; document.body.style.colorScheme='{scheme}';");
     }
 
@@ -125,9 +159,8 @@ public sealed partial class HelpWindow : Window
         try
         {
             var path = Path.Combine(HelpFolder, "manifest.json");
-            if (!File.Exists(path)) return;
-            var manifest = JsonSerializer.Deserialize<Manifest>(File.ReadAllText(path),
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            var manifest = File.Exists(path) ? JsonSerializer.Deserialize<Manifest>(File.ReadAllText(path),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) : null;
             if (manifest?.Pages is { Count: > 0 }) pages.AddRange(manifest.Pages);
         }
         catch { }
@@ -145,13 +178,17 @@ public sealed partial class HelpWindow : Window
         var shown = 0;
         foreach (var page in pages)
         {
-            var matchingSections = string.IsNullOrEmpty(query)
+            var matchingSections = string.IsNullOrEmpty(query) || page.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
                 ? page.Sections
                 : page.Sections.Where(section => section.Title.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
             if (!string.IsNullOrEmpty(query)
                 && !page.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
                 && matchingSections.Count == 0) continue;
-            var pageNode = new TreeViewNode { Content = new HelpNode { Title = page.Title, Slug = page.Slug }, IsExpanded = true };
+            var pageNode = new TreeViewNode
+            {
+                Content = new HelpNode { Title = page.Title, Slug = page.Slug },
+                IsExpanded = !string.IsNullOrEmpty(query) || page.Slug == currentSlug
+            };
             foreach (var section in matchingSections)
             {
                 var sectionNode = new TreeViewNode { Content = new HelpNode { Title = section.Title, Slug = page.Slug, Anchor = section.Id } };
@@ -214,7 +251,8 @@ public sealed partial class HelpWindow : Window
 
     private void ScrollTo(string? anchor)
     {
-        if (!webReady || string.IsNullOrEmpty(anchor)) return;
+        if (!webReady) return;
+        if (string.IsNullOrEmpty(anchor)) { _ = ContentView.ExecuteScriptAsync("window.scrollTo(0,0)"); return; }
         _ = ContentView.ExecuteScriptAsync($"document.getElementById({JsonSerializer.Serialize(anchor)})?.scrollIntoView({{block:'start'}});");
     }
 

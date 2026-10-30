@@ -1,4 +1,4 @@
-param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [switch]$SkipBuild, [switch]$FrozenEngine, [string]$AppDirectory, [switch]$RequirePackage)
+param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [switch]$SkipBuild, [switch]$FrozenEngine, [string]$AppDirectory, [switch]$RequirePackage, [int]$TimeoutSeconds = 180, [string]$SummaryFixture)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $testRoot = Join-Path $projectRoot "build\ui-test-$Platform"
@@ -18,6 +18,7 @@ $project = @{
     createdAt=0; updatedAt=0; thumbnails=@('thumbnail.jpg'); transcript=@(@{id='t1';start=0;end=1;text='Hello.'}); cues=@(@{id='a1';start=2;end=5;text='A blue screen appears.';origin='ai'})
     summary="# Smoke test`n`n- Native **Windows** summary.`n- Multilingual: नमस्ते"; exports=@(); status='Ready'
 }
+if ($SummaryFixture) { $project.summary = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $SummaryFixture).Path)) }
 [System.IO.File]::WriteAllText((Join-Path $folder 'project.json'), ($project | ConvertTo-Json -Depth 8), [System.Text.UTF8Encoding]::new($false))
 & ffmpeg -y -v error -f lavfi -i 'color=c=blue:s=320x180:r=24' -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 8 -c:v libx264 -c:a aac (Join-Path $folder 'source.mp4')
 if ($LASTEXITCODE -ne 0) { throw 'Test media creation failed.' }
@@ -82,7 +83,7 @@ public static class VidiPackageIdentity {
         if ($identityResult -ne 0 -or !$packageName.ToString().StartsWith('7b6f5f53-8ba2-429e-a747-0e2393ce9cee_')) { $app.Kill(); throw 'Unexpected package identity.' }
         Write-Output "Package identity: $packageName"
     }
-    if (!$app.WaitForExit(120000)) { $app.Kill(); throw 'UI smoke test timed out.' }
+    if (!$app.WaitForExit($TimeoutSeconds * 1000)) { $app.Kill(); throw "UI smoke test timed out. Report: $report" }
     if (!(Test-Path -LiteralPath $report)) { throw "App exited with $($app.ExitCode) before creating a smoke report." }
     $result = Get-Content -Raw $report
     Write-Output $result

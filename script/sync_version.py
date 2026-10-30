@@ -11,6 +11,7 @@ Usage:
 """
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -48,6 +49,8 @@ def find_roots(
     ]
     if len(start_dir.parents) > 1:
         candidates.append(start_dir.parent.parent)
+    if workspace := os.environ.get('VIDISTUDIO_DESKTOP_WORKSPACE'):
+        candidates.append(Path(workspace))
 
     # Search for macOS root (contains VidiStudio.xcodeproj/project.pbxproj)
     if not mac_root:

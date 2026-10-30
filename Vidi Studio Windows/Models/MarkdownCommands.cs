@@ -68,9 +68,10 @@ public static class MarkdownCommands
 
     private static (int, int) LineRange(string text, int start, int length)
     {
-        var lineStart = text.LastIndexOf('\n', Math.Max(0, start - 1)) + 1;
-        var endProbe = Math.Min(text.Length, start + length);
-        var lineEnd = text.IndexOf('\n', Math.Min(endProbe, Math.Max(0, text.Length - 1)));
+        var lineStart = start == 0 ? 0 : text.LastIndexOf('\n', start - 1) + 1;
+        // A selection ending at the next line's start does not include that line.
+        var endProbe = length > 0 ? start + length - 1 : start;
+        var lineEnd = text.IndexOf('\n', Math.Min(endProbe, text.Length));
         if (lineEnd < 0) lineEnd = text.Length;
         return (lineStart, lineEnd - lineStart);
     }
@@ -98,7 +99,7 @@ public static class MarkdownCommands
     private static (string, int, int) ToggleLinePrefix(string text, int start, int length, string prefix)
     {
         var (lineStart, lineLength) = LineRange(text, start, length);
-        var lines = text.Substring(lineStart, lineLength).Split('\n').Where(line => line.Length > 0).ToList();
+        var lines = text.Substring(lineStart, lineLength).Split('\n').ToList();
         var remove = lines.Count > 0 && lines.All(line => line.StartsWith(prefix, StringComparison.Ordinal));
         var replacement = string.Join("\n", lines.Select(line => remove ? line.Substring(prefix.Length) : prefix + line));
         return (text.Remove(lineStart, lineLength).Insert(lineStart, replacement), lineStart, replacement.Length);
@@ -107,7 +108,7 @@ public static class MarkdownCommands
     private static (string, int, int) ToggleNumbered(string text, int start, int length)
     {
         var (lineStart, lineLength) = LineRange(text, start, length);
-        var lines = text.Substring(lineStart, lineLength).Split('\n').Where(line => line.Length > 0).ToList();
+        var lines = text.Substring(lineStart, lineLength).Split('\n').ToList();
         var remove = lines.Count > 0 && lines.All(line => Regex.IsMatch(line, "^\\d+\\.\\s+"));
         var replacement = string.Join("\n", lines.Select((line, index) =>
             remove ? Regex.Replace(line, "^\\d+\\.\\s+", "") : $"{index + 1}. " + Regex.Replace(line, "^\\d+\\.\\s+", "")));
@@ -137,11 +138,16 @@ public static class MarkdownCommands
 
     public static string? ListContinuation(string line)
     {
-        if (Regex.IsMatch(line, "^\\s*-\\s\\[[ xX]\\]\\s+")) return "- [ ] ";
-        if (Regex.IsMatch(line, "^\\s*[-*+]\\s+")) return "- ";
+        var task = Regex.Match(line, "^(\\s*)-\\s\\[[ xX]\\]\\s+");
+        if (task.Success) return task.Groups[1].Value + "- [ ] ";
+        var bullet = Regex.Match(line, "^(\\s*)([-*+])\\s+");
+        if (bullet.Success) return bullet.Groups[1].Value + bullet.Groups[2].Value + " ";
         var ordered = Regex.Match(line, "^(\\s*)(\\d+)\\.\\s+");
-        if (ordered.Success) return (int.Parse(ordered.Groups[2].Value) + 1) + ". ";
+        if (ordered.Success && int.TryParse(ordered.Groups[2].Value, out var number) && number < int.MaxValue)
+            return ordered.Groups[1].Value + (number + 1) + ". ";
         if (line.StartsWith("> ", StringComparison.Ordinal)) return "> ";
         return null;
     }
+
+    public static bool IsEmptyListItem(string line) => Regex.IsMatch(line, @"^\s*(?:[-*+]\s*(?:\[[ xX]\]\s*)?|\d+\.\s*|>\s*)$");
 }

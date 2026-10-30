@@ -12,6 +12,8 @@ from pathlib import Path
 import parity
 
 DOWNLOAD_TIMEOUT = 900
+DOWNLOAD_ATTEMPTS = 3
+RETRY_DELAYS = (2, 4)
 MAX_AUDIO_BYTES = 2 * 1024 * 1024 * 1024
 DOWNLOAD_ERROR = ('YouTube audio could not be downloaded. Check your connection and that the video '
                   'is public, then try again. If YouTube blocks the download, import your original '
@@ -174,16 +176,23 @@ def soundtrack(url, emit):
     """Bound the entire download and kill its runtime on timeout/cancellation."""
     url = parity.youtube_url(url)
     deadline = time.monotonic() + DOWNLOAD_TIMEOUT
-    for attempt in range(2):
+    for attempt in range(DOWNLOAD_ATTEMPTS):
         with soundtrack_attempt(url, emit, deadline) as result:
-            if isinstance(result, DownloadError):
-                if attempt == 0 and result.code in RETRYABLE_ERRORS:
-                    check_cancelled()
-                    emit('Retrying YouTube audio download with a fresh connection', exportProgress=None)
-                    continue
-                raise result
-            yield result
-            return
+            if not isinstance(result, DownloadError):
+                yield result
+                return
+            failure = result
+        if attempt + 1 == DOWNLOAD_ATTEMPTS or failure.code not in RETRYABLE_ERRORS:
+            raise failure
+        check_cancelled()
+        emit(f'Retrying YouTube audio download — attempt {attempt + 2} of {DOWNLOAD_ATTEMPTS}', exportProgress=None)
+        # Match the Mac retry/backoff policy while keeping Windows cancellation responsive.
+        retry_at = min(deadline, time.monotonic() + RETRY_DELAYS[attempt])
+        while (remaining := retry_at - time.monotonic()) > 0:
+            check_cancelled()
+            time.sleep(min(.1, remaining))
+        if time.monotonic() >= deadline:
+            raise ValueError('YouTube audio download timed out. Try again, or import your original video.')
 
 
 @contextlib.contextmanager

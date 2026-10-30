@@ -60,14 +60,15 @@ wt = parsed('engine/youtube_audio.py', windows_root)
 mt = parsed('engine/youtube_audio.py', args.mac_root)
 wt.body = [node for node in wt.body if not isinstance(node, ast.FunctionDef) or node.name != 'check_cancelled']
 wd, md = ast.dump(wt, include_attributes=False), ast.dump(mt, include_attributes=False)
-# Reviewed 1.0.3 recovery addition against Mac d38a3b1. Both exact ASTs must
+# Reviewed 1.0.176: both platforms use three attempts with 2/4-second backoff.
+# Windows retains classified worker errors and cancellation markers. Both exact ASTs must
 # match these snapshots; future changes to either downloader still flag drift.
 reviewed_downloaders = (
-    'a1db1af910863dc4f3dcfbfcbb947671fe6272269d009b6429d8bdcc9f385805',
-    'c710ecf3e09f971c162ded5170d48b6d7da46972daef334153f60dcf79647a2c',
+    'c182d6a91605d44811f90f680d0bb6679927e3ccbdac340f427413bd3cbc0a5a',
+    'b767c7c690a24f9f13b0b615b6a3b3c76d35584f12cdfcaa89cd6c81de367c97',
 )
 if wd != md and (hashlib.sha256(wd.encode()).hexdigest(), hashlib.sha256(md.encode()).hexdigest()) != reviewed_downloaders:
     drift.append('youtube_audio.py')
 if drift:
     raise SystemExit('Export parity needs review: ' + ', '.join(drift))
-print(f'PASS: {len(names)} shared export/progress functions, media formats, and ducking match Mac; downloader matches or has the exact reviewed Windows 1.0.3 recovery addition (documented Windows hooks excluded).')
+print(f'PASS: {len(names)} shared export/progress functions, media formats, and ducking match Mac; downloader matches or has the exact reviewed Windows 1.0.176 worker recovery and cancellation hooks.')

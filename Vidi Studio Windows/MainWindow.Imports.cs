@@ -19,38 +19,78 @@ public sealed partial class MainWindow
     internal async Task ImportExistingAssetsAsync(Models.ImportScope scope = Models.ImportScope.All)
     {
         if (Model.Busy || Model.Project is not { } project) return;
-        var dialog = new Views.ImportAssetsDialog(this, scope);
-        if (await ShowDialogAsync(dialog, 760, 700) != ContentDialogResult.Primary) return;
+        var dialog = new Views.ImportAssetsDialog(this, project, scope);
+        var result = await ShowDialogAsync(dialog, 800, 760);
+        if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary)) return;
+        await ImportSelectedAssetsAsync(dialog.Selection, dialog.CombineRequested);
+    }
+
+    private async Task ImportSelectedAssetsAsync(ImportAssetSelection selection, bool combine)
+    {
+        if (Model.Busy || Model.Project is not { } project || !selection.HasAny) return;
+        var timingFiles = new List<string>();
         try
         {
-            var replace = dialog.ReplaceExisting ? new[] { "--replace-existing" } : Array.Empty<string>();
-            if (dialog.TranscriptPath is { } transcript)
+            // Validate/review every selected text file before writing any assets.
+            string? transcriptTiming = null, descriptionTiming = null;
+            if (selection.TranscriptPath is { } transcriptFile)
             {
-                var (proceed, timing) = await ReviewTimingBeforeImportAsync(transcript, false, "narration", project);
+                var (proceed, timing) = await ReviewTimingBeforeImportAsync(transcriptFile, false, "narration", project);
                 if (!proceed) return;
+                transcriptTiming = timing;
+                if (timing != null) timingFiles.Add(timing);
+            }
+            if (selection.ADTranscriptPath is { } descriptionFile)
+            {
+                var (proceed, timing) = await ReviewTimingBeforeImportAsync(descriptionFile, selection.ADTranscriptMode == "narration", selection.ADTranscriptMode, project);
+                if (!proceed) return;
+                descriptionTiming = timing;
+                if (timing != null) timingFiles.Add(timing);
+            }
+            var replace = selection.ReplaceExisting ? new[] { "--replace-existing" } : Array.Empty<string>();
+            var replacements = new List<string>();
+            if (selection.TranscriptPath != null && project.Transcript.Count > 0) replacements.Add("Transcript");
+            if (selection.SummaryPath != null && !string.IsNullOrWhiteSpace(project.Summary)) replacements.Add("Summary");
+            if (selection.ADTranscriptPath != null && (project.Cues.Count > 0 || project.ImportedADTranscript != null)) replacements.Add("AD transcript");
+            if (selection.ADAudioPath != null && project.ImportedAudioDescription != null) replacements.Add("AD audio");
+            if (replacements.Count > 0)
+            {
+                if (!await Confirm("Replace existing assets?", "This will replace: " + string.Join(", ", replacements) + ". Files are validated before replacement.", "Replace and Import")) return;
+                replace = new[] { "--replace-existing" };
+            }
+            async Task RunImport(string command, IEnumerable<string> arguments)
+            {
+                if (await Model.RunAsync(command, arguments) is not { Count: > 0 })
+                {
+                    if (Model.Status.StartsWith("Cancelled", StringComparison.Ordinal)) throw new OperationCanceledException();
+                    throw new IOException(Model.Status);
+                }
+            }
+            if (selection.TranscriptPath is { } transcript)
+            {
                 var arguments = new List<string> { "--input", transcript };
-                if (timing != null) arguments.AddRange(new[] { "--timing-input", timing });
+                if (transcriptTiming != null) arguments.AddRange(new[] { "--timing-input", transcriptTiming });
                 arguments.AddRange(replace);
-                await Model.RunAsync("import-transcript", arguments);
+                await RunImport("import-transcript", arguments);
             }
-            if (dialog.ADTranscriptPath is { } adTranscript)
+            if (selection.ADTranscriptPath is { } adTranscript)
             {
-                var (proceed, timing) = await ReviewTimingBeforeImportAsync(adTranscript, true, dialog.ADTranscriptMode, project);
-                if (!proceed) return;
-                var arguments = new List<string> { "--input", adTranscript, "--ad-transcript-mode", dialog.ADTranscriptMode };
-                if (timing != null) arguments.AddRange(new[] { "--timing-input", timing });
+                var arguments = new List<string> { "--input", adTranscript, "--ad-transcript-mode", selection.ADTranscriptMode };
+                if (descriptionTiming != null) arguments.AddRange(new[] { "--timing-input", descriptionTiming });
                 arguments.AddRange(replace);
-                await Model.RunAsync("import-ad-transcript", arguments);
+                await RunImport("import-ad-transcript", arguments);
             }
-            if (dialog.SummaryPath is { } summary)
-                await Model.RunAsync("import-summary", new[] { "--input", summary }.Concat(replace));
-            if (dialog.ADAudioPath is { } audio)
-                await Model.RunAsync("import-ad-audio", new[] { "--input", audio, "--audio-mode", dialog.ADAudioMode }.Concat(replace));
-            if (dialog.ADAudioPath != null && !project.IsYouTube)
-                await Model.RunAsync("combine-imported-audio", new[] { "--audio-presentation", "selectable", "--captions", "none", "--media-format", "mov" }.Concat(replace));
+            if (selection.SummaryPath is { } summary)
+                await RunImport("import-summary", new[] { "--input", summary }.Concat(replace));
+            if (selection.ADAudioPath is { } audio)
+                await RunImport("import-ad-audio", new[] { "--input", audio, "--audio-mode", selection.ADAudioMode }.Concat(replace));
+            if (combine && selection.ADAudioPath != null && !project.IsYouTube)
+                await RunImport("combine-imported-audio", new[] { "--audio-presentation", "selectable", "--captions", "none", "--media-format", "mov" }.Concat(replace));
             await ShowImportReportAsync();
         }
+        catch (OperationCanceledException) { Model.ReportStatus("Import cancelled. Completed imports remain in the project."); }
         catch (Exception ex) { await ShowError(ex); }
+        finally { foreach (var file in timingFiles) if (File.Exists(file)) File.Delete(file); }
     }
 
     private async Task<(bool Proceed, string? Timing)> ReviewTimingBeforeImportAsync(string path, bool description, string mode, StudioProject project)
@@ -88,7 +128,6 @@ public sealed partial class MainWindow
 
     private async Task<string?> ReviewTextTimingAsync(string path, string mode, StudioProject project)
     {
-        if (!Path.GetExtension(path).Equals(".txt", StringComparison.OrdinalIgnoreCase)) return null;
         try
         {
             var parsed = ImportTimingInspector.ReadRows(path);
@@ -151,8 +190,11 @@ public sealed partial class MainWindow
                 text.AppendLine("  " + conflict.Description);
         }
         if (!string.IsNullOrWhiteSpace(report.Guidance)) text.AppendLine(report.Guidance);
-        var canEditTimings = Model.Project is { Transcript.Count: > 0 } && report.Kind is "transcript" or "narration";
-        if (canEditTimings) text.AppendLine("\nChoose Edit Transcript Timings to adjust row timing, or Close to finish.");
+        var descriptionTiming = report.Kind == "narration";
+        var canEditTimings = descriptionTiming ? Model.Project is { Cues.Count: > 0 }
+            : report.Kind == "transcript" && Model.Project is { Transcript.Count: > 0 };
+        var editTimingTitle = descriptionTiming ? "Edit Description Timings…" : "Edit Transcript Timings…";
+        if (canEditTimings) text.AppendLine("\nChoose " + editTimingTitle + " to adjust row timing, or Close to finish.");
         var result = await ShowDialogAsync(new ContentDialog
         {
             Title = "Import Report",
@@ -161,15 +203,15 @@ public sealed partial class MainWindow
                 Content = new TextBlock { Text = text.ToString(), TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontFamily = new FontFamily("Cascadia Mono") },
                 MaxHeight = 520
             },
-            PrimaryButtonText = canEditTimings ? "Edit Transcript Timings…" : "",
+            PrimaryButtonText = canEditTimings ? editTimingTitle : "",
             CloseButtonText = "Close",
             DefaultButton = canEditTimings ? ContentDialogButton.Primary : ContentDialogButton.Close
         }, 820, 620);
         if (result == ContentDialogResult.Primary && canEditTimings)
         {
-            Section.SelectedIndex = 0;
+            Section.SelectedIndex = descriptionTiming ? 2 : 0;
             if (!editMode) EditMode_Click(this, new RoutedEventArgs());
-            Model.ReportStatus("Import complete. Edit a transcript row to adjust its timing.");
+            Model.ReportStatus(descriptionTiming ? "Import complete. Edit a description row to adjust its timing." : "Import complete. Edit a transcript row to adjust its timing.");
         }
     }
 

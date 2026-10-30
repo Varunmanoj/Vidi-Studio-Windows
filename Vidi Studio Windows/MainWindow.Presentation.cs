@@ -274,8 +274,13 @@ public sealed partial class MainWindow
         }
         UpdateApiKeyUi();
     }
-    private void ShowGallery_Click(object sender, RoutedEventArgs e)
+    private async void ShowGallery_Click(object sender, RoutedEventArgs e)
     {
+        if (summaryEditMode)
+        {
+            if (!await SaveSummaryChangesAsync()) return;
+            SetSummaryEditMode(false);
+        }
         StopProjectPlayback();
         GalleryPanel.Visibility = Visibility.Visible; EditorWorkspace.Visibility = Visibility.Collapsed;
         UpdateMenuBar(false);
@@ -356,8 +361,7 @@ public sealed partial class MainWindow
         {
             if (summaryEditMode)
             {
-                await SaveSummaryChangesAsync();
-                SetSummaryEditMode(false);
+                if (await SaveSummaryChangesAsync()) SetSummaryEditMode(false);
             }
             else
             {

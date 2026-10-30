@@ -245,7 +245,8 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Thumbnail playhead did not follow the video position.");
             Section.SelectedIndex = 1;
             Model.Settings.Set("summarySentenceHighlightColor", "#C0D8FF"); Model.Settings.Set("summaryWordHighlightColor", "#FFDA57");
-            HighlightReadbackSentence("Native Windows summary."); HighlightReadbackWord(7, 7);
+            var fixtureSentence = summaryLines.First(line => line.Text.Length > 7).Text;
+            HighlightReadbackSentence(fixtureSentence); HighlightReadbackWord(0, 6);
             if (activeSummaryBlock == null || activeSummaryBlock.TextHighlighters.Count != 2 ||
                 ((Microsoft.UI.Xaml.Media.SolidColorBrush)activeSummaryBlock.TextHighlighters[0].Background).Color.B != 255 ||
                 ((Microsoft.UI.Xaml.Media.SolidColorBrush)activeSummaryBlock.TextHighlighters[1].Background).Color.R != 255)
@@ -253,7 +254,7 @@ public sealed partial class MainWindow
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "summary-highlight.png"));
             await CaptureSmokeImage(SummaryRichText, Path.Combine(Path.GetDirectoryName(report)!, "summary-text-highlight.png"));
             ClearSummaryHighlight();
-            var spokenSummary = readback.SpeakAsync("Native Windows summary.");
+            var spokenSummary = readback.SpeakAsync(fixtureSentence);
             for (var attempt = 0; attempt < 40 && activeSummaryBlock?.TextHighlighters.Count != 2; attempt++) await Task.Delay(50);
             if (activeSummaryBlock?.TextHighlighters.Count != 2)
                 throw new InvalidOperationException("Spoken summary did not synchronize its sentence and word highlight with the visible text.");
@@ -261,12 +262,36 @@ public sealed partial class MainWindow
             try { await spokenSummary; } catch (OperationCanceledException) { }
             await Task.Delay(500);
             var savedSummary = Model.Project!.Summary;
+            var legacySummary = new string('\uFEFF', 5) + "# Performance Summary: Job Interview Comedy Skit\n\n### Overview\nA scene.";
+            var legacyView = BuildMarkdownView(legacySummary, trackReadback: false);
+            var legacyTitle = legacyView.Children.OfType<TextBlock>().First();
+            if (legacyTitle.FontSize != 30 || legacyTitle.Inlines.OfType<Run>().FirstOrDefault()?.Text != "Performance Summary: Job Interview Comedy Skit")
+                throw new InvalidOperationException("A legacy summary's repeated BOMs prevented the document title from rendering.");
+            RenderMarkdown(savedSummary);
+            await Task.Delay(100);
+            await CaptureSmokeImage(SummaryRichText, Path.Combine(Path.GetDirectoryName(report)!, "summary-presentation.png"));
+            if (savedSummary.StartsWith('\uFEFF') && (summaryLines.First().Text.StartsWith('#') || summaryLines.First().Text.Contains('\uFEFF')))
+                throw new InvalidOperationException("The provided legacy summary fixture still contains visible heading syntax or encoding marks.");
             var carriageReturnView = BuildMarkdownView("# Heading\r\rA **bold** line.\r\r- Item", trackReadback: false);
             if (carriageReturnView.Children.OfType<TextBlock>().Count() < 3)
                 throw new InvalidOperationException("Markdown using TextBox carriage-return line breaks did not render as separate blocks.");
+            var richSummary = BuildMarkdownView("A ~~removed~~ word and __bold__.\nA soft line break.", trackReadback: false);
+            var richBlock = richSummary.Children.OfType<TextBlock>().Single();
+            if (!richBlock.Inlines.OfType<Run>().Any(run => run.TextDecorations == Windows.UI.Text.TextDecorations.Strikethrough) ||
+                !richBlock.Inlines.OfType<Bold>().Any() || StripInline("![alt](https://example.com/image.png) and ~~old~~") != "alt and old")
+                throw new InvalidOperationException("Markdown reading and speech text do not agree on formatting.");
             try
             {
                 SetSummaryEditMode(true);
+                if (CanRunDesktopCommand("project-list") || CanRunDesktopCommand("project-grid")) throw new InvalidOperationException("Project layout shortcuts conflict with Markdown headings.");
+                SummaryEditorBox.Text = "hello";
+                SummaryEditorBox.Select(0, 5);
+                ApplySummaryMarkdown("bold");
+                if (SummaryEditorBox.Text != "**hello**") throw new InvalidOperationException("Markdown toolbar lost the selection.");
+                SummaryUndo_Click(this, new RoutedEventArgs());
+                if (SummaryEditorBox.Text != "hello") throw new InvalidOperationException("Markdown formatting cannot be undone.");
+                SummaryRedo_Click(this, new RoutedEventArgs());
+                if (SummaryEditorBox.Text != "**hello**") throw new InvalidOperationException("Markdown formatting cannot be redone.");
                 SummaryEditorBox.Text = "# Edited summary\n\nA **bold** line.\n\n- First item";
                 await SaveSummaryChangesAsync();
                 SetSummaryEditMode(false);
@@ -469,6 +494,24 @@ public sealed partial class MainWindow
             if (tocTitles.Count < 12 || tocTitles.Any(title => string.IsNullOrWhiteSpace(title) || title.Contains("TreeViewNode", StringComparison.Ordinal)))
                 throw new InvalidOperationException(
                     "The Help table of contents did not show readable chapter titles: " + string.Join(" | ", tocTitles));
+            PreviewTheme("dark"); await Task.Delay(150);
+            var renderedToc = helpWindow.RenderedTocTitlesForSmokeTest();
+            if (renderedToc.Count < 2 || !renderedToc.Contains(tocTitles[0]) || tocTitles.Take(6).Any(title => !renderedToc.Contains(title)))
+                throw new InvalidOperationException("Help TOC data exists but its visible chapter/topic labels are blank: " + string.Join(" | ", renderedToc));
+            await CaptureSmokeImage(helpWindow.TocVisualForSmokeTest, Path.Combine(Path.GetDirectoryName(report)!, "help-toc-dark.png"));
+            if (!(await helpWindow.ReaderStateForSmokeTest()).Contains("true")) throw new InvalidOperationException("Help reader did not follow the app's dark appearance.");
+            helpWindow.SearchForSmokeTest("Welcome");
+            await Task.Delay(100);
+            if (helpWindow.TocRootCountForSmokeTest != 1) throw new InvalidOperationException("Help chapter search did not filter the contents: " + string.Join(", ", helpWindow.TocTitlesForSmokeTest));
+            helpWindow.SearchForSmokeTest("");
+            await Task.Delay(100);
+            helpWindow.NavigateForSmokeTest("editor", "summary");
+            await Task.Delay(300);
+            if (helpWindow.LoadedPageForSmokeTest?.Contains("/editor.html") != true) throw new InvalidOperationException("Help chapter navigation did not load the chapter.");
+            PreviewTheme("light"); await Task.Delay(150);
+            if (helpWindow.RenderedTocTitlesForSmokeTest().Count < 2) throw new InvalidOperationException("Help TOC labels disappeared in light appearance.");
+            await CaptureSmokeImage(helpWindow.TocVisualForSmokeTest, Path.Combine(Path.GetDirectoryName(report)!, "help-toc-light.png"));
+            if (!(await helpWindow.ReaderStateForSmokeTest()).Contains("false")) throw new InvalidOperationException("Help reader did not follow the app's light appearance.");
             helpWindow.Close();
             await Task.Delay(200);
             if (App.HelpWindowForSmokeTest != null)
@@ -494,11 +537,20 @@ public sealed partial class MainWindow
             if (newProject.ActualWidth <= 0 || newProject.ActualHeight <= 0)
                 throw new InvalidOperationException($"New Project dialog did not render: {newProject.ActualWidth} × {newProject.ActualHeight}.");
             await CaptureSmokeImage(newProject, Path.Combine(Path.GetDirectoryName(report)!, "new-project-dark.png"));
+            newProject.SetAssetsForSmokeTest(new Models.ImportAssetSelection(ADTranscriptPath: "descriptions.srt"));
+            if (newProject.IsPrimaryButtonEnabled) throw new InvalidOperationException("AD-only import allowed creation without a transcript.");
+            newProject.SetAssetsForSmokeTest(new Models.ImportAssetSelection(TranscriptPath: "transcript.srt", ADAudioPath: "narration.wav"));
+            if (!newProject.IsPrimaryButtonEnabled || newProject.SecondaryButtonText != "Create Project & Combine") throw new InvalidOperationException("New Project does not offer optional audio combination.");
+            await Task.Delay(100);
+            newProject.ScrollToAssetsForSmokeTest();
+            await Task.Delay(100);
+            await CaptureSmokeImage(newProject, Path.Combine(Path.GetDirectoryName(report)!, "new-project-assets-dark.png"));
             newProject.SelectYouTubeForSmokeTest("https://www.youtube.com/watch?v=jfKfPfyJRdk");
             await Task.Delay(50);
             if (newProject.IsPrimaryButtonEnabled || !newProject.IsYouTube) throw new InvalidOperationException("New Project allowed a YouTube source before fetching its details.");
             newProject.SetYouTubeDetailsForSmokeTest("Public video preview");
             if (!newProject.IsPrimaryButtonEnabled) throw new InvalidOperationException("New Project did not enable Create after reviewing YouTube details.");
+            if (newProject.AssetSelection.ADAudioPath != null || newProject.SecondaryButtonText.Length != 0) throw new InvalidOperationException("YouTube creation retained a local audio import.");
             await CaptureSmokeImage(newProject, Path.Combine(Path.GetDirectoryName(report)!, "new-project-youtube-dark.png"));
             newProject.Hide(); await newProjectDisplay;
             PreviewTheme(originalTheme);
@@ -754,6 +806,7 @@ public sealed partial class MainWindow
             {
                 try { await task; } catch (OperationCanceledException) { }
             }
+            await VerifyExistingAssetEngineWorkflowForSmokeTestAsync(folder);
             ClearProject();
             if (Model.Project != null || EditorWorkspace.Visibility != Visibility.Collapsed || GalleryPanel.Visibility != Visibility.Visible || video.Source != null || narrationPlayer.Source != null || ProjectDetails.Children.Count != 0) throw new InvalidOperationException("Project close left stale editor state.");
             var emptySettings = new Views.SettingsDialog(Model, this, 1);
@@ -762,17 +815,60 @@ public sealed partial class MainWindow
             emptySettings.VerifyEmptyProjectsSettingsForSmokeTest();
             await CaptureSmokeImage((FrameworkElement)emptySettings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-projects-empty.png"));
             emptySettings.Hide(); await emptyDisplay;
-            await File.WriteAllTextAsync(report, "PASS: app-wide live light/dark themes across gallery, editor, Settings, New Project and Export; visible segment checkboxes and edit multi-selection, select all, deselect and Done in both themes; menu shortcut labels; video timeline playhead, synchronized Transcript and AD Transcript rows, summary highlighting and playback, New Project inspection, edit persistence, undo/redo, OneCore and SAPI narration, subtitle export, six editor sections, and engine invocation.");
+            await File.WriteAllTextAsync(report, "PASS: native light/dark UI, menus and segment selection; summary Markdown reading, saving, undo/redo and speech; New Project asset validation and optional Combine; external project folder persistence; SRT/VTT/TXT timing review; real transcript/description/summary/audio imports and two-track combination; Help search/navigation/theme; OneCore/SAPI narration, subtitle export, and six editor sections.");
         }
         catch (Exception ex) { await File.WriteAllTextAsync(report, ex.ToString()); }
         finally
         {
             dialogPresentationVerifier = null;
+            App.HelpWindowForSmokeTest?.Close();
+            openSettings?.Hide();
             // The final window can abort the Close call while dispatcher shutdown completes.
             try { Close(); }
             catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == unchecked((int)0x80004004)) { }
             Application.Current.Exit();
         }
+    }
+    private async Task VerifyExistingAssetEngineWorkflowForSmokeTestAsync(string originalFolder)
+    {
+        var testRoot = Path.Combine(Path.GetDirectoryName(originalFolder)!, "asset-workflow");
+        Directory.CreateDirectory(testRoot);
+        var source = Model.Project!.Resolve(Model.Project.Source);
+        async Task Run(string command, string[] args, bool needsProject = true)
+        {
+            if ((await Model.RunAsync(command, args, needsProject)).Count == 0)
+                throw new InvalidOperationException($"{command} failed in the native app: {Model.Status}");
+        }
+        await Run("import-video", new[] { "--video", source, "--library", Path.Combine(testRoot, Guid.NewGuid().ToString("N")) }, false);
+        var importedFolder = Model.Project!.Folder;
+        if (!File.Exists(Path.Combine(importedFolder, "project.json")) || importedFolder == originalFolder)
+            throw new InvalidOperationException("Project creation did not create a new portable folder.");
+        var transcript = Path.Combine(testRoot, "transcript.srt");
+        var descriptions = Path.Combine(testRoot, "descriptions.vtt");
+        var summary = Path.Combine(testRoot, "summary.md");
+        var audio = Path.Combine(testRoot, "narration.wav");
+        await File.WriteAllTextAsync(transcript, "1\n00:00:00,000 --> 00:00:01,000\nImported dialogue.\n");
+        await File.WriteAllTextAsync(descriptions, "WEBVTT\n\n00:02.000 --> 00:03.000\nImported description.\n");
+        await File.WriteAllTextAsync(summary, "# Imported summary\n\nA **reviewed** scene.");
+        var timingRows = Models.ImportTimingInspector.ReadRows(descriptions);
+        var timingDialog = new Views.TextTimingDialog("descriptions.vtt", 8, timingRows, "narration", Model, Model.Project);
+        if (!timingDialog.IsPrimaryButtonEnabled || timingRows.Count != 1 || timingRows[0].Start != 2)
+            throw new InvalidOperationException("VTT review did not preserve the subtitle times.");
+        var start = new System.Diagnostics.ProcessStartInfo(Model.Settings.Get("ffmpegPath", "ffmpeg.exe")) { UseShellExecute = false, CreateNoWindow = true };
+        foreach (var arg in new[] { "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=660:sample_rate=48000", "-t", "8", audio }) start.ArgumentList.Add(arg);
+        using (var process = System.Diagnostics.Process.Start(start)!) { await process.WaitForExitAsync(); if (process.ExitCode != 0) throw new InvalidOperationException("Import test audio could not be prepared."); }
+        await Run("import-transcript", new[] { "--input", transcript });
+        await Run("import-ad-transcript", new[] { "--input", descriptions, "--ad-transcript-mode", "narration" });
+        await Run("import-summary", new[] { "--input", summary });
+        await Run("import-ad-audio", new[] { "--input", audio, "--audio-mode", "narration" });
+        if (Model.Project!.Transcript.Count != 1 || Model.Project.Cues.Count != 1 || Model.Project.SummaryOrigin != "imported" || Model.Project.Exports.Count != 0)
+            throw new InvalidOperationException("Import did not retain all selected assets without automatically combining audio.");
+        await Run("combine-imported-audio", new[] { "--audio-presentation", "selectable", "--captions", "none", "--media-format", "mov" });
+        if (Model.Project!.Exports.Count != 1) throw new InvalidOperationException("Optional Combine did not create an export.");
+        var reopened = new ViewModels.StudioViewModel();
+        reopened.Reload();
+        if (!reopened.Projects.Any(project => project.Folder == importedFolder)) throw new InvalidOperationException("A project outside the default library was forgotten on reopen.");
+        Model.Open(originalFolder);
     }
     private async Task VerifyCompanionDialogsForSmokeTestAsync(string report)
     {
@@ -910,9 +1006,11 @@ public sealed partial class MainWindow
                     throw new InvalidOperationException($"Segment checkboxes have no visible themed border, selected fill or contrasting checkmark ({theme}).");
                 if (section == 2)
                     await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, $"description-checkboxes-{theme}-unchecked.png"));
+                var selectedItem = Segments.Items[0];
                 row.IsSelected = true;
-                if (Segments.SelectedItems.Count != 1 || !Segments.SelectedItems.Contains(row.Content))
-                    throw new InvalidOperationException("Selecting a segment row did not update the edit selection.");
+                // Theme/layout changes may recycle the container during SelectionChanged.
+                if (Segments.SelectedItems.Count != 1 || !Segments.SelectedItems.Contains(selectedItem))
+                    throw new InvalidOperationException($"Selecting a segment row did not update the edit selection: theme={theme}, section={section}, count={Segments.SelectedItems.Count}, row={row.Content?.GetType().Name}, items={Segments.Items.Count}, selected={row.IsSelected}, same={ReferenceEquals(Segments.Items[0], row.Content)}.");
                 if (section == 4)
                 {
                     var second = (Microsoft.UI.Xaml.Controls.ListViewItem)Segments.ContainerFromIndex(1);
@@ -1340,10 +1438,22 @@ public sealed partial class MainWindow
         var pixels = await bitmap.GetPixelsAsync();
         using var reader = DataReader.FromBuffer(pixels);
         var bytes = new byte[pixels.Length]; reader.ReadBytes(bytes);
+        // RenderTargetBitmap omits Mica and preserves translucent fills. Flatten onto
+        // the matching theme surface so PNG viewers don't show black text on black
+        // transparency or turn translucent selected rows into solid white blocks.
+        var surface = element.ActualTheme == ElementTheme.Dark ? 32 : 248;
+        for (var i = 0; i < bytes.Length; i += 4)
+        {
+            var fill = (surface * (255 - bytes[i + 3]) + 127) / 255;
+            bytes[i] = (byte)Math.Min(255, bytes[i] + fill);
+            bytes[i + 1] = (byte)Math.Min(255, bytes[i + 1] + fill);
+            bytes[i + 2] = (byte)Math.Min(255, bytes[i + 2] + fill);
+            bytes[i + 3] = 255;
+        }
         using var file = File.Open(path, FileMode.Create);
         using var stream = file.AsRandomAccessStream();
         var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
-        encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied, (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, bytes);
+        encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, bytes);
         await encoder.FlushAsync();
     }
 }

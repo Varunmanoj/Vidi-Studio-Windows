@@ -15,12 +15,13 @@ public sealed partial class MainWindow
     /// <summary>Builds a native Markdown reading view shared by Summary and preview.</summary>
     private StackPanel BuildMarkdownView(string markdown, bool trackReadback)
     {
-        var panel = new StackPanel { Spacing = 8 };
-        var lines = markdown.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        var panel = new StackPanel { Spacing = 10 };
+        var lines = NormalizeSummaryText(markdown).Split('\n');
         var index = 0;
         while (index < lines.Length)
         {
             var line = lines[index];
+            if (string.IsNullOrWhiteSpace(line)) { index++; continue; }
             if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
             {
                 index++;
@@ -70,8 +71,9 @@ public sealed partial class MainWindow
             {
                 var headingBlock = new TextBlock
                 {
-                    FontSize = 28 - heading.Groups[1].Length * 2,
+                    FontSize = heading.Groups[1].Length switch { 1 => 30, 2 => 26, 3 => 22, _ => 18 },
                     FontWeight = FontWeights.SemiBold,
+                    Margin = new Thickness(0, panel.Children.Count == 0 ? 0 : 8, 0, 3),
                     TextWrapping = TextWrapping.Wrap,
                     IsTextSelectionEnabled = true
                 };
@@ -85,7 +87,7 @@ public sealed partial class MainWindow
             var block = new TextBlock
             {
                 FontSize = 16, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
-                Margin = new Thickness(Regex.IsMatch(line, @"^\s*[-*]\s|^\s*\d+\.\s|^>\s") ? 18 : 0, 0, 0, 0)
+                Margin = new Thickness(Regex.IsMatch(line, @"^\s*[-*+]\s|^\s*\d+\.\s|^>\s") ? 18 + line.TakeWhile(char.IsWhiteSpace).Count() * 6 : 0, 0, 0, 0)
             };
             var value = line;
             string plain;
@@ -101,21 +103,26 @@ public sealed partial class MainWindow
                 AddInlines(block, number.Groups[1].Value + ". " + number.Groups[2].Value);
                 plain = number.Groups[1].Value + ". " + StripInline(number.Groups[2].Value);
             }
-            else if (Regex.IsMatch(line, @"^\s*[-*]\s+"))
+            else if (Regex.IsMatch(line, @"^\s*[-*+]\s+"))
             {
-                var bulletText = Regex.Replace(line, @"^\s*[-*]\s+", "");
+                var bulletText = Regex.Replace(line, @"^\s*[-*+]\s+", "");
                 AddInlines(block, "• " + bulletText);
                 plain = "• " + StripInline(bulletText);
             }
             else if (line.StartsWith("> ", StringComparison.Ordinal))
             {
-                block.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 120, 120, 120));
+                block.Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
                 block.FontStyle = Windows.UI.Text.FontStyle.Italic;
                 AddInlines(block, line[2..]);
                 plain = StripInline(line[2..]);
             }
             else
             {
+                // Markdown soft line breaks are one paragraph, as in the Mac reader.
+                while (index + 1 < lines.Length && !string.IsNullOrWhiteSpace(lines[index + 1])
+                    && !Regex.IsMatch(lines[index + 1], @"^\s*(?:#{1,6}\s|[-*+]\s|\d+\.\s|>|```|([-*_]\s*){3,}$)")
+                    && !IsTableStart(lines, index + 1))
+                    value += " " + lines[++index].Trim();
                 AddInlines(block, value);
                 plain = StripInline(value);
             }
@@ -181,42 +188,54 @@ public sealed partial class MainWindow
         return new Border { Child = grid, CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 4, 0, 8) };
     }
 
-    private static void AddInlines(TextBlock block, string value)
+    private static readonly Regex InlinePattern = new(@"\\([\\`*_{}\[\]()#+\-.!~|>])|(!?)\[([^\]]+)\]\(([^\)]+)\)|`([^`]+)`|\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|__(.+?)__|~~(.+?)~~|\*(.+?)\*|(?<!\w)_(.+?)_(?!\w)");
+
+    private static void AddInlines(TextBlock block, string value) => AddInlineContent(block.Inlines, value);
+
+    private static void AddInlineContent(InlineCollection inlines, string value)
     {
-        var pattern = new Regex(@"\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+)`|\[([^\]]+)\]\(([^\)]+)\)");
         var offset = 0;
-        foreach (Match match in pattern.Matches(value))
+        foreach (Match match in InlinePattern.Matches(value))
         {
-            if (match.Index > offset) block.Inlines.Add(new Run { Text = value[offset..match.Index] });
-            if (match.Groups[1].Success)
-            {
-                var bold = new Bold(); bold.Inlines.Add(new Run { Text = match.Groups[1].Value }); block.Inlines.Add(bold);
-            }
-            else if (match.Groups[2].Success)
-            {
-                var italic = new Italic(); italic.Inlines.Add(new Run { Text = match.Groups[2].Value }); block.Inlines.Add(italic);
-            }
+            if (match.Index > offset) inlines.Add(new Run { Text = value[offset..match.Index] });
+            if (match.Groups[1].Success) inlines.Add(new Run { Text = match.Groups[1].Value });
             else if (match.Groups[3].Success)
             {
-                block.Inlines.Add(new Run { Text = match.Groups[3].Value, FontFamily = new FontFamily("Cascadia Mono") });
-            }
-            else if (match.Groups[4].Success)
-            {
                 var link = new Hyperlink();
-                link.Inlines.Add(new Run { Text = match.Groups[4].Value });
-                if (Uri.TryCreate(match.Groups[5].Value, UriKind.Absolute, out var uri)) link.NavigateUri = uri;
-                block.Inlines.Add(link);
+                AddInlineContent(link.Inlines, match.Groups[3].Value);
+                if (Uri.TryCreate(match.Groups[4].Value, UriKind.Absolute, out var uri) && uri.Scheme is "https" or "http" or "mailto") link.NavigateUri = uri;
+                inlines.Add(link);
+            }
+            else if (match.Groups[5].Success) inlines.Add(new Run { Text = match.Groups[5].Value, FontFamily = new FontFamily("Cascadia Mono") });
+            else if (match.Groups[6].Success)
+            {
+                var bold = new Bold(); var italic = new Italic();
+                AddInlineContent(italic.Inlines, match.Groups[6].Value); bold.Inlines.Add(italic); inlines.Add(bold);
+            }
+            else if (match.Groups[7].Success || match.Groups[8].Success)
+            {
+                var bold = new Bold(); AddInlineContent(bold.Inlines, match.Groups[7].Success ? match.Groups[7].Value : match.Groups[8].Value); inlines.Add(bold);
+            }
+            else if (match.Groups[9].Success) inlines.Add(new Run { Text = StripInline(match.Groups[9].Value), TextDecorations = Windows.UI.Text.TextDecorations.Strikethrough });
+            else
+            {
+                var italic = new Italic(); AddInlineContent(italic.Inlines, match.Groups[10].Success ? match.Groups[10].Value : match.Groups[11].Value); inlines.Add(italic);
             }
             offset = match.Index + match.Length;
         }
-        if (offset < value.Length) block.Inlines.Add(new Run { Text = value[offset..] });
+        if (offset < value.Length) inlines.Add(new Run { Text = value[offset..] });
     }
 
     private static string StripInline(string value)
     {
-        var plain = Regex.Replace(value, @"\*\*(.+?)\*\*", "$1");
-        plain = Regex.Replace(plain, @"\*(.+?)\*", "$1");
-        plain = Regex.Replace(plain, @"`([^`]+)`", "$1");
-        return Regex.Replace(plain, @"\[([^\]]+)\]\(([^\)]+)\)", "$1");
+        return InlinePattern.Replace(value, match =>
+        {
+            if (match.Groups[1].Success) return match.Groups[1].Value;
+            if (match.Groups[3].Success) return StripInline(match.Groups[3].Value);
+            if (match.Groups[5].Success) return match.Groups[5].Value;
+            for (var group = 6; group <= 11; group++)
+                if (match.Groups[group].Success) return StripInline(match.Groups[group].Value);
+            return match.Value;
+        });
     }
 }

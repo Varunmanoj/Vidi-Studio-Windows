@@ -31,6 +31,15 @@ Check(MarkdownCommands.Apply("alt", 0, 3, "image").Text == "![alt](url)", "image
 Check(MarkdownCommands.Apply("", 0, 0, "table").Text.Contains("| Column 1 |"), "table");
 Check(MarkdownCommands.ListContinuation("- item") == "- ", "list continuation");
 Check(MarkdownCommands.ListContinuation("1. item") == "2. ", "number continuation");
+Check(MarkdownCommands.Apply("", 0, 0, "heading1").Text == "# ", "empty heading");
+Check(MarkdownCommands.Apply("\nnext", 0, 0, "heading1").Text == "# \nnext", "first empty line");
+Check(MarkdownCommands.Apply("first\nsecond", 0, 6, "bulletedList").Text == "- first\nsecond", "selection excludes next line");
+Check(MarkdownCommands.Apply("first\n", 6, 0, "heading2").Text == "first\n## ", "last empty line");
+Check(MarkdownCommands.Apply("a\n\nb", 0, 4, "bulletedList").Text == "- a\n- \n- b", "blank lines retained");
+Check(MarkdownCommands.ListContinuation("  + item") == "  + ", "nested marker retained");
+Check(MarkdownCommands.ListContinuation("  - [x] done") == "  - [ ] ", "new task unchecked");
+Check(MarkdownCommands.IsEmptyListItem("3. "), "empty numbered item exits list");
+Check(MarkdownCommands.ListContinuation("999999999999999999999. item") == null, "huge number does not crash");
 Console.WriteLine("PASS: Windows Markdown transformations");
 '''
         with tempfile.TemporaryDirectory() as temp:

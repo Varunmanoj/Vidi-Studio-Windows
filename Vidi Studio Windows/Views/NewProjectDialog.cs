@@ -13,6 +13,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Vidi_Studio_Windows.Services;
+using Vidi_Studio_Windows.Models;
 using Windows.Media.Core;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -26,20 +27,27 @@ public sealed class NewProjectDialog : ContentDialog
     private readonly SettingsStore settings;
     private readonly RadioButton local = new() { GroupName = "project-source" };
     private readonly RadioButton youtube = new() { GroupName = "project-source" };
-    private readonly StackPanel localFields = new() { Spacing = 12, Width = 460 };
-    private readonly StackPanel youtubeFields = new() { Spacing = 12, Width = 460 };
+    private readonly StackPanel localFields = new() { Spacing = 12, Width = 630 };
+    private readonly StackPanel youtubeFields = new() { Spacing = 12, Width = 630 };
     private readonly TextBlock selectedFile = new() { Text = "No video selected", Opacity = .7, TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock details = new() { TextWrapping = TextWrapping.Wrap };
     private readonly MediaPlayerElement preview = new() { Height = 160, AreTransportControlsEnabled = true, Visibility = Visibility.Collapsed };
-    private readonly TextBox youtubeUrl = new() { PlaceholderText = "https://youtu.be/…", Header = "YouTube video URL", Width = 290, HorizontalAlignment = HorizontalAlignment.Left };
+    private readonly TextBox youtubeUrl = new() { PlaceholderText = "https://youtu.be/…", Header = "YouTube video URL", Width = 470, HorizontalAlignment = HorizontalAlignment.Left };
     private readonly Button fetchDetails = new() { Content = "Fetch Details", Width = 120, VerticalAlignment = VerticalAlignment.Bottom };
-    private readonly RadioButton createDescription = new() { GroupName = "ad-mode", Content = "Create Audio Description in VidiStudio", IsChecked = true, Width = 460 };
-    private readonly RadioButton importDescription = new() { GroupName = "ad-mode", Content = "I already have Audio Description files", Width = 460 };
+    private readonly RadioButton createDescription = new() { GroupName = "ad-mode", Content = "Create Audio Description in VidiStudio", IsChecked = true, Width = 630 };
+    private readonly RadioButton importDescription = new() { GroupName = "ad-mode", Content = "I already have Audio Description files", Width = 630 };
+    private readonly TextBlock descriptionGuidance = new() { TextWrapping = TextWrapping.Wrap, Opacity = .65, FontSize = 12 };
     private readonly Border localCard;
     private readonly Border youtubeCard;
     public bool ImportAssetsAfterCreation => importDescription.IsChecked == true;
-    private readonly Border youtubePreview = new() { Visibility = Visibility.Collapsed, Width = 460, CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Background = new SolidColorBrush(Windows.UI.Color.FromArgb(24, 128, 128, 128)) };
-    private readonly TextBlock youtubeStatus = new() { Width = 460, TextWrapping = TextWrapping.Wrap, Opacity = .7 };
+    private readonly ImportAssetsPicker assets;
+    private readonly Border assetsCard;
+    private readonly TextBlock libraryLocation = new() { TextWrapping = TextWrapping.Wrap, Opacity = .7, FontSize = 12 };
+    public string LibraryPath { get; private set; }
+    public ImportAssetSelection AssetSelection => ImportAssetsAfterCreation ? assets.Selection : new();
+    public bool CombineRequested { get; private set; }
+    private readonly Border youtubePreview = new() { Visibility = Visibility.Collapsed, Width = 630, CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Background = new SolidColorBrush(Windows.UI.Color.FromArgb(24, 128, 128, 128)) };
+    private readonly TextBlock youtubeStatus = new() { Width = 630, TextWrapping = TextWrapping.Wrap, Opacity = .7 };
     private readonly TextBlock sourceHeading = new() { Text = "Video File", FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(2, 4, 0, 0) };
     private static readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private CancellationTokenSource? inspection;
@@ -53,6 +61,8 @@ public sealed class NewProjectDialog : ContentDialog
     internal async Task InspectVideoForSmokeTestAsync(string path) => await InspectVideoAsync(await StorageFile.GetFileFromPathAsync(path));
     internal string DetailsForSmokeTest => details.Text;
     internal FrameworkElement YouTubeFieldsForSmokeTest => youtubeFields;
+    internal void SetAssetsForSmokeTest(ImportAssetSelection selection) { importDescription.IsChecked = true; assets.SetFilesForSmokeTest(selection); }
+    internal void ScrollToAssetsForSmokeTest() { if (Content is ScrollViewer scroll) scroll.ChangeView(null, scroll.ScrollableHeight, null, true); }
     internal void SelectYouTubeForSmokeTest(string url) { youtube.IsChecked = true; youtubeUrl.Text = url; UpdateYouTubeDetails(); }
     internal void SetYouTubeDetailsForSmokeTest(string title)
     {
@@ -65,9 +75,10 @@ public sealed class NewProjectDialog : ContentDialog
     public NewProjectDialog(Window owner, ElementTheme theme, SettingsStore settings, bool openYouTube = false)
     {
         this.owner = owner; this.settings = settings;
+        LibraryPath = settings.Get("libraryPath");
         RequestedTheme = theme;
-        Width = 560; MaxWidth = 560;
-        Resources["ContentDialogMaxWidth"] = 560d;
+        Width = 760; MaxWidth = 760;
+        Resources["ContentDialogMaxWidth"] = 760d;
         Resources["ContentDialogMaxHeight"] = 1000d;
         Title = "New Project"; PrimaryButtonText = "Create Project"; CloseButtonText = "Cancel";
         DefaultButton = ContentDialogButton.Primary;
@@ -77,7 +88,7 @@ public sealed class NewProjectDialog : ContentDialog
         youtube.Content = SourceLabel("\uE768", "YouTube Video");
         var chooser = new Button { Content = SourceLabel("\uE8B7", "Choose Video…"), HorizontalAlignment = HorizontalAlignment.Right };
         chooser.Click += async (_, _) => await ChooseVideoAsync();
-        var fileRow = new Grid { ColumnSpacing = 12, Width = 460 };
+        var fileRow = new Grid { ColumnSpacing = 12, Width = 630 };
         fileRow.ColumnDefinitions.Add(new ColumnDefinition());
         fileRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         fileRow.Children.Add(new TextBlock { Text = "Video file", VerticalAlignment = VerticalAlignment.Center });
@@ -86,8 +97,8 @@ public sealed class NewProjectDialog : ContentDialog
         localFields.Children.Add(selectedFile);
         localFields.Children.Add(preview);
         localFields.Children.Add(details);
-        var youtubeRow = new Grid { ColumnSpacing = 10, Width = 460 };
-        youtubeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(290) });
+        var youtubeRow = new Grid { ColumnSpacing = 10, Width = 630 };
+        youtubeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(470) });
         youtubeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         youtubeRow.Children.Add(youtubeUrl);
         Grid.SetColumn(fetchDetails, 1); youtubeRow.Children.Add(fetchDetails);
@@ -97,10 +108,10 @@ public sealed class NewProjectDialog : ContentDialog
         fetchDetails.Click += async (_, _) => await FetchYouTubeDetailsAsync();
         var sourceOptions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
         sourceOptions.Children.Add(local); sourceOptions.Children.Add(youtube);
-        var sourceRow = new StackPanel { Spacing = 6, Width = 460 };
+        var sourceRow = new StackPanel { Spacing = 6, Width = 630 };
         sourceRow.Children.Add(new TextBlock { Text = "Choose a project source" });
         sourceRow.Children.Add(sourceOptions);
-        var contents = new StackPanel { Spacing = 14, Width = 490 };
+        var contents = new StackPanel { Spacing = 14, Width = 660 };
         contents.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = sourceRow });
         contents.Children.Add(sourceHeading);
         localCard = new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = localFields };
@@ -108,20 +119,38 @@ public sealed class NewProjectDialog : ContentDialog
         contents.Children.Add(localCard);
         contents.Children.Add(youtubeCard);
         contents.Children.Add(new TextBlock { Text = "Audio Description", FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(2, 4, 0, 0) });
-        var audioPanel = new StackPanel { Spacing = 6, Width = 460 };
+        var audioPanel = new StackPanel { Spacing = 6, Width = 630 };
         audioPanel.Children.Add(createDescription);
         audioPanel.Children.Add(importDescription);
-        audioPanel.Children.Add(new TextBlock
-        {
-            Text = "Generate a transcript, summary, and descriptions after creating the project.",
-            TextWrapping = TextWrapping.Wrap, Opacity = .65, FontSize = 12
-        });
+        audioPanel.Children.Add(descriptionGuidance);
         contents.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = audioPanel });
-        ToolTipService.SetToolTip(importDescription, "Open Import Existing Assets after the project is created to bring a transcript, summary, AD transcript, or AD audio");
-        Content = new ScrollViewer { Content = contents, MinHeight = 470, MaxHeight = 900, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        assets = new ImportAssetsPicker(owner, width: 630);
+        assetsCard = new Border { Padding = new Thickness(14), CornerRadius = new CornerRadius(8), Child = assets };
+        contents.Children.Add(assetsCard);
+        assets.SelectionChanged += (_, _) => UpdateCreationState();
+        createDescription.Checked += (_, _) => UpdateCreationState();
+        importDescription.Checked += (_, _) => UpdateCreationState();
+        ToolTipService.SetToolTip(importDescription, "Choose existing transcript, summary, AD transcript, or AD audio files before creating the project");
+        var location = new StackPanel { Width = 630, Spacing = 6 };
+        var chooseLocation = new Button { Content = "Choose Project Location…" };
+        ToolTipService.SetToolTip(chooseLocation, "Choose the parent folder; a new project folder is created inside it");
+        chooseLocation.Click += async (_, _) =>
+        {
+            try
+            {
+                var picker = new FolderPicker(); picker.FileTypeFilter.Add("*");
+                WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(owner));
+                if (await picker.PickSingleFolderAsync() is { } folder) { LibraryPath = folder.Path; UpdateCreationState(); }
+            }
+            catch (Exception ex) { libraryLocation.Text = "The folder chooser could not open: " + ex.Message; }
+        };
+        location.Children.Add(chooseLocation); location.Children.Add(libraryLocation);
+        contents.Children.Add(location);
+        Content = new ScrollViewer { Content = contents, MaxHeight = 650, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         local.Checked += (_, _) => UpdateSource(); youtube.Checked += (_, _) => UpdateSource();
         youtubeUrl.TextChanged += (_, _) => UpdateYouTubeDetails();
         PrimaryButtonClick += (_, args) => { if (!IsPrimaryButtonEnabled) args.Cancel = true; };
+        SecondaryButtonClick += (_, args) => { args.Cancel = !IsSecondaryButtonEnabled; CombineRequested = !args.Cancel; };
         Closing += (_, _) => { inspection?.Cancel(); youtubeInspection?.Cancel(); preview.Source = null; };
         if (openYouTube) youtube.IsChecked = true; else local.IsChecked = true;
         UpdateSource();
@@ -141,7 +170,21 @@ public sealed class NewProjectDialog : ContentDialog
         sourceHeading.Text = IsYouTube ? "YouTube Video" : "Video File";
         if (IsYouTube) preview.MediaPlayer?.Pause();
         fetchDetails.IsEnabled = ValidYouTubeId(YouTubeUrl) != null && youtubeInspection == null;
-        IsPrimaryButtonEnabled = IsYouTube ? fetchedYouTubeId != null && fetchedYouTubeId == ValidYouTubeId(YouTubeUrl) : validLocal;
+        assets.SetContext(IsYouTube, false);
+        UpdateCreationState();
+    }
+    private void UpdateCreationState()
+    {
+        if (assets == null) return;
+        assetsCard.Visibility = ImportAssetsAfterCreation ? Visibility.Visible : Visibility.Collapsed;
+        descriptionGuidance.Text = ImportAssetsAfterCreation ? "Choose existing files below. Text timing is reviewed before import. Combining audio is optional." : "Generate a transcript, summary, and descriptions after creating the project.";
+        var sourceReady = IsYouTube ? fetchedYouTubeId != null && fetchedYouTubeId == ValidYouTubeId(YouTubeUrl) : validLocal;
+        var assetsReady = !ImportAssetsAfterCreation || !assets.Selection.HasAny || assets.CanImport;
+        IsPrimaryButtonEnabled = sourceReady && assetsReady && !string.IsNullOrWhiteSpace(LibraryPath);
+        PrimaryButtonText = ImportAssetsAfterCreation ? "Create Project & Open Editor" : "Create Project";
+        SecondaryButtonText = ImportAssetsAfterCreation && !IsYouTube && assets.Selection.ADAudioPath != null ? "Create Project & Combine" : "";
+        IsSecondaryButtonEnabled = IsPrimaryButtonEnabled;
+        libraryLocation.Text = "A new portable project folder will be created in:\n" + LibraryPath;
     }
     private static string? ValidYouTubeId(string text)
     {

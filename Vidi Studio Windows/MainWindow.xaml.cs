@@ -145,10 +145,14 @@ public sealed partial class MainWindow : Window
         Root.Loaded += async (_, _) => { if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_REPORT") is { } report && System.Threading.Interlocked.CompareExchange(ref smokeTestClaimed, 1, 0) == 0) await RunSmokeTestAsync(report); };
 #endif
     }
-    private void AddShortcut(VirtualKey key, VirtualKeyModifiers modifiers, RoutedEventHandler handler)
+    private void AddShortcut(VirtualKey key, VirtualKeyModifiers modifiers, RoutedEventHandler handler, Func<bool>? canExecute = null)
     {
         var shortcut = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
-        shortcut.Invoked += (_, e) => { if (Model.Idle) handler(this, new RoutedEventArgs()); e.Handled = true; };
+        shortcut.Invoked += (_, e) =>
+        {
+            if (!Model.Idle || canExecute?.Invoke() == false) { e.Handled = false; return; }
+            handler(this, new RoutedEventArgs()); e.Handled = true;
+        };
         Root.KeyboardAccelerators.Add(shortcut);
     }
     private void UpdateStatusFooter(object? sender, PropertyChangedEventArgs e)
@@ -420,23 +424,55 @@ public sealed partial class MainWindow : Window
     private async Task ShowNewProjectDialogAsync(bool youtube)
     {
         if (Model.Busy) return;
+        if (summaryEditMode)
+        {
+            if (!await SaveSummaryChangesAsync()) return;
+            SetSummaryEditMode(false);
+        }
         try
         {
             var dialog = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings, youtube);
-            if (await ShowDialogAsync(dialog, 700, 820) != ContentDialogResult.Primary) return;
+            var result = await ShowDialogAsync(dialog, 760, 900);
+            if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary)) return;
+            var imports = dialog.AssetSelection;
+            List<EngineEvent> created;
             if (dialog.IsYouTube)
-                await Model.RunAsync("import-youtube", new[] { "--url", dialog.YouTubeUrl, "--library", Model.Settings.Get("libraryPath") }, false);
+                created = await Model.RunAsync("import-youtube", new[] { "--url", dialog.YouTubeUrl, "--library", dialog.LibraryPath }, false);
             else if (dialog.VideoPath is { } path)
-                await Model.RunAsync("import-video", new[] { "--video", path, "--library", Model.Settings.Get("libraryPath") }, false);
-            if (Model.Project != null) ShowEditor();
-            if (dialog.ImportAssetsAfterCreation && Model.Project != null) await ImportExistingAssetsAsync();
+                created = await Model.RunAsync("import-video", new[] { "--video", path, "--library", dialog.LibraryPath }, false);
+            else return;
+            // Cancelled processing returns no events and leaves the previous project selected.
+            // Never apply the new files to that previous project.
+            if (!created.Any(item => item.Data.TryGetProperty("project", out _)) || Model.Project == null)
+            {
+                if (!Model.Status.StartsWith("Cancelled", StringComparison.Ordinal)) await ShowError(new IOException(Model.Status));
+                return;
+            }
+            ShowEditor();
+            if (imports.HasAny) await ImportSelectedAssetsAsync(imports, dialog.CombineRequested);
         }
         catch (Exception ex) { await ShowError(ex); }
     }
     private void Search_Changed(object sender, TextChangedEventArgs e) { if (ready) Filter(); }
     private void Filter_Changed(object sender, SelectionChangedEventArgs e) { if (ready) Filter(); }
     private void Filter() => Model.Reload(Search.Text, SourceFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", _ => "all" });
-    private void Project_Changed(object sender, SelectionChangedEventArgs e) { if (Model.Idle && ProjectList.SelectedItem is StudioProject p) { Model.Open(p.Folder); ShowEditor(); } }
+    private bool changingProject;
+    private async void Project_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (changingProject || Model.Busy || ProjectList.SelectedItem is not StudioProject selected) return;
+        if (Model.Project?.Folder == selected.Folder) return;
+        changingProject = true;
+        try
+        {
+            if (summaryEditMode)
+            {
+                if (!await SaveSummaryChangesAsync()) return;
+                SetSummaryEditMode(false);
+            }
+            Model.Open(selected.Folder); ShowEditor();
+        }
+        finally { changingProject = false; }
+    }
     private async void RefreshProject()
     {
         if (Model.Project is not { } p) return;
@@ -489,9 +525,10 @@ public sealed partial class MainWindow : Window
     private async void Section_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!ready) return;
-        if (summaryEditMode && Model.Project != null)
+        if (summaryEditMode && Section.SelectedIndex != 1 && Model.Project != null)
         {
-            await SaveSummaryChangesAsync();
+            if (!await SaveSummaryChangesAsync()) { Section.SelectedIndex = 1; return; }
+            SetSummaryEditMode(false);
         }
         RenderSection();
         UpdateSectionOverlay(Model.IsAnalyzing);
@@ -540,8 +577,9 @@ public sealed partial class MainWindow : Window
         RefreshEditingRows();
         SummaryText.Text = p.Summary;
         RenderMarkdown(p.Summary);
-        if (!summaryEditMode)
+        if (!summaryEditMode || summaryDraftProjectId != p.Id)
         {
+            if (summaryEditMode) SetSummaryEditMode(false);
             SummaryEditorBox.Text = p.Summary ?? "";
             UpdateSummaryWordCount();
         }
@@ -1857,10 +1895,12 @@ public sealed partial class MainWindow : Window
     private void StopSpeech_Click(object sender, RoutedEventArgs e) { readback.Stop(); StopSegmentPreview(); }
 
     private bool summaryEditMode;
+    private string? summaryDraftProjectId;
 
     private void SetSummaryEditMode(bool edit)
     {
-        summaryEditMode = edit;
+        // Initializing the heading picker must never apply Paragraph to a saved heading.
+        summaryEditMode = false;
         SummaryEditorPanel.Visibility = edit ? Visibility.Visible : Visibility.Collapsed;
         SummaryPanel.Visibility = edit ? Visibility.Collapsed : Visibility.Visible;
         if (Section.SelectedIndex == 1)
@@ -1870,7 +1910,8 @@ public sealed partial class MainWindow : Window
         if (edit)
         {
             readback.Stop();
-            SummaryEditorBox.Text = Model.Project?.Summary ?? "";
+            SummaryEditorBox.Text = NormalizeSummaryText(Model.Project?.Summary);
+            summaryDraftProjectId = Model.Project?.Id;
             SummaryHeadingPicker.SelectedIndex = 0;
             SummaryProvenance.SelectedIndex = Model.Project?.SummaryOrigin switch
             {
@@ -1880,12 +1921,13 @@ public sealed partial class MainWindow : Window
             SummaryEditNotice.Text = "";
             SummaryEditorBox.Focus(FocusState.Programmatic);
         }
+        summaryEditMode = edit;
+        UpdateDesktopMenuStates();
     }
 
     private async void SummarySave_Click(object sender, RoutedEventArgs e)
     {
-        await SaveSummaryChangesAsync();
-        SetSummaryEditMode(false);
+        if (await SaveSummaryChangesAsync()) SetSummaryEditMode(false);
     }
 
     private void SummaryCancel_Click(object sender, RoutedEventArgs e)
@@ -1903,7 +1945,7 @@ public sealed partial class MainWindow : Window
     private void SummaryEditorBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateSummaryWordCount();
-        var original = Model.Project?.Summary ?? "";
+        var original = NormalizeSummaryText(Model.Project?.Summary);
         var hasChanges = NormalizeSummaryText(SummaryEditorBox.Text) != original;
         SummaryEditNotice.Text = hasChanges ? "• Unsaved changes" : "";
     }
@@ -1916,29 +1958,38 @@ public sealed partial class MainWindow : Window
         SummaryWordCount.Text = $"{words} {(words == 1 ? "word" : "words")} · {chars} {(chars == 1 ? "character" : "characters")}";
     }
 
-    private async Task SaveSummaryChangesAsync()
+    private async Task<bool> SaveSummaryChangesAsync()
     {
-        if (Model.Project is not { } p) return;
-        var text = NormalizeSummaryText(SummaryEditorBox.Text);
-        var origin = SummaryProvenance.SelectedIndex switch
+        if (Model.Project is not { } p || Model.Busy) return false;
+        try
         {
-            0 => "ai", 1 => "imported", 2 => "manual", _ => null
-        };
-        var originChanged = origin != null && origin != p.SummaryOrigin;
-        if (text != p.Summary || originChanged)
-        {
-            await Model.SaveSummaryAsync(text, originChanged ? origin : null);
-            SummaryEditNotice.Text = "";
+            var text = NormalizeSummaryText(SummaryEditorBox.Text);
+            var origin = SummaryProvenance.SelectedIndex switch
+            {
+                0 => "ai", 1 => "imported", 2 => "manual", _ => null
+            };
+            var originChanged = origin != null && origin != p.SummaryOrigin;
+            if (text != p.Summary || originChanged)
+            {
+                await Model.SaveSummaryAsync(text, originChanged ? origin : null);
+                SummaryEditNotice.Text = "";
+            }
+            // Refresh from the confirmed save, independently of model reload notifications.
+            SummaryText.Text = text;
+            RenderMarkdown(text);
+            return true;
         }
-        // SaveSummaryAsync assigns Project.Summary before returning, so the comparison above
-        // cannot be reused to decide whether the reading view needs the saved Markdown.
-        SummaryText.Text = text;
-        RenderMarkdown(text);
+        catch (Exception ex)
+        {
+            SummaryEditNotice.Text = "Summary could not be saved. Your edits are still here.";
+            await ShowError(ex);
+            return false;
+        }
     }
 
     /// <summary>WinUI TextBoxes expose line breaks as '\r'; store and render one newline form.</summary>
     private static string NormalizeSummaryText(string? text) =>
-        (text ?? "").Replace("\r\n", "\n").Replace('\r', '\n');
+        (text ?? "").TrimStart('\uFEFF').Replace("\r\n", "\n").Replace('\r', '\n');
 
     private async void OpenGeminiSettings_Click(object sender, RoutedEventArgs e) => await ShowSettingsSectionAsync(3);
 

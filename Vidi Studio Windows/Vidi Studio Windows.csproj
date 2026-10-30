@@ -8,7 +8,7 @@
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
-    <Version>1.0.178</Version>
+    <Version>1.0.179</Version>
     <Product>Vidi Studio</Product>
     <AssemblyTitle>Vidi Studio</AssemblyTitle>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>

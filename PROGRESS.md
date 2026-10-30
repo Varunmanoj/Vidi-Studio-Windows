@@ -450,3 +450,8 @@ Windows New Project now hides the inactive source card (YouTube URL no longer sh
 ## 2026-10-29 — Help window navigation, theme, TOC rendering — 1.0.173 / 1.0.173.0
 
 Windows Help now shows a native TOC with visible chapter/topic text, supports light/dark theme propagation into WebView content, removes the Browser and Home buttons, and adds Previous/Next chapter navigation with a page indicator at the bottom. The Windows-edition banner was removed from all generated Help pages. Validation on this macOS host: Windows suite 304 tests pass (1 Windows-only skip); Help tests, XAML, and C# semantic compile pass. Versions synchronized at 1.0.173 / 1.0.173.0. Not run: native Windows MSIX/install/UI validation.
+
+
+## 2026-10-30 - Shared desktop version 1.0.179
+
+Synchronized Windows version metadata to 1.0.179 / package 1.0.179.0 for the Mac Summary reading-mode source badge fix. Windows already displays the saved Summary source in reading mode; no Windows UI change was needed. Mac Release build, install, signature, and visual source-badge validation passed. No Windows native build or install was performed on this Mac host.

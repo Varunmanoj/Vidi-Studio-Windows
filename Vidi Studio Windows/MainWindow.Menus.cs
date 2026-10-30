@@ -251,7 +251,7 @@ public sealed partial class MainWindow
     private Models.StudioProject? SelectedBrowserProject()
     {
         if (!desktopEditorVisible) return SelectedGalleryProject();
-        if (LibraryPanel.Visibility != Visibility.Visible) return null;
+        if (!ProjectSplitView.IsPaneOpen) return null;
         var selected = (ProjectGrid.Visibility == Visibility.Visible ? ProjectGrid.SelectedItem : ProjectList.SelectedItem) as Models.StudioProject;
         return selected != null && Model.Projects.Contains(selected) ? selected : null;
     }
@@ -351,8 +351,8 @@ public sealed partial class MainWindow
             "help" => "VidiStudio Help", "about" => "About VidiStudio",
             "preview" => PreviewPanel.Visibility == Visibility.Visible ? "Hide Preview" : "Show Preview",
             "toggle-timeline" => TimelinePanel.Visibility == Visibility.Visible ? "Hide Timeline" : "Show Timeline",
-            "show-projects" => LibraryPanel.Visibility == Visibility.Visible ? "Hide Project List" : "Show Project List",
-            "show-inspector" => InspectorPanel.Visibility == Visibility.Visible ? "Hide Inspector" : "Show Inspector",
+            "show-projects" => ProjectSplitView.IsPaneOpen ? "Hide Project List" : "Show Project List",
+            "show-inspector" => InspectorSplitView.IsPaneOpen ? "Hide Inspector" : "Show Inspector",
             "project-list" => "Project List View", "project-grid" => "Project Grid View",
             "fullscreen" => fullScreenVideo ? "Exit Full-Screen Video" : "Full-Screen Video", "play" => "Play or Pause", "stop" => "Stop Video",
             "back" => "Rewind 5 Seconds", "forward" => "Fast Forward 5 Seconds", "narration" => "Toggle Narration",
@@ -590,7 +590,7 @@ public sealed partial class MainWindow
         {
             ProjectGrid.Visibility = grid ? Visibility.Visible : Visibility.Collapsed;
             ProjectList.Visibility = grid ? Visibility.Collapsed : Visibility.Visible;
-            LibraryPanel.Visibility = Visibility.Visible; LibraryColumn.Width = new GridLength(240);
+            ProjectSplitView.IsPaneOpen = true;
         }
         else
         {

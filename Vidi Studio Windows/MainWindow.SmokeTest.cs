@@ -426,11 +426,12 @@ public sealed partial class MainWindow
                 EditorProjectLayoutIcon.Glyph != (ProjectGrid.Visibility == Visibility.Visible ? "\uE8FD" : "\uE80A"))
                 throw new InvalidOperationException("The bottom-left project layout button did not switch grid and list views.");
             ToggleGrid_Click(this, new RoutedEventArgs());
-            var expectedLibrary = LibraryPanel.Visibility;
+            var expectedLibrary = ProjectSplitView.IsPaneOpen;
             ToggleLibrary_Click(this, new RoutedEventArgs());
-            if (LibraryPanel.Visibility == expectedLibrary || EditorProjectListButton.Visibility != Visibility.Visible)
+            if (ProjectSplitView.IsPaneOpen == expectedLibrary || EditorProjectListButton.Visibility != Visibility.Visible)
                 throw new InvalidOperationException("The bottom-left project list button did not hide the project list while staying available.");
             ToggleLibrary_Click(this, new RoutedEventArgs());
+            await VerifyProjectPaneTransitionsForSmokeTestAsync();
             var titleBarVisibility = AppTitleBar.Visibility;
             FullScreen_Click(this, new RoutedEventArgs());
             if (!fullScreenVideo || !ReferenceEquals(PreviewPanel.Parent, Root) || AppTitleBar.Visibility != Visibility.Collapsed ||
@@ -1224,7 +1225,7 @@ public sealed partial class MainWindow
         var original = Model.Project!;
         var originalSummary = original.Summary;
         var locations = Model.Settings.Data["projectLocations"]?.DeepClone();
-        var wasVisible = LibraryPanel.Visibility;
+        var wasVisible = ProjectSplitView.IsPaneOpen;
         var wasGrid = ProjectGrid.Visibility == Visibility.Visible;
         var folder = Path.Combine(Path.GetDirectoryName(original.Folder)!, "editor-navigation-" + Guid.NewGuid());
         var windowCount = App.WindowCountForSmokeTest;
@@ -1276,8 +1277,7 @@ public sealed partial class MainWindow
             if (Directory.Exists(folder)) Directory.Delete(folder, true);
             Model.Reload();
             SetProjectLayout(wasGrid);
-            LibraryPanel.Visibility = wasVisible;
-            LibraryColumn.Width = new GridLength(wasVisible == Visibility.Visible ? 240 : 0);
+            ProjectSplitView.IsPaneOpen = wasVisible;
             UpdateEditorProjectButtons();
             Section.SelectedIndex = 0;
         }
@@ -1492,6 +1492,38 @@ public sealed partial class MainWindow
             Math.Abs(Thumbnails.ActualWidth - TranscriptTrack.ActualWidth) > 2)
             throw new InvalidOperationException("Timeline thumbnails did not fill and align with the timeline tracks.");
     }
+    private async Task VerifyProjectPaneTransitionsForSmokeTestAsync()
+    {
+        if (ProjectSplitView.DisplayMode != SplitViewDisplayMode.Inline || ProjectSplitView.PanePlacement != SplitViewPanePlacement.Left ||
+            InspectorSplitView.DisplayMode != SplitViewDisplayMode.Inline || InspectorSplitView.PanePlacement != SplitViewPanePlacement.Right)
+            throw new InvalidOperationException("Project and inspector panes must use native inline slide transitions.");
+        var wasOpen = ProjectSplitView.IsPaneOpen;
+        try
+        {
+            ProjectSplitView.IsPaneOpen = true;
+            await Task.Delay(260);
+            if (!Search.Focus(FocusState.Programmatic)) throw new InvalidOperationException("The open project pane is not keyboard reachable.");
+            await RunDesktopCommandAsync("show-projects");
+            await Task.Delay(160);
+            if (ProjectSplitView.IsPaneOpen || !ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), EditorProjectListButton))
+                throw new InvalidOperationException("Closing the project pane did not preserve a reachable keyboard focus.");
+            // Reversing an unfinished transition must leave the final requested state usable.
+            await RunDesktopCommandAsync("show-projects");
+            await RunDesktopCommandAsync("show-projects");
+            await RunDesktopCommandAsync("show-projects");
+            await Task.Delay(260);
+            if (!ProjectSplitView.IsPaneOpen || LibraryPanel.ActualWidth <= 0 ||
+                DesktopCommandTitle("show-projects") != "Hide Project List")
+                throw new InvalidOperationException("Rapid project-pane toggles lost their final layout or menu state.");
+        }
+        finally
+        {
+            ProjectSplitView.IsPaneOpen = wasOpen;
+            UpdateEditorProjectButtons();
+            UpdateDesktopMenuStates();
+        }
+    }
+
     private void VerifyEditorPrimaryActionForSmokeTest(bool editing)
     {
         if (EditModeButton.Visibility != Visibility.Visible ||
@@ -1501,7 +1533,7 @@ public sealed partial class MainWindow
             string.IsNullOrWhiteSpace(Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(EditModeButton)))
             throw new InvalidOperationException("Each editable section needs one accent-colour, icon-only Edit/Done button with accessible metadata.");
         if (Section.SelectedIndex <= 2 &&
-            (GenerateCurrent.Visibility == Visibility.Visible) == (InspectorPanel.Visibility == Visibility.Visible))
+            (GenerateCurrent.Visibility == Visibility.Visible) == (InspectorSplitView.IsPaneOpen))
             throw new InvalidOperationException("Generation must appear in the inspector or toolbar, never both.");
     }
 

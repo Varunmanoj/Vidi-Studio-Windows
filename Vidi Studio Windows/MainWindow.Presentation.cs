@@ -361,7 +361,7 @@ public sealed partial class MainWindow
     private void UpdateEditorActionVisibility()
     {
         // The inspector owns generation while visible; the toolbar is its fallback.
-        GenerateCurrent.Visibility = Section.SelectedIndex <= 2 && InspectorPanel.Visibility != Visibility.Visible
+        GenerateCurrent.Visibility = Section.SelectedIndex <= 2 && !InspectorSplitView.IsPaneOpen
             ? Visibility.Visible : Visibility.Collapsed;
     }
 

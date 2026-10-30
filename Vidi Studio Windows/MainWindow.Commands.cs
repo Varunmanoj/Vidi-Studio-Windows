@@ -107,10 +107,21 @@ public sealed partial class MainWindow
     }
     private void ToggleLibrary_Click(object sender, RoutedEventArgs e)
     {
-        LibraryPanel.Visibility = LibraryPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
-        LibraryColumn.Width = new GridLength(LibraryPanel.Visibility == Visibility.Visible ? 240 : 0);
+        ProjectSplitView.IsPaneOpen = !ProjectSplitView.IsPaneOpen;
         UpdateEditorProjectButtons();
     }
+    private void ProjectPane_Closing(SplitView sender, SplitViewPaneClosingEventArgs args)
+    {
+        // Keep keyboard focus reachable when the control containing it slides away.
+        for (DependencyObject? focused = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
+             focused != null; focused = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(focused))
+        {
+            if (!ReferenceEquals(focused, LibraryPanel)) continue;
+            EditorProjectListButton.Focus(FocusState.Programmatic);
+            break;
+        }
+    }
+
     private void UpdateEditorProjectButtons()
     {
         if (EditorProjectLayoutButton == null || EditorProjectListButton == null) return;
@@ -119,7 +130,7 @@ public sealed partial class MainWindow
         var layoutLabel = grid ? "Switch project list to list view" : "Switch project list to grid view";
         ToolTipService.SetToolTip(EditorProjectLayoutButton, layoutLabel);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditorProjectLayoutButton, layoutLabel);
-        var visibleLibrary = LibraryPanel.Visibility == Visibility.Visible;
+        var visibleLibrary = ProjectSplitView.IsPaneOpen;
         if (!changingProject && visibleLibrary && SelectedBrowserProject() == null && Model.Project is { } openProject)
         {
             var current = Model.Projects.FirstOrDefault(project => project.Folder == openProject.Folder);
@@ -134,7 +145,7 @@ public sealed partial class MainWindow
         var selected = SelectedBrowserProject();
         if (EditorRemoveProjectButton != null) EditorRemoveProjectButton.IsEnabled = Model.Idle && selected != null;
         if (EditorDeleteProjectButton != null) EditorDeleteProjectButton.IsEnabled = Model.Idle && selected != null;
-        var visible = LibraryPanel.Visibility == Visibility.Visible;
+        var visible = ProjectSplitView.IsPaneOpen;
         var listLabel = visible ? "Hide project list" : "Show project list";
         ToolTipService.SetToolTip(EditorProjectListButton, listLabel);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditorProjectListButton, listLabel);
@@ -142,8 +153,7 @@ public sealed partial class MainWindow
     }
     private void ToggleInspector_Click(object sender, RoutedEventArgs e)
     {
-        InspectorPanel.Visibility = InspectorPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
-        InspectorColumn.Width = new GridLength(InspectorPanel.Visibility == Visibility.Visible ? 310 : 0);
+        InspectorSplitView.IsPaneOpen = !InspectorSplitView.IsPaneOpen;
         UpdateEditorActionVisibility();
     }
     private void FullScreen_Click(object sender, RoutedEventArgs e)

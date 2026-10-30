@@ -150,15 +150,63 @@
    </Grid>
   </Grid>
   <ContentControl x:Name="EditorWorkspace" Grid.Row="4" Visibility="Collapsed" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
-   <Grid><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition x:Name="LibraryColumn" Width="0"/><ColumnDefinition Width="*"/><ColumnDefinition x:Name="InspectorColumn" Width="310"/></Grid.ColumnDefinitions>
-    <Grid x:Name="LibraryPanel" Grid.Row="0" Visibility="Collapsed" Padding="12" RowSpacing="10" Background="{ThemeResource LayerFillColorAltBrush}">
+   <SplitView x:Name="InspectorSplitView" DisplayMode="Inline" PanePlacement="Right" IsPaneOpen="True" OpenPaneLength="310" PaneBackground="{ThemeResource LayerFillColorAltBrush}">
+    <SplitView.Pane>
+    <Grid x:Name="InspectorPanel" Background="{ThemeResource LayerFillColorAltBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
+     <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+     <ScrollViewer><StackPanel Padding="18,22" Spacing="18">
+      <StackPanel Spacing="8">
+       <Grid>
+        <TextBlock Text="Project Information" FontWeight="SemiBold"/>
+        <Button x:Name="InspectorIntegrityButton" Click="OpenInspectorIntegrity_Click" Visibility="Collapsed" HorizontalAlignment="Right" Padding="4" Background="Transparent" BorderThickness="0" AutomationProperties.Name="Show all project file issues" ToolTipService.ToolTip="Show all project file issues">
+         <FontIcon x:Name="InspectorIntegrityIcon" Glyph="&#xE7BA;" FontSize="14"/>
+        </Button>
+       </Grid>
+       <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10"><StackPanel x:Name="ProjectDetails" Spacing="8"/></Border>
+       <TextBlock x:Name="ProjectInformation" Visibility="Collapsed"/>
+      </StackPanel>
+      <StackPanel Spacing="8"><TextBlock Text="Video Information" FontWeight="SemiBold"/><Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10"><StackPanel x:Name="VideoDetails" Spacing="8"/></Border></StackPanel>
+      <StackPanel x:Name="ContextActions" Spacing="8">
+       <TextBlock x:Name="InspectorSectionTitle" Text="Transcript" FontWeight="SemiBold"/>
+       <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10">
+        <StackPanel Spacing="6">
+         <Button x:Name="InspectorGenerate" Content="Generate Transcript" Style="{StaticResource InspectorButton}" Click="GenerateCurrent_Click"/>
+         <Button x:Name="InspectorRewriteButton" Style="{StaticResource InspectorButton}" Click="Rewrite_Click" Visibility="Collapsed"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE8AC;" FontSize="14"/><TextBlock Text="Rewrite selected to fit"/></StackPanel></Button>
+        </StackPanel>
+       </Border>
+      </StackPanel>
+      <StackPanel x:Name="NarrationActions" Spacing="8" Visibility="Collapsed">
+       <TextBlock Text="Narration Audio" FontWeight="SemiBold"/>
+       <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10">
+        <StackPanel Spacing="6">
+         <StackPanel x:Name="InspectorNarrationProgressPanel" Orientation="Horizontal" Spacing="8" Visibility="Collapsed"><ProgressRing x:Name="InspectorNarrationRing" Width="16" Height="16" IsActive="False" VerticalAlignment="Center"/><FontIcon Glyph="&#xE767;" FontSize="14" VerticalAlignment="Center"/><TextBlock x:Name="InspectorNarrationStatusText" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap"/></StackPanel>
+         <Button x:Name="InspectorSynthesizeNarrationButton" Style="{StaticResource InspectorButton}" Tag="synthesize-tts" Click="Command_Click"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE767;" FontSize="14"/><TextBlock x:Name="InspectorSynthesizeNarrationLabel" Text="Generate All AD Audio"/></StackPanel></Button>
+         <Button x:Name="InspectorSynthesizeChangedButton" Style="{StaticResource InspectorButton}" Click="ChangedNarration_Click"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE72C;" FontSize="14"/><TextBlock Text="Generate Missing or Changed AD Audio"/></StackPanel></Button>
+         <Button Style="{StaticResource InspectorButton}" Click="DeleteNarration_Click"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE74F;" FontSize="14"/><TextBlock Text="Delete selected narration"/></StackPanel></Button>
+        </StackPanel>
+       </Border>
+      </StackPanel>
+      <Button Style="{StaticResource InspectorButton}" Click="DeleteGenerated_Click"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE74D;" FontSize="14"/><TextBlock Text="Choose content to delete"/></StackPanel></Button>
+      <StackPanel Spacing="8"><TextBlock Text="Video Analysis Availability" FontWeight="SemiBold"/><TextBlock x:Name="AnalysisAvailability" Text="Not checked" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><StackPanel Orientation="Horizontal" Spacing="8"><Button x:Name="PrepareAnalysisButton" Content="Prepare" Tag="prepare-analysis-video" Click="Command_Click"/><Button x:Name="RefreshAnalysisButton" Content="Refresh" Tag="check-video-availability" Click="Command_Click"/><Button x:Name="OcrFrameButton" Content="Read frame" Click="Ocr_Click"/></StackPanel></StackPanel>
+      <StackPanel Spacing="8"><TextBlock Text="Export" FontWeight="SemiBold"/><Button x:Name="InspectorExportButton" Content="Export…" Style="{StaticResource InspectorButton}" Click="Export_Click"/><TextBlock Text="Created Exports" FontWeight="SemiBold"/><StackPanel x:Name="InspectorExports" Spacing="6"/></StackPanel>
+     </StackPanel></ScrollViewer>
+     <Grid Grid.Row="1" Padding="14,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Button Content="&#xE8B7;" FontFamily="Segoe Fluent Icons" Click="Reveal_Click" AutomationProperties.Name="Open project folder" ToolTipService.ToolTip="Open the project folder"/><Button Grid.Column="1" Content="&#xE8A5;" FontFamily="Segoe Fluent Icons" Click="OpenConfiguration_Click" Margin="4,0,0,0" AutomationProperties.Name="Open project configuration" ToolTipService.ToolTip="Open project.json in the default editor"/><Button Grid.Column="3" x:Name="InspectorSettingsButton" Content="&#xE713;" FontFamily="Segoe Fluent Icons" Click="Settings_Click" HorizontalAlignment="Right" AutomationProperties.Name="Settings" ToolTipService.ToolTip="Settings"/></Grid>
+    </Grid>
+    </SplitView.Pane>
+    <SplitView.Content>
+     <Grid><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <SplitView x:Name="ProjectSplitView" DisplayMode="Inline" PanePlacement="Left" IsPaneOpen="False" OpenPaneLength="240" PaneBackground="{ThemeResource LayerFillColorAltBrush}" PaneClosing="ProjectPane_Closing">
+       <SplitView.Pane>
+    <Grid x:Name="LibraryPanel" Padding="12" RowSpacing="10" Background="{ThemeResource LayerFillColorAltBrush}">
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
      <TextBox x:Name="Search" PlaceholderText="Search projects" TextChanged="Search_Changed" AutomationProperties.Name="Search projects"/>
      <ComboBox x:Name="SourceFilter" Grid.Row="1" SelectedIndex="0" SelectionChanged="Filter_Changed" HorizontalAlignment="Stretch" AutomationProperties.Name="Project source filter"><ComboBoxItem Content="All projects"/><ComboBoxItem Content="Local videos"/><ComboBoxItem Content="YouTube videos"/></ComboBox>
      <Grid Grid.Row="2"><GridView x:Name="ProjectGrid" Visibility="Collapsed" ItemsSource="{x:Bind Model.Projects}" ItemTemplate="{StaticResource EditorProjectCard}" AutomationProperties.Name="Projects grid" SelectionChanged="ProjectGrid_Changed" ContextRequested="ProjectContext_Requested"/><ListView x:Name="ProjectList" ItemsSource="{x:Bind Model.Projects}" SelectionChanged="Project_Changed" ContextRequested="ProjectContext_Requested" AutomationProperties.Name="Projects"/></Grid>
      <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8"><Button Content="Rename" Click="Rename_Click"/><Button x:Name="EditorRemoveProjectButton" Content="&#xE738;" FontFamily="Segoe Fluent Icons" Click="RemoveListedProject_Click" ToolTipService.ToolTip="Remove the selected project from the list and keep its files" AutomationProperties.Name="Remove selected project from list"/><Button x:Name="EditorDeleteProjectButton" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Click="DeleteListedProject_Click" ToolTipService.ToolTip="Move the selected project and its files to the Recycle Bin after confirmation" AutomationProperties.Name="Delete selected project"/></StackPanel>
     </Grid>
-    <Grid Grid.Column="1" Grid.Row="0">
+       </SplitView.Pane>
+       <SplitView.Content>
+    <Grid>
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
      <Grid x:Name="PreviewPanel" Height="150" Background="Black"><MediaPlayerElement x:Name="Player" AreTransportControlsEnabled="True"/><WebView2 x:Name="YouTubePlayer" Visibility="Collapsed"/><StackPanel x:Name="CaptionOverlay" Visibility="Collapsed" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,16,16,48" Spacing="4" IsHitTestVisible="False"><Border x:Name="DialogueCaptionBox" Padding="12,6" CornerRadius="4"><TextBlock x:Name="CaptionText" TextWrapping="Wrap" TextAlignment="Center"/></Border><Border x:Name="DescriptionCaptionBox" Padding="12,6" CornerRadius="4"><TextBlock x:Name="DescriptionCaptionText" TextWrapping="Wrap" TextAlignment="Center"/></Border></StackPanel></Grid>
      <StackPanel Grid.Row="1" x:Name="TimelinePanel" Spacing="4" Padding="18,8">
@@ -325,53 +373,17 @@
      </DropDownButton.Flyout>
     </DropDownButton><Button Content="&#xE7A7;" FontFamily="Segoe Fluent Icons" Click="Undo_Click" ToolTipService.ToolTip="Undo segment edit" AutomationProperties.Name="Undo segment edit"/><Button Content="&#xE7A6;" FontFamily="Segoe Fluent Icons" Click="Redo_Click" ToolTipService.ToolTip="Redo segment edit" AutomationProperties.Name="Redo segment edit"/></StackPanel></ScrollViewer>
     </Grid>
-    <Grid Grid.Column="2" Grid.RowSpan="2" x:Name="InspectorPanel" Background="{ThemeResource LayerFillColorAltBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
-     <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-     <ScrollViewer><StackPanel Padding="18,22" Spacing="18">
-      <StackPanel Spacing="8">
-       <Grid>
-        <TextBlock Text="Project Information" FontWeight="SemiBold"/>
-        <Button x:Name="InspectorIntegrityButton" Click="OpenInspectorIntegrity_Click" Visibility="Collapsed" HorizontalAlignment="Right" Padding="4" Background="Transparent" BorderThickness="0" AutomationProperties.Name="Show all project file issues" ToolTipService.ToolTip="Show all project file issues">
-         <FontIcon x:Name="InspectorIntegrityIcon" Glyph="&#xE7BA;" FontSize="14"/>
-        </Button>
-       </Grid>
-       <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10"><StackPanel x:Name="ProjectDetails" Spacing="8"/></Border>
-       <TextBlock x:Name="ProjectInformation" Visibility="Collapsed"/>
-      </StackPanel>
-      <StackPanel Spacing="8"><TextBlock Text="Video Information" FontWeight="SemiBold"/><Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10"><StackPanel x:Name="VideoDetails" Spacing="8"/></Border></StackPanel>
-      <StackPanel x:Name="ContextActions" Spacing="8">
-       <TextBlock x:Name="InspectorSectionTitle" Text="Transcript" FontWeight="SemiBold"/>
-       <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10">
-        <StackPanel Spacing="6">
-         <Button x:Name="InspectorGenerate" Content="Generate Transcript" Style="{StaticResource InspectorButton}" Click="GenerateCurrent_Click"/>
-         <Button x:Name="InspectorRewriteButton" Style="{StaticResource InspectorButton}" Click="Rewrite_Click" Visibility="Collapsed"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE8AC;" FontSize="14"/><TextBlock Text="Rewrite selected to fit"/></StackPanel></Button>
-        </StackPanel>
-       </Border>
-      </StackPanel>
-      <StackPanel x:Name="NarrationActions" Spacing="8" Visibility="Collapsed">
-       <TextBlock Text="Narration Audio" FontWeight="SemiBold"/>
-       <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10">
-        <StackPanel Spacing="6">
-         <StackPanel x:Name="InspectorNarrationProgressPanel" Orientation="Horizontal" Spacing="8" Visibility="Collapsed"><ProgressRing x:Name="InspectorNarrationRing" Width="16" Height="16" IsActive="False" VerticalAlignment="Center"/><FontIcon Glyph="&#xE767;" FontSize="14" VerticalAlignment="Center"/><TextBlock x:Name="InspectorNarrationStatusText" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap"/></StackPanel>
-         <Button x:Name="InspectorSynthesizeNarrationButton" Style="{StaticResource InspectorButton}" Tag="synthesize-tts" Click="Command_Click"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE767;" FontSize="14"/><TextBlock x:Name="InspectorSynthesizeNarrationLabel" Text="Generate All AD Audio"/></StackPanel></Button>
-         <Button x:Name="InspectorSynthesizeChangedButton" Style="{StaticResource InspectorButton}" Click="ChangedNarration_Click"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE72C;" FontSize="14"/><TextBlock Text="Generate Missing or Changed AD Audio"/></StackPanel></Button>
-         <Button Style="{StaticResource InspectorButton}" Click="DeleteNarration_Click"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE74F;" FontSize="14"/><TextBlock Text="Delete selected narration"/></StackPanel></Button>
-        </StackPanel>
-       </Border>
-      </StackPanel>
-      <Button Style="{StaticResource InspectorButton}" Click="DeleteGenerated_Click"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE74D;" FontSize="14"/><TextBlock Text="Choose content to delete"/></StackPanel></Button>
-      <StackPanel Spacing="8"><TextBlock Text="Video Analysis Availability" FontWeight="SemiBold"/><TextBlock x:Name="AnalysisAvailability" Text="Not checked" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><StackPanel Orientation="Horizontal" Spacing="8"><Button x:Name="PrepareAnalysisButton" Content="Prepare" Tag="prepare-analysis-video" Click="Command_Click"/><Button x:Name="RefreshAnalysisButton" Content="Refresh" Tag="check-video-availability" Click="Command_Click"/><Button x:Name="OcrFrameButton" Content="Read frame" Click="Ocr_Click"/></StackPanel></StackPanel>
-      <StackPanel Spacing="8"><TextBlock Text="Export" FontWeight="SemiBold"/><Button x:Name="InspectorExportButton" Content="Export…" Style="{StaticResource InspectorButton}" Click="Export_Click"/><TextBlock Text="Created Exports" FontWeight="SemiBold"/><StackPanel x:Name="InspectorExports" Spacing="6"/></StackPanel>
-     </StackPanel></ScrollViewer>
-     <Grid Grid.Row="1" Padding="14,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Button Content="&#xE8B7;" FontFamily="Segoe Fluent Icons" Click="Reveal_Click" AutomationProperties.Name="Open project folder" ToolTipService.ToolTip="Open the project folder"/><Button Grid.Column="1" Content="&#xE8A5;" FontFamily="Segoe Fluent Icons" Click="OpenConfiguration_Click" Margin="4,0,0,0" AutomationProperties.Name="Open project configuration" ToolTipService.ToolTip="Open project.json in the default editor"/><Button Grid.Column="3" x:Name="InspectorSettingsButton" Content="&#xE713;" FontFamily="Segoe Fluent Icons" Click="Settings_Click" HorizontalAlignment="Right" AutomationProperties.Name="Settings" ToolTipService.ToolTip="Settings"/></Grid>
-    </Grid>
-     <Grid Grid.Row="1" Grid.ColumnSpan="2" Padding="10,4" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+       </SplitView.Content>
+      </SplitView>
+     <Grid Grid.Row="1" Padding="10,4" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
       <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
        <Button x:Name="EditorProjectLayoutButton" Style="{StaticResource CompactButton}" Padding="8,4" Click="ToggleGrid_Click" ToolTipService.ToolTip="Switch project list view" AutomationProperties.Name="Switch project list view"><FontIcon x:Name="EditorProjectLayoutIcon" FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE80A;"/></Button>
        <Button x:Name="EditorProjectListButton" Style="{StaticResource CompactButton}" Padding="8,4" Click="ToggleLibrary_Click" ToolTipService.ToolTip="Show or hide project list" AutomationProperties.Name="Show or hide project list"><FontIcon x:Name="EditorProjectListIcon" FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE8F1;"/></Button>
       </StackPanel>
      </Grid>
-   </Grid>
+     </Grid>
+    </SplitView.Content>
+   </SplitView>
   </ContentControl>
    <Border x:Name="StatusFooter" Grid.Row="5" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="14,7">
     <Grid ColumnSpacing="10">

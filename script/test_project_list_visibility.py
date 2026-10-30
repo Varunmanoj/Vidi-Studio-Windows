@@ -10,6 +10,7 @@ sources = [ROOT / 'Vidi Studio Windows/Models/StudioProject.cs',
            ROOT / 'Vidi Studio Windows/Models/ProjectIntegrity.cs',
            ROOT / 'Vidi Studio Windows/Services/SettingsStore.cs',
            ROOT / 'Vidi Studio Windows/Services/ProjectListVisibility.cs',
+           ROOT / 'Vidi Studio Windows/Services/ProjectFolderIdentity.cs',
            ROOT / 'tests/project_list_visibility_harness.cs']
 project = BUILD / 'ProjectListVisibility.csproj'
 project.write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType>'

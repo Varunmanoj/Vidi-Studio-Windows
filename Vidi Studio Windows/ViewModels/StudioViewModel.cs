@@ -136,7 +136,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         {
             var path = entry is System.Text.Json.Nodes.JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
             if (string.IsNullOrWhiteSpace(path)) continue;
-            try { externalFolders.Add(Path.GetFullPath(path)); } catch (ArgumentException) { }
+            try { externalFolders.Add(ProjectFolderIdentity.Normalize(path)); } catch (ArgumentException) { }
         }
     }
     private void SaveExternalFolders()
@@ -162,9 +162,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         try { if (Directory.Exists(library)) libraryFolders.AddRange(Directory.EnumerateDirectories(library)); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         { Status = "The project library is unavailable. Choose a project location in Settings → Storage."; }
-        var folders = libraryFolders.Concat(externalFolders)
-            .Where(folder => !projectListVisibility.IsRemoved(folder))
-            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var folders = ProjectFolderIdentity.DistinctFolders(libraryFolders.Concat(externalFolders))
+            .Where(folder => !projectListVisibility.IsRemoved(folder)).ToList();
         var currentFolders = new HashSet<string>(folders, StringComparer.OrdinalIgnoreCase);
         foreach (var stale in knownProjects.Keys.Where(folder => !currentFolders.Contains(folder)).ToList())
         {
@@ -229,11 +228,10 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             return true;
         }
         var library = Settings.Get("libraryPath");
-        var folders = (Directory.Exists(library)
+        var folders = ProjectFolderIdentity.DistinctFolders(Directory.Exists(library)
                 ? Directory.EnumerateDirectories(library).Concat(externalFolders)
                 : externalFolders)
-            .Where(folder => !projectListVisibility.IsRemoved(folder))
-            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            .Where(folder => !projectListVisibility.IsRemoved(folder)).ToList();
         var current = new HashSet<string>(folders, StringComparer.OrdinalIgnoreCase);
         if (knownProjects.Keys.Any(folder => !current.Contains(folder)))
         {
@@ -304,10 +302,11 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     }
     public void Open(string folder)
     {
+        folder = ProjectFolderIdentity.Normalize(folder);
         Settings.Reload(); LoadExternalFolders();
         projectListVisibility.Reload();
         projectListVisibility.Restore(folder);
-        if (externalFolders.Add(Path.GetFullPath(folder))) SaveExternalFolders();
+        if (externalFolders.Add(folder)) SaveExternalFolders();
         var loaded = StudioProject.TryLoad(folder);
         Project = loaded ?? StudioProject.DamagedPlaceholder(folder);
         Project.Integrity = ProjectIntegrityAuditor.Audit(Project.ToIntegrityManifest());

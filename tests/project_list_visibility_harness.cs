@@ -27,6 +27,32 @@ internal static class ProjectListVisibilityHarness
             }
             var files = Directory.GetFiles(root, "*", SearchOption.AllDirectories).ToDictionary(path => path,
                 path => (Bytes: File.ReadAllBytes(path), Modified: File.GetLastWriteTimeUtc(path)));
+            // Reproduce library enumeration plus saved/opened path aliases to the same folder.
+            var variants = new[] { libraryProject, libraryProject + Path.DirectorySeparatorChar,
+                Path.Combine(libraryProject, "."), Path.GetRelativePath(Environment.CurrentDirectory, libraryProject),
+                libraryProject.ToUpperInvariant() };
+            Require(ProjectFolderIdentity.DistinctFolders(variants).Count == 1, "One project appeared more than once through path spelling variants.");
+            if (OperatingSystem.IsWindows())
+            {
+                var extended = libraryProject.StartsWith(@"\\", StringComparison.Ordinal)
+                    ? @"\\?\UNC\" + libraryProject[2..] : @"\\?\" + libraryProject;
+                Require(ProjectFolderIdentity.DistinctFolders(new[] { libraryProject, extended }).Count == 1,
+                    "An extended Windows path created a duplicate project.");
+            }
+            Require(ProjectFolderIdentity.DistinctFolders(new[] { libraryProject, externalProject }).Count == 2,
+                "Independent project folders were merged.");
+            var alias = Path.Combine(root, "library-alias");
+            var hasLink = false;
+            try { Directory.CreateSymbolicLink(alias, Path.GetDirectoryName(libraryProject)!); hasLink = true; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException) { }
+            if (!hasLink) Console.WriteLine("SKIP: directory-link creation is unavailable on this host.");
+            var aliasProject = Path.Combine(alias, "project");
+            if (hasLink)
+                Require(ProjectFolderIdentity.DistinctFolders(new[] { libraryProject, aliasProject }).Count == 1,
+                    "A parent-folder link created a duplicate project.");
+            var missing = Path.Combine(root, "missing", "project");
+            Require(ProjectFolderIdentity.DistinctFolders(new[] { missing, missing + Path.DirectorySeparatorChar }).Count == 1,
+                "Missing-project path variants were not normalized.");
             var config = Path.Combine(root, "config.json");
             Environment.SetEnvironmentVariable("VIDISTUDIO_CONFIG", config);
             var settings = new SettingsStore();
@@ -38,6 +64,11 @@ internal static class ProjectListVisibilityHarness
             visibility.Remove(libraryProject);
             visibility.Remove(externalProject);
             visibility.Remove(libraryProject + Path.DirectorySeparatorChar);
+            if (hasLink)
+            {
+                Require(visibility.IsRemoved(aliasProject), "Removing a project left its alias visible.");
+                visibility.Remove(aliasProject);
+            }
             Require(settings.Data["removedProjectFolders"]!.AsArray().Count == 2, "Path aliases created duplicate entries.");
             settings = new SettingsStore();
             visibility = new ProjectListVisibility(settings);
@@ -51,6 +82,7 @@ internal static class ProjectListVisibilityHarness
             foreach (var entry in files)
                 Require(File.ReadAllBytes(entry.Key).SequenceEqual(entry.Value.Bytes) && File.GetLastWriteTimeUtc(entry.Key) == entry.Value.Modified,
                     "Project files changed during remove/restore: " + entry.Key);
+            if (hasLink) Directory.Delete(alias);
             Require(Directory.GetFiles(root, "*", SearchOption.AllDirectories).Length == files.Count + 1, "Project contents changed.");
             settings = new SettingsStore();
             visibility = new ProjectListVisibility(settings);
@@ -60,7 +92,7 @@ internal static class ProjectListVisibilityHarness
             try { visibility.Remove(libraryProject); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { failed = true; }
             Require(failed && !visibility.IsRemoved(libraryProject), "A failed save changed in-memory visibility.");
             Require(File.ReadAllBytes(config).SequenceEqual(saved), "A failed save changed persisted preferences.");
-            Console.WriteLine("PASS: library/external visibility persists, reopening restores one folder, path aliases are handled, project files stay byte-for-byte unchanged, and failed saves roll back.");
+            Console.WriteLine("PASS: duplicate library/opened paths and directory aliases coalesce; independent folders remain separate; library/external visibility persists, reopening restores one folder, path aliases are handled, project files stay byte-for-byte unchanged, and failed saves roll back.");
         }
         finally
         {

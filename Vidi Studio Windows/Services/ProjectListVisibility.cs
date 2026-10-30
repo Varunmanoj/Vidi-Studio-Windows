@@ -14,7 +14,7 @@ public sealed class ProjectListVisibility
     private HashSet<string> removedFolders = new(StringComparer.OrdinalIgnoreCase);
 
     public ProjectListVisibility(SettingsStore settings) { this.settings = settings; Reload(); }
-    private static string Normalize(string folder) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+    private static string Normalize(string folder) => ProjectFolderIdentity.Normalize(folder);
     public bool IsRemoved(string folder) => removedFolders.Contains(Normalize(folder));
     public void Reload()
     {

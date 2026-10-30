@@ -125,6 +125,7 @@ public sealed partial class MainWindow
             }
             Model.Settings.Set("apiKey", savedMenuKey); Model.Settings.Set("ttsMode", savedMenuTts);
             await VerifyProjectMenuActionsForSmokeTestAsync();
+            VerifyDuplicateProjectPathsForSmokeTest();
             VerifyRemoveFromListForSmokeTest();
             VerifyEditorActionMenusForSmokeTest();
             var originalSection = Section.SelectedIndex;
@@ -1200,6 +1201,41 @@ public sealed partial class MainWindow
             Child = contentStack
         };
         return container;
+    }
+    private void VerifyDuplicateProjectPathsForSmokeTest()
+    {
+        var project = Model.Project!;
+        var originalLocations = Model.Settings.Data["projectLocations"]?.DeepClone();
+        var originalLibrary = Model.Settings.Get("libraryPath");
+        var manifest = Path.Combine(project.Folder, "project.json");
+        var bytes = File.ReadAllBytes(manifest);
+        try
+        {
+            Model.Settings.Set("libraryPath", Path.GetDirectoryName(project.Folder)!);
+            Model.Settings.Data["projectLocations"] = new System.Text.Json.Nodes.JsonArray(
+                project.Folder, project.Folder + Path.DirectorySeparatorChar,
+                Path.Combine(project.Folder, "."), project.Folder.StartsWith(@"\\", StringComparison.Ordinal)
+                    ? @"\\?\UNC\" + project.Folder[2..] : @"\\?\" + project.Folder);
+            Model.Settings.Save();
+            Model.Reload();
+            var identity = Services.ProjectFolderIdentity.Normalize(project.Folder);
+            if (Model.Projects.Count(entry => string.Equals(Services.ProjectFolderIdentity.Normalize(entry.Folder), identity, StringComparison.OrdinalIgnoreCase)) != 1)
+                throw new InvalidOperationException("Project path aliases produced duplicate gallery entries.");
+            var cached = Model.Projects.Single(entry => string.Equals(entry.Folder, identity, StringComparison.OrdinalIgnoreCase));
+            if (Model.ReloadIfProjectsChanged() || !Model.Projects.Contains(cached))
+                throw new InvalidOperationException("Duplicate saved locations caused repeated gallery rebuilding.");
+            Model.Open(project.Folder + Path.DirectorySeparatorChar);
+            if (Model.Projects.Count(entry => string.Equals(entry.Folder, identity, StringComparison.OrdinalIgnoreCase)) != 1 ||
+                !File.ReadAllBytes(manifest).SequenceEqual(bytes))
+                throw new InvalidOperationException("Opening a path alias duplicated a project or changed its files.");
+        }
+        finally
+        {
+            Model.Settings.Set("libraryPath", originalLibrary);
+            Model.Settings.Data["projectLocations"] = originalLocations;
+            Model.Settings.Save();
+            Model.Reload();
+        }
     }
     private async Task VerifyRemoveFromListFileMenuForSmokeTestAsync()
     {

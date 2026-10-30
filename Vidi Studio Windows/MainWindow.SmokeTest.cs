@@ -351,6 +351,7 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Project-only menu commands remained enabled in the gallery.");
             if (CanRunDesktopCommand("rename-project") || CanRunDesktopCommand("trash-project"))
                 throw new InvalidOperationException("Project management remained enabled without an open editor.");
+            await VerifyRemoveFromListFileMenuForSmokeTestAsync();
             PreviewTheme("dark"); await Task.Delay(80);
             var searchOrigin = GallerySearchHost.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point());
             if (GallerySearchHost.Visibility != Visibility.Visible ||
@@ -1200,8 +1201,55 @@ public sealed partial class MainWindow
         };
         return container;
     }
+    private async Task VerifyRemoveFromListFileMenuForSmokeTestAsync()
+    {
+        var wasGrid = GalleryGrid.Visibility == Visibility.Visible;
+        var folder = Model.Projects.First().Folder;
+        var manifest = Path.Combine(folder, "project.json");
+        var original = File.ReadAllBytes(manifest);
+        try
+        {
+            foreach (var useGrid in new[] { true, false })
+            {
+                if ((GalleryGrid.Visibility == Visibility.Visible) != useGrid) GalleryLayout_Click(this, new RoutedEventArgs());
+                GalleryGrid.SelectedItem = null;
+                GalleryList.SelectedItem = null;
+                if (CanRunDesktopCommand("remove-from-list"))
+                    throw new InvalidOperationException("File Remove from List is enabled with no gallery selection.");
+                var project = Model.Projects.Single(entry => entry.Folder == folder);
+                if (useGrid) GalleryGrid.SelectedItem = project;
+                else GalleryList.SelectedItem = project;
+                UpdateDesktopMenuStates();
+                var item = desktopMenuItems["remove-from-list"].First();
+                if (!CanRunDesktopCommand("remove-from-list") || item.Text != "Remove from List" || item.Icon == null ||
+                    (bool)item.ReadLocalValue(Control.IsEnabledProperty) != true)
+                    throw new InvalidOperationException("File Remove from List did not follow the gallery selection.");
+                GalleryLayout_Click(this, new RoutedEventArgs());
+                if (SelectedGalleryProject()?.Folder != folder)
+                    throw new InvalidOperationException("Switching gallery layouts lost the selected project.");
+                GalleryLayout_Click(this, new RoutedEventArgs());
+                try
+                {
+                    await RunDesktopCommandAsync("remove-from-list");
+                    if (Model.Projects.Any(entry => entry.Folder == folder) || !Directory.Exists(folder) ||
+                        !File.ReadAllBytes(manifest).SequenceEqual(original) || CanRunDesktopCommand("remove-from-list"))
+                        throw new InvalidOperationException("File Remove from List changed project files or retained a stale selection.");
+                }
+                finally { Model.Open(folder); }
+            }
+        }
+        finally
+        {
+            GalleryGrid.SelectedItem = null;
+            GalleryList.SelectedItem = null;
+            if ((GalleryGrid.Visibility == Visibility.Visible) != wasGrid) GalleryLayout_Click(this, new RoutedEventArgs());
+            UpdateDesktopMenuStates();
+        }
+    }
     private void VerifyRemoveFromListForSmokeTest()
     {
+        if (CanRunDesktopCommand("remove-from-list"))
+            throw new InvalidOperationException("File Remove from List must not target the project open in an editor window.");
         var project = Model.Project!;
         var manifest = Path.Combine(project.Folder, "project.json");
         var original = File.ReadAllBytes(manifest);

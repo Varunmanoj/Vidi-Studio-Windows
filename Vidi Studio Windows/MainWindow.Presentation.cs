@@ -336,9 +336,13 @@ public sealed partial class MainWindow
     private void FilterGallery() => Model.Reload(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", _ => "all" });
     private void GalleryLayout_Click(object sender, RoutedEventArgs e)
     {
+        var selected = SelectedGalleryProject();
         var list = GalleryGrid.Visibility == Visibility.Visible;
         GalleryGrid.Visibility = list ? Visibility.Collapsed : Visibility.Visible;
         GalleryTable.Visibility = list ? Visibility.Visible : Visibility.Collapsed;
+        GalleryGrid.SelectedItem = selected;
+        GalleryList.SelectedItem = selected;
+        UpdateDesktopMenuStates();
     }
     private void GalleryProject_Click(object sender, ItemClickEventArgs e) { if (e.ClickedItem is StudioProject p) App.OpenWindow(p.Folder); }
     private async void NewProject_Click(object sender, RoutedEventArgs e) => await ShowNewProjectDialogAsync(false);

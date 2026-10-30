@@ -60,7 +60,7 @@ public sealed partial class MainWindow
         {
             Menu("File",
                 Command("new-project"), Command("open-project"), Separator(), Command("export"), Separator(),
-                Command("open-editor-window"), Command("settings"), Command("close-window")),
+                Command("remove-from-list"), Separator(), Command("open-editor-window"), Command("settings"), Command("close-window")),
             Menu("View",
                 Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("filter-segments"),
                 Submenu("Sort Segments", Command("sort-start"), Command("sort-duration-asc"), Command("sort-duration-desc"), Command("sort-origin")), Separator(),
@@ -102,6 +102,8 @@ public sealed partial class MainWindow
                 catch (Exception ex) { await ShowError(ex); }
             }, () => CanRunDesktopCommand(id));
         AddShortcut(VirtualKey.F11, VirtualKeyModifiers.None, (_, _) => FullScreen_Click(this, new RoutedEventArgs()));
+        GalleryGrid.SelectionChanged += (_, _) => UpdateDesktopMenuStates();
+        GalleryList.SelectionChanged += (_, _) => UpdateDesktopMenuStates();
         Segments.SelectionChanged += (_, _) => { UpdateDesktopMenuStates(); UpdateBulkActionState(); };
         Narration.Toggled += (_, _) => UpdateDesktopMenuStates();
         Follow.Toggled += (_, _) => UpdateDesktopMenuStates();
@@ -232,10 +234,18 @@ public sealed partial class MainWindow
     private bool HasHistory(string key) => Model.Project?.Extra is { } extra && extra.TryGetValue(key, out var value)
         && value.ValueKind == JsonValueKind.Array && value.GetArrayLength() > 0;
 
+    private Models.StudioProject? SelectedGalleryProject()
+    {
+        if (desktopEditorVisible || GalleryPanel.Visibility != Visibility.Visible) return null;
+        var selected = (GalleryGrid.Visibility == Visibility.Visible ? GalleryGrid.SelectedItem : GalleryList.SelectedItem) as Models.StudioProject;
+        return selected != null && Model.Projects.Contains(selected) ? selected : null;
+    }
+
     private bool CanRunDesktopCommand(string id)
     {
         if (!Model.Idle) return false;
         if (id == "new-project") return true;
+        if (id == "remove-from-list") return SelectedGalleryProject() != null;
         if (id is "open-project" or "settings" or "help" or "about" or "close-window") return true;
         if (id is "project-list" or "project-grid") return !(Section.SelectedIndex == 1 && summaryEditMode);
         if (!desktopEditorVisible || Model.Project is not { } p) return false;
@@ -304,6 +314,7 @@ public sealed partial class MainWindow
         var p = Model.Project;
         return id switch
         {
+            "remove-from-list" => "Remove from List",
             "new-project" => "New Project…", "open-project" => "Open Project Folder…", "export" => "Export…",
             "open-editor-window" => "Open Editor in New Window", "settings" => "Settings…", "close-window" => "Close Window",
             "help" => "VidiStudio Help", "about" => "About VidiStudio",
@@ -386,6 +397,7 @@ public sealed partial class MainWindow
             "sort-start" => "Sort by start time", "sort-duration-asc" => "Shortest duration first",
             "sort-duration-desc" => "Longest duration first", "sort-origin" => "Sort by origin",
             "open-configuration" => "Open project configuration",
+            "remove-from-list" => "Remove from List",
             "rename-project" => "Rename", "trash-project" => "Move to Recycle Bin",
             "open-editor-window" => "Open editor in new window", "export" => "Export", "settings" => "Settings",
             "close-window" => "Close window", "help" => "Help and keyboard shortcuts", "about" => "About Vidi Studio",
@@ -438,6 +450,9 @@ public sealed partial class MainWindow
         {
             case "new-project": await ShowNewProjectDialogAsync(false); break;
             case "open-project": OpenProject_Click(this, e); break;
+            case "remove-from-list":
+                if (SelectedGalleryProject() is { } listedProject) RemoveProjectFromList(listedProject);
+                break;
             case "export": Export_Click(this, e); break;
             case "settings": Settings_Click(this, e); break;
             case "help": HelpSettings_Click(this, e); break;

@@ -96,7 +96,7 @@ public sealed partial class MainWindow
         if (state == Services.SummaryReadbackState.Stopped) ClearSummaryHighlight();
     }
     private void OpenEditor_Click(object sender, RoutedEventArgs e) { if (Model.Project is { } p) App.OpenWindow(p.Folder); }
-    private void ProjectGrid_Changed(object sender, SelectionChangedEventArgs e) { if (ProjectGrid.SelectedItem is StudioProject p) { Model.Open(p.Folder); ShowEditor(); } }
+    private void ProjectGrid_Changed(object sender, SelectionChangedEventArgs e) => Project_Changed(sender, e);
     private void ToggleGrid_Click(object sender, RoutedEventArgs e)
     {
         var grid = ProjectGrid.Visibility != Visibility.Visible;
@@ -119,6 +119,21 @@ public sealed partial class MainWindow
         var layoutLabel = grid ? "Switch project list to list view" : "Switch project list to grid view";
         ToolTipService.SetToolTip(EditorProjectLayoutButton, layoutLabel);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditorProjectLayoutButton, layoutLabel);
+        var visibleLibrary = LibraryPanel.Visibility == Visibility.Visible;
+        if (!changingProject && visibleLibrary && SelectedBrowserProject() == null && Model.Project is { } openProject)
+        {
+            var current = Model.Projects.FirstOrDefault(project => project.Folder == openProject.Folder);
+            var wasChanging = changingProject;
+            changingProject = true;
+            ProjectList.SelectedItem = current;
+            ProjectGrid.SelectedItem = current;
+            changingProject = wasChanging;
+        }
+        ProjectList.IsEnabled = Model.Idle;
+        ProjectGrid.IsEnabled = Model.Idle;
+        var selected = SelectedBrowserProject();
+        if (EditorRemoveProjectButton != null) EditorRemoveProjectButton.IsEnabled = Model.Idle && selected != null;
+        if (EditorDeleteProjectButton != null) EditorDeleteProjectButton.IsEnabled = Model.Idle && selected != null;
         var visible = LibraryPanel.Visibility == Visibility.Visible;
         var listLabel = visible ? "Hide project list" : "Show project list";
         ToolTipService.SetToolTip(EditorProjectListButton, listLabel);
@@ -126,7 +141,11 @@ public sealed partial class MainWindow
         EditorProjectListIcon.Glyph = "\uE8F1";
     }
     private void ToggleInspector_Click(object sender, RoutedEventArgs e)
-    { InspectorPanel.Visibility = InspectorPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible; InspectorColumn.Width = new GridLength(InspectorPanel.Visibility == Visibility.Visible ? 310 : 0); }
+    {
+        InspectorPanel.Visibility = InspectorPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+        InspectorColumn.Width = new GridLength(InspectorPanel.Visibility == Visibility.Visible ? 310 : 0);
+        UpdateEditorActionVisibility();
+    }
     private void FullScreen_Click(object sender, RoutedEventArgs e)
     {
         if (Model.Project?.IsYouTube == true) return;
@@ -295,7 +314,7 @@ public sealed partial class MainWindow
             {
                 item.Tag = commandId;
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(item, commandId);
-                ToolTipService.SetToolTip(item, "Remove this entry from the list. The project files stay in their folder. Use Open Project to add it again.");
+                if (commandId == "remove-from-list") ToolTipService.SetToolTip(item, "Remove this entry from the list. The project files stay in their folder. Use Open Project to add it again.");
             }
             item.Click += (s, args) => { if (Model.Idle) handler(s, args); };
             menu.Items.Add(item);
@@ -309,7 +328,13 @@ public sealed partial class MainWindow
         }
         var activeApiKey = Model.CanUseAI;
         var usable = !project.IntegrityPlaceholder && project.Integrity?.ManifestUnreadable != true && project.Integrity?.FolderMissing != true;
-        Item("Open editor in new window", (_, _) => App.OpenWindow(project.Folder));
+        if (desktopEditorVisible)
+            Item("Open in This Window", async (_, _) =>
+            {
+                try { await SwitchProjectAsync(project); }
+                catch (Exception ex) { await ShowError(ex); }
+            }, commandId: "open-project-here");
+        Item("Open in New Window", (_, _) => App.OpenWindow(project.Folder), commandId: "open-editor-window");
         Item("Export", (_, args) => { LoadForEditorAction(); Export_Click(this, args); }, activeApiKey && usable);
         Item("Open project folder", (_, _) => _ = RevealProjectAsync(project));
         Item("Open project configuration", (_, _) => _ = OpenProjectConfigurationAsync(project));
@@ -319,8 +344,16 @@ public sealed partial class MainWindow
         Item("Rename", (_, _) => _ = RenameProjectAsync(project), usable);
         Item("Remove from List", (_, _) => RemoveProjectFromList(project), commandId: "remove-from-list");
         menu.Items.Add(new MenuFlyoutSeparator());
-        Item(project.Integrity?.IsDamaged == true ? "Delete damaged project…" : "Move to Recycle Bin", (_, _) => _ = DeleteProjectAsync(project));
+        Item(project.Integrity?.IsDamaged == true ? "Delete damaged project…" : "Move to Recycle Bin", (_, _) => _ = DeleteProjectAsync(project), commandId: "trash-project");
         return menu;
+    }
+    private void RemoveListedProject_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedBrowserProject() is { } project) RemoveProjectFromList(project);
+    }
+    private async void DeleteListedProject_Click(object sender, RoutedEventArgs e)
+    {
+        if (Model.Idle && SelectedBrowserProject() is { } project) await DeleteProjectAsync(project);
     }
     private void RemoveProjectFromList(StudioProject project)
     {

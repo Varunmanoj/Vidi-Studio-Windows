@@ -349,9 +349,20 @@ public sealed partial class MainWindow
     private void SetEditModeButton(bool editing)
     {
         EditModeButton.Content = new FontIcon { Glyph = editing ? "\uE73E" : "\uE70F" };
-        var label = editing ? "Done editing" : "Edit this section";
+        var section = Section.SelectedIndex switch
+        {
+            0 => "transcript segments", 1 => "summary", 2 => "Audio Description segments", 4 => "AD Transcript segments", _ => "this section"
+        };
+        var label = editing ? $"Done editing {section}" : $"Edit {section}";
         ToolTipService.SetToolTip(EditModeButton, label);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditModeButton, label);
+    }
+
+    private void UpdateEditorActionVisibility()
+    {
+        // The inspector owns generation while visible; the toolbar is its fallback.
+        GenerateCurrent.Visibility = Section.SelectedIndex <= 2 && InspectorPanel.Visibility != Visibility.Visible
+            ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void GenerateCurrent_Click(object sender, RoutedEventArgs e)
@@ -439,12 +450,13 @@ public sealed partial class MainWindow
         GenerateCurrent.Content = new FontIcon { Glyph = "\uE8A5" };
         ToolTipService.SetToolTip(GenerateCurrent, generateLabel);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(GenerateCurrent, generateLabel);
-        GenerateCurrent.Visibility = InspectorGenerate.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
+        InspectorGenerate.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateEditorActionVisibility();
         InspectorSectionTitle.Text = index == 2 ? "AD Segment Generation" : name;
         UpdateSegmentMoreVisibility();
         ContextActions.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
         InspectorRewriteButton.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
-        NarrationActions.Visibility = index is 2 or 3 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        NarrationActions.Visibility = index is 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
         Narration.Visibility = index is 2 or 3 or 4 ? Visibility.Visible : Visibility.Collapsed;
         Follow.Visibility = index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
         EditModeButton.Visibility = index is 0 or 1 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;

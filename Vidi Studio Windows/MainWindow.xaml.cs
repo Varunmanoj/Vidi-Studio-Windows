@@ -460,17 +460,36 @@ public sealed partial class MainWindow : Window
     private bool changingProject;
     private async void Project_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (changingProject || Model.Busy || ProjectList.SelectedItem is not StudioProject selected) return;
+        try
+        {
+            if ((sender as ListViewBase)?.SelectedItem is StudioProject selected) await SwitchProjectAsync(selected);
+        }
+        catch (Exception ex) { await ShowError(ex); }
+    }
+    private async Task SwitchProjectAsync(StudioProject selected)
+    {
+        if (changingProject || Model.Busy) return;
         if (Model.Project?.Folder == selected.Folder) return;
         changingProject = true;
+        var previous = Model.Projects.FirstOrDefault(project => project.Folder == Model.Project?.Folder);
         try
         {
             if (summaryEditMode)
             {
-                if (!await SaveSummaryChangesAsync()) return;
+                if (!await SaveSummaryChangesAsync())
+                {
+                    ProjectList.SelectedItem = previous;
+                    ProjectGrid.SelectedItem = previous;
+                    return;
+                }
                 SetSummaryEditMode(false);
             }
+            StopProjectPlayback();
             Model.Open(selected.Folder); ShowEditor();
+            var current = Model.Projects.FirstOrDefault(project => project.Folder == Model.Project?.Folder);
+            ProjectList.SelectedItem = current;
+            ProjectGrid.SelectedItem = current;
+            UpdateEditorProjectButtons();
         }
         finally { changingProject = false; }
     }
@@ -482,7 +501,11 @@ public sealed partial class MainWindow : Window
         UpdateInspector(p);
         UpdateApiKeyUi();
         UpdateProjectIntegrityUi();
-        if (EditorWorkspace.Visibility == Visibility.Visible) ProjectTitle.Text = p.Name;
+        if (EditorWorkspace.Visibility == Visibility.Visible)
+        {
+            ProjectTitle.Text = p.Name;
+            Title = p.Name + " — Vidi Studio";
+        }
         ProjectInformation.Text = $"{(p.IsYouTube ? "YouTube" : "Local video")}\n{p.Width} × {p.Height}\n{TimeSpan.FromSeconds(p.Duration):hh\\:mm\\:ss}\n{p.Folder}";
         Playhead.Maximum = Math.Max(1, p.Duration);
         UpdateTimelineCursor();
@@ -867,6 +890,11 @@ public sealed partial class MainWindow : Window
         await Model.RunAsync(command);
     }
     private void Cancel_Click(object sender, RoutedEventArgs e) => Model.Cancel();
+    private async void RenameProjectTitle_Click(object sender, RoutedEventArgs e)
+    {
+        try { await RunDesktopCommandAsync("rename-project"); }
+        catch (Exception ex) { await ShowError(ex); }
+    }
     private async void Rename_Click(object sender, RoutedEventArgs e)
     {
         if (Model.Project is { } project) await RenameProjectAsync(project);
@@ -880,6 +908,13 @@ public sealed partial class MainWindow : Window
         if (Model.Project is not { } current || !string.Equals(current.Folder, project.Folder, StringComparison.OrdinalIgnoreCase))
             Model.Open(project.Folder);
         await Model.RunAsync("rename-project", new[] { "--name", name.Text });
+        if (!desktopEditorVisible)
+        {
+            var renamed = Model.Projects.FirstOrDefault(item => string.Equals(item.Folder, project.Folder, StringComparison.OrdinalIgnoreCase));
+            if (GalleryGrid.Visibility == Visibility.Visible) GalleryGrid.SelectedItem = renamed;
+            else GalleryList.SelectedItem = renamed;
+        }
+        UpdateDesktopMenuStates();
     }
     private async void DeleteProject_Click(object sender, RoutedEventArgs e)
     {
@@ -1877,12 +1912,8 @@ public sealed partial class MainWindow : Window
             SummaryEditorBox.Focus(FocusState.Programmatic);
         }
         summaryEditMode = edit;
+        UpdateEditorActionVisibility();
         UpdateDesktopMenuStates();
-    }
-
-    private async void SummarySave_Click(object sender, RoutedEventArgs e)
-    {
-        if (await SaveSummaryChangesAsync()) SetSummaryEditMode(false);
     }
 
     private void SummaryCancel_Click(object sender, RoutedEventArgs e)
@@ -1962,6 +1993,7 @@ public sealed partial class MainWindow : Window
 
     private void UpdateApiKeyUi()
     {
+        UpdateEditorProjectButtons();
         var hasKey = Model.HasApiKey;
         var isInvalid = Model.IsApiKeyInvalid;
         var canUseAi = hasKey && !isInvalid && !Model.AiProcessingBlocked && Model.Idle;
@@ -1996,12 +2028,6 @@ public sealed partial class MainWindow : Window
         {
             GalleryImport.IsEnabled = Model.Idle;
             ToolTipService.SetToolTip(GalleryImport, "Create a new local video or YouTube project");
-        }
-
-        if (GalleryEmptyButton != null)
-        {
-            GalleryEmptyButton.IsEnabled = Model.Idle;
-            ToolTipService.SetToolTip(GalleryEmptyButton, "Create a new project");
         }
 
         if (GalleryEmptySubtitle != null)

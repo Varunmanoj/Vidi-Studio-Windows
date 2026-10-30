@@ -61,6 +61,7 @@ public partial class App : Application
 #if DEBUG
     /// <summary>Lets the native smoke test observe the Help book window lifecycle.</summary>
     internal static Views.HelpWindow? HelpWindowForSmokeTest => helpWindow;
+    internal static int WindowCountForSmokeTest => Windows.Count;
 #endif
 
     public static MainWindow OpenWindow(string? folder = null)

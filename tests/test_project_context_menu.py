@@ -16,8 +16,11 @@ class ProjectContextMenu(unittest.TestCase):
         self.assertIn('Item("Open project folder", (_, _) => _ = RevealProjectAsync(project));', COMMANDS)
         self.assertIn('Item("Open project configuration", (_, _) => _ = OpenProjectConfigurationAsync(project));', COMMANDS)
 
-    def test_open_in_new_window_is_the_only_editor_window_action(self):
-        self.assertIn('Item("Open editor in new window", (_, _) => App.OpenWindow(project.Folder));', COMMANDS)
+    def test_new_window_action_and_in_place_editor_switch_are_explicit(self):
+        self.assertIn('Item("Open in New Window", (_, _) => App.OpenWindow(project.Folder), commandId: "open-editor-window");', COMMANDS)
+        self.assertIn('Item("Open in This Window", async (_, _) =>', COMMANDS)
+        self.assertIn('await SwitchProjectAsync(project);', COMMANDS)
+        self.assertIn('commandId: "open-project-here"', COMMANDS)
 
 
 if __name__ == '__main__':

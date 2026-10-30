@@ -124,7 +124,12 @@ public sealed partial class MainWindow
                 UpdateApiKeyUi();
             }
             Model.Settings.Set("apiKey", savedMenuKey); Model.Settings.Set("ttsMode", savedMenuTts);
+            if (RenameProjectTitleButton.Visibility != Visibility.Visible ||
+                Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(RenameProjectTitleButton) != "Rename project" ||
+                ToolTipService.GetToolTip(RenameProjectTitleButton) == null || !CanRunDesktopCommand("rename-project"))
+                throw new InvalidOperationException("The editor title needs an available, labeled Rename pencil button.");
             await VerifyProjectMenuActionsForSmokeTestAsync();
+            await VerifyEditorProjectNavigationForSmokeTestAsync();
             VerifyDuplicateProjectPathsForSmokeTest();
             VerifyRemoveFromListForSmokeTest();
             VerifyEditorActionMenusForSmokeTest();
@@ -136,9 +141,11 @@ public sealed partial class MainWindow
                 RenderSection();
                 await Task.Delay(80);
                 VerifySegmentMoreButtonsForSmokeTest(false);
+                VerifyEditorPrimaryActionForSmokeTest(false);
                 EditMode_Click(this, new RoutedEventArgs());
                 await Task.Delay(80);
                 VerifySegmentMoreButtonsForSmokeTest(true);
+                VerifyEditorPrimaryActionForSmokeTest(true);
                 EditMode_Click(this, new RoutedEventArgs());
                 await Task.Delay(80);
                 VerifySegmentMoreButtonsForSmokeTest(false);
@@ -169,6 +176,7 @@ public sealed partial class MainWindow
             await CaptureSmokeImage(TimelinePanel, Path.Combine(Path.GetDirectoryName(report)!, "youtube-thumbnail-strip.png"));
             var initialThumbnailWidth = Thumbnails.ActualWidth;
             ToggleInspector_Click(this, new RoutedEventArgs());
+            VerifyEditorPrimaryActionForSmokeTest(false);
             await Task.Delay(50);
             VerifyTimelineThumbnailsForSmokeTest(1);
             if (Thumbnails.ActualWidth <= initialThumbnailWidth) throw new InvalidOperationException("Thumbnail strip did not expand when the inspector closed.");
@@ -299,6 +307,9 @@ public sealed partial class MainWindow
             try
             {
                 SetSummaryEditMode(true);
+                VerifyEditorPrimaryActionForSmokeTest(true);
+                if (FindButton(SummaryEditorPanel, "Save Summary") != null)
+                    throw new InvalidOperationException("Summary editing exposes a duplicate Save/Done button.");
                 if (CanRunDesktopCommand("project-list") || CanRunDesktopCommand("project-grid")) throw new InvalidOperationException("Project layout shortcuts conflict with Markdown headings.");
                 SummaryEditorBox.Text = "hello";
                 SummaryEditorBox.Select(0, 5);
@@ -350,8 +361,14 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Gallery menu hierarchy drifted from the shared desktop layout.");
             if (CanRunDesktopCommand("export") || CanRunDesktopCommand("review-narration-issues") || CanRunDesktopCommand("review-narration-voices"))
                 throw new InvalidOperationException("Project-only menu commands remained enabled in the gallery.");
+            GalleryGrid.SelectedItem = null;
+            GalleryList.SelectedItem = null;
             if (CanRunDesktopCommand("rename-project") || CanRunDesktopCommand("trash-project"))
-                throw new InvalidOperationException("Project management remained enabled without an open editor.");
+                throw new InvalidOperationException("Project management requires a gallery selection or an open editor.");
+            GalleryGrid.SelectedItem = Model.Projects.First();
+            if (!CanRunDesktopCommand("rename-project") || !CanRunDesktopCommand("trash-project"))
+                throw new InvalidOperationException("Selected gallery projects must support Rename and Recycle Bin without opening an editor.");
+            GalleryGrid.SelectedItem = null;
             await VerifyRemoveFromListFileMenuForSmokeTestAsync();
             PreviewTheme("dark"); await Task.Delay(80);
             var searchOrigin = GallerySearchHost.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point());
@@ -1202,6 +1219,69 @@ public sealed partial class MainWindow
         };
         return container;
     }
+    private async Task VerifyEditorProjectNavigationForSmokeTestAsync()
+    {
+        var original = Model.Project!;
+        var originalSummary = original.Summary;
+        var locations = Model.Settings.Data["projectLocations"]?.DeepClone();
+        var wasVisible = LibraryPanel.Visibility;
+        var wasGrid = ProjectGrid.Visibility == Visibility.Visible;
+        var folder = Path.Combine(Path.GetDirectoryName(original.Folder)!, "editor-navigation-" + Guid.NewGuid());
+        var windowCount = App.WindowCountForSmokeTest;
+        Directory.CreateDirectory(folder);
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(original.Folder)) File.Copy(file, Path.Combine(folder, Path.GetFileName(file)));
+            var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(folder, "project.json")))!.AsObject();
+            manifest["id"] = "editor-navigation-" + Guid.NewGuid();
+            manifest["name"] = "Editor navigation fixture";
+            File.WriteAllText(Path.Combine(folder, "project.json"), manifest.ToJsonString(Models.Json.Options));
+            Model.Open(original.Folder);
+            Model.Reload();
+            ShowEditor();
+            SetProjectLayout(true);
+            var target = Models.StudioProject.Load(folder);
+            var actions = ProjectMenu(target).Items.OfType<MenuFlyoutItem>().Select(item => (string?)item.Tag).ToList();
+            foreach (var id in new[] { "open-project-here", "open-editor-window", "remove-from-list", "trash-project" })
+                if (!actions.Contains(id)) throw new InvalidOperationException("Editor project context action is missing: " + id);
+            foreach (var button in new[] { EditorRemoveProjectButton, EditorDeleteProjectButton })
+                if (string.IsNullOrWhiteSpace(Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(button)) || ToolTipService.GetToolTip(button) == null)
+                    throw new InvalidOperationException("Project action icon lacks its label or tooltip.");
+            Section.SelectedIndex = 1;
+            SetSummaryEditMode(true);
+            SummaryEditorBox.Text = originalSummary + "\n\nSaved before project switching.";
+            await SwitchProjectAsync(target);
+            if (Model.Project?.Folder != target.Folder || App.WindowCountForSmokeTest != windowCount || summaryEditMode)
+                throw new InvalidOperationException("Grid navigation did not reuse the current editor and finish summary editing.");
+            var saved = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(original.Folder, "project.json")))!;
+            if (!saved["summary"]!.GetValue<string>().EndsWith("Saved before project switching.", StringComparison.Ordinal))
+                throw new InvalidOperationException("Switching discarded the edited summary.");
+            SetProjectLayout(false);
+            await SwitchProjectAsync(original);
+            if (Model.Project?.Folder != original.Folder || App.WindowCountForSmokeTest != windowCount)
+                throw new InvalidOperationException("List navigation did not reuse the editor.");
+            UpdateEditorProjectButtons();
+            if (!CanRunDesktopCommand("remove-from-list"))
+                throw new InvalidOperationException("Remove from List is unavailable for the selected editor-browser project.");
+            RemoveListedProject_Click(this, new RoutedEventArgs());
+            if (Model.Project?.Folder != original.Folder || Model.Projects.Any(project => project.Folder == original.Folder))
+                throw new InvalidOperationException("Removing the editor-browser entry closed the editor or left its entry visible.");
+        }
+        finally
+        {
+            Model.Settings.Data["projectLocations"] = locations;
+            Model.Settings.Save();
+            Model.Open(original.Folder);
+            await Model.SaveSummaryAsync(originalSummary);
+            if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            Model.Reload();
+            SetProjectLayout(wasGrid);
+            LibraryPanel.Visibility = wasVisible;
+            LibraryColumn.Width = new GridLength(wasVisible == Visibility.Visible ? 240 : 0);
+            UpdateEditorProjectButtons();
+            Section.SelectedIndex = 0;
+        }
+    }
     private void VerifyDuplicateProjectPathsForSmokeTest()
     {
         var project = Model.Project!;
@@ -1285,7 +1365,7 @@ public sealed partial class MainWindow
     private void VerifyRemoveFromListForSmokeTest()
     {
         if (CanRunDesktopCommand("remove-from-list"))
-            throw new InvalidOperationException("File Remove from List must not target the project open in an editor window.");
+            throw new InvalidOperationException("File Remove from List must require a visible project browser selection.");
         var project = Model.Project!;
         var manifest = Path.Combine(project.Folder, "project.json");
         var original = File.ReadAllBytes(manifest);
@@ -1412,6 +1492,19 @@ public sealed partial class MainWindow
             Math.Abs(Thumbnails.ActualWidth - TranscriptTrack.ActualWidth) > 2)
             throw new InvalidOperationException("Timeline thumbnails did not fill and align with the timeline tracks.");
     }
+    private void VerifyEditorPrimaryActionForSmokeTest(bool editing)
+    {
+        if (EditModeButton.Visibility != Visibility.Visible ||
+            EditModeButton.Content is not FontIcon icon || icon.Glyph != (editing ? "\uE73E" : "\uE70F") ||
+            !ReferenceEquals(EditModeButton.Style, Application.Current.Resources["AccentButtonStyle"]) ||
+            ToolTipService.GetToolTip(EditModeButton) == null ||
+            string.IsNullOrWhiteSpace(Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(EditModeButton)))
+            throw new InvalidOperationException("Each editable section needs one accent-colour, icon-only Edit/Done button with accessible metadata.");
+        if (Section.SelectedIndex <= 2 &&
+            (GenerateCurrent.Visibility == Visibility.Visible) == (InspectorPanel.Visibility == Visibility.Visible))
+            throw new InvalidOperationException("Generation must appear in the inspector or toolbar, never both.");
+    }
+
     private static Button? FindButton(DependencyObject root, string content)
     {
         var count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root);
@@ -1461,6 +1554,8 @@ public sealed partial class MainWindow
                 var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(button);
                 ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
                 await command.WaitAsync(TimeSpan.FromSeconds(30));
+                if (desktopEditorVisible && name != null && (ProjectTitle.Text != name || Title != name + " — Vidi Studio"))
+                    throw new InvalidOperationException("Renaming did not update the visible project heading and window title.");
                 if (Model.Project?.Name != (name ?? originalName) || Model.Project.Folder != folder || !Directory.Exists(folder))
                     throw new InvalidOperationException("Project rename or canceled Recycle Bin action affected the wrong project.");
             }

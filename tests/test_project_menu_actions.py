@@ -15,6 +15,8 @@ class ProjectMenuActions(unittest.TestCase):
         self.assertIn('if (!Model.Idle) return false;', source)
         self.assertIn('case "rename-project": return !p.IntegrityPlaceholder && p.Integrity?.ManifestUnreadable != true && p.Integrity?.FolderMissing != true;', source)
         self.assertIn('case "trash-project": return true;', source)
+        self.assertIn('ProjectManagementTarget() => desktopEditorVisible ? Model.Project : SelectedGalleryProject()', source)
+        self.assertIn('return CanManageProject(id);', source)
         self.assertIn('await RenameProjectAsync(renameProject)', source)
         self.assertIn('await DeleteProjectAsync(trashProject)', source)
         self.assertIn('"rename-project" => "Rename", "trash-project" => "Move to Recycle Bin"', source)

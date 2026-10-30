@@ -104,6 +104,8 @@ public sealed partial class MainWindow
         AddShortcut(VirtualKey.F11, VirtualKeyModifiers.None, (_, _) => FullScreen_Click(this, new RoutedEventArgs()));
         GalleryGrid.SelectionChanged += (_, _) => UpdateDesktopMenuStates();
         GalleryList.SelectionChanged += (_, _) => UpdateDesktopMenuStates();
+        ProjectList.SelectionChanged += (_, _) => { UpdateDesktopMenuStates(); UpdateEditorProjectButtons(); };
+        ProjectGrid.SelectionChanged += (_, _) => { UpdateDesktopMenuStates(); UpdateEditorProjectButtons(); };
         Segments.SelectionChanged += (_, _) => { UpdateDesktopMenuStates(); UpdateBulkActionState(); };
         Narration.Toggled += (_, _) => UpdateDesktopMenuStates();
         Follow.Toggled += (_, _) => UpdateDesktopMenuStates();
@@ -196,6 +198,11 @@ public sealed partial class MainWindow
                 item.Icon = DesktopCommandIcon(id);
                 item.IsEnabled = CanRunDesktopCommand(id);
             }
+        if (RenameProjectTitleButton != null)
+        {
+            RenameProjectTitleButton.Visibility = desktopEditorVisible ? Visibility.Visible : Visibility.Collapsed;
+            RenameProjectTitleButton.IsEnabled = CanRunDesktopCommand("rename-project");
+        }
         var timedSection = Section.SelectedIndex is 0 or 2 or 4;
         foreach (var item in desktopMenuItems.TryGetValue("filter-segments", out var filterItems) ? filterItems : new List<MenuFlyoutItem>())
             item.Visibility = timedSection ? Visibility.Visible : Visibility.Collapsed;
@@ -241,11 +248,35 @@ public sealed partial class MainWindow
         return selected != null && Model.Projects.Contains(selected) ? selected : null;
     }
 
+    private Models.StudioProject? SelectedBrowserProject()
+    {
+        if (!desktopEditorVisible) return SelectedGalleryProject();
+        if (LibraryPanel.Visibility != Visibility.Visible) return null;
+        var selected = (ProjectGrid.Visibility == Visibility.Visible ? ProjectGrid.SelectedItem : ProjectList.SelectedItem) as Models.StudioProject;
+        return selected != null && Model.Projects.Contains(selected) ? selected : null;
+    }
+
+    private Models.StudioProject? ProjectManagementTarget() => desktopEditorVisible ? Model.Project : SelectedGalleryProject();
+
+    private bool CanManageProject(string id)
+    {
+        if (!Model.Idle || ProjectManagementTarget() is not { } project) return false;
+        return id switch
+        {
+            "rename-project" => !project.IntegrityPlaceholder && project.Integrity?.ManifestUnreadable != true && project.Integrity?.FolderMissing != true,
+            "trash-project" => true,
+            "show-in-finder" => Directory.Exists(project.Folder),
+            "open-configuration" => File.Exists(Path.Combine(project.Folder, "project.json")),
+            _ => false
+        };
+    }
+
     private bool CanRunDesktopCommand(string id)
     {
         if (!Model.Idle) return false;
         if (id == "new-project") return true;
-        if (id == "remove-from-list") return SelectedGalleryProject() != null;
+        if (id is "rename-project" or "trash-project" or "show-in-finder" or "open-configuration") return CanManageProject(id);
+        if (id == "remove-from-list") return SelectedBrowserProject() != null;
         if (id is "open-project" or "settings" or "help" or "about" or "close-window") return true;
         if (id is "project-list" or "project-grid") return !(Section.SelectedIndex == 1 && summaryEditMode);
         if (!desktopEditorVisible || Model.Project is not { } p) return false;
@@ -451,7 +482,7 @@ public sealed partial class MainWindow
             case "new-project": await ShowNewProjectDialogAsync(false); break;
             case "open-project": OpenProject_Click(this, e); break;
             case "remove-from-list":
-                if (SelectedGalleryProject() is { } listedProject) RemoveProjectFromList(listedProject);
+                if (SelectedBrowserProject() is { } listedProject) RemoveProjectFromList(listedProject);
                 break;
             case "export": Export_Click(this, e); break;
             case "settings": Settings_Click(this, e); break;
@@ -511,10 +542,10 @@ public sealed partial class MainWindow
             case "import-transcript": await ImportExistingAssetsAsync(Models.ImportScope.Transcript); break;
             case "import-summary": await ImportExistingAssetsAsync(Models.ImportScope.Summary); break;
             case "import-descriptions": await ImportExistingAssetsAsync(Models.ImportScope.Descriptions); break;
-            case "show-in-finder": Reveal_Click(this, e); break;
-            case "open-configuration": OpenConfiguration_Click(this, e); break;
-            case "rename-project": if (Model.Project is { } renameProject) await RenameProjectAsync(renameProject); break;
-            case "trash-project": if (Model.Project is { } trashProject) await DeleteProjectAsync(trashProject); break;
+            case "show-in-finder": if (ProjectManagementTarget() is { } revealProject) await RevealProjectAsync(revealProject); break;
+            case "open-configuration": if (ProjectManagementTarget() is { } configurationProject) await OpenProjectConfigurationAsync(configurationProject); break;
+            case "rename-project": if (ProjectManagementTarget() is { } renameProject) await RenameProjectAsync(renameProject); break;
+            case "trash-project": if (ProjectManagementTarget() is { } trashProject) await DeleteProjectAsync(trashProject); break;
             case "summary-play": if (readback.State == SummaryReadbackState.Paused) readback.Resume(); else await readback.PlayFromStartAsync(); break;
             case "summary-pause": readback.Pause(); break;
             case "summary-stop": readback.Stop(); break;
@@ -567,5 +598,6 @@ public sealed partial class MainWindow
             GalleryTable.Visibility = grid ? Visibility.Collapsed : Visibility.Visible;
         }
         Model.Settings.Set("projectPresentation", grid ? "grid" : "list"); Model.Settings.Save();
+        UpdateEditorProjectButtons();
     }
 }

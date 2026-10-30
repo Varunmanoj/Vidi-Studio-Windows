@@ -446,8 +446,14 @@ public sealed partial class MainWindow
         var name = index switch { 0 => "Transcript", 1 => "Summary", 2 => "Audio Descriptions", 3 => "Narration", 4 => "AD Transcript", _ => "AD Transcript" };
         var existing = index switch { 0 => p.Transcript.Count > 0, 1 => p.Summary.Length > 0, 2 => p.Cues.Count > 0, _ => false };
         var generateLabel = (existing ? "Regenerate " : "Generate ") + name + "…";
-        InspectorGenerate.Content = generateLabel;
-        GenerateCurrent.Content = new FontIcon { Glyph = "\uE8A5" };
+        var generateIcon = index switch { 0 => "Generate transcript", 1 => "Generate summary", _ => "Generate descriptions" };
+        InspectorGenerate.Content = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, Spacing = 8,
+            Children = { Views.MenuIcons.Create(generateIcon), new TextBlock { Text = generateLabel, VerticalAlignment = VerticalAlignment.Center } }
+        };
+        GenerateCurrent.Content = Views.MenuIcons.Create(generateIcon);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(InspectorGenerate, generateLabel);
         ToolTipService.SetToolTip(GenerateCurrent, generateLabel);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(GenerateCurrent, generateLabel);
         InspectorGenerate.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
@@ -579,16 +585,16 @@ public sealed partial class MainWindow
         var name = ExportDisplayName(project, relative);
         if (extension is ".mp4" or ".mov" or ".m4v" or ".mkv" or ".webm") return ("Video", "\uE714", 0);
         if (extension is ".mp3" or ".m4a" or ".wav" or ".aac" or ".flac") return ("Audio", "\uE767", 1);
-        if (extension == ".md") return ("Summary", "\uE8A5", 3);
+        if (extension == ".md") return ("Summary", "\uE8E4", 3);
         if (extension is ".srt" or ".vtt" or ".txt" or ".json")
         {
-            if (name.Contains("AD Transcript", StringComparison.OrdinalIgnoreCase)) return ("AD Transcript", "\uE8A5", 5);
-            if (name.Contains("Descriptions", StringComparison.OrdinalIgnoreCase)) return ("Descriptions", "\uE8A5", 4);
-            if (name.Contains("Transcript", StringComparison.OrdinalIgnoreCase)) return ("Transcript", "\uE8A5", 2);
-            return ("Text", "\uE8A5", 6);
+            if (name.Contains("AD Transcript", StringComparison.OrdinalIgnoreCase)) return ("AD Transcript", "\uE8BA", 5);
+            if (name.Contains("Descriptions", StringComparison.OrdinalIgnoreCase)) return ("Descriptions", "\uE8B9", 4);
+            if (name.Contains("Transcript", StringComparison.OrdinalIgnoreCase)) return ("Transcript", "\uE90A", 2);
+            return ("Text", "\uE8D2", 6);
         }
         if (extension.Length == 0 || name.Contains("Web Playback", StringComparison.OrdinalIgnoreCase)) return ("Web Playback", "\uE774", 7);
-        return ("Other exports", "\uE8A5", 8);
+        return ("Other exports", "\uE7B8", 8);
     }
     private static string ExportDisplayName(StudioProject project, string relative)
     {

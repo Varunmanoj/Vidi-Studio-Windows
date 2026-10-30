@@ -2,6 +2,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Input;
 using System;
 using System.IO;
 using System.Linq;
@@ -84,6 +85,9 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Project submenu nesting/order drifted from Mac.");
             if (desktopMenuItems.SelectMany(pair => pair.Value).Any(item => item.Icon == null))
                 throw new InvalidOperationException("A nested desktop menu command has no icon.");
+            if (desktopMenuItems.SelectMany(pair => pair.Value).Any(item => item.Icon is FontIcon { Glyph: "\uE8A5" or "\uE712" }) ||
+                desktopMenuGroups.Any(group => group.Item.Icon is FontIcon { Glyph: "\uE8A5" or "\uE712" }))
+                throw new InvalidOperationException("A desktop action still uses the generic document or fallback icon.");
             var savedMenuKey = Model.Settings.Get("apiKey");
             var savedMenuTts = Model.Settings.Get("ttsMode", "windows-core");
             Model.Settings.Set("apiKey", ""); Model.Settings.Set("ttsMode", "windows-core");
@@ -1535,6 +1539,15 @@ public sealed partial class MainWindow
         if (Section.SelectedIndex <= 2 &&
             (GenerateCurrent.Visibility == Visibility.Visible) == (InspectorSplitView.IsPaneOpen))
             throw new InvalidOperationException("Generation must appear in the inspector or toolbar, never both.");
+        if (Section.SelectedIndex <= 2)
+        {
+            var expectedGlyph = Section.SelectedIndex switch { 0 => "\uE90A", 1 => "\uE8E4", _ => "\uE8B9" };
+            if (GenerateCurrent.Content is not FontIcon generateIcon || generateIcon.Glyph != expectedGlyph ||
+                InspectorGenerate.Content is not StackPanel inspectorContent || inspectorContent.Children[0] is not FontIcon inspectorIcon ||
+                inspectorIcon.Glyph != expectedGlyph ||
+                string.IsNullOrWhiteSpace(Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(InspectorGenerate)))
+                throw new InvalidOperationException("Section generation icons must follow the content type in both toolbar and inspector.");
+        }
     }
 
     private static Button? FindButton(DependencyObject root, string content)

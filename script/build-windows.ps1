@@ -4,19 +4,19 @@ $projectRoot = Split-Path $PSScriptRoot -Parent
 # Piper is bundled with the app; fetch and verify the runtime before MSBuild evaluates content.
 & (Join-Path $PSScriptRoot 'fetch-piper.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'The bundled Piper speech engine could not be prepared.' }
-if (Get-Command python -ErrorAction SilentlyContinue) {
-    & python (Join-Path $PSScriptRoot 'sync_version.py') --sync
+# Prefer the environment prepared by setup-windows.ps1 over Windows Store
+# execution aliases, which can exist on PATH without a runnable Python install.
+$buildPython = Join-Path $projectRoot '.venv-windows\Scripts\python.exe'
+if (!(Test-Path -LiteralPath $buildPython)) {
+    $pythonCommand = Get-Command python, python3 -ErrorAction SilentlyContinue | Select-Object -First 1
+    $buildPython = if ($pythonCommand) { $pythonCommand.Source } else { $null }
+}
+if ($buildPython) {
+    & $buildPython (Join-Path $PSScriptRoot 'sync_version.py') --sync
     if ($LASTEXITCODE -ne 0) { throw 'Desktop version synchronization failed.' }
-    & python (Join-Path $PSScriptRoot 'check_menu_parity.py') --allow-missing
+    & $buildPython (Join-Path $PSScriptRoot 'check_menu_parity.py') --allow-missing
     if ($LASTEXITCODE -ne 0) { throw 'Desktop menu parity check failed.' }
-    & python (Join-Path $PSScriptRoot 'check_xaml_references.py')
-    if ($LASTEXITCODE -ne 0) { throw 'Inspector XAML/source reference check failed.' }
-} elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
-    & python3 (Join-Path $PSScriptRoot 'sync_version.py') --sync
-    if ($LASTEXITCODE -ne 0) { throw 'Desktop version synchronization failed.' }
-    & python3 (Join-Path $PSScriptRoot 'check_menu_parity.py') --allow-missing
-    if ($LASTEXITCODE -ne 0) { throw 'Desktop menu parity check failed.' }
-    & python3 (Join-Path $PSScriptRoot 'check_xaml_references.py')
+    & $buildPython (Join-Path $PSScriptRoot 'check_xaml_references.py')
     if ($LASTEXITCODE -ne 0) { throw 'Inspector XAML/source reference check failed.' }
 }
 # The app prefers a frozen engine under runtime\engine (copied to engine-bin). A frozen build

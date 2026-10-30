@@ -56,7 +56,7 @@ public sealed class ExportDialog : ContentDialog
         shell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         shell.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb(18, 128, 128, 128)),
             Padding = new Thickness(10, 16, 10, 10), Child = sidebar });
-        var glyphs = new[] { "\uE714", "\uE767", "\uE8A5", "\uE774" };
+        var glyphs = new[] { "\uE714", "\uE767", "\uE8D2", "\uE774" };
         for (var i = 0; i < Sections.Length; i++)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };

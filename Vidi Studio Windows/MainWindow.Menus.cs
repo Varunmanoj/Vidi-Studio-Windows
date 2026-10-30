@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -420,7 +421,10 @@ public sealed partial class MainWindow
             "stop" or "summary-stop" => "Stop summary",
             "preview" or "fullscreen" => "Show / hide preview", "toggle-timeline" => "Show / hide timeline",
             "show-projects" => "Show / hide projects", "show-inspector" => "Show / hide inspector",
-            "project-list" or "project-grid" or "Editor Sections" => "List / Grid projects",
+            "project-list" => "Project list", "project-grid" => "List / Grid projects",
+            "Editor Sections" => "Editor sections", "Segments" => "Segments",
+            "Transcript Overlay" => "Transcript overlay",
+            "caption-cycle" or "caption-off" or "caption-transcript" or "caption-ad-transcript" => "Transcript overlay",
             "new-project" or "add" => "New project", "open-project" or "show-in-finder" => "Open project folder",
             "Import" => "Import", "import-assets" => "Import existing assets", "import-transcript" => "Import transcript",
             "import-summary" => "Import summary", "import-descriptions" => "Import descriptions", "filter-segments" => "Filter segments",
@@ -433,19 +437,21 @@ public sealed partial class MainWindow
             "open-editor-window" => "Open editor in new window", "export" => "Export", "settings" => "Settings",
             "close-window" => "Close window", "help" => "Help and keyboard shortcuts", "about" => "About Vidi Studio",
             "back" => "Rewind five seconds", "forward" => "Forward five seconds", "follow" => "Follow active segment",
-            "summary-play" or "summary-from-start" or "summary-from-selection" or "summary-read-selection" => "Play summary",
+            "summary-play" => "Play summary", "summary-from-start" => "Read summary from start",
+            "summary-from-selection" => "Read summary from selection", "summary-read-selection" => "Read selected summary text",
             "summary-pause" => "Pause summary",
             "summary-previous-sentence" => "Previous summary sentence", "summary-next-sentence" => "Next summary sentence",
             "summary-previous-paragraph" => "Previous summary paragraph", "summary-next-paragraph" => "Next summary paragraph",
             "Summary Reading" or "Narration" or "Narration Audio" or "narration" or "synthesize-tts" or "synthesize-changed" => "Narration",
             "AD Segment Generation" => "Generate descriptions", "delete-descriptions" => "Delete selected",
-            "review-narration-issues" => "Review Narration Issues…", "delete-narration" or "delete-current" or "segment-delete-selected" => "Delete narration",
+            "review-narration-issues" => "Review Narration Issues…", "delete-narration" => "Delete narration",
+            "delete-current" or "segment-delete-selected" => "Delete selected",
             "review-narration-voices" => "Review Narration Voices…",
             "segment-edit-mode" or "segment-edit-selected" => "Edit selected", "segment-select-all" => "Select all", "segment-deselect-all" => "Deselect all",
             "undo" => "Undo", "redo" => "Redo", "analyze" or "Analysis" or "reanalyze-selection" => "Analyze video",
             "prepare-video" => "Refresh video details", "transcribe" or "transcript" => "Transcript", "generate-summary" or "summary" => "Summary",
             "generate-ad-cues" or "descriptions" => "Descriptions", "ad-overview" => "AD Overview", "ad-transcript" => "AD Transcript",
-            _ => "AD Transcript"
+            _ => id
         });
     }
 

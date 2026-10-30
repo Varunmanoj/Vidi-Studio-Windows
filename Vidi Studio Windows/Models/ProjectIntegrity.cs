@@ -44,7 +44,7 @@ public sealed class ProjectFileProblem
 
     public string IconGlyph => Category switch
     {
-        ProjectFileCategory.Manifest => "\uE8A5",
+        ProjectFileCategory.Manifest => "\uE943",
         ProjectFileCategory.Source => "\uE714",
         ProjectFileCategory.Metadata => "\uE946",
         ProjectFileCategory.Thumbnails => "\uEB9F",

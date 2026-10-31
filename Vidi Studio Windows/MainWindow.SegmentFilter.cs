@@ -12,6 +12,12 @@ public sealed partial class MainWindow
 {
     private readonly Models.SegmentFilter segmentFilter = new();
 
+    private void ClearSegmentSelection()
+    {
+        // WinUI rejects mutations of SelectedItems while selection is disabled.
+        if (Segments.SelectionMode != ListViewSelectionMode.None) Segments.SelectedItems.Clear();
+    }
+
     private static bool HasSegmentAudio(Models.StudioProject project, Models.Segment segment) =>
         !string.IsNullOrWhiteSpace(segment.Audio) && File.Exists(project.Resolve(segment.Audio));
 
@@ -85,7 +91,7 @@ public sealed partial class MainWindow
                 segmentFilter.Origins.Add((string)box.Tag);
             segmentFilter.Audio = audio?.SelectedIndex switch { 1 => "withAudio", 2 => "withoutAudio", _ => "all" };
         }
-        Segments.SelectedItems.Clear();
+        ClearSegmentSelection();
         RenderSection();
         UpdateBulkActionState();
     }

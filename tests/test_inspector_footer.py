@@ -20,9 +20,15 @@ class InspectorFooter(unittest.TestCase):
         self.assertEqual(gear.get('AutomationProperties.Name'), 'Settings')
         self.assertEqual(gear.get('Grid.Column'), '3')
 
-    def test_header_no_longer_duplicates_project_controls(self):
+    def test_header_exposes_the_inspector_toggle_without_a_duplicate_folder_action(self):
         self.assertNotIn('TopOpenFolderButton', self.names)
-        self.assertNotIn('TopInspectorToggle', self.names)
+        toggle = self.names['TopInspectorToggle']
+        self.assertEqual(toggle.get('Tag'), 'show-inspector')
+        self.assertEqual(toggle.get('Click'), 'TopInspectorToggle_Click')
+        self.assertEqual(toggle.get('AutomationProperties.AutomationId'), 'show-inspector')
+        actions = next(parent for parent in self.tree.iter() if toggle in list(parent))
+        self.assertEqual(actions.get('Grid.Column'), '2')
+        self.assertEqual(actions.get('HorizontalAlignment'), 'Right')
 
     def test_inspector_footer_keeps_folder_and_configuration_actions(self):
         clicks = {element.get('Click') for element in self.tree.iter()}

@@ -29,6 +29,12 @@ public sealed partial class MainWindow
             Model.Open(folder);
             ShowEditor();
             VerifyProjectConfigurationDeveloperModeForSmokeTest();
+            await VerifySegmentFiltersForSmokeTestAsync();
+            if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_FILTERS_ONLY") == "1")
+            {
+                await File.WriteAllTextAsync(report, "PASS: native Apply Filter, Clear Filter, Cancel, and all four sort commands in Transcript, Descriptions, and AD Transcript, in viewing and editing modes, without project changes.");
+                return;
+            }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_DIALOGS_ONLY") == "1")
             {
                 await VerifyCompanionDialogsForSmokeTestAsync(report);
@@ -437,6 +443,7 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("The bottom-left project list button did not hide the project list while staying available.");
             ToggleLibrary_Click(this, new RoutedEventArgs());
             await VerifyProjectPaneTransitionsForSmokeTestAsync();
+            await VerifyInspectorToggleForSmokeTestAsync(report);
             var titleBarVisibility = AppTitleBar.Visibility;
             FullScreen_Click(this, new RoutedEventArgs());
             if (!fullScreenVideo || !ReferenceEquals(PreviewPanel.Parent, Root) || AppTitleBar.Visibility != Visibility.Collapsed ||
@@ -849,7 +856,7 @@ public sealed partial class MainWindow
             }
             await VerifyExistingAssetEngineWorkflowForSmokeTestAsync(folder);
             ClearProject();
-            if (Model.Project != null || EditorWorkspace.Visibility != Visibility.Collapsed || GalleryPanel.Visibility != Visibility.Visible || video.Source != null || narrationPlayer.Source != null || ProjectDetails.Children.Count != 0) throw new InvalidOperationException("Project close left stale editor state.");
+            if (Model.Project != null || EditorWorkspace.Visibility != Visibility.Collapsed || GalleryPanel.Visibility != Visibility.Visible || TopInspectorToggle.Visibility != Visibility.Collapsed || video.Source != null || narrationPlayer.Source != null || ProjectDetails.Children.Count != 0) throw new InvalidOperationException("Project close left stale editor state.");
             var emptySettings = new Views.SettingsDialog(Model, this, 1);
             var emptyDisplay = emptySettings.ShowAsync();
             await Task.Delay(250);
@@ -1028,6 +1035,92 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("In-place dialog returned the wrong command result: " + label);
         }
     }
+    private async Task VerifySegmentFiltersForSmokeTestAsync()
+    {
+        var originalSection = Section.SelectedIndex;
+        var originalEditing = editMode;
+        var originalOrigins = segmentFilter.Origins.ToArray();
+        var originalAudio = segmentFilter.Audio;
+        var originalSort = segmentSort;
+        var manifestPath = Path.Combine(Model.Project!.Folder, "project.json");
+        var manifest = await File.ReadAllBytesAsync(manifestPath);
+        try
+        {
+            foreach (var section in new[] { 0, 2, 4 })
+            foreach (var editing in new[] { false, true })
+            {
+                Section.SelectedIndex = section;
+                if (editMode != editing) EditMode_Click(this, new RoutedEventArgs());
+                var allRows = UnfilteredSectionRows().ToList();
+                segmentFilter.Clear();
+                RenderSection();
+                foreach (var command in new[] { "sort-start", "sort-duration-asc", "sort-duration-desc", "sort-origin" })
+                {
+                    if (editing && Segments.Items.Count > 0) Segments.SelectedItems.Add(Segments.Items[0]);
+                    await RunDesktopCommandAsync(command);
+                    if (Segments.Items.Count != allRows.Count || Segments.SelectedItems.Count != 0 ||
+                        Segments.SelectionMode != (editing ? ListViewSelectionMode.Multiple : ListViewSelectionMode.None))
+                        throw new InvalidOperationException("Sorting did not preserve rows and clear the editable selection: " + command);
+                }
+                foreach (var result in new[] { ContentDialogResult.Secondary, ContentDialogResult.Primary, ContentDialogResult.None })
+                {
+                    segmentFilter.Clear();
+                    segmentFilter.Origins.Add("origin-not-present-in-this-section");
+                    segmentFilter.Audio = section == 0 ? "all" : "withAudio";
+                    RenderSection();
+                    ContentDialog? filterDialog = null;
+                    void Capture(ContentDialog candidate, Window window) => filterDialog = candidate;
+                    Views.WindowedDialog.Preparing += Capture;
+                    try
+                    {
+                        var display = ShowSegmentFilterAsync();
+                        for (var attempt = 0; attempt < 80 && filterDialog is null; attempt++) await Task.Delay(25);
+                        if (filterDialog is null) throw new InvalidOperationException("The segment filter dialog did not open.");
+                        await dialogPresentationVerifier!.WaitUntilReadyAsync(filterDialog);
+                        var panel = (StackPanel)((ScrollViewer)filterDialog.Content).Content;
+                        if (result == ContentDialogResult.Primary)
+                        {
+                            foreach (var box in panel.Children.OfType<CheckBox>()) box.IsChecked = false;
+                            if (panel.Children.OfType<ComboBox>().FirstOrDefault() is { } audio) audio.SelectedIndex = 0;
+                        }
+                        var label = result switch { ContentDialogResult.Secondary => "Clear Filter", ContentDialogResult.Primary => "Apply Filter", _ => "Cancel" };
+                        var button = FindButton(filterDialog, label) ?? throw new InvalidOperationException("Missing filter action: " + label);
+                        var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(button);
+                        ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+                        await display;
+                        var visible = Segments.Items.Cast<Models.Segment>().ToList();
+                        if (result == ContentDialogResult.None)
+                        {
+                            if (!segmentFilter.IsActive || visible.Count != 0)
+                                throw new InvalidOperationException("Cancel changed the active segment filter.");
+                        }
+                        else if (segmentFilter.IsActive || visible.Count != allRows.Count || allRows.Any(row => !visible.Contains(row)))
+                            throw new InvalidOperationException($"{label} did not restore all section rows (section {section}, editing {editing}).");
+                        if (Segments.SelectionMode != (editing ? ListViewSelectionMode.Multiple : ListViewSelectionMode.None))
+                            throw new InvalidOperationException("Filtering changed the editor selection mode.");
+                    }
+                    finally
+                    {
+                        Views.WindowedDialog.Preparing -= Capture;
+                        filterDialog?.Hide();
+                    }
+                }
+            }
+            if (!manifest.SequenceEqual(await File.ReadAllBytesAsync(manifestPath)))
+                throw new InvalidOperationException("Filtering modified the saved project.");
+        }
+        finally
+        {
+            segmentFilter.Clear();
+            foreach (var origin in originalOrigins) segmentFilter.Origins.Add(origin);
+            segmentFilter.Audio = originalAudio;
+            segmentSort = originalSort;
+            Section.SelectedIndex = originalSection;
+            if (editMode != originalEditing) EditMode_Click(this, new RoutedEventArgs());
+            RenderSection();
+        }
+    }
+
     private async Task VerifySegmentSelectionForSmokeTestAsync(string report)
     {
         foreach (var theme in new[] { "dark", "light" })
@@ -1557,6 +1650,51 @@ public sealed partial class MainWindow
             ProjectSplitView.IsPaneOpen = wasOpen;
             UpdateEditorProjectButtons();
             UpdateDesktopMenuStates();
+        }
+    }
+
+    private async Task VerifyInspectorToggleForSmokeTestAsync(string report)
+    {
+        var originalTheme = App.ActiveTheme ?? Model.Settings.Get("theme", "system");
+        var originalOpen = InspectorSplitView.IsPaneOpen;
+        try
+        {
+            foreach (var theme in new[] { "light", "dark" })
+            {
+                PreviewTheme(theme);
+                if (!InspectorSplitView.IsPaneOpen) await RunDesktopCommandAsync("show-inspector");
+                await Task.Delay(100);
+                if (TopInspectorToggle.Visibility != Visibility.Visible || !TopInspectorToggle.IsEnabled ||
+                    TopInspectorToggle.Content as string != "\uE8A0" ||
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(TopInspectorToggle) != "Hide Inspector")
+                    throw new InvalidOperationException("The editor header is missing its labeled native inspector button.");
+                await CaptureSmokeImage(ProjectHeader, Path.Combine(Path.GetDirectoryName(report)!, $"inspector-header-{theme}.png"));
+                var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(TopInspectorToggle);
+                ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+                await Task.Delay(160);
+                if (InspectorSplitView.IsPaneOpen || TopInspectorToggle.Visibility != Visibility.Visible ||
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(TopInspectorToggle) != "Show Inspector" ||
+                    ToolTipService.GetToolTip(TopInspectorToggle) as string != "Show Inspector (Ctrl+Shift+B)" ||
+                    desktopMenuItems["show-inspector"].Any(item => item.Text != "Show Inspector"))
+                    throw new InvalidOperationException("The header button did not close the inspector and synchronize its menu and accessible label.");
+                await RunDesktopCommandAsync("show-inspector");
+                await Task.Delay(160);
+                if (!InspectorSplitView.IsPaneOpen ||
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(TopInspectorToggle) != "Hide Inspector")
+                    throw new InvalidOperationException("The menu/shortcut inspector action did not synchronize the header button.");
+                if (!InspectorSettingsButton.Focus(FocusState.Programmatic))
+                    throw new InvalidOperationException("The inspector footer is not keyboard reachable.");
+                await RunDesktopCommandAsync("show-inspector");
+                await Task.Delay(160);
+                if (!ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), TopInspectorToggle))
+                    throw new InvalidOperationException("Closing the inspector left focus inside its hidden pane.");
+                await RunDesktopCommandAsync("show-inspector");
+            }
+        }
+        finally
+        {
+            if (InspectorSplitView.IsPaneOpen != originalOpen) ToggleInspector_Click(this, new RoutedEventArgs());
+            PreviewTheme(originalTheme);
         }
     }
 

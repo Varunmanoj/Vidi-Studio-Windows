@@ -93,7 +93,7 @@
     </InfoBar.Content>
    </InfoBar>
   </StackPanel>
-  <Grid Grid.Row="3" Padding="20,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" MinHeight="54">
+  <Grid x:Name="ProjectHeader" Grid.Row="3" Padding="20,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" MinHeight="54">
    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="1.6*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
    <Grid Grid.ColumnSpan="2" HorizontalAlignment="Left" VerticalAlignment="Center" ColumnSpacing="8">
     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -106,6 +106,7 @@
    </Grid>
    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
     <Button x:Name="GalleryImport" Content="New project" Style="{StaticResource AccentButtonStyle}" Click="NewProject_Click"/>
+    <Button x:Name="TopInspectorToggle" Content="&#xE8A0;" FontFamily="Segoe Fluent Icons" Tag="show-inspector" Click="TopInspectorToggle_Click" Visibility="Collapsed" ToolTipService.ToolTip="Hide Inspector (Ctrl+Shift+B)" AutomationProperties.Name="Hide Inspector" AutomationProperties.AutomationId="show-inspector"/>
    </StackPanel>
   </Grid>
   <Grid x:Name="GalleryPanel" Grid.Row="4" Padding="28,24" RowSpacing="22">
@@ -150,7 +151,7 @@
    </Grid>
   </Grid>
   <ContentControl x:Name="EditorWorkspace" Grid.Row="4" Visibility="Collapsed" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
-   <SplitView x:Name="InspectorSplitView" DisplayMode="Inline" PanePlacement="Right" IsPaneOpen="True" OpenPaneLength="310" PaneBackground="{ThemeResource LayerFillColorAltBrush}">
+   <SplitView x:Name="InspectorSplitView" DisplayMode="Inline" PanePlacement="Right" IsPaneOpen="True" OpenPaneLength="310" PaneBackground="{ThemeResource LayerFillColorAltBrush}" PaneClosing="RightInspectorPane_Closing">
     <SplitView.Pane>
     <Grid x:Name="InspectorPanel" Background="{ThemeResource LayerFillColorAltBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
      <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>

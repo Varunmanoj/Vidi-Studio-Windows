@@ -208,6 +208,14 @@ public sealed partial class MainWindow
             RenameProjectTitleButton.Visibility = desktopEditorVisible ? Visibility.Visible : Visibility.Collapsed;
             RenameProjectTitleButton.IsEnabled = CanRunDesktopCommand("rename-project");
         }
+        if (TopInspectorToggle != null)
+        {
+            TopInspectorToggle.Visibility = desktopEditorVisible ? Visibility.Visible : Visibility.Collapsed;
+            TopInspectorToggle.IsEnabled = CanRunDesktopCommand("show-inspector");
+            var label = DesktopCommandTitle("show-inspector");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(TopInspectorToggle, label);
+            ToolTipService.SetToolTip(TopInspectorToggle, label + " (" + DesktopShortcuts["show-inspector"].Text + ")");
+        }
         var timedSection = Section.SelectedIndex is 0 or 2 or 4;
         foreach (var item in desktopMenuItems.TryGetValue("filter-segments", out var filterItems) ? filterItems : new List<MenuFlyoutItem>())
             item.Visibility = timedSection ? Visibility.Visible : Visibility.Collapsed;

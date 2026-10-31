@@ -18,7 +18,7 @@ public sealed partial class MainWindow
     private void SetSegmentSort(string sort)
     {
         segmentSort = sort;
-        Segments.SelectedItems.Clear();
+        ClearSegmentSelection();
         RenderSection();
         UpdateBulkActionState();
         UpdateDesktopMenuStates();

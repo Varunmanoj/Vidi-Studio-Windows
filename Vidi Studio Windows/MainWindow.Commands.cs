@@ -156,6 +156,23 @@ public sealed partial class MainWindow
     {
         InspectorSplitView.IsPaneOpen = !InspectorSplitView.IsPaneOpen;
         UpdateEditorActionVisibility();
+        UpdateDesktopMenuStates();
+    }
+    private async void TopInspectorToggle_Click(object sender, RoutedEventArgs e)
+    {
+        try { await RunDesktopCommandAsync("show-inspector"); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { await ShowError(ex); }
+    }
+    private void RightInspectorPane_Closing(SplitView sender, SplitViewPaneClosingEventArgs args)
+    {
+        for (DependencyObject? focused = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
+             focused != null; focused = VisualTreeHelper.GetParent(focused))
+        {
+            if (!ReferenceEquals(focused, InspectorPanel)) continue;
+            TopInspectorToggle.Focus(FocusState.Programmatic);
+            break;
+        }
     }
     private void FullScreen_Click(object sender, RoutedEventArgs e)
     {

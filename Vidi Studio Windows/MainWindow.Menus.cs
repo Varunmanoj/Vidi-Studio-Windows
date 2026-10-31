@@ -198,7 +198,11 @@ public sealed partial class MainWindow
                 item.Text = DesktopCommandTitle(id);
                 item.Icon = DesktopCommandIcon(id);
                 item.IsEnabled = CanRunDesktopCommand(id);
+                if (id == "open-configuration")
+                    item.Visibility = Model.Settings.GetBool("developerMode") ? Visibility.Visible : Visibility.Collapsed;
             }
+        InspectorOpenConfigurationButton.Visibility = Model.Settings.GetBool("developerMode") ? Visibility.Visible : Visibility.Collapsed;
+        InspectorOpenConfigurationButton.IsEnabled = CanRunDesktopCommand("open-configuration");
         if (RenameProjectTitleButton != null)
         {
             RenameProjectTitleButton.Visibility = desktopEditorVisible ? Visibility.Visible : Visibility.Collapsed;
@@ -267,7 +271,7 @@ public sealed partial class MainWindow
             "rename-project" => !project.IntegrityPlaceholder && project.Integrity?.ManifestUnreadable != true && project.Integrity?.FolderMissing != true,
             "trash-project" => true,
             "show-in-finder" => Directory.Exists(project.Folder),
-            "open-configuration" => File.Exists(Path.Combine(project.Folder, "project.json")),
+            "open-configuration" => Model.Settings.GetBool("developerMode") && File.Exists(Path.Combine(project.Folder, "project.json")),
             _ => false
         };
     }

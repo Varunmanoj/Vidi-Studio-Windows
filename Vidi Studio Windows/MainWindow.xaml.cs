@@ -1288,7 +1288,7 @@ public sealed partial class MainWindow : Window
     }
     private async Task OpenProjectConfigurationAsync(StudioProject project)
     {
-        if (string.IsNullOrWhiteSpace(project.Folder)) return;
+        if (!Model.Settings.GetBool("developerMode") || !Model.Idle || string.IsNullOrWhiteSpace(project.Folder)) return;
         var manifest = Path.Combine(project.Folder, "project.json");
         if (!File.Exists(manifest)) return;
         try { await Launcher.LaunchFileAsync(await Windows.Storage.StorageFile.GetFileFromPathAsync(manifest)); }

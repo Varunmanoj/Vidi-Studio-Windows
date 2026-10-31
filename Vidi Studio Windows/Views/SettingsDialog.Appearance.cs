@@ -13,19 +13,13 @@ public sealed partial class SettingsDialog
 {
     private void BuildAppearance(StackPanel panel)
     {
-        panel.Children.Add(new TextBlock { Text = "Appearance and playback", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 2, 0, 10) });
+        panel.Children.Add(new TextBlock { Text = "Appearance and playback", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) });
         var card = new StackPanel { Spacing = 16 };
         panel.Children.Add(new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(16), Background = new SolidColorBrush(Color.FromArgb(15, 128, 128, 128)), Child = card });
-        Grid Row(string title, FrameworkElement control)
-        {
-            var row = new Grid { ColumnSpacing = 14, MinHeight = 32 };
-            row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.Children.Add(new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap });
-            Grid.SetColumn(control, 1); row.Children.Add(control); card.Children.Add(row); return row;
-        }
+        Grid Row(string title, FrameworkElement control) => AddSettingsRow(card, title, control);
         void Choice(string label, string key, string[] ids, string[] labels)
         {
-            var choice = new ComboBox { ItemsSource = labels, SelectedIndex = Math.Max(0, Array.IndexOf(ids, SettingsStore.GetString(draft[key], ids[0]))), MinWidth = 165 };
+            var choice = new ComboBox { ItemsSource = labels, SelectedIndex = Math.Max(0, Array.IndexOf(ids, SettingsStore.GetString(draft[key], ids[0]))), Width = 180, MinWidth = 0 };
             choice.SelectionChanged += (_, _) =>
             {
                 if (choice.SelectedIndex < 0) return;
@@ -71,10 +65,14 @@ public sealed partial class SettingsDialog
         }
         void Slider(string label, string key, double fallback, double low, double high, double step, bool percent)
         {
-            var group = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-            var slider = new Slider { Width = 210, Minimum = low, Maximum = high, StepFrequency = step, Value = SettingsStore.GetDouble(draft[key], fallback) };
+            var group = new Grid { Width = 280, ColumnSpacing = 12 };
+            group.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            group.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var slider = new Slider { MinWidth = 0, HorizontalAlignment = HorizontalAlignment.Stretch, Minimum = low, Maximum = high, StepFrequency = step, Value = SettingsStore.GetDouble(draft[key], fallback) };
             var value = new TextBlock { Width = 45, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Text = percent ? $"{slider.Value:P0}" : $"{slider.Value:F0} pt" };
             slider.ValueChanged += (_, _) => { draft[key] = slider.Value; value.Text = percent ? $"{slider.Value:P0}" : $"{slider.Value:F0} pt"; Preview(); };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(slider, label);
+            Grid.SetColumn(value, 1);
             group.Children.Add(slider); group.Children.Add(value); Row(label, group);
         }
         void ColorRow(string label, string key, string fallback)
@@ -118,13 +116,8 @@ public sealed partial class SettingsDialog
             MinWidth = 0
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(developerMode, "Developer mode");
-        var developerRow = new Grid { ColumnSpacing = 14, MinHeight = 32 };
-        developerRow.ColumnDefinitions.Add(new ColumnDefinition());
-        developerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        developerRow.Children.Add(new TextBlock { Text = "Developer mode", VerticalAlignment = VerticalAlignment.Center });
-        Grid.SetColumn(developerMode, 1); developerRow.Children.Add(developerMode);
-        advanced.Children.Add(developerRow);
-        advanced.Children.Add(new TextBlock { Text = "Shows Developer prompts and the advanced executable-path overrides in Narration and Storage.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
+        AddSettingsRow(advanced, "Developer mode", developerMode);
+        advanced.Children.Add(new TextBlock { Text = "Shows project configuration controls, Developer prompts, and advanced executable-path overrides in Narration and Storage.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
         developerMode.Toggled += (_, _) =>
         {
             draft["developerMode"] = developerMode.IsOn;

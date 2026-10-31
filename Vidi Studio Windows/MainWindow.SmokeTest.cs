@@ -28,6 +28,7 @@ public sealed partial class MainWindow
             if (folder == null) throw new InvalidOperationException("Smoke project is required.");
             Model.Open(folder);
             ShowEditor();
+            VerifyProjectConfigurationDeveloperModeForSmokeTest();
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_DIALOGS_ONLY") == "1")
             {
                 await VerifyCompanionDialogsForSmokeTestAsync(report);
@@ -451,6 +452,7 @@ public sealed partial class MainWindow
             var settings = new Views.SettingsDialog(Model, this);
             var display = settings.ShowAsync();
             await Task.Delay(250);
+            await settings.VerifyLayoutForSmokeTestAsync();
             settings.VerifyDeveloperModeGateForSmokeTest();
             settings.VerifyProjectPlaybackSettingsForSmokeTest();
             await settings.VerifyAdvancedOptionsForSmokeTestAsync();
@@ -1224,6 +1226,30 @@ public sealed partial class MainWindow
         };
         return container;
     }
+    private void VerifyProjectConfigurationDeveloperModeForSmokeTest()
+    {
+        var saved = Model.Settings.Data["developerMode"]?.DeepClone();
+        try
+        {
+            foreach (var enabled in new[] { false, true, false })
+            {
+                Model.Settings.Data["developerMode"] = enabled;
+                UpdateDesktopMenuStates();
+                var expected = enabled ? Visibility.Visible : Visibility.Collapsed;
+                if (desktopMenuItems["open-configuration"].Any(item => item.Visibility != expected) ||
+                    InspectorOpenConfigurationButton.Visibility != expected ||
+                    CanRunDesktopCommand("open-configuration") != enabled ||
+                    ProjectMenu(Model.Project!).Items.OfType<MenuFlyoutItem>().Any(item => (string?)item.Tag == "open-configuration") != enabled)
+                    throw new InvalidOperationException("Project configuration must follow Developer mode in menus, context actions, inspector, and command guards.");
+            }
+        }
+        finally
+        {
+            Model.Settings.Data["developerMode"] = saved;
+            UpdateDesktopMenuStates();
+        }
+    }
+
     private async Task VerifyEditorProjectNavigationForSmokeTestAsync()
     {
         var original = Model.Project!;

@@ -22,6 +22,8 @@ public sealed partial class SettingsDialog : Window
     private readonly TaskCompletionSource<bool> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly MainWindow? menuOwner;
     private readonly Grid layout;
+    private readonly Window owner;
+    private readonly ScrollViewer sectionHost;
     private bool saved;
     private ListView? sectionList;
     private ListViewItem? developerPromptsItem;
@@ -170,6 +172,7 @@ public sealed partial class SettingsDialog : Window
     {
         if (initialSection < 0 || initialSection > 7) throw new ArgumentOutOfRangeException(nameof(initialSection));
         requestedSection = initialSection;
+        owner = window;
         menuOwner = window as MainWindow;
         this.model = model; draft = model.Settings.Data.DeepClone().AsObject();
         // Developer prompts stay hidden until the user enables Developer mode in Appearance.
@@ -180,30 +183,44 @@ public sealed partial class SettingsDialog : Window
         originalTheme = App.ActiveTheme ?? model.Settings.Get("theme", "system");
         Title = "Vidi Studio Settings";
         WindowAppearance.ApplyIcon(this);
-        layout = new Grid { Padding = new Thickness(16), ColumnSpacing = 16 };
+        layout = new Grid { Padding = new Thickness(24, 0, 24, 20), ColumnSpacing = 24 };
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(32) });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        layout.RowDefinitions.Add(new RowDefinition());
-        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(210) });
         layout.ColumnDefinitions.Add(new ColumnDefinition());
-        layout.Children.Add(new TextBlock { Text = "Settings", FontSize = 26, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(4, 4, 0, 18) });
+        layout.SizeChanged += (_, args) => layout.ColumnDefinitions[0].Width = new GridLength(Math.Clamp(args.NewSize.Width * .24, 160, 210));
+        var heading = new TextBlock { Text = "Settings", FontSize = 26, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 20) };
+        Grid.SetRow(heading, 1); Grid.SetColumnSpan(heading, 2); layout.Children.Add(heading);
         var sections = new ListView { SelectionMode = ListViewSelectionMode.Single };
         var labels = new[] { "Appearance", "Projects", "Narration", "Gemini API", "Developer prompts", "Storage", "Help", "About" };
         var glyphs = new[] { "\uE790", "\uE8F1", "\uE767", "\uE734", "\uE8F2", "\uE8B7", "\uE897", "\uE946" };
         for (var i = 0; i < labels.Length; i++)
         {
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-            row.Children.Add(new FontIcon { Glyph = glyphs[i], FontSize = 17 });
-            row.Children.Add(new TextBlock { Text = labels[i], VerticalAlignment = VerticalAlignment.Center });
-            var item = new ListViewItem { Content = row, MinHeight = 42, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            var row = new Grid { ColumnSpacing = 12 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.Children.Add(new FontIcon { Glyph = glyphs[i], FontSize = 18, Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center });
+            var label = new TextBlock { Text = labels[i], VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
+            Grid.SetColumn(label, 1); row.Children.Add(label);
+            var item = new ListViewItem { Content = row, MinHeight = 44, Padding = new Thickness(12, 8, 12, 8), HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, labels[i]);
             if (i == 4) developerPromptsItem = item;
             sections.Items.Add(item);
         }
-        Grid.SetRow(sections, 1);
+        Grid.SetRow(sections, 2);
         sectionList = sections;
         UpdateDeveloperPromptsVisibility();
-        var host = new ScrollViewer(); Grid.SetColumn(host, 1); Grid.SetRow(host, 1); layout.Children.Add(sections); layout.Children.Add(host);
+        var host = sectionHost = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalScrollMode = ScrollMode.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollMode = ScrollMode.Auto,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch
+        };
+        Grid.SetColumn(host, 1); Grid.SetRow(host, 2); layout.Children.Add(sections); layout.Children.Add(host);
         var footer = new Grid { ColumnSpacing = 12, Margin = new Thickness(0, 12, 0, 0) };
         footer.ColumnDefinitions.Add(new ColumnDefinition()); footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         footer.Children.Add(status);
@@ -223,7 +240,7 @@ public sealed partial class SettingsDialog : Window
             Height = 32,
             VerticalAlignment = VerticalAlignment.Top,
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-            Margin = new Thickness(-16, -16, -16, 0)
+            Margin = new Thickness(-24, 0, -24, 0)
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(titleBarDrag, "Vidi Studio Settings title bar");
         Grid.SetColumnSpan(titleBarDrag, 2);
@@ -246,8 +263,7 @@ public sealed partial class SettingsDialog : Window
             StopSample(false);
             status.Text = "Sample playback failed. Try another voice.";
         });
-        // AppWindow sizes are physical pixels; FrameworkElement.ActualWidth is in device-independent pixels.
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(Math.Max(940, window.AppWindow.Size.Width - 160), Math.Max(680, window.AppWindow.Size.Height - 120)));
+        PositionOverOwner();
         ReceiveTheme(App.ActiveTheme ?? model.Settings.Get("theme", "system"));
         layout.ActualThemeChanged += (_, _) => UpdateWindowTitleBar();
         sections.SelectionChanged += (_, _) =>
@@ -332,7 +348,7 @@ public sealed partial class SettingsDialog : Window
             completion.TrySetResult(saved);
         };
     }
-    public Task<bool> ShowAsync() { Activate(); return completion.Task; }
+    public Task<bool> ShowAsync() { PositionOverOwner(); Activate(); return completion.Task; }
     private bool DeveloperModeEnabled => SettingsStore.GetBool(draft["developerMode"], model.Settings.GetBool("developerMode"));
     private void UpdateDeveloperPromptsVisibility()
     {

@@ -347,7 +347,9 @@ public sealed partial class MainWindow
         Item("Open in New Window", (_, _) => App.OpenWindow(project.Folder), commandId: "open-editor-window");
         Item("Export", (_, args) => { LoadForEditorAction(); Export_Click(this, args); }, activeApiKey && usable);
         Item("Open project folder", (_, _) => _ = RevealProjectAsync(project));
-        Item("Open project configuration", (_, _) => _ = OpenProjectConfigurationAsync(project));
+        if (Model.Settings.GetBool("developerMode"))
+            Item("Open project configuration", (_, _) => _ = OpenProjectConfigurationAsync(project),
+                File.Exists(Path.Combine(project.Folder, "project.json")), commandId: "open-configuration");
         foreach (var pair in new[] { ("Analyze video", "analyze"), ("Generate transcript", "transcribe"), ("Generate summary", "generate-summary"), ("Generate descriptions", "generate-ad-cues") })
             Item(pair.Item1, (_, args) => { LoadForEditorAction(); Command_Click(new Button { Tag = pair.Item2 }, args); }, activeApiKey && usable);
         Item("Refresh video details", (_, args) => { LoadForEditorAction(); Command_Click(new Button { Tag = "prepare-video" }, args); }, usable);

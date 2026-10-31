@@ -13,12 +13,8 @@ public sealed partial class SettingsDialog
 {
     private static void AddInformationRow(StackPanel panel, string label, string detail)
     {
-        var row = new Grid { ColumnSpacing = 20, Padding = new Thickness(0, 9, 0, 9) };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(230) });
-        row.ColumnDefinitions.Add(new ColumnDefinition());
-        row.Children.Add(new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap });
         var value = new TextBlock { Text = detail, TextWrapping = TextWrapping.Wrap, Opacity = .7 };
-        Grid.SetColumn(value, 1); row.Children.Add(value); panel.Children.Add(row);
+        AddSettingsRow(panel, label, value, stretchControl: true).Padding = new Thickness(0, 9, 0, 9);
     }
 
     private void BuildHelp(StackPanel panel)

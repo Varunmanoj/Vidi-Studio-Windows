@@ -150,12 +150,14 @@ public sealed partial class SettingsDialog
             VerticalAlignment = VerticalAlignment.Bottom,
             MinWidth = 36,
             Padding = new Thickness(8, 6, 8, 6),
-            IsEnabled = !string.IsNullOrWhiteSpace(key.Password)
+            IsEnabled = !string.IsNullOrWhiteSpace(key.Password),
+            Visibility = !string.IsNullOrWhiteSpace(key.Password) ? Visibility.Visible : Visibility.Collapsed
         };
         ToolTipService.SetToolTip(deleteKeyButton, "Clear and delete API key from Windows Credential Manager");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(deleteKeyButton, "Delete Gemini API key");
         deleteKeyButton.Click += async (_, _) =>
         {
+            if (string.IsNullOrWhiteSpace(key.Password)) return;
             var confirmDialog = new ContentDialog
             {
                 Title = "Delete Gemini API Key?",
@@ -171,7 +173,7 @@ public sealed partial class SettingsDialog
             };
 
             var confirmResult = await WindowedDialog.ShowAsync(confirmDialog, this, width: 500, height: 240);
-            if (confirmResult != ContentDialogResult.Primary) return;
+            if (confirmResult != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(key.Password)) return;
 
             checkDebounceTimer?.Stop();
             key.Password = "";
@@ -186,6 +188,7 @@ public sealed partial class SettingsDialog
             ApplyGeminiModelChoices();
             UpdatePlanDisplay(null, "", 0);
             deleteKeyButton.IsEnabled = false;
+            deleteKeyButton.Visibility = Visibility.Collapsed;
             if (checkPlanButton != null) checkPlanButton.IsEnabled = false;
             status.Text = "Gemini API key deleted from Windows Credential Manager.";
         };
@@ -321,6 +324,7 @@ public sealed partial class SettingsDialog
             var hasKey = !string.IsNullOrWhiteSpace(key.Password);
             if (checkPlanButton != null) checkPlanButton.IsEnabled = hasKey;
             deleteKeyButton.IsEnabled = hasKey;
+            deleteKeyButton.Visibility = hasKey ? Visibility.Visible : Visibility.Collapsed;
 
             if (!hasKey)
             {
@@ -641,20 +645,14 @@ public sealed partial class SettingsDialog
 
     private void AddModelSelector(StackPanel panel, string stage, string label)
     {
-        var row = new Grid { ColumnSpacing = 16, MinHeight = 38 };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.3, GridUnitType.Star) });
-        row.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center, FontSize = 14 });
-        var selector = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
+        var selector = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, MinWidth = 0 };
         modelSelectors[stage] = selector;
         selector.SelectionChanged += (_, _) =>
         {
             if (selector.SelectedItem is GeminiModelOption chosen && chosen.Id.Length > 0 && SupportsModelStage(stage, chosen.Id))
                 draft["models"]!.AsObject()[stage] = chosen.Id;
         };
-        Grid.SetColumn(selector, 1);
-        row.Children.Add(selector);
-        panel.Children.Add(row);
+        AddSettingsRow(panel, label, selector, stretchControl: true);
     }
 
     private async Task RefreshGeminiModelsAsync()

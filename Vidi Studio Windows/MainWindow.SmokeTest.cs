@@ -853,8 +853,14 @@ public sealed partial class MainWindow
             var emptySettings = new Views.SettingsDialog(Model, this, 1);
             var emptyDisplay = emptySettings.ShowAsync();
             await Task.Delay(250);
-            emptySettings.VerifyEmptyProjectsSettingsForSmokeTest();
-            await CaptureSmokeImage((FrameworkElement)emptySettings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-projects-empty.png"));
+            foreach (var theme in new[] { "dark", "light", "dark" })
+            {
+                PreviewTheme(theme);
+                await Task.Delay(100);
+                emptySettings.VerifyEmptyProjectsSettingsForSmokeTest();
+                await CaptureSmokeImage((FrameworkElement)emptySettings.Content, Path.Combine(Path.GetDirectoryName(report)!, $"settings-projects-empty-{theme}.png"));
+            }
+            PreviewTheme(originalTheme);
             emptySettings.Hide(); await emptyDisplay;
             await File.WriteAllTextAsync(report, "PASS: native light/dark UI, menus and segment selection; summary Markdown reading, saving, undo/redo and speech; New Project asset validation and optional Combine; external project folder persistence; SRT/VTT/TXT timing review; real transcript/description/summary/audio imports and two-track combination; Help search/navigation/theme; OneCore/SAPI narration, subtitle export, and five editor sections.");
         }

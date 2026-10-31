@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using System;
+using System.Linq;
 using Vidi_Studio_Windows.Models;
 using Vidi_Studio_Windows.Services;
 using Vidi_Studio_Windows.ViewModels;
@@ -55,10 +56,8 @@ public sealed partial class SettingsDialog
         var rows = new StackPanel { Spacing = 0 };
         var card = new Border
         {
-            Background = CardBrush(),
-            CornerRadius = new CornerRadius(8),
+            Style = (Style)Application.Current.Resources["SettingsProjectCardStyle"],
             Padding = new Thickness(14, 8, 14, 8),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
             Child = rows
         };
         projectNarrationToggle = AddProjectToggle(rows,
@@ -190,18 +189,10 @@ public sealed partial class SettingsDialog
         });
         return new Border
         {
-            Background = CardBrush(),
-            CornerRadius = new CornerRadius(8),
+            Style = (Style)Application.Current.Resources["SettingsProjectCardStyle"],
             Padding = new Thickness(12),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
             Child = content
         };
-    }
-
-    private static Brush CardBrush()
-    {
-        try { return (Brush)Application.Current.Resources["LayerFillColorAltBrush"]; }
-        catch { return new SolidColorBrush(Microsoft.UI.Colors.Transparent); }
     }
 
 #if DEBUG
@@ -210,6 +201,26 @@ public sealed partial class SettingsDialog
         NavigateForSmokeTest(1);
         if (!projectsPageEmpty || projectNarrationToggle != null || projectFollowToggle != null)
             throw new InvalidOperationException("Projects settings did not show the No Open Projects empty state.");
+        var card = currentSectionPanel!.Children.OfType<Border>().Single();
+        var fill = ((SolidColorBrush)card.Background).Color;
+        var surface = ((SolidColorBrush)layout.Background).Color;
+        static double Blend(double foreground, double background, double opacity) => foreground * opacity + background * (1 - opacity);
+        var red = Blend(fill.R, surface.R, fill.A / 255d);
+        var green = Blend(fill.G, surface.G, fill.A / 255d);
+        var blue = Blend(fill.B, surface.B, fill.A / 255d);
+        if (!new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast && (layout.ActualTheme == ElementTheme.Dark ? red + green + blue > 384 : red + green + blue < 540))
+            throw new InvalidOperationException("The empty Projects card did not follow the Settings window theme.");
+        static double Linear(double channel) => channel / 255d <= .04045 ? channel / 255d / 12.92 : Math.Pow((channel / 255d + .055) / 1.055, 2.4);
+        static double Luminance(double r, double g, double b) => .2126 * Linear(r) + .7152 * Linear(g) + .0722 * Linear(b);
+        var background = Luminance(red, green, blue);
+        foreach (var text in ((StackPanel)card.Child).Children.OfType<TextBlock>())
+        {
+            var foreground = ((SolidColorBrush)text.Foreground).Color;
+            var opacity = foreground.A / 255d * text.Opacity;
+            var luminance = Luminance(Blend(foreground.R, red, opacity), Blend(foreground.G, green, opacity), Blend(foreground.B, blue, opacity));
+            if ((Math.Max(background, luminance) + .05) / (Math.Min(background, luminance) + .05) < 4.5)
+                throw new InvalidOperationException("The empty Projects message is unreadable in the current theme.");
+        }
     }
     internal void VerifyProjectPlaybackSettingsForSmokeTest()
     {

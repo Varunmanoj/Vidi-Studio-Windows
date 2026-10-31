@@ -39,9 +39,12 @@ class ImportAssetsUI(unittest.TestCase):
 
     def test_editor_actions_are_icon_only(self):
         self.assertIn('x:Name="EditorAddButton" Content="&#xE710;"', UI)
-        self.assertIn('x:Name="GenerateCurrent" Content="&#xE8A5;"', UI)
+        self.assertIn('x:Name="GenerateCurrent" Content="&#xE90A;"', UI)
         self.assertIn('x:Name="EditModeButton" Content="&#xE70F;"', UI)
-        self.assertIn('FontIcon { Glyph = "\\uE8A5" }', (ROOT / 'Vidi Studio Windows' / 'MainWindow.Presentation.cs').read_text(encoding='utf-8'))
+        presentation = (ROOT / 'Vidi Studio Windows' / 'MainWindow.Presentation.cs').read_text(encoding='utf-8')
+        self.assertIn('var generateIcon = index switch { 0 => "Generate transcript", 1 => "Generate summary", _ => "Generate descriptions" };', presentation)
+        self.assertIn('GenerateCurrent.Content = Views.MenuIcons.Create(generateIcon);', presentation)
+        self.assertIn('AutomationProperties.SetName(GenerateCurrent, generateLabel);', presentation)
 
     def test_multi_select_has_bulk_origin_and_timing_actions(self):
         bulk = (ROOT / 'Vidi Studio Windows' / 'MainWindow.BulkActions.cs').read_text(encoding='utf-8')
@@ -65,7 +68,7 @@ class ImportAssetsUI(unittest.TestCase):
         self.assertIn('SortOrigin_Click', (ROOT / 'Vidi Studio Windows' / 'MainWindow.SegmentSort.cs').read_text(encoding='utf-8'))
         self.assertIn('DurationLabel', UI)
         self.assertIn('"Import" => "Import"', MENUS)
-        self.assertIn('"Import transcript" => "\\uE8A5"', (ROOT / 'Vidi Studio Windows' / 'Views' / 'MenuIcons.cs').read_text(encoding='utf-8'))
+        self.assertIn('"Import transcript" => "\\uE90A"', (ROOT / 'Vidi Studio Windows' / 'Views' / 'MenuIcons.cs').read_text(encoding='utf-8'))
         self.assertIn('Content="&#xE8DD;"', UI)
         newProject = (ROOT / 'Vidi Studio Windows' / 'Views' / 'NewProjectDialog.cs').read_text(encoding='utf-8')
         self.assertIn('GroupName = "ad-mode"', newProject)

@@ -14,7 +14,9 @@ class ProjectContextMenu(unittest.TestCase):
 
     def test_folder_and_configuration_act_on_the_clicked_project_only(self):
         self.assertIn('Item("Open project folder", (_, _) => _ = RevealProjectAsync(project));', COMMANDS)
-        self.assertIn('Item("Open project configuration", (_, _) => _ = OpenProjectConfigurationAsync(project));', COMMANDS)
+        self.assertIn('''if (Model.Settings.GetBool("developerMode"))
+            Item("Open project configuration", (_, _) => _ = OpenProjectConfigurationAsync(project),
+                File.Exists(Path.Combine(project.Folder, "project.json")), commandId: "open-configuration");''', COMMANDS)
 
     def test_new_window_action_and_in_place_editor_switch_are_explicit(self):
         self.assertIn('Item("Open in New Window", (_, _) => App.OpenWindow(project.Folder), commandId: "open-editor-window");', COMMANDS)

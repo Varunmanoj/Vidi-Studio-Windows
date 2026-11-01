@@ -1,7 +1,9 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body,#player{width:100%;height:100%;margin:0;background:#000}</style></head><body><div id="player"></div><script>
 const id=new URLSearchParams(location.search).get('id');let player;
-function onYouTubeIframeAPIReady(){if(!/^[A-Za-z0-9_-]{11}$/.test(id))return;player=new YT.Player('player',{videoId:id,playerVars:{origin:location.origin,playsinline:1}})}
-window.vidiState=()=>({time:player?.getCurrentTime?.()||0,playing:player?.getPlayerState?.()===1,duration:player?.getDuration?.()||0,title:player?.getVideoData?.()?.title||""});
+function onYouTubeIframeAPIReady(){if(!/^[A-Za-z0-9_-]{11}$/.test(id))return;player=new YT.Player('player',{videoId:id,playerVars:{origin:location.origin,playsinline:1},events:{onReady:()=>{if(originalAudioMode)player.mute();}}})}
+let originalAudioMode=new URLSearchParams(location.search).get('originalAudio')==='1',savedMute=false;
+window.vidiOriginalAudio=active=>{if(active===originalAudioMode)return;originalAudioMode=active;if(!player?.isMuted)return;if(active){savedMute=player.isMuted();player.mute();}else if(!savedMute)player.unMute();};
+window.vidiState=()=>{if(originalAudioMode)player?.mute?.();return {time:player?.getCurrentTime?.()||0,playing:player?.getPlayerState?.()===1,duration:player?.getDuration?.()||0,rate:player?.getPlaybackRate?.()||1,volume:player?.getVolume?.()??100,title:player?.getVideoData?.()?.title||""};};
 window.vidiSeek=t=>player?.seekTo?.(t,true);
 window.vidiPlay=()=>player?.playVideo?.();
 window.vidiPause=()=>player?.pauseVideo?.();

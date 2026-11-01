@@ -86,7 +86,7 @@ public sealed partial class MainWindow
                     Submenu("AD Segment Generation", Command("generate-ad-cues"), Separator(), Command("delete-descriptions")),
                     Submenu("Narration Audio", Command("synthesize-tts"), Command("synthesize-changed"), Command("review-narration-issues"), Command("review-narration-voices"), Separator(), Command("delete-narration"))),
                 Command("delete-current"), Separator(),
-                Submenu("Import", Command("import-transcript"), Command("import-summary"), Command("import-descriptions"), Separator(), Command("import-assets")),
+                Submenu("Import", Command("import-transcript"), Command("import-summary"), Command("import-descriptions"), Command("import-original-audio"), Command("import-ad-audio"), Separator(), Command("import-assets")),
                 Command("show-in-finder"), Command("open-configuration"),
                 Separator(), Command("rename-project"), Command("trash-project")),
             Menu("Help", Command("help"), Command("about"))
@@ -305,7 +305,9 @@ public sealed partial class MainWindow
             case "import-transcript":
             case "import-summary":
             case "import-descriptions":
+            case "import-ad-audio":
                 return !p.IntegrityPlaceholder && p.Integrity?.ManifestUnreadable != true && p.Integrity?.FolderMissing != true;
+            case "import-original-audio": return p.IsYouTube && !p.IntegrityPlaceholder && p.Integrity?.ManifestUnreadable != true && p.Integrity?.FolderMissing != true;
             case "trash-project": return true;
             case "segment-edit-mode": return timed && Segments.Items.Count > 0 || Section.SelectedIndex == 1;
             case "add": return Section.SelectedIndex is 0 or 2;
@@ -398,6 +400,7 @@ public sealed partial class MainWindow
             "delete-current" => Section.SelectedIndex switch { 0 => "Delete Transcript…", 1 => "Delete Summary…", 2 => "Delete Descriptions…", _ => "Delete Current Page…" },
             "import-transcript" => "Import Transcript…", "import-summary" => "Import Summary…",
             "import-descriptions" => "Import Descriptions…", "import-assets" => "Import Existing Assets…",
+            "import-original-audio" => "Import Original Audio…", "import-ad-audio" => "Import AD Audio…",
             "filter-segments" => Section.SelectedIndex switch
             {
                 0 => "Filter Transcript…", 2 => "Filter Descriptions…", 4 => "Filter AD Transcript…", _ => "Filter Segments…"
@@ -440,6 +443,7 @@ public sealed partial class MainWindow
             "new-project" or "add" => "New project", "open-project" or "show-in-finder" => "Open project folder",
             "Import" => "Import", "import-assets" => "Import existing assets", "import-transcript" => "Import transcript",
             "import-summary" => "Import summary", "import-descriptions" => "Import descriptions", "filter-segments" => "Filter segments",
+            "import-original-audio" => "Import original audio", "import-ad-audio" => "Import AD audio",
             "Sort Segments" => "Sort segments",
             "sort-start" => "Sort by start time", "sort-duration-asc" => "Shortest duration first",
             "sort-duration-desc" => "Longest duration first", "sort-origin" => "Sort by origin",
@@ -560,6 +564,8 @@ public sealed partial class MainWindow
             case "import-transcript": await ImportExistingAssetsAsync(Models.ImportScope.Transcript); break;
             case "import-summary": await ImportExistingAssetsAsync(Models.ImportScope.Summary); break;
             case "import-descriptions": await ImportExistingAssetsAsync(Models.ImportScope.Descriptions); break;
+            case "import-original-audio": await ImportExistingAssetsAsync(Models.ImportScope.OriginalAudio); break;
+            case "import-ad-audio": await ImportExistingAssetsAsync(Models.ImportScope.ADAudio); break;
             case "show-in-finder": if (ProjectManagementTarget() is { } revealProject) await RevealProjectAsync(revealProject); break;
             case "open-configuration": if (ProjectManagementTarget() is { } configurationProject) await OpenProjectConfigurationAsync(configurationProject); break;
             case "rename-project": if (ProjectManagementTarget() is { } renameProject) await RenameProjectAsync(renameProject); break;

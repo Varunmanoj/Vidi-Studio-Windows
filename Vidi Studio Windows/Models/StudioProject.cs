@@ -40,6 +40,7 @@ public sealed class Segment : INotifyPropertyChanged
     public double? AudioEnd { get; set; }
     public string? AudioError { get; set; }
     public string? AudioOrigin { get; set; }
+    public AudioSourceProvenance? TranscriptionAudioSource { get; set; }
     public string? AudioSourceName { get; set; }
     [JsonIgnore] public string? ResolvedAudioEngine
     {
@@ -202,6 +203,10 @@ public sealed class StudioProject : INotifyPropertyChanged
     public string Source { get; set; } = "";
     public string? SourceType { get; set; }
     public string? YoutubeURL { get; set; }
+    public OriginalAudioAsset? OriginalAudio { get; set; }
+    public AudioSourceSettings? AudioSources { get; set; }
+    public AudioSourceProvenance? TranscriptAudioSource { get; set; }
+    public Dictionary<string, AudioSourceProvenance>? ExportAudioSources { get; set; }
     public double Duration { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
@@ -261,7 +266,7 @@ public sealed class StudioProject : INotifyPropertyChanged
     {
         "ai" => "AI-generated", "imported" => "Imported", "manual" => "Manually added", _ => "Origin unknown"
     };
-    [JsonIgnore] public bool CanCombineImportedAudio => ImportedAudioDescription != null && !IsYouTube && HasLocalSource;
+    [JsonIgnore] public bool CanCombineImportedAudio => ImportedAudioDescription != null && (IsYouTube || HasLocalSource);
     [JsonIgnore] public int GeneratedNarrationCount => Cues.Count(c => c.Audio != null && c.AudioOrigin == "generated");
     [JsonIgnore] public int ImportedNarrationCount => Cues.Count(c => c.Audio != null && c.AudioOrigin == "imported");
     [JsonIgnore] public int UnknownNarrationCount => Cues.Count(c => c.Audio != null && c.AudioOrigin != "generated" && c.AudioOrigin != "imported");
@@ -433,6 +438,7 @@ public sealed class StudioProject : INotifyPropertyChanged
         }
         var imported = new List<string>();
         if (!string.IsNullOrWhiteSpace(ImportedAudioDescription?.Path)) imported.Add(ImportedAudioDescription.Path);
+        if (!string.IsNullOrWhiteSpace(OriginalAudio?.Path)) imported.Add(OriginalAudio.Path);
         if (!string.IsNullOrWhiteSpace(ImportedADTranscript?.Path)) imported.Add(ImportedADTranscript.Path);
         var manifestReadable = IsManifestReadable(Folder);
         return new ProjectIntegrityManifest

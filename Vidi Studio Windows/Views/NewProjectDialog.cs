@@ -41,10 +41,17 @@ public sealed class NewProjectDialog : ContentDialog
     private readonly Border youtubeCard;
     public bool ImportAssetsAfterCreation => importDescription.IsChecked == true;
     private readonly ImportAssetsPicker assets;
+    private readonly ImportAssetsPicker originalAssets;
+    private readonly Border originalAssetsCard;
     private readonly Border assetsCard;
     private readonly TextBlock libraryLocation = new() { TextWrapping = TextWrapping.Wrap, Opacity = .7, FontSize = 12 };
     public string LibraryPath { get; private set; }
-    public ImportAssetSelection AssetSelection => ImportAssetsAfterCreation ? assets.Selection : new();
+    public ImportAssetSelection AssetSelection => (ImportAssetsAfterCreation ? assets.Selection : new ImportAssetSelection()) with
+    {
+        OriginalAudioPath = IsYouTube ? originalAssets.Selection.OriginalAudioPath : null,
+        OriginalAudioPlayback = originalAssets.Selection.OriginalAudioPlayback,
+        OriginalAudioTranscription = originalAssets.Selection.OriginalAudioTranscription
+    };
     public bool CombineRequested { get; private set; }
     private readonly Border youtubePreview = new() { Visibility = Visibility.Collapsed, Width = 630, CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Background = new SolidColorBrush(Windows.UI.Color.FromArgb(24, 128, 128, 128)) };
     private readonly TextBlock youtubeStatus = new() { Width = 630, TextWrapping = TextWrapping.Wrap, Opacity = .7 };
@@ -124,9 +131,14 @@ public sealed class NewProjectDialog : ContentDialog
         audioPanel.Children.Add(importDescription);
         audioPanel.Children.Add(descriptionGuidance);
         contents.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = audioPanel });
-        assets = new ImportAssetsPicker(owner, width: 630);
+        assets = new ImportAssetsPicker(owner, width: 630, showOriginal: false);
         assetsCard = new Border { Padding = new Thickness(14), CornerRadius = new CornerRadius(8), Child = assets };
         contents.Children.Add(assetsCard);
+        originalAssets = new ImportAssetsPicker(owner, ImportScope.OriginalAudio, width: 630);
+        originalAssets.SetContext(true, false);
+        originalAssetsCard = new Border { Padding = new Thickness(14), CornerRadius = new CornerRadius(8), Child = originalAssets };
+        contents.Children.Add(originalAssetsCard);
+        originalAssets.SelectionChanged += (_, _) => UpdateCreationState();
         assets.SelectionChanged += (_, _) => UpdateCreationState();
         createDescription.Checked += (_, _) => UpdateCreationState();
         importDescription.Checked += (_, _) => UpdateCreationState();
@@ -177,12 +189,13 @@ public sealed class NewProjectDialog : ContentDialog
     {
         if (assets == null) return;
         assetsCard.Visibility = ImportAssetsAfterCreation ? Visibility.Visible : Visibility.Collapsed;
+        originalAssetsCard.Visibility = IsYouTube ? Visibility.Visible : Visibility.Collapsed;
         descriptionGuidance.Text = ImportAssetsAfterCreation ? "Choose existing files below. Text timing is reviewed before import. Combining audio is optional." : "Generate a transcript, summary, and descriptions after creating the project.";
         var sourceReady = IsYouTube ? fetchedYouTubeId != null && fetchedYouTubeId == ValidYouTubeId(YouTubeUrl) : validLocal;
         var assetsReady = !ImportAssetsAfterCreation || !assets.Selection.HasAny || assets.CanImport;
         IsPrimaryButtonEnabled = sourceReady && assetsReady && !string.IsNullOrWhiteSpace(LibraryPath);
         PrimaryButtonText = ImportAssetsAfterCreation ? "Create Project & Open Editor" : "Create Project";
-        SecondaryButtonText = ImportAssetsAfterCreation && !IsYouTube && assets.Selection.ADAudioPath != null ? "Create Project & Combine" : "";
+        SecondaryButtonText = ImportAssetsAfterCreation && assets.Selection.ADAudioPath != null ? "Create Project & Combine" : "";
         IsSecondaryButtonEnabled = IsPrimaryButtonEnabled;
         libraryLocation.Text = "A new portable project folder will be created in:\n" + LibraryPath;
     }

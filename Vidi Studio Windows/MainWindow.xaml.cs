@@ -100,6 +100,7 @@ public sealed partial class MainWindow : Window
         readback.StateChanged += _ => DispatcherQueue.TryEnqueue(UpdateSummaryControls);
         if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter) presenter.Maximize();
         Player.SetMediaPlayer(video);
+        InitializeOriginalAudio();
         // Any saved project change or a newly started video ends summary playback.
         Model.ProjectReloaded += (_, _) => { readback.Stop(); RefreshProject(); };
         timer.Tick += Timer_Tick;
@@ -115,7 +116,7 @@ public sealed partial class MainWindow : Window
             ActiveExports.Detach();
             Model.PropertyChanged -= UpdateStatusFooter;
             Model.Cancel(); timer.Stop(); integrityTimer.Stop();
-            foreach (var cleanup in new Action[] { video.Dispose, speech.Dispose, narrationPlayer.Dispose, onDeviceNarrator.Dispose, readback.Dispose,
+            foreach (var cleanup in new Action[] { video.Dispose, speech.Dispose, narrationPlayer.Dispose, originalAudioPlayer.Dispose, onDeviceNarrator.Dispose, readback.Dispose,
                 () => { if (YouTubePlayer.CoreWebView2 != null) YouTubePlayer.Close(); } })
             {
                 try { cleanup(); } catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
@@ -522,7 +523,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         if (loadedProject == p.Folder) return;
-        loadedProject = p.Folder; activeCue = null; previewingSegment = null; speech.Pause(); narrationPlayer.Pause(); video.Pause(); onDeviceNarrator.Stop(); readback.Stop();
+        loadedProject = p.Folder; activeCue = null; previewingSegment = null; speech.Pause(); narrationPlayer.Pause(); originalAudioPlayer.Pause(); originalAudioPlayer.Source = null; originalAudioPath = null; originalAudioMode = false; video.Pause(); onDeviceNarrator.Stop(); readback.Stop();
         Player.Visibility = p.IsYouTube ? Visibility.Collapsed : Visibility.Visible;
         YouTubePlayer.Visibility = p.IsYouTube ? Visibility.Visible : Visibility.Collapsed;
         try
@@ -536,7 +537,7 @@ public sealed partial class MainWindow : Window
                 await YouTubePlayer.EnsureCoreWebView2Async();
                 YouTubePlayer.CoreWebView2.Settings.AreDevToolsEnabled = false;
                 YouTubePlayer.CoreWebView2.SetVirtualHostNameToFolderMapping("vidistudio.local", AppContext.BaseDirectory, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.DenyCors);
-                YouTubePlayer.Source = new Uri("https://vidistudio.local/Assets/youtube.html?id=" + id);
+                YouTubePlayer.Source = new Uri("https://vidistudio.local/Assets/youtube.html?id=" + id + "&originalAudio=" + (p.AudioSources?.Playback == "imported" ? "1" : "0"));
             }
             else
             {
@@ -636,6 +637,7 @@ public sealed partial class MainWindow : Window
                 {
                     if (!ReferenceEquals(Model.Project, polledProject)) return;
                     youtubePosition = doc.RootElement.GetProperty("time").GetDouble(); youtubePlaying = doc.RootElement.GetProperty("playing").GetBoolean();
+                    await SyncOriginalAudioAsync(polledProject, doc.RootElement);
                     UpdatePlaybackControls();
                     if (doc.RootElement.TryGetProperty("duration", out var duration) && duration.TryGetDouble(out var seconds) && double.IsFinite(seconds) && seconds > 0) youtubeDuration = seconds;
                     if (doc.RootElement.TryGetProperty("title", out var title)) youtubeTitle = title.GetString();
@@ -673,7 +675,7 @@ public sealed partial class MainWindow : Window
             var nextCue = Model.Project.Cues.FirstOrDefault(c => c.Start > Position && c.Start < Position + 20);
             if (nextCue != null) onDeviceNarrator.Prepare(nextCue.Text);
         }        UpdateActiveSegment();
-        if (!youtubeMetadataUpdating && Model.Idle && ReferenceEquals(Model.Project, polledProject) && youtubeDuration is { } durationSeconds && Math.Abs(durationSeconds - polledProject.Duration) > .5)
+        if (!youtubeMetadataUpdating && Model.Idle && ReferenceEquals(Model.Project, polledProject) && youtubeDuration is { } durationSeconds && Math.Abs(durationSeconds - polledProject.Duration) > .001)
         {
             youtubeMetadataUpdating = true;
             try
@@ -1776,7 +1778,7 @@ public sealed partial class MainWindow : Window
             && project.Integrity?.ManifestUnreadable != true
             && project.Integrity?.FolderMissing != true
             && Model.Idle)
-            await ShowDialogAsync(new Views.ExportDialog(Model), 1040, 760);
+            await ShowDialogAsync(new Views.ExportDialog(Model, this), 1040, 760);
     }
     private async void ExportOpen_Click(object sender, RoutedEventArgs e)
     {
@@ -1804,6 +1806,11 @@ public sealed partial class MainWindow : Window
         var actions = new StackPanel { Spacing = 12, Width = 380 };
         actions.Children.Add(new TextBlock { Text = Path.GetFileName(relative), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         actions.Children.Add(new TextBlock { Text = full, Opacity = .7, TextWrapping = TextWrapping.Wrap });
+        if (project.ExportAudioSources?.TryGetValue(relative, out var audioSource) == true)
+        {
+            actions.Children.Add(new TextBlock { Text = audioSource.Label, TextWrapping = TextWrapping.Wrap });
+            if (audioSource.AdSourceName is { } adName) actions.Children.Add(new TextBlock { Text = "AD audio: " + adName, TextWrapping = TextWrapping.Wrap });
+        }
         var dialog = new ContentDialog { Title = "Export information", Content = actions, CloseButtonText = "Cancel" };
         string? selected = null;
         void AddAction(string label, string choice, bool enabled = true)

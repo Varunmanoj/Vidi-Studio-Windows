@@ -5,5 +5,7 @@ public enum ImportScope
     All,
     Transcript,
     Summary,
-    Descriptions
+    Descriptions,
+    OriginalAudio,
+    ADAudio
 }

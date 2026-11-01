@@ -31,6 +31,11 @@ public sealed partial class MainWindow
         var timingFiles = new List<string>();
         try
         {
+            if (selection.OriginalAudioPath is { } original)
+            {
+                if (!await ImportOriginalAudioAsync(original, selection.OriginalAudioPlayback, selection.OriginalAudioTranscription)) return;
+                project = Model.Project!;
+            }
             // Validate/review every selected text file before writing any assets.
             string? transcriptTiming = null, descriptionTiming = null;
             if (selection.TranscriptPath is { } transcriptFile)
@@ -84,8 +89,8 @@ public sealed partial class MainWindow
                 await RunImport("import-summary", new[] { "--input", summary }.Concat(replace));
             if (selection.ADAudioPath is { } audio)
                 await RunImport("import-ad-audio", new[] { "--input", audio, "--audio-mode", selection.ADAudioMode }.Concat(replace));
-            if (combine && selection.ADAudioPath != null && !project.IsYouTube)
-                await RunImport("combine-imported-audio", new[] { "--audio-presentation", "selectable", "--captions", "none", "--media-format", "mov" }.Concat(replace));
+            if (combine && selection.ADAudioPath != null)
+                await RunImport("combine-imported-audio", (project.IsYouTube ? new[] { "--audio-only", "--media-format", "wav" } : new[] { "--audio-presentation", "selectable", "--captions", "none", "--media-format", "mov" }).Concat(replace));
             await ShowImportReportAsync();
         }
         catch (OperationCanceledException) { Model.ReportStatus("Import cancelled. Completed imports remain in the project."); }

@@ -24,6 +24,7 @@ public sealed class OnDeviceNarrator : IDisposable
     public OnDeviceNarrator(SettingsStore settings, EngineClient engine) { this.settings = settings; this.engine = engine; }
     /// <summary>Raised with a message safe to show when live narration cannot speak.</summary>
     public event Action<string>? Failed;
+    public bool IsPlaying => player.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
     public void Stop()
     {
         current?.Cancel(); current = null; player.Pause(); player.Source = null;

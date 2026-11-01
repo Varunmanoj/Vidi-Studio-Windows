@@ -18,6 +18,7 @@ public static class MenuIcons
             "Import transcript" => "\uE90A",
             "Import summary" => "\uE8E4",
             "Import descriptions" => "\uE8B9",
+            "Import original audio" or "Import AD audio" => "\uE767",
             "Import narration audio…" => "\uE8D6",
             "Sort segments" => "\uE8CB",
             "Open project folder" => "\uE8B7",

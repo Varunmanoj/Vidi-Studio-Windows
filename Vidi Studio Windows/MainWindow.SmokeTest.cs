@@ -1742,6 +1742,12 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Project management must be available offline in the active editor: " + id);
         if (desktopMenuItems["import-assets"].Last() is not { IsEnabled: true, Icon: not null } importItem || importItem.Text != "Import Existing Assets…" || !CanRunDesktopCommand("import-assets"))
             throw new InvalidOperationException("Import Existing Assets must be available offline in the active editor.");
+        if (desktopMenuItems["import-ad-audio"].Last() is not { IsEnabled: true, Icon: not null } adAudio || adAudio.Text != "Import AD Audio…" || !CanRunDesktopCommand("import-ad-audio"))
+            throw new InvalidOperationException("Import AD Audio must be available offline in the active editor.");
+        var youtube = Model.Project?.IsYouTube == true;
+        var originalAudio = desktopMenuItems["import-original-audio"].Last();
+        if (originalAudio.Icon == null || originalAudio.Text != "Import Original Audio…" || originalAudio.IsEnabled != youtube || CanRunDesktopCommand("import-original-audio") != youtube)
+            throw new InvalidOperationException("Import Original Audio must share the YouTube-only command guard.");
     }
     private async Task VerifyProjectMenuActionsForSmokeTestAsync()
     {

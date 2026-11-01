@@ -291,6 +291,7 @@ public sealed partial class MainWindow
     }
     private void StopProjectPlayback()
     {
+        originalAudioPlayer.Pause();
         video.Pause(); speech.Pause(); narrationPlayer.Pause(); onDeviceNarrator.Stop(); readback.Stop();
         ClearSegmentPreview();
         activeCue = null;
@@ -547,6 +548,7 @@ public sealed partial class MainWindow
     }
     private async void UpdateInspector(StudioProject p)
     {
+        UpdateAudioSourcePanel();
         ProjectDetails.Children.Clear(); VideoDetails.Children.Clear(); InspectorExports.Children.Clear();
         AddInfo(ProjectDetails, "Name", p.Name); AddInfo(ProjectDetails, "Type", p.IsYouTube ? "YouTube" : "Local Video");
         AddInfo(ProjectDetails, "Folder", p.Folder);

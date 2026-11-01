@@ -9,7 +9,7 @@ class ProjectMenuActions(unittest.TestCase):
     def test_menu_entries_use_the_common_guarded_command_path(self):
         source = (PROJECT / 'MainWindow.Menus.cs').read_text(encoding='utf-8')
         self.assertIn('Separator(), Command("rename-project"), Command("trash-project")),', source)
-        self.assertIn('Submenu("Import", Command("import-transcript"), Command("import-summary"), Command("import-descriptions"), Separator(), Command("import-assets"))', source)
+        self.assertIn('Submenu("Import", Command("import-transcript"), Command("import-summary"), Command("import-descriptions"), Command("import-original-audio"), Command("import-ad-audio"), Separator(), Command("import-assets"))', source)
         self.assertIn('"import-assets" => "Import Existing Assets…"', source)
         self.assertIn('if (!desktopEditorVisible || Model.Project is not { } p) return false;', source)
         self.assertIn('if (!Model.Idle) return false;', source)

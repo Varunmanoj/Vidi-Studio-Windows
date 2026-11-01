@@ -21,6 +21,7 @@ public sealed class ExportDialog : ContentDialog
         "Transcript and AD Transcript — two closed-caption tracks"
     };
     private readonly StudioViewModel model;
+    private readonly MainWindow? owner;
     private readonly ListView sidebar = new() { SelectionMode = ListViewSelectionMode.Single };
     private readonly StackPanel page = new() { Spacing = 18, Padding = new Thickness(26, 22, 26, 20) };
     private readonly TextBlock explanation = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .7 };
@@ -34,9 +35,10 @@ public sealed class ExportDialog : ContentDialog
     private int videoAudio = 1, videoCaptions, audioChoice = 1, webAudio = 1, webCaptions, textContent, textFormat;
     private int adSource;
 
-    public ExportDialog(StudioViewModel model)
+    public ExportDialog(StudioViewModel model, MainWindow? owner = null)
     {
         this.model = model;
+        this.owner = owner;
         var ready = model.Project?.HasCompleteExportNarration == true;
         var imported = model.Project?.ImportedAudioDescription != null;
         adSource = imported && !ready ? 1 : 0;
@@ -192,6 +194,7 @@ public sealed class ExportDialog : ContentDialog
             new[] { "Original video audio", "Final audio with Audio Description", "Narration audio only" };
         AddChoices("Audio", "Audio to save", labels, audioChoice, index => audioChoice = index, CanUseAudio);
         AddAdSource();
+        if (youtube && owner != null) page.Children.Add(new AudioSourceControls(owner, model, this));
     }
 
     private void BuildText()
@@ -238,7 +241,7 @@ public sealed class ExportDialog : ContentDialog
     private bool CanUseVideoAudio(int choice) => model.Project is { HasLocalSource: true } project &&
         (choice == 0 || (adSource == 1 ? project.ImportedAudioDescription != null : project.HasCompleteExportNarration));
     private bool CanUseAudio(int choice) => model.Project is { } project && (project.IsYouTube
-        ? choice == 0 || project.HasCompleteExportNarration
+        ? choice == 0 || (choice == 2 && project.Duration > 0 && project.ImportedAudioDescription != null) || project.HasCompleteExportNarration
         : choice == 0 ? project.HasLocalSource && project.HasAudio
         : choice == 1 ? project.HasLocalSource && (adSource == 1 ? project.ImportedAudioDescription != null : project.HasCompleteExportNarration)
         : project.HasCompleteExportNarration);
@@ -293,8 +296,8 @@ public sealed class ExportDialog : ContentDialog
             0 when videoAudio == 0 => videoCaptions == 0 ? "Choose captions or Audio Description to create a video export." : "Save the original soundtrack with the selected captions.",
             0 when videoAudio == 1 => "Save the original soundtrack and a separate described soundtrack viewers can choose.",
             0 => "Save the video with synchronized Audio Description mixed into its soundtrack.",
-            1 when project?.IsYouTube == true && audioChoice == 0 => "Download the original public YouTube soundtrack and save it in the selected format.",
-            1 when project?.IsYouTube == true && audioChoice == 2 => "Download the original public YouTube soundtrack and mix it with synchronized Audio Description.",
+            1 when project?.IsYouTube == true && audioChoice == 0 => "Save the selected original audio source in the chosen format.",
+            1 when project?.IsYouTube == true && audioChoice == 2 => "Create described audio from the selected original and Audio Description sources.",
             1 when project?.IsYouTube == true || audioChoice == 2 => "Save synchronized narration without the original soundtrack in the selected format.",
             1 when audioChoice == 0 => "Save the original video soundtrack in the selected format.",
             1 => "Save the original soundtrack mixed with synchronized Audio Description in the selected format.",
@@ -348,6 +351,7 @@ public sealed class ExportDialog : ContentDialog
                 : audioChoice == 1 && adSource == 1 ? "combine-imported-audio"
                 : audioChoice switch { 0 => "export-original-audio", 1 => "export-described-audio", _ => "export-audio" };
                 if (audioChoice == 1 && adSource == 1) args.Add("--audio-only");
+                if (model.Project?.IsYouTube == true && audioChoice == 2) args.AddRange(new[] { "--ad-source", adSource == 1 ? "imported" : "generated" });
                 args.AddRange(new[] { "--media-format", audioFormat });
                 break;
             case 2:

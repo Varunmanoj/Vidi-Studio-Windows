@@ -58,14 +58,30 @@ for name in ('VIDEO_EXPORT_FORMATS', 'AUDIO_EXPORT_FORMATS', 'EXPORT_DUCKING_LEV
     if assignment(windows) != assignment(mac): drift.append(name)
 wt = parsed('engine/youtube_audio.py', windows_root)
 mt = parsed('engine/youtube_audio.py', args.mac_root)
+# Compare the new metadata-only lookup directly, including its bounded cleanup.
+# The pre-existing downloader snapshots below still protect platform-specific recovery.
+metadata_helpers = {'read_metadata', 'video_duration'}
+for name in metadata_helpers:
+    if functions(wt).get(name) != functions(mt).get(name): drift.append('youtube_audio.' + name)
+if ast.dump(parsed('engine/audio_sources.py', windows_root), include_attributes=False) != ast.dump(parsed('engine/audio_sources.py', args.mac_root), include_attributes=False):
+    drift.append('audio_sources.py')
+def legacy_downloader_nodes(tree, mac=False):
+    return [node for node in tree.body
+            if not (isinstance(node, ast.FunctionDef) and node.name in metadata_helpers)
+            and not (isinstance(node, ast.Import) and all(alias.name in ({'math', 'json'} if mac else {'math'}) for alias in node.names))
+            and not (isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == 'METADATA_TIMEOUT' for target in node.targets))]
+wt.body = legacy_downloader_nodes(wt)
+mt.body = legacy_downloader_nodes(mt, mac=True)
 wt.body = [node for node in wt.body if not isinstance(node, ast.FunctionDef) or node.name != 'check_cancelled']
 wd, md = ast.dump(wt, include_attributes=False), ast.dump(mt, include_attributes=False)
-# Reviewed 1.0.176: both platforms use three attempts with 2/4-second backoff.
+# Reviewed 1.0.194: metadata helpers are compared directly above. Both legacy
+# downloader ASTs are unchanged from the 1.0.193 checkout; refresh their exact
+# fingerprints for the current Python AST representation.
 # Windows retains classified worker errors and cancellation markers. Both exact ASTs must
 # match these snapshots; future changes to either downloader still flag drift.
 reviewed_downloaders = (
-    'c182d6a91605d44811f90f680d0bb6679927e3ccbdac340f427413bd3cbc0a5a',
-    'b767c7c690a24f9f13b0b615b6a3b3c76d35584f12cdfcaa89cd6c81de367c97',
+    'c511ee67fd64de14d81d15d4bdb7b463fa808a5a3614160e94a0dfc6744237c3',
+    'a83a762fc6a110049958b24ac7c3ea5f7f6e75563bb97239df025677a8d2ebdc',
 )
 if wd != md and (hashlib.sha256(wd.encode()).hexdigest(), hashlib.sha256(md.encode()).hexdigest()) != reviewed_downloaders:
     drift.append('youtube_audio.py')

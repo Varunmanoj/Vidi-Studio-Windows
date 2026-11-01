@@ -75,6 +75,10 @@
         {
           "id": "close-versus-delete",
           "title": "Close versus delete"
+        },
+        {
+          "id": "choose-original-audio-for-a-youtube-project",
+          "title": "Choose original audio for a YouTube project"
         }
       ]
     },
@@ -117,6 +121,10 @@
         {
           "id": "add-manually-or-import-from-the-current-section",
           "title": "Add manually or import from the current section"
+        },
+        {
+          "id": "identify-and-choose-audio-sources",
+          "title": "Identify and choose audio sources"
         }
       ]
     },
@@ -177,6 +185,10 @@
         {
           "id": "video-analysis-availability",
           "title": "Video analysis availability"
+        },
+        {
+          "id": "choose-transcription-audio-for-youtube-projects",
+          "title": "Choose transcription audio for YouTube projects"
         }
       ]
     },
@@ -211,6 +223,10 @@
         {
           "id": "indication-sounds",
           "title": "Indication sounds"
+        },
+        {
+          "id": "choose-the-original-soundtrack-heard-during-youtube-playback",
+          "title": "Choose the original soundtrack heard during YouTube playback"
         }
       ]
     },
@@ -269,6 +285,10 @@
         {
           "id": "check-tracks-in-another-player",
           "title": "Check tracks in another player"
+        },
+        {
+          "id": "choose-and-check-youtube-audio",
+          "title": "Choose and check YouTube audio"
         }
       ]
     },
@@ -411,6 +431,10 @@
         {
           "id": "gemini-quota-billing-or-service-problems-pause-ai",
           "title": "Gemini quota, billing, or service problems pause AI"
+        },
+        {
+          "id": "original-audio-timing-or-source-needs-attention",
+          "title": "Original audio timing or source needs attention"
         }
       ]
     },
@@ -437,6 +461,10 @@
         {
           "id": "youtube-audio-retrieval",
           "title": "YouTube audio retrieval"
+        },
+        {
+          "id": "imported-audio-and-online-analysis",
+          "title": "Imported audio and online analysis"
         }
       ]
     }

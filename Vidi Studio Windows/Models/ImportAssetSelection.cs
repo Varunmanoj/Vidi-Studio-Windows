@@ -5,7 +5,8 @@ public sealed record ImportAssetSelection(
     string? TranscriptPath = null, string? SummaryPath = null,
     string? ADTranscriptPath = null, string? ADAudioPath = null,
     string ADTranscriptMode = "narration", string ADAudioMode = "narration",
-    bool ReplaceExisting = false)
+    bool ReplaceExisting = false, string? OriginalAudioPath = null,
+    bool OriginalAudioPlayback = false, bool OriginalAudioTranscription = false)
 {
-    public bool HasAny => TranscriptPath != null || SummaryPath != null || ADTranscriptPath != null || ADAudioPath != null;
+    public bool HasAny => OriginalAudioPath != null || TranscriptPath != null || SummaryPath != null || ADTranscriptPath != null || ADAudioPath != null;
 }

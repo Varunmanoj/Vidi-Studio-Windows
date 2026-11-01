@@ -15,19 +15,27 @@ public sealed class ImportAssetsPicker : UserControl
     private readonly Window owner;
     private readonly StackPanel panel = new() { Spacing = 10 };
     private readonly StackPanel audioPanel = new() { Spacing = 10 };
+    private readonly StackPanel originalPanel = new() { Spacing = 10 };
+    private readonly ComboBox originalPlayback = new() { Header = "Use original audio", HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly ComboBox originalTranscription = new() { Header = "Transcription source", HorizontalAlignment = HorizontalAlignment.Stretch };
+    private string? originalAudio;
     private readonly ComboBox adTranscriptMode = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly ComboBox adAudioMode = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly TextBlock validation = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock combineGuidance = new() { TextWrapping = TextWrapping.Wrap, Opacity = .75 };
     private string? transcript, summary, adTranscript, adAudio;
     private readonly List<Action> refreshRows = new();
     private bool youtube, hasTranscript;
     public event EventHandler? SelectionChanged;
-    public ImportAssetSelection Selection => new(transcript, summary, adTranscript, youtube ? null : adAudio,
+    public ImportAssetSelection Selection => new(transcript, summary, adTranscript, adAudio,
         adTranscriptMode.SelectedIndex == 0 ? "narration" : "combined",
-        adAudioMode.SelectedIndex == 0 ? "narration" : "fullMix");
+        adAudioMode.SelectedIndex == 0 ? "narration" : "fullMix",
+        OriginalAudioPath: youtube ? originalAudio : null,
+        OriginalAudioPlayback: originalPlayback.SelectedIndex == 1,
+        OriginalAudioTranscription: originalTranscription.SelectedIndex == 1);
     public bool CanImport => Selection.HasAny && (adTranscript == null || adTranscriptMode.SelectedIndex != 0 || hasTranscript || transcript != null);
 
-    public ImportAssetsPicker(Window owner, ImportScope scope = ImportScope.All, double width = 640)
+    public ImportAssetsPicker(Window owner, ImportScope scope = ImportScope.All, double width = 640, bool showOriginal = true)
     {
         this.owner = owner;
         Width = width;
@@ -49,18 +57,28 @@ public sealed class ImportAssetsPicker : UserControl
             AutomationProperties.SetName(adTranscriptMode, "AD transcript type");
             panel.Children.Add(adTranscriptMode);
         }
-        if (scope == ImportScope.All)
+        if (showOriginal && (scope is ImportScope.All or ImportScope.OriginalAudio))
+        {
+            originalPanel.Children.Add(Row("Original audio", new[] { ".wav", ".mp3", ".m4a", ".aac", ".flac" }, () => originalAudio, value => originalAudio = value));
+            originalPlayback.ItemsSource = new[] { "Use for exports only", "Use for playback and exports" };
+            originalPlayback.SelectedIndex = 0;
+            originalTranscription.ItemsSource = new[] { "YouTube video", "Chosen original audio file" };
+            originalTranscription.SelectedIndex = 0;
+            originalPanel.Children.Add(originalPlayback);
+            originalPanel.Children.Add(originalTranscription);
+            originalPanel.Children.Add(new TextBlock { Text = "Timing is checked before import. Differences over 0.1 seconds, or an unknown video duration, require your confirmation.", TextWrapping = TextWrapping.Wrap });
+            panel.Children.Add(originalPanel);
+            originalPlayback.SelectionChanged += (_, _) => UpdateState();
+            originalTranscription.SelectionChanged += (_, _) => UpdateState();
+        }
+        if (scope is ImportScope.All or ImportScope.ADAudio)
         {
             audioPanel.Children.Add(Row("AD audio", new[] { ".wav", ".mp3", ".m4a", ".aac", ".flac" }, () => adAudio, value => adAudio = value));
             AddMode(adAudioMode, "AD narration audio only — mixed with original audio", "Full AD mix — used directly as the described track");
             ToolTipService.SetToolTip(adAudioMode, "Choose narration-only audio or a full AD mix");
             AutomationProperties.SetName(adAudioMode, "AD audio type");
             audioPanel.Children.Add(adAudioMode);
-            audioPanel.Children.Add(new TextBlock
-            {
-                Text = "Optional Combine creates Original Audio and English - Audio Description tracks that viewers can switch between. Import alone opens the editor without exporting a video.",
-                TextWrapping = TextWrapping.Wrap, Opacity = .75
-            });
+            audioPanel.Children.Add(combineGuidance);
             panel.Children.Add(audioPanel);
         }
         panel.Children.Add(validation);
@@ -78,17 +96,21 @@ public sealed class ImportAssetsPicker : UserControl
     public void SetContext(bool isYouTube, bool transcriptExists)
     {
         youtube = isYouTube; hasTranscript = transcriptExists;
-        audioPanel.Visibility = youtube ? Visibility.Collapsed : Visibility.Visible;
+        combineGuidance.Text = youtube ? "Import & Combine creates described audio using the selected original soundtrack. A full AD mix is used directly."
+            : "Optional Combine creates Original Audio and English - Audio Description tracks that viewers can switch between. Import alone opens the editor without exporting a video.";
+        originalPanel.Visibility = youtube ? Visibility.Visible : Visibility.Collapsed;
+        audioPanel.Visibility = Visibility.Visible;
         UpdateState();
     }
 
     private void UpdateState()
     {
         adTranscriptMode.IsEnabled = adTranscript != null;
-        adAudioMode.IsEnabled = adAudio != null && !youtube;
+        adAudioMode.IsEnabled = adAudio != null;
+        originalPlayback.IsEnabled = originalTranscription.IsEnabled = originalAudio != null;
         validation.Text = adTranscript != null && adTranscriptMode.SelectedIndex == 0 && !hasTranscript && transcript == null
             ? "Choose a transcript before importing AD-only descriptions, or choose Dialogue + AD combined."
-            : youtube ? "YouTube projects support text assets. Audio combination requires a local video." : "";
+            : youtube ? "Import & Combine creates described audio. A full AD mix is used directly." : "";
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -158,7 +180,7 @@ public sealed class ImportAssetsDialog : ContentDialog
 
     public ImportAssetsDialog(Window owner, StudioProject project, ImportScope scope = ImportScope.All)
     {
-        Title = scope switch { ImportScope.Transcript => "Import Transcript", ImportScope.Summary => "Import Summary", ImportScope.Descriptions => "Import Descriptions", _ => "Import Existing Assets" };
+        Title = scope switch { ImportScope.Transcript => "Import Transcript", ImportScope.Summary => "Import Summary", ImportScope.Descriptions => "Import Descriptions", ImportScope.OriginalAudio => "Import Original Audio", ImportScope.ADAudio => "Import AD Audio", _ => "Import Existing Assets" };
         PrimaryButtonText = "Import"; CloseButtonText = "Cancel";
         DefaultButton = ContentDialogButton.Primary;
         Width = MaxWidth = 740;

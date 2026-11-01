@@ -77,6 +77,7 @@ public sealed partial class MainWindow : Window
         Views.WindowAppearance.ApplyMaterial(this);
         ActiveExports.Observe(Model);
         Model.PropertyChanged += UpdateStatusFooter;
+        Model.YouTubeAudioRecoveryRequested += RecoverYouTubeAudioExportAsync;
         Views.WindowAppearance.ApplyIcon(this);
         App.ThemeChanged += ApplyThemeFromApp;
         BuildMenus();
@@ -115,6 +116,7 @@ public sealed partial class MainWindow : Window
             ProjectPlaybackPreferences.Changed -= ReceiveProjectPlaybackPreference;
             ActiveExports.Detach();
             Model.PropertyChanged -= UpdateStatusFooter;
+            Model.YouTubeAudioRecoveryRequested -= RecoverYouTubeAudioExportAsync;
             Model.Cancel(); timer.Stop(); integrityTimer.Stop();
             foreach (var cleanup in new Action[] { video.Dispose, speech.Dispose, narrationPlayer.Dispose, originalAudioPlayer.Dispose, onDeviceNarrator.Dispose, readback.Dispose,
                 () => { if (YouTubePlayer.CoreWebView2 != null) YouTubePlayer.Close(); } })

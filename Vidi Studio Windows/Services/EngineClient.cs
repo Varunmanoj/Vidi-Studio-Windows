@@ -91,7 +91,10 @@ public sealed class EngineClient
                 var errDiagnostic = events.Count > 0 && !string.IsNullOrWhiteSpace(events[^1].Message)
                     ? events[^1].Message
                     : (!string.IsNullOrWhiteSpace(stderr) ? stderr : "");
-                throw new ProcessingException(errDiagnostic);
+                var recovery = events.Exists(e => e.Data.TryGetProperty("recovery", out var action)
+                    && action.ValueKind == JsonValueKind.String && action.GetString() == "choose-original-audio")
+                    ? "choose-original-audio" : null;
+                throw new ProcessingException(errDiagnostic, recovery);
             }
             return events;
         }

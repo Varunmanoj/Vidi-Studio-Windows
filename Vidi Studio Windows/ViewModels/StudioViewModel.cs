@@ -20,8 +20,11 @@ public enum SectionProcessingState
     Processing
 }
 
+public sealed record YouTubeAudioExportRecovery(string ProjectFolder, string Command, string[] Arguments);
+
 public sealed class StudioViewModel : INotifyPropertyChanged
 {
+    public event Func<YouTubeAudioExportRecovery, Task>? YouTubeAudioRecoveryRequested;
     public SettingsStore Settings { get; } = new();
     public EngineClient Engine { get; }
     public ObservableCollection<StudioProject> Projects { get; } = new();
@@ -590,6 +593,12 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     {
         if (Busy) return new();
         if (needsProject && Project == null) { Status = "Open a project first."; return new(); }
+        var requestArguments = extra?.ToArray() ?? Array.Empty<string>();
+        extra = requestArguments;
+        var requestFolder = Project?.Folder;
+        var canRecoverYouTubeAudio = Project?.IsYouTube == true &&
+            command is "export-youtube-original-audio" or "export-youtube-described-audio" or "combine-imported-audio";
+        YouTubeAudioExportRecovery? audioRecovery = null;
         IsExporting = command.StartsWith("export-", StringComparison.Ordinal) && Project != null;
         processingPlan.Clear();
         processingPlan.AddRange(AnalysisPlan(command, extra));
@@ -750,7 +759,13 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             return result;
         }
         catch (OperationCanceledException) { Status = "Cancelled. Completed results remain saved."; }
-        catch (ProcessingException ex) { Status = ex.Message; DetectAiIssue(ex.Message); }
+        catch (ProcessingException ex)
+        {
+            Status = ex.Message;
+            if (canRecoverYouTubeAudio && requestFolder != null && ex.RecoveryAction == "choose-original-audio")
+                audioRecovery = new(requestFolder, command, requestArguments);
+            else DetectAiIssue(ex.Message);
+        }
         catch (Exception ex) { Engine.Log(ex.ToString()); Status = "Could not finish. Check Settings and the diagnostic log, then retry."; DetectAiIssue(ex.Message); }
         finally
         {
@@ -766,6 +781,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             ProcessingSection = null; VideoPreparation = null; processingPlan.Clear();
             operation.Dispose(); operation = null; IsExporting = false; Busy = false;
         }
+        if (audioRecovery != null && YouTubeAudioRecoveryRequested is { } recover)
+            await recover(audioRecovery);
         return new();
     }
     /// <summary>Combined processing state for a group of section keys (a tab can surface more than one stage).</summary>

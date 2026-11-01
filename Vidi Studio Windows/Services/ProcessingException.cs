@@ -5,7 +5,11 @@ namespace Vidi_Studio_Windows.Services;
 
 public sealed class ProcessingException : Exception
 {
-    public ProcessingException(string diagnostic) : base(UserMessage(diagnostic)) { }
+    public string? RecoveryAction { get; }
+    public ProcessingException(string diagnostic, string? recoveryAction = null)
+        : base(recoveryAction == "choose-original-audio"
+            ? "YouTube audio could not be retrieved. Choose a matching audio file to retry this export. Existing exports are unchanged."
+            : UserMessage(diagnostic)) { RecoveryAction = recoveryAction; }
     private static string UserMessage(string diagnostic)
     {
         // Only known validation messages can cross from engine diagnostics into UI.

@@ -122,6 +122,34 @@ public sealed partial class MainWindow
         finally { if (File.Exists(output)) File.Delete(output); }
     }
 
+    private async Task RecoverYouTubeAudioExportAsync(ViewModels.YouTubeAudioExportRecovery recovery)
+    {
+        try
+        {
+            if (Model.Busy || Model.Project?.Folder != recovery.ProjectFolder) return;
+            var dialog = new ContentDialog
+            {
+                Title = "YouTube Audio Couldn’t Be Retrieved",
+                Content = "Choose a matching audio file to retry this export with the same format and narration choices. The file will be checked against the video duration before use. Existing exports are unchanged.",
+                PrimaryButtonText = "Choose Audio File…", CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close
+            };
+            if (await ShowDialogAsync(dialog, 680, 460) != ContentDialogResult.Primary) return;
+            var file = await PickOriginalAudioAsync();
+            if (file == null || Model.Project?.Folder != recovery.ProjectFolder) return;
+            if (!await ImportOriginalAudioAsync(file) || Model.Project?.Folder != recovery.ProjectFolder) return;
+            var arguments = new List<string>(recovery.Arguments);
+            while (arguments.IndexOf("--soundtrack-source") is var index && index >= 0)
+            {
+                arguments.RemoveAt(index);
+                if (index < arguments.Count) arguments.RemoveAt(index);
+            }
+            arguments.AddRange(new[] { "--soundtrack-source", "imported" });
+            await Model.RunAsync(recovery.Command, arguments);
+        }
+        catch (Exception ex) { await ShowError(ex); }
+    }
+
     internal async Task ChooseOriginalAudioAsync()
     {
         var file = await PickOriginalAudioAsync();

@@ -1,3 +1,4 @@
+using Vidi_Studio_Windows.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
@@ -86,9 +87,11 @@ public sealed partial class MainWindow
     {
         var state = readback.State;
         SummaryPlayButton.Content = state == Services.SummaryReadbackState.Stopped ? "Play" : state == Services.SummaryReadbackState.Preparing ? "Preparing…" : state == Services.SummaryReadbackState.Playing ? "Pause" : "Resume";
-        SummaryPlayButton.IsEnabled = state != Services.SummaryReadbackState.Preparing;
+        var online = Model.Settings.Get("ttsMode", "windows-core") != "gemini" || ConnectivityService.Shared.Available(OnlineService.Gemini);
+        SummaryPlayButton.IsEnabled = state != Services.SummaryReadbackState.Preparing && (online || state is Services.SummaryReadbackState.Playing or Services.SummaryReadbackState.Paused);
+        ToolTipService.SetToolTip(SummaryPlayButton, online ? "Read summary" : ConnectivityService.Shared.Reason(OnlineService.Gemini));
         SummaryStopButton.IsEnabled = state != Services.SummaryReadbackState.Stopped;
-        var navigating = state != Services.SummaryReadbackState.Preparing;
+        var navigating = state != Services.SummaryReadbackState.Preparing && online;
         SummaryPreviousSentenceButton.IsEnabled = navigating && readback.CanGoPreviousSentence;
         SummaryNextSentenceButton.IsEnabled = navigating && readback.CanGoNextSentence;
         SummaryPreviousParagraphButton.IsEnabled = navigating && readback.CanGoPreviousParagraph;

@@ -373,6 +373,10 @@
       "title": "Solve common problems",
       "sections": [
         {
+          "id": "offline",
+          "title": "Working without internet"
+        },
+        {
           "id": "i-hear-sounds-instead-of-narration",
           "title": "I hear sounds instead of narration"
         },
@@ -465,6 +469,10 @@
         {
           "id": "imported-audio-and-online-analysis",
           "title": "Imported audio and online analysis"
+        },
+        {
+          "id": "connection-checks",
+          "title": "Connection checks"
         }
       ]
     }

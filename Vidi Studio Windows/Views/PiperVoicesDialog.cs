@@ -100,7 +100,10 @@ public sealed class PiperVoicesDialog : ContentDialog
         body.Children.Add(progress);
         body.Children.Add(status);
         body.Children.Add(summary);
+        body.Children.Insert(0, new ConnectivityNotice());
         Content = body;
+        Loaded += (_, _) => ConnectivityService.Shared.Changed += ConnectivityChanged;
+        Unloaded += (_, _) => ConnectivityService.Shared.Changed -= ConnectivityChanged;
         AutomationProperties.SetName(progress, "Voice download or removal progress");
         AutomationProperties.SetName(list, "Piper voice catalog");
 
@@ -127,6 +130,23 @@ public sealed class PiperVoicesDialog : ContentDialog
             : "The bundled Piper speech engine is missing. Reinstall Vidi Studio, or run script\\fetch-piper.ps1 and build the app again.";
     }
 
+    private void ConnectivityChanged(object? sender, EventArgs e)
+    {
+        // Keep row instances and keyboard focus while availability changes.
+        var online = ConnectivityService.Shared.Available(OnlineService.Voices);
+        var locked = busy || deletingVoiceId != null;
+        foreach (var pair in rows)
+        {
+            var downloaded = PiperService.IsVoiceDownloaded(pair.Key);
+            pair.Value.Action.IsEnabled = !locked && (downloaded || online);
+            pair.Value.Sample.IsEnabled = !locked && sampleLoadingId == null && (sampleVoiceId == pair.Key || PiperService.HasCachedSample(pair.Key) || online);
+            if (!downloaded) {
+                var help = ConnectivityService.Shared.Reason(OnlineService.Voices) ?? "Download and verify this voice model";
+                ToolTipService.SetToolTip(pair.Value.Action, help);
+                AutomationProperties.SetHelpText(pair.Value.Action, help);
+            }
+        }
+    }
     private void PopulateFilters()
     {
         var languages = PiperService.Catalog
@@ -242,7 +262,7 @@ public sealed class PiperVoicesDialog : ContentDialog
         grid.Children.Add(state.SampleStatus);
 
         state.Sample.Content = sampleLoadingId == voice.Id ? "Loading…" : sampleVoiceId == voice.Id ? "Stop sample" : "Play sample";
-        state.Sample.IsEnabled = sampleLoadingId == null && !locked;
+        state.Sample.IsEnabled = sampleLoadingId == null && !locked && (sampleVoiceId == voice.Id || PiperService.HasCachedSample(voice.Id) || ConnectivityService.Shared.Available(OnlineService.Voices));
         AutomationProperties.SetName(state.Sample, (sampleVoiceId == voice.Id ? "Stop sample for " : "Play sample for ") + voice.DisplayName);
         AutomationProperties.SetHelpText(state.Sample,
             "Plays a short sample published with this voice. The preview needs the internet; a downloaded voice itself works offline.");
@@ -254,7 +274,7 @@ public sealed class PiperVoicesDialog : ContentDialog
             deleting ? "Deleting…" : downloading ? "Downloading…" : downloaded ? "Delete" : "Download",
             downloaded || deleting ? Symbol.Delete : Symbol.Download);
         IconButtonContent.SetDestructive(state.Action, downloaded || deleting);
-        state.Action.IsEnabled = !locked && !downloading && !deleting;
+        state.Action.IsEnabled = !locked && !downloading && !deleting && (downloaded || ConnectivityService.Shared.Available(OnlineService.Voices));
         AutomationProperties.SetName(state.Action, deleting ? "Deleting " + voice.DisplayName
             : downloading ? "Downloading " + voice.DisplayName
             : (downloaded ? "Delete " : "Download ") + voice.DisplayName);

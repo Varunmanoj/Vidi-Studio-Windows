@@ -68,6 +68,7 @@ public sealed partial class SettingsDialog
 
     private async Task<List<Services.EngineEvent>> QueryGeminiCatalogAsync(string command, CancellationToken cancellation)
     {
+        ConnectivityService.Shared.Require(OnlineService.Gemini);
         Directory.CreateDirectory(SettingsStore.DirectoryPath);
         var config = Path.Combine(SettingsStore.DirectoryPath, Guid.NewGuid() + ".json");
         try
@@ -477,6 +478,7 @@ public sealed partial class SettingsDialog
     private async Task CheckApiKeyAndPlanAsync()
     {
         if (closed) return;
+        if (!ConnectivityService.Shared.Available(OnlineService.Gemini)) { status.Text = ConnectivityService.Shared.Reason(OnlineService.Gemini); return; }
         var enteredKey = SettingsStore.GetString(draft["apiKey"]);
         if (string.IsNullOrWhiteSpace(enteredKey))
         {
@@ -573,25 +575,22 @@ public sealed partial class SettingsDialog
         catch (Exception ex)
         {
             model.Engine.Log(ex.ToString());
-            draft["apiKeyValid"] = false;
-            draft["apiPlan"] = "invalid";
-            availableModels.Clear();
-            ApplyGeminiModelChoices();
-            var exMsg = ex.ToString();
-            var isInvalid = exMsg.Contains("API_KEY_INVALID", StringComparison.OrdinalIgnoreCase)
-                || exMsg.Contains("API key not valid", StringComparison.OrdinalIgnoreCase)
-                || exMsg.Contains("INVALID_ARGUMENT", StringComparison.OrdinalIgnoreCase)
-                || exMsg.Contains("PERMISSION_DENIED", StringComparison.OrdinalIgnoreCase)
-                || exMsg.Contains("UNAUTHENTICATED", StringComparison.OrdinalIgnoreCase)
-                || exMsg.Contains("invalid", StringComparison.OrdinalIgnoreCase)
-                || exMsg.Contains("API key", StringComparison.OrdinalIgnoreCase);
-            var msg = isInvalid ? "The API key is invalid or was rejected by Google." : "Could not reach Gemini. Check the key and connection.";
-            UpdatePlanDisplay(false, "invalid", 0, msg);
-            status.Text = "API key check failed: " + msg;
+            var detail = ex.ToString();
+            var invalid = detail.Contains("API_KEY_INVALID", StringComparison.OrdinalIgnoreCase)
+                || detail.Contains("API key not valid", StringComparison.OrdinalIgnoreCase)
+                || detail.Contains("invalid API key", StringComparison.OrdinalIgnoreCase);
+            if (invalid)
+            {
+                draft["apiKeyValid"] = false; draft["apiPlan"] = "invalid";
+                availableModels.Clear(); ApplyGeminiModelChoices();
+                UpdatePlanDisplay(false, "invalid", 0, "The API key is invalid or was rejected by Google.");
+            }
+            status.Text = invalid ? "The API key is invalid or was rejected by Google."
+                : "Could not reach Gemini. Check your connection and try again. Saved key verification and models have been kept.";
         }
         finally
         {
-            if (checkPlanButton != null) checkPlanButton.IsEnabled = !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"]));
+            if (checkPlanButton != null) checkPlanButton.IsEnabled = ConnectivityService.Shared.Available(OnlineService.Gemini) && !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"]));
         }
     }
 

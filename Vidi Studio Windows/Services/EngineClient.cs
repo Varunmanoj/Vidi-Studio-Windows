@@ -21,11 +21,22 @@ public sealed class EngineClient
     public async Task<List<EngineEvent>> RunAsync(IEnumerable<string> arguments, IProgress<EngineEvent>? progress = null,
         CancellationToken cancellation = default, string? configPath = null, string? apiKey = null)
     {
+        var requestArguments = new List<string>(arguments);
+        var projectIndex = requestArguments.IndexOf("--project");
+        var project = projectIndex >= 0 && projectIndex + 1 < requestArguments.Count ? Models.StudioProject.TryLoad(requestArguments[projectIndex + 1]) : null;
+        string? narrationProvider = null;
+        if (configPath != null && File.Exists(configPath)) {
+            using var draft = JsonDocument.Parse(File.ReadAllText(configPath));
+            if (draft.RootElement.TryGetProperty("ttsMode", out var provider)) narrationProvider = provider.GetString();
+        }
+        var required = OnlineRequirements.Services(requestArguments[0], project, settings, requestArguments, narrationProvider);
+        foreach (var service in required) ConnectivityService.Shared.Require(service);
         await gate.WaitAsync(cancellation);
         string? cancellationFile = null;
         string? temporaryConfig = null;
         try
         {
+            foreach (var service in required) ConnectivityService.Shared.Require(service);
             var frozen = Path.Combine(AppContext.BaseDirectory, "engine-bin", "vidistudio-engine.exe");
             var python = settings.Get("pythonPath", "python.exe");
             var start = new ProcessStartInfo(File.Exists(frozen) ? frozen : python)
@@ -35,7 +46,7 @@ public sealed class EngineClient
                 WorkingDirectory = AppContext.BaseDirectory
             };
             if (!File.Exists(frozen)) start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "engine", "vidistudio_engine.py"));
-            foreach (var argument in arguments) start.ArgumentList.Add(argument);
+            foreach (var argument in requestArguments) start.ArgumentList.Add(argument);
             var geminiKey = (apiKey ?? settings.Get("apiKey")).Trim();
             if (configPath == null && !string.IsNullOrEmpty(geminiKey))
             {
@@ -55,11 +66,15 @@ public sealed class EngineClient
             start.Environment["VIDISTUDIO_PIPER_PATH"] = PiperService.RuntimePath;
             start.Environment["VIDISTUDIO_PIPER_VOICES"] = PiperService.VoicesPath;
             start.Environment["PYTHONUTF8"] = "1";
+            start.Environment["VIDISTUDIO_NETWORK_EVENTS"] = "1";
+            start.Environment["VIDISTUDIO_YOUTUBE_AVAILABLE"] = ConnectivityService.Shared.Available(OnlineService.YouTube) ? "1" : "0";
             Directory.CreateDirectory(SettingsStore.DirectoryPath);
             cancellationFile = Path.Combine(SettingsStore.DirectoryPath, Guid.NewGuid() + ".cancel");
             start.Environment["VIDISTUDIO_CANCEL_FILE"] = cancellationFile;
             using var process = Process.Start(start) ?? throw new InvalidOperationException("Cannot start processing engine.");
-            using var registration = cancellation.Register(() =>
+            using var connectionCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            using var connectionWatch = new ConnectionRecoveryWatch(connectionCancellation.Cancel);
+            using var registration = connectionCancellation.Token.Register(() =>
             {
                 try { File.WriteAllText(cancellationFile, "cancel"); }
                 catch (Exception) { try { process.Kill(true); } catch (InvalidOperationException) { } }
@@ -75,6 +90,8 @@ public sealed class EngineClient
                     var root = doc.RootElement.Clone();
                     var message = root.TryGetProperty("message", out var m) ? m.GetString() ?? "Processing" : "Processing";
                     double? value = root.TryGetProperty("progress", out var p) && p.TryGetDouble(out var number) ? number : null;
+                    connectionWatch.Consume(root);
+                    if (root.TryGetProperty("networkActive", out _)) continue;
                     var evt = new EngineEvent(message, value, root);
                     events.Add(evt);
                     // Error payloads contain diagnostics; do not display them as status text.
@@ -83,6 +100,7 @@ public sealed class EngineClient
                 catch (JsonException) { /* Third-party stdout is not UI content. */ }
             }
             await process.WaitForExitAsync();
+            if (connectionWatch.Interrupted) throw new ConnectivityException("The connection did not recover within 30 seconds. Connect to the internet and try again. Completed results remain saved.");
             cancellation.ThrowIfCancellationRequested();
             if (process.ExitCode != 0)
             {
@@ -94,6 +112,8 @@ public sealed class EngineClient
                 var recovery = events.Exists(e => e.Data.TryGetProperty("recovery", out var action)
                     && action.ValueKind == JsonValueKind.String && action.GetString() == "choose-original-audio")
                     ? "choose-original-audio" : null;
+                if (events.Exists(e => e.Data.TryGetProperty("failureKind", out var kind) && kind.GetString() == "connectivity"))
+                    { ConnectivityService.Shared.Check(); throw new ConnectivityException("Connection interrupted. Check your internet connection and try again. Completed results remain saved."); }
                 throw new ProcessingException(errDiagnostic, recovery);
             }
             return events;

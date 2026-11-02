@@ -108,7 +108,16 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public string? AiIssueMessage { get; private set; }
     public string? AiIssueKind { get; private set; }
     public bool AiProcessingBlocked => AiIssueMessage != null;
-    public bool CanUseAI => HasApiKey && !IsApiKeyInvalid && !AiProcessingBlocked;
+    public bool ConnectionFailure { get; private set; }
+    public event Func<string, Task>? ConnectivityNotification;
+    private async Task NotifyConnectivityAsync(string reason)
+    {
+        ConnectionFailure = true; Status = reason;
+        if (ConnectivityNotification is { } notify) await notify(reason);
+    }
+    public bool CanUseAI => HasApiKey && !IsApiKeyInvalid && !AiProcessingBlocked && ConnectivityService.Shared.Available(OnlineService.Gemini);
+    public string? OnlineReason(string command, IEnumerable<string>? extra = null) => OnlineRequirements.Services(command, Project, Settings, extra).Select(ConnectivityService.Shared.Reason).FirstOrDefault(s => s != null);
+    public void RefreshConnectivity() { Changed(nameof(CanUseAI)); }
     public void ClearAiIssue()
     {
         if (AiIssueMessage == null) return;
@@ -593,12 +602,15 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     {
         if (Busy) return new();
         if (needsProject && Project == null) { Status = "Open a project first."; return new(); }
+        ConnectionFailure = false;
+        if (OnlineReason(command, extra) is { } unavailable) { await NotifyConnectivityAsync(unavailable); return new(); }
         var requestArguments = extra?.ToArray() ?? Array.Empty<string>();
         extra = requestArguments;
         var requestFolder = Project?.Folder;
         var canRecoverYouTubeAudio = Project?.IsYouTube == true &&
             command is "export-youtube-original-audio" or "export-youtube-described-audio" or "combine-imported-audio";
         YouTubeAudioExportRecovery? audioRecovery = null;
+        string? connectionFailure = null;
         IsExporting = command.StartsWith("export-", StringComparison.Ordinal) && Project != null;
         processingPlan.Clear();
         processingPlan.AddRange(AnalysisPlan(command, extra));
@@ -758,6 +770,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             Status = "Complete";
             return result;
         }
+        catch (ConnectivityException ex) { Status = ex.Message; connectionFailure = ex.Message; }
         catch (OperationCanceledException) { Status = "Cancelled. Completed results remain saved."; }
         catch (ProcessingException ex)
         {
@@ -781,6 +794,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             ProcessingSection = null; VideoPreparation = null; processingPlan.Clear();
             operation.Dispose(); operation = null; IsExporting = false; Busy = false;
         }
+        if (connectionFailure != null) await NotifyConnectivityAsync(connectionFailure);
         if (audioRecovery != null && YouTubeAudioRecoveryRequested is { } recover)
             await recover(audioRecovery);
         return new();

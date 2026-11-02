@@ -78,6 +78,7 @@ public sealed partial class MainWindow : Window
         ActiveExports.Observe(Model);
         Model.PropertyChanged += UpdateStatusFooter;
         Model.YouTubeAudioRecoveryRequested += RecoverYouTubeAudioExportAsync;
+        Model.ConnectivityNotification += ShowConnectivityNoticeAsync;
         Views.WindowAppearance.ApplyIcon(this);
         App.ThemeChanged += ApplyThemeFromApp;
         BuildMenus();
@@ -108,15 +109,22 @@ public sealed partial class MainWindow : Window
         timer.Start();
         integrityTimer.Tick += (_, _) => RefreshProjectIntegrity();
         integrityTimer.Start();
-        Activated += (_, _) => { if (ready) RefreshProjectIntegrity(); };
+        ConnectivityService.Shared.Changed += ConnectivityChanged;
+        Activated += (_, args) => {
+            ConnectivityService.Shared.Active = args.WindowActivationState != WindowActivationState.Deactivated;
+            if (ConnectivityService.Shared.Active) ConnectivityService.Shared.Check();
+            if (ready) RefreshProjectIntegrity();
+        };
         Closed += (_, _) =>
         {
+            ConnectivityService.Shared.Changed -= ConnectivityChanged;
             if (fullScreenVideo) { try { ExitFullScreenVideo(); } catch (Exception ex) { Model.Engine.Log(ex.ToString()); } }
             App.ThemeChanged -= ApplyThemeFromApp;
             ProjectPlaybackPreferences.Changed -= ReceiveProjectPlaybackPreference;
             ActiveExports.Detach();
             Model.PropertyChanged -= UpdateStatusFooter;
             Model.YouTubeAudioRecoveryRequested -= RecoverYouTubeAudioExportAsync;
+            Model.ConnectivityNotification -= ShowConnectivityNoticeAsync;
             Model.Cancel(); timer.Stop(); integrityTimer.Stop();
             foreach (var cleanup in new Action[] { video.Dispose, speech.Dispose, narrationPlayer.Dispose, originalAudioPlayer.Dispose, onDeviceNarrator.Dispose, readback.Dispose,
                 () => { if (YouTubePlayer.CoreWebView2 != null) YouTubePlayer.Close(); } })
@@ -299,11 +307,13 @@ public sealed partial class MainWindow : Window
     private Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog, int width = 680, int height = 460)
         => Views.WindowedDialog.ShowAsync(dialog, this, width, height);
     private async Task<bool> Confirm(string title, string text, string action = "Continue") => await ShowDialogAsync(Dialog(title, DialogMessage(text), action)) == ContentDialogResult.Primary;
+    private Task ShowConnectivityNoticeAsync(string reason) => ShowError(new ConnectivityException(reason));
     private async Task ShowError(Exception ex)
     {
+        if (Model.ConnectionFailure && ex is not ConnectivityException && ex.Message == Model.Status) return;
         Model.Engine.Log(ex.ToString());
         // Processing and speech messages are already written for people; other failures stay generic.
-        var message = ex is ProcessingException or SpeechFailedException
+        var message = ex is ProcessingException or SpeechFailedException or ConnectivityException
             ? ex.Message
             : "Check your settings and the diagnostic log, then retry. Your saved project remains available.";
         await ShowDialogAsync(new ContentDialog { Title = "Action could not finish", Content = DialogMessage(message), CloseButtonText = "Close" });
@@ -739,6 +749,7 @@ public sealed partial class MainWindow : Window
     private void TimelineScrubSurface_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => timelineScrubbing = false;
     private async void StartVideoPlayback()
     {
+        if (Model.Project?.IsYouTube == true && !ConnectivityService.Shared.Available(OnlineService.YouTube)) return;
         if (Model.Project?.IsYouTube == true)
         {
             if (YouTubePlayer.CoreWebView2 != null)
@@ -843,6 +854,7 @@ public sealed partial class MainWindow : Window
         if (Model.Project == null) return;
         if (Model.Project.IsYouTube)
         {
+            if (!youtubePlaying && !ConnectivityService.Shared.Available(OnlineService.YouTube)) { await ShowError(new ConnectivityException(ConnectivityService.Shared.Reason(OnlineService.YouTube)!)); return; }
             if (YouTubePlayer.CoreWebView2 == null) return;
             await YouTubePlayer.ExecuteScriptAsync("window.vidiToggle?.()");
             youtubePlaying = !youtubePlaying;
@@ -855,9 +867,10 @@ public sealed partial class MainWindow : Window
     private void UpdatePlaybackControls()
     {
         var playing = IsVideoPlaying();
+        VideoPlayPauseButton.IsEnabled = Model.Project != null && (playing || !Model.Project.IsYouTube || ConnectivityService.Shared.Available(OnlineService.YouTube));
         VideoPlayPauseButton.Content = playing ? "\uE769" : "\uE768";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(VideoPlayPauseButton, playing ? "Pause video" : "Play video");
-        ToolTipService.SetToolTip(VideoPlayPauseButton, playing ? "Pause video" : "Play video");
+        ToolTipService.SetToolTip(VideoPlayPauseButton, !playing && Model.Project?.IsYouTube == true ? ConnectivityService.Shared.Reason(OnlineService.YouTube) ?? "Play video" : playing ? "Pause video" : "Play video");
         UpdateDesktopPlaybackState();
     }
     private void Rewind_Click(object sender, RoutedEventArgs e) => Seek(Position - 5);
@@ -884,6 +897,7 @@ public sealed partial class MainWindow : Window
             await SynthesizeNarrationWithConfirmationAsync();
             return;
         }
+        if (Model.OnlineReason(command) is { } reason) { await ShowError(new ConnectivityException(reason)); return; }
         if (!Model.CanUseAI && command != "prepare-video")
         {
             await ShowSettingsSectionAsync(3);
@@ -1672,6 +1686,7 @@ public sealed partial class MainWindow : Window
             || narrationProject.IntegrityPlaceholder
             || narrationProject.Integrity?.ManifestUnreadable == true
             || narrationProject.Integrity?.FolderMissing == true) return;
+        if (Model.OnlineReason("synthesize-tts", extra) is { } offline) { await ShowError(new ConnectivityException(offline)); return; }
         var flags = extra?.ToList() ?? new List<string>();
         if (!flags.Contains("--segment") && !flags.Contains("--changed") && !flags.Contains("--regenerate-all")) flags.Add("--regenerate-all");
         if (Model.CurrentNarrationEngine() == "gemini" && !Model.CanUseAI)
@@ -2000,12 +2015,19 @@ public sealed partial class MainWindow : Window
         catch (Exception ex) { await ShowError(ex); }
     }
 
+    private void ConnectivityChanged(object? sender, EventArgs e)
+    {
+        Model.RefreshConnectivity();
+        if (!ready) return;
+        UpdateApiKeyUi(); UpdateDesktopMenuStates(); UpdatePlaybackControls(); UpdateSummaryControls();
+    }
+
     private void UpdateApiKeyUi()
     {
         UpdateEditorProjectButtons();
         var hasKey = Model.HasApiKey;
         var isInvalid = Model.IsApiKeyInvalid;
-        var canUseAi = hasKey && !isInvalid && !Model.AiProcessingBlocked && Model.Idle;
+        var canUseAi = Model.CanUseAI && Model.Idle;
         try { Services.ShellIntegration.UpdateContextMenuState(); } catch { }
 
         if (ApiKeyWarningBar != null)
@@ -2044,9 +2066,9 @@ public sealed partial class MainWindow : Window
             GalleryEmptySubtitle.Text = "Import a video or add a public YouTube link to begin.";
         }
 
-        var missingKeyTooltip = isInvalid
+        var missingKeyTooltip = Model.OnlineReason("transcribe") ?? (isInvalid
             ? "Your Gemini API key is invalid. Enter a valid API key in Settings (Gemini API tab) to enable this feature."
-            : "Configure your Gemini API key in Settings (Gemini API tab) to enable this feature.";
+            : "Configure your Gemini API key in Settings (Gemini API tab) to enable this feature.");
 
         var project = Model.Project;
         if (OverviewReviewNarrationButton != null)

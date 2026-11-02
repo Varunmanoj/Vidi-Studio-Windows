@@ -1,3 +1,4 @@
+using Vidi_Studio_Windows.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -90,6 +91,8 @@ public sealed class ExportDialog : ContentDialog
         Grid.SetColumnSpan(footer, 2);
         shell.Children.Add(footer);
         Content = shell;
+        Loaded += (_, _) => ConnectivityService.Shared.Changed += ConnectivityChanged;
+        Unloaded += (_, _) => ConnectivityService.Shared.Changed -= ConnectivityChanged;
         Loaded += (_, _) =>
         {
             var width = Math.Clamp((XamlRoot?.Size.Width ?? 1000) - 48, 620, 950);
@@ -277,7 +280,14 @@ public sealed class ExportDialog : ContentDialog
         5 => project.CanExportText("transcript") && project.CanExportText("combined"),
         _ => false
     });
-    private bool CanSave() => model.Idle && model.Project != null && (sidebar.SelectedIndex switch
+    private bool ConnectionReady()
+    {
+        if (sidebar.SelectedIndex < 0) return false;
+        var request = BuildRequest();
+        return model.OnlineReason(request.Command, request.Arguments) == null;
+    }
+    private void ConnectivityChanged(object? sender, EventArgs e) => UpdatePreview();
+    private bool CanSave() => ConnectionReady() && model.Idle && model.Project != null && (sidebar.SelectedIndex switch
     {
         0 => CanUseVideoAudio(videoAudio) && CanUseCaptions(videoCaptions) && (videoAudio != 0 || videoCaptions != 0),
         1 => CanUseAudio(audioChoice),
@@ -315,6 +325,8 @@ public sealed class ExportDialog : ContentDialog
         replacementNotice.Text = exists ? $"{Path.GetFileName(target)} already exists. Replacing it saves the new export in its place; the old export is kept if generation fails." : "";
         saveButton.Content = exists ? "Replace export" : "Save";
         saveButton.IsEnabled = CanSave();
+        var request = BuildRequest();
+        ToolTipService.SetToolTip(saveButton, model.OnlineReason(request.Command, request.Arguments) ?? "Save export");
     }
 
     private (string Command, List<string> Arguments) BuildRequest()

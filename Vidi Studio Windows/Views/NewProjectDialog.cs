@@ -82,6 +82,8 @@ public sealed class NewProjectDialog : ContentDialog
     public NewProjectDialog(Window owner, ElementTheme theme, SettingsStore settings, bool openYouTube = false)
     {
         this.owner = owner; this.settings = settings;
+        Loaded += (_, _) => ConnectivityService.Shared.Changed += ConnectivityChanged;
+        Unloaded += (_, _) => ConnectivityService.Shared.Changed -= ConnectivityChanged;
         LibraryPath = settings.Get("libraryPath");
         RequestedTheme = theme;
         Width = 760; MaxWidth = 760;
@@ -119,6 +121,7 @@ public sealed class NewProjectDialog : ContentDialog
         sourceRow.Children.Add(new TextBlock { Text = "Choose a project source" });
         sourceRow.Children.Add(sourceOptions);
         var contents = new StackPanel { Spacing = 14, Width = 660 };
+        contents.Children.Add(new ConnectivityNotice());
         contents.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = sourceRow });
         contents.Children.Add(sourceHeading);
         localCard = new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(14), Child = localFields };
@@ -181,7 +184,8 @@ public sealed class NewProjectDialog : ContentDialog
         youtubeCard.Visibility = IsYouTube ? Visibility.Visible : Visibility.Collapsed;
         sourceHeading.Text = IsYouTube ? "YouTube Video" : "Video File";
         if (IsYouTube) preview.MediaPlayer?.Pause();
-        fetchDetails.IsEnabled = ValidYouTubeId(YouTubeUrl) != null && youtubeInspection == null;
+        fetchDetails.IsEnabled = ValidYouTubeId(YouTubeUrl) != null && youtubeInspection == null && ConnectivityService.Shared.Available(OnlineService.YouTube);
+        ToolTipService.SetToolTip(fetchDetails, ConnectivityService.Shared.Reason(OnlineService.YouTube) ?? "Fetch video details");
         assets.SetContext(IsYouTube, false);
         UpdateCreationState();
     }
@@ -191,7 +195,7 @@ public sealed class NewProjectDialog : ContentDialog
         assetsCard.Visibility = ImportAssetsAfterCreation ? Visibility.Visible : Visibility.Collapsed;
         originalAssetsCard.Visibility = IsYouTube ? Visibility.Visible : Visibility.Collapsed;
         descriptionGuidance.Text = ImportAssetsAfterCreation ? "Choose existing files below. Text timing is reviewed before import. Combining audio is optional." : "Generate a transcript, summary, and descriptions after creating the project.";
-        var sourceReady = IsYouTube ? fetchedYouTubeId != null && fetchedYouTubeId == ValidYouTubeId(YouTubeUrl) : validLocal;
+        var sourceReady = IsYouTube ? fetchedYouTubeId != null && fetchedYouTubeId == ValidYouTubeId(YouTubeUrl) && ConnectivityService.Shared.Available(OnlineService.YouTube) : validLocal;
         var assetsReady = !ImportAssetsAfterCreation || !assets.Selection.HasAny || assets.CanImport;
         IsPrimaryButtonEnabled = sourceReady && assetsReady && !string.IsNullOrWhiteSpace(LibraryPath);
         PrimaryButtonText = ImportAssetsAfterCreation ? "Create Project & Open Editor" : "Create Project";
@@ -199,6 +203,7 @@ public sealed class NewProjectDialog : ContentDialog
         IsSecondaryButtonEnabled = IsPrimaryButtonEnabled;
         libraryLocation.Text = "A new portable project folder will be created in:\n" + LibraryPath;
     }
+    private void ConnectivityChanged(object? sender, EventArgs e) => UpdateSource();
     private static string? ValidYouTubeId(string text)
     {
         if (!Uri.TryCreate(text, UriKind.Absolute, out var uri) || uri.Scheme != "https") return null;
@@ -225,6 +230,7 @@ public sealed class NewProjectDialog : ContentDialog
     }
     private async Task FetchYouTubeDetailsAsync()
     {
+        if (!ConnectivityService.Shared.Available(OnlineService.YouTube)) { youtubeStatus.Text = ConnectivityService.Shared.Reason(OnlineService.YouTube); return; }
         var id = ValidYouTubeId(YouTubeUrl);
         if (id == null) return;
         youtubeInspection?.Cancel();

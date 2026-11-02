@@ -111,6 +111,7 @@ public static class PiperService
 
     public static async Task DownloadVoiceAsync(PiperCatalogVoice voice, IProgress<double>? progress, CancellationToken cancellation)
     {
+        ConnectivityService.Shared.Require(OnlineService.Voices);
         Directory.CreateDirectory(VoicesPath);
         var total = Math.Max(1, voice.ModelSize + voice.ConfigSize);
         long received = 0;
@@ -134,7 +135,13 @@ public static class PiperService
     {
         var path = SampleCachePath(voice.Id);
         if (File.Exists(path) && new FileInfo(path).Length > 0) return path;
+        ConnectivityService.Shared.Require(OnlineService.Voices);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using var connectionCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        using var connectionWatch = new ConnectionRecoveryWatch(connectionCancellation.Cancel);
+        using var stage = System.Text.Json.JsonDocument.Parse("{\"networkService\":\"voices\",\"networkActive\":true}");
+        connectionWatch.Consume(stage.RootElement);
+        cancellation = connectionCancellation.Token;
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".part";
         try
         {
@@ -149,9 +156,12 @@ public static class PiperService
             File.Move(temporary, path, true);
             return path;
         }
+        catch (OperationCanceledException) when (connectionWatch.Interrupted)
+        { throw new ConnectivityException("The connection did not recover within 30 seconds. Connect to the internet and retry the sample."); }
         finally { TryDelete(temporary); }
     }
 
+    public static bool HasCachedSample(string id) => File.Exists(SampleCachePath(id));
     private static string SampleCachePath(string id) =>
         Path.Combine(RootPath, "samples", id.Replace('/', '_').Replace('\\', '_') + "-speaker_0.mp3");
 
@@ -165,6 +175,11 @@ public static class PiperService
     private static async Task DownloadFileAsync(string url, string destination, long expectedSize, string expectedMd5,
         Action<long> report, CancellationToken cancellation)
     {
+        using var connectionCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        using var connectionWatch = new ConnectionRecoveryWatch(connectionCancellation.Cancel);
+        using var stage = System.Text.Json.JsonDocument.Parse("{\"networkService\":\"voices\",\"networkActive\":true}");
+        connectionWatch.Consume(stage.RootElement);
+        cancellation = connectionCancellation.Token;
         var temporary = destination + "." + Guid.NewGuid().ToString("N") + ".part";
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         try
@@ -197,6 +212,8 @@ public static class PiperService
             output.Close();
             File.Move(temporary, destination, true);
         }
+        catch (OperationCanceledException) when (connectionWatch.Interrupted)
+        { throw new ConnectivityException("The connection did not recover within 30 seconds. Connect to the internet and retry the download."); }
         finally
         {
             TryDelete(temporary);

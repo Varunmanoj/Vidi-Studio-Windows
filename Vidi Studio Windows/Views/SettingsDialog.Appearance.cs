@@ -55,7 +55,7 @@ public sealed partial class SettingsDialog
             void Highlight(int start, int length, string key, string fallback)
             {
                 var color = ReadColor(key, fallback);
-                var contrast = color.R * .299 + color.G * .587 + color.B * .114 < 135 ? Colors.White : Colors.Black;
+                var contrast = color.R * .299 + color.G * .587 + color.B * .114 < 135 ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
                 var textHighlight = new TextHighlighter { Background = new SolidColorBrush(color), Foreground = new SolidColorBrush(contrast) };
                 textHighlight.Ranges.Add(new TextRange { StartIndex = start, Length = length });
                 summaryPreview.TextHighlighters.Add(textHighlight);

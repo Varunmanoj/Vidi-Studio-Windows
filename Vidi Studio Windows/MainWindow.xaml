@@ -64,6 +64,7 @@
   <MenuBar x:Name="MainMenu" Grid.Row="1" Background="Transparent"/>
   <Border x:Name="AppSurface" Grid.Row="2" Grid.RowSpan="4" Background="{ThemeResource LayerFillColorDefaultBrush}" IsHitTestVisible="False"/>
   <StackPanel Grid.Row="2">
+   <views:ConnectivityNotice/>
    <InfoBar x:Name="ApiKeyWarningBar" Severity="Warning" IsOpen="False" IsClosable="False" Margin="16,8,16,0"
             Title="Gemini API Key Required"
             Message="Application features are disabled until a personal Gemini API key is configured. Please enter your API key in Settings (Gemini API tab) to enable project creation, transcription, video analysis, summaries, descriptions, narration, and exports.">

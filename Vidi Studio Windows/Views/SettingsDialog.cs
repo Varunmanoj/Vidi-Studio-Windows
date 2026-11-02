@@ -149,6 +149,15 @@ public sealed partial class SettingsDialog : Window
     private readonly JsonObject draft;
     private readonly string originalTheme;
     private readonly MediaPlayer samplePlayer = new();
+    private void ConnectivityChanged(object? sender, EventArgs e)
+    {
+        if (checkPlanButton != null) {
+            checkPlanButton.IsEnabled = ConnectivityService.Shared.Available(OnlineService.Gemini) && !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"]));
+            ToolTipService.SetToolTip(checkPlanButton, ConnectivityService.Shared.Reason(OnlineService.Gemini) ?? "Check API key");
+        }
+        if (samplePlayButton != null && SettingsStore.GetString(draft["ttsMode"]) == "gemini")
+            samplePlayButton.IsEnabled = ConnectivityService.Shared.Available(OnlineService.Gemini) && HasDraftApiKey && sampleState != SampleState.Generating;
+    }
     private enum SampleState { Stopped, Generating, Playing, Paused }
     private SampleState sampleState;
     private Button? samplePlayButton;
@@ -249,6 +258,8 @@ public sealed partial class SettingsDialog : Window
         App.ThemeChanged += ReceiveTheme;
         ProjectPlaybackPreferences.Changed += ReceiveProjectPlaybackPreference;
         model.PropertyChanged += ReceiveModelProjectChange;
+        ConnectivityService.Shared.Changed += ConnectivityChanged;
+        Closed += (_, _) => ConnectivityService.Shared.Changed -= ConnectivityChanged;
         samplePlayer.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
             if (closed || sampleState != SampleState.Playing) return;
@@ -278,7 +289,9 @@ public sealed partial class SettingsDialog : Window
             if (host.Content is Panel oldPanel) oldPanel.Children.Clear();
             host.Content = null;
             var panel = new StackPanel { Spacing = 12, Padding = new Thickness(0, 0, 16, 12) };
+            panel.Children.Add(new ConnectivityNotice());
             host.Content = panel;
+            ConnectivityChanged(this, EventArgs.Empty);
             currentSectionPanel = panel;
             switch (sections.SelectedIndex)
             {
@@ -551,7 +564,7 @@ public sealed partial class SettingsDialog : Window
                 _ => "Play selected voice sample"
             };
             var provider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
-            samplePlayButton.IsEnabled = sampleState != SampleState.Generating && (provider != "gemini" || HasDraftApiKey);
+            samplePlayButton.IsEnabled = sampleState != SampleState.Generating && (provider != "gemini" || HasDraftApiKey && ConnectivityService.Shared.Available(OnlineService.Gemini));
             if (provider == "piper") samplePlayButton.IsEnabled &= PiperService.IsVoiceDownloaded(SettingsStore.GetString(draft["piperVoice"]));
         }
         if (sampleStopButton != null) sampleStopButton.IsEnabled = sampleState != SampleState.Stopped;
@@ -685,6 +698,9 @@ public sealed partial class SettingsDialog : Window
     }
     private async Task Preview(string text)
     {
+        if ((mode.SelectedItem as SpeechEngineOption)?.Id == "gemini" && !ConnectivityService.Shared.Available(OnlineService.Gemini)) {
+            status.Text = ConnectivityService.Shared.Reason(OnlineService.Gemini); return;
+        }
         StopSample(false);
         sampleCancellation = new();
         var cancellation = sampleCancellation;

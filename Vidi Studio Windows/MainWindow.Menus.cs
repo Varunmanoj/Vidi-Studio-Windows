@@ -287,12 +287,14 @@ public sealed partial class MainWindow
     private bool CanRunDesktopCommand(string id)
     {
         if (!Model.Idle) return false;
+        if (Model.OnlineReason(id) != null) return false;
         if (id == "new-project") return true;
         if (id is "rename-project" or "trash-project" or "show-in-finder" or "open-configuration") return CanManageProject(id);
         if (id == "remove-from-list") return SelectedBrowserProject() != null;
         if (id is "open-project" or "settings" or "help" or "about" or "close-window") return true;
         if (id is "project-list" or "project-grid") return !(Section.SelectedIndex == 1 && summaryEditMode);
         if (!desktopEditorVisible || Model.Project is not { } p) return false;
+        if (p.IsYouTube && (id is "play" or "back" or "forward") && !ConnectivityService.Shared.Available(OnlineService.YouTube)) return id == "play" && IsVideoPlaying();
         var timed = Section.SelectedIndex is 0 or 2 or 4;
         var hasTranscript = p.HasTranscript || ExtraFlag(p, "transcriptGenerated");
         var canDescribe = hasTranscript && p.HasSummary;
@@ -339,6 +341,8 @@ public sealed partial class MainWindow
         if (id.StartsWith("summary-", StringComparison.Ordinal))
         {
             if (Section.SelectedIndex != 1 || summaryEditMode || !p.HasSummary) return false;
+            if (Model.Settings.Get("ttsMode", "windows-core") == "gemini" && !ConnectivityService.Shared.Available(OnlineService.Gemini)
+                && id is not ("summary-stop" or "summary-pause")) return false;
             return id switch
             {
                 "summary-play" => readback.State is SummaryReadbackState.Stopped or SummaryReadbackState.Paused,

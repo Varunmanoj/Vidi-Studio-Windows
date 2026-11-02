@@ -1,3 +1,4 @@
+using Vidi_Studio_Windows.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System;
@@ -94,6 +95,13 @@ public sealed class TextTimingDialog : ContentDialog
             ? "Ask Gemini for proposed timing; review every row before saving"
             : "Enter your Gemini API key in Settings to auto-time text");
         ai.Click += async (_, _) => await AlignAsync();
+        void UpdateOnline(object? sender, EventArgs e) {
+            ai.IsEnabled = model.CanUseAI && !aligning;
+            ToolTipService.SetToolTip(ai, model.OnlineReason("align-imported-text") ?? "Ask Gemini for proposed timing; review every row before saving");
+        }
+        Loaded += (_, _) => { ConnectivityService.Shared.Changed += UpdateOnline; UpdateOnline(this, EventArgs.Empty); };
+        Unloaded += (_, _) => ConnectivityService.Shared.Changed -= UpdateOnline;
+        stack.Children.Add(new ConnectivityNotice());
         actions.Children.Add(ai);
         stack.Children.Add(actions);
         stack.Children.Add(summary);

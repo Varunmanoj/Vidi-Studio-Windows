@@ -51,6 +51,8 @@ public sealed partial class SettingsDialog
     private Button? checkPlanButton;
     private string detectedPlan = "free";
     private DispatcherTimer? checkDebounceTimer;
+    private long apiKeyCheckRevision;
+    private bool checkingApiKey;
 
     private static string CleanModelName(string id, string rawName)
     {
@@ -179,7 +181,7 @@ public sealed partial class SettingsDialog
             checkDebounceTimer?.Stop();
             key.Password = "";
             draft["apiKey"] = "";
-            draft["apiKeyValid"] = false;
+            draft.Remove("apiKeyValid");
             draft["apiPlan"] = "none";
             CredentialStore.Delete();
             model.Settings.Set("apiKey", "");
@@ -190,7 +192,8 @@ public sealed partial class SettingsDialog
             UpdatePlanDisplay(null, "", 0);
             deleteKeyButton.IsEnabled = false;
             deleteKeyButton.Visibility = Visibility.Collapsed;
-            if (checkPlanButton != null) checkPlanButton.IsEnabled = false;
+            checkingApiKey = false;
+            ConnectivityChanged(null, EventArgs.Empty);
             status.Text = "Gemini API key deleted from Windows Credential Manager.";
         };
         Grid.SetColumn(deleteKeyButton, 1);
@@ -233,7 +236,7 @@ public sealed partial class SettingsDialog
                 }
             },
             Padding = new Thickness(14, 8, 14, 8),
-            IsEnabled = !string.IsNullOrWhiteSpace(key.Password)
+            IsEnabled = true
         };
         checkPlanButton.Click += async (_, _) => await CheckApiKeyAndPlanAsync();
         topStack.Children.Add(checkPlanButton);
@@ -255,6 +258,7 @@ public sealed partial class SettingsDialog
         var verifyTextStack = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
         apiStatusTitle.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
         apiStatusTitle.FontSize = 13;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetLiveSetting(apiStatusTitle, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
         apiStatusDescription.FontSize = 12;
         apiStatusDescription.Opacity = 0.85;
         verifyTextStack.Children.Add(apiStatusTitle);
@@ -323,14 +327,22 @@ public sealed partial class SettingsDialog
         {
             draft["apiKey"] = key.Password;
             var hasKey = !string.IsNullOrWhiteSpace(key.Password);
-            if (checkPlanButton != null) checkPlanButton.IsEnabled = hasKey;
+            apiKeyCheckRevision++; // Ignore results for the previously entered key.
+            checkingApiKey = false;
+            draft.Remove("apiKeyValid");
+            draft["apiPlan"] = "auto";
+            availableModels.Clear();
+            ApplyGeminiModelChoices();
+            UpdatePlanDisplay(null, "", 0);
+            ConnectivityChanged(null, EventArgs.Empty);
             deleteKeyButton.IsEnabled = hasKey;
             deleteKeyButton.Visibility = hasKey ? Visibility.Visible : Visibility.Collapsed;
 
             if (!hasKey)
             {
+                status.Text = "No API key entered. Enter a Gemini API key, then choose Check API Key & Plan.";
                 checkDebounceTimer.Stop();
-                draft["apiKeyValid"] = false;
+                draft.Remove("apiKeyValid");
                 draft["apiPlan"] = "none";
                 availableModels.Clear();
                 ApplyGeminiModelChoices();
@@ -338,6 +350,7 @@ public sealed partial class SettingsDialog
             }
             else
             {
+                status.Text = "API key not checked. Choose Check API Key & Plan to verify the entered key.";
                 checkDebounceTimer.Stop();
                 checkDebounceTimer.Start();
             }
@@ -379,7 +392,7 @@ public sealed partial class SettingsDialog
             else
             {
                 var savedPlan = SettingsStore.GetString(draft["apiPlan"], "free").ToLowerInvariant();
-                UpdatePlanDisplay(true, savedPlan, availableModels.Count);
+                UpdatePlanDisplay(draft["apiKeyValid"] == null ? null : true, savedPlan, availableModels.Count);
             }
             _ = CheckApiKeyAndPlanAsync();
         }
@@ -389,7 +402,7 @@ public sealed partial class SettingsDialog
         }
     }
 
-    private void UpdatePlanDisplay(bool? valid, string plan, int modelCount, string errorMsg = "")
+    private void UpdatePlanDisplay(bool? valid, string plan, int modelCount, string errorMsg = "", bool checking = false)
     {
         var isPaid = plan.Equals("paid", StringComparison.OrdinalIgnoreCase);
 
@@ -405,7 +418,7 @@ public sealed partial class SettingsDialog
             apiStatusTitle.Text = $"API Key Verified ({planName})";
             apiStatusTitle.Foreground = new SolidColorBrush(Color.FromArgb(255, 16, 124, 65));
             var countLabel = modelCount > 0 ? $"{modelCount} models available." : "Models loaded.";
-            apiStatusDescription.Text = $"Key verified ({planName}). {countLabel}";
+            apiStatusDescription.Text = $"The entered Gemini API key is valid. {countLabel}";
 
             // Account Plan pill:
             var pillColor = isPaid ? Color.FromArgb(255, 0, 120, 212) : Color.FromArgb(255, 16, 124, 65);
@@ -429,9 +442,9 @@ public sealed partial class SettingsDialog
             apiStatusCard.BorderThickness = new Thickness(1);
             apiStatusIcon.Glyph = "\uE783";
             apiStatusIcon.Foreground = new SolidColorBrush(Color.FromArgb(255, 230, 80, 40));
-            apiStatusTitle.Text = "API Key Verification Failed";
+            apiStatusTitle.Text = "Invalid API Key";
             apiStatusTitle.Foreground = new SolidColorBrush(Color.FromArgb(255, 230, 80, 40));
-            apiStatusDescription.Text = string.IsNullOrEmpty(errorMsg) ? "The API key is invalid or was rejected by Google." : errorMsg;
+            apiStatusDescription.Text = "The entered Gemini API key is invalid. Google rejected it. Replace it with a valid key from Google AI Studio.";
 
             // Account Plan pill:
             planPillBadge.Background = new SolidColorBrush(Color.FromArgb(30, 230, 80, 40));
@@ -446,7 +459,7 @@ public sealed partial class SettingsDialog
         else
         {
             // Empty / checking
-            var hasKey = !string.IsNullOrEmpty(SettingsStore.GetString(draft["apiKey"]));
+            var hasKey = !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"]));
             if (hasKey)
             {
                 apiStatusCard.Visibility = Visibility.Visible;
@@ -455,13 +468,19 @@ public sealed partial class SettingsDialog
                 apiStatusCard.BorderThickness = new Thickness(1);
                 apiStatusIcon.Glyph = "\uE72C";
                 apiStatusIcon.Foreground = (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
-                apiStatusTitle.Text = "Checking API key…";
+                apiStatusTitle.Text = checking ? "Checking API key…" : errorMsg.Length > 0 ? "API Key Check Incomplete" : "API Key Not Checked";
                 apiStatusTitle.Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
-                apiStatusDescription.Text = "Verifying key and plan tier…";
+                apiStatusDescription.Text = checking ? "Verifying the entered key with Google…" : errorMsg.Length > 0 ? errorMsg : "Choose Check API Key & Plan to verify the entered key.";
             }
             else
             {
-                apiStatusCard.Visibility = Visibility.Collapsed;
+                apiStatusCard.Visibility = Visibility.Visible;
+                apiStatusCard.Background = new SolidColorBrush(Color.FromArgb(22, 128, 128, 128));
+                apiStatusCard.BorderThickness = new Thickness(1);
+                apiStatusIcon.Glyph = "\uE7BA";
+                apiStatusTitle.Text = "No API Key Entered";
+                apiStatusTitle.Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+                apiStatusDescription.Text = "Enter a Gemini API key, then choose Check API Key & Plan.";
             }
 
             planPillBadge.Background = new SolidColorBrush(Color.FromArgb(30, 128, 128, 128));
@@ -469,42 +488,46 @@ public sealed partial class SettingsDialog
             planPillBadge.BorderThickness = new Thickness(1);
             planDot.Glyph = "\uE915";
             planDot.Foreground = new SolidColorBrush(Color.FromArgb(255, 160, 160, 160));
-            planPillText.Text = "No API key";
+            planPillText.Text = !hasKey ? "No API key" : checking ? "Checking…" : errorMsg.Length > 0 ? "Check incomplete" : "Not Checked";
             planPillText.Foreground = new SolidColorBrush(Color.FromArgb(255, 180, 180, 180));
-            planDetailsSubtitle.Text = "Enter a Gemini API key to detect your plan.";
+            planDetailsSubtitle.Text = !hasKey ? "Enter a Gemini API key to detect your plan." : "Check the entered API key before showing account information.";
         }
+        Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.FromElement(apiStatusTitle)?
+            .RaiseAutomationEvent(Microsoft.UI.Xaml.Automation.Peers.AutomationEvents.LiveRegionChanged);
     }
 
     private async Task CheckApiKeyAndPlanAsync()
     {
         if (closed) return;
-        if (!ConnectivityService.Shared.Available(OnlineService.Gemini)) { status.Text = ConnectivityService.Shared.Reason(OnlineService.Gemini); return; }
-        var enteredKey = SettingsStore.GetString(draft["apiKey"]);
+        checkDebounceTimer?.Stop();
+        var revision = ++apiKeyCheckRevision;
+        var enteredKey = SettingsStore.GetString(draft["apiKey"]).Trim();
         if (string.IsNullOrWhiteSpace(enteredKey))
         {
-            status.Text = "Enter a Gemini API key first.";
-            draft["apiKeyValid"] = false;
+            status.Text = "No API key entered. Enter a Gemini API key, then choose Check API Key & Plan.";
+            draft.Remove("apiKeyValid");
             draft["apiPlan"] = "none";
             UpdatePlanDisplay(null, "", 0);
+            ConnectivityChanged(null, EventArgs.Empty);
+            return;
+        }
+        if (!ConnectivityService.Shared.Available(OnlineService.Gemini))
+        {
+            var reason = "The key could not be checked because Gemini is unavailable. Reconnect and try again. Previous verification and models have been kept.";
+            status.Text = reason;
+            UpdatePlanDisplay(null, "", 0, reason);
             return;
         }
 
         try
         {
+            checkingApiKey = true;
             if (checkPlanButton != null) checkPlanButton.IsEnabled = false;
+            UpdatePlanDisplay(null, "", 0, checking: true);
             status.Text = "Checking Gemini API key and verifying plan with Google…";
 
-            List<Services.EngineEvent> events;
-            try
-            {
-                events = await QueryGeminiCatalogAsync("check-api-key", lifetime.Token);
-            }
-            catch
-            {
-                events = await QueryGeminiCatalogAsync("list-models", lifetime.Token);
-            }
-
-            if (closed) return;
+            var events = await QueryGeminiCatalogAsync("check-api-key", lifetime.Token);
+            if (closed || revision != apiKeyCheckRevision || enteredKey != SettingsStore.GetString(draft["apiKey"]).Trim()) return;
             var found = events.LastOrDefault(item => item.Data.TryGetProperty("models", out _) || item.Data.TryGetProperty("keyValid", out _));
             if (found == null) throw new InvalidDataException("Gemini returned no response for this key.");
 
@@ -517,7 +540,7 @@ public sealed partial class SettingsDialog
                 availableModels.Clear();
                 ApplyGeminiModelChoices();
                 UpdatePlanDisplay(false, "invalid", 0, errMsg);
-                status.Text = "API key check failed: " + errMsg;
+                status.Text = "The entered Gemini API key is invalid. Google rejected it. Replace it with a valid key from Google AI Studio.";
                 return;
             }
 
@@ -574,6 +597,7 @@ public sealed partial class SettingsDialog
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
+            if (closed || revision != apiKeyCheckRevision || enteredKey != SettingsStore.GetString(draft["apiKey"]).Trim()) return;
             model.Engine.Log(ex.ToString());
             var detail = ex.ToString();
             var invalid = detail.Contains("API_KEY_INVALID", StringComparison.OrdinalIgnoreCase)
@@ -585,12 +609,26 @@ public sealed partial class SettingsDialog
                 availableModels.Clear(); ApplyGeminiModelChoices();
                 UpdatePlanDisplay(false, "invalid", 0, "The API key is invalid or was rejected by Google.");
             }
-            status.Text = invalid ? "The API key is invalid or was rejected by Google."
-                : "Could not reach Gemini. Check your connection and try again. Saved key verification and models have been kept.";
+            if (invalid)
+                status.Text = "The entered Gemini API key is invalid. Google rejected it. Replace it with a valid key from Google AI Studio.";
+            else
+            {
+                var reason = detail.Contains("429") || detail.Contains("quota", StringComparison.OrdinalIgnoreCase)
+                    ? "Gemini could not complete the key check because of a usage limit. Try again after the limit resets."
+                    : detail.Contains("403") || detail.Contains("permission", StringComparison.OrdinalIgnoreCase)
+                    ? "Gemini refused access. Check the key's project permissions and restrictions in Google AI Studio."
+                    : "The API key check could not finish. Check your connection or try again when Gemini is available.";
+                status.Text = reason + " This check did not determine whether the key is valid. Previous verification and models have been kept.";
+                UpdatePlanDisplay(null, "", 0, status.Text);
+            }
         }
         finally
         {
-            if (checkPlanButton != null) checkPlanButton.IsEnabled = ConnectivityService.Shared.Available(OnlineService.Gemini) && !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"]));
+            if (revision == apiKeyCheckRevision)
+            {
+                checkingApiKey = false;
+                ConnectivityChanged(null, EventArgs.Empty);
+            }
         }
     }
 
@@ -654,41 +692,7 @@ public sealed partial class SettingsDialog
         AddSettingsRow(panel, label, selector, stretchControl: true);
     }
 
-    private async Task RefreshGeminiModelsAsync()
-    {
-        if (closed || modelSelectors.Count == 0) return;
-        if (string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"]))) { status.Text = "Add a Gemini API key to load available models."; return; }
-        try
-        {
-            status.Text = "Loading models from Gemini…";
-            var events = await QueryGeminiCatalogAsync("list-models", lifetime.Token);
-            if (closed) return;
-            var found = events.LastOrDefault(item => item.Data.TryGetProperty("models", out _));
-            if (found == null) throw new InvalidDataException("Gemini returned no model catalog.");
-            availableModels.Clear();
-            var hasPro = false;
-            foreach (var item in found.Data.GetProperty("models").EnumerateArray())
-            {
-                var id = item.GetProperty("name").GetString();
-                if (!string.IsNullOrWhiteSpace(id))
-                {
-                    var rawName = item.GetProperty("displayName").GetString() ?? id;
-                    availableModels.Add(new GeminiModelOption(id, CleanModelName(id, rawName)));
-                    if (id.Contains("pro", StringComparison.OrdinalIgnoreCase)) hasPro = true;
-                }
-            }
-            if (found.Data.TryGetProperty("detectedPlan", out var dpElem))
-                detectedPlan = dpElem.GetString() ?? (hasPro ? "paid" : "free");
-            else
-                detectedPlan = hasPro ? "paid" : "free";
-
-            draft["apiPlan"] = detectedPlan;
-            ApplyGeminiModelChoices();
-            status.Text = $"{availableModels.Count} Gemini models available for this key.";
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { model.Engine.Log(ex.ToString()); status.Text = "Could not load Gemini models. Check the API key and connection."; }
-    }
+    private Task RefreshGeminiModelsAsync() => CheckApiKeyAndPlanAsync();
 
     private void SelectLatestModels()
     {

@@ -552,6 +552,10 @@ def client_and_model(kind, project=None):
 
 
 def check_api_key():
+    if not str(config().get('apiKey') or '').strip():
+        emit('No API key entered', keyStatus='missing',
+             validationMessage='Enter a Gemini API key, then choose Check API Key & Plan.')
+        return
     try:
         client = gemini_client()
     except Exception as exc:
@@ -559,6 +563,8 @@ def check_api_key():
         err_msg = safe_error(exc)
         emit('Gemini API key is invalid',
              keyValid=False,
+             keyStatus='invalid',
+             validationMessage='The entered Gemini API key is invalid. Google rejected it. Replace it with a valid key from Google AI Studio.',
              plan='invalid',
              detectedPlan='invalid',
              error=err_msg,
@@ -599,6 +605,8 @@ def check_api_key():
                     pass
             emit('Gemini API key is invalid',
                  keyValid=False,
+                 keyStatus='invalid',
+                 validationMessage='The entered Gemini API key is invalid. Google rejected it. Replace it with a valid key from Google AI Studio.',
                  plan='invalid',
                  detectedPlan='invalid',
                  error=user_msg,
@@ -644,6 +652,7 @@ def check_api_key():
 
         emit('Gemini API key check succeeded',
              keyValid=True,
+             keyStatus='valid',
              plan=plan,
              detectedPlan=detected_plan,
              hasPro=has_pro,
@@ -656,83 +665,8 @@ def check_api_key():
 
 
 def list_models():
-    try:
-        client = gemini_client()
-    except Exception as exc:
-        err_msg = safe_error(exc)
-        emit('Gemini API key is invalid',
-             keyValid=False,
-             plan='invalid',
-             detectedPlan='invalid',
-             error=err_msg,
-             modelCount=0,
-             models=[])
-        return
-
-    try:
-        available = []
-        has_pro = False
-        try:
-            for model in client.models.list():
-                name = str(getattr(model, 'name', '') or '').removeprefix('models/')
-                actions = [str(action) for action in (getattr(model, 'supported_actions', None) or [])]
-                normalized_actions = {action.replace('_', '').lower() for action in actions}
-                if not name.startswith('gemini-') or 'generatecontent' not in normalized_actions:
-                    continue
-                available.append({
-                    'name': name,
-                    'displayName': str(getattr(model, 'display_name', '') or name),
-                    'supportedActions': actions,
-                })
-                if 'pro' in name.lower():
-                    has_pro = True
-        except Exception as exc:
-            err_text = safe_error(exc)
-            is_invalid = any(token in err_text.upper() for token in ('API_KEY_INVALID', 'API KEY NOT VALID', 'INVALID_ARGUMENT', 'PERMISSION_DENIED', 'UNAUTHENTICATED', 'FORBIDDEN'))
-            user_msg = 'The provided Gemini API key is invalid or rejected by Google.' if is_invalid else f'Could not list Gemini models: {err_text}'
-            emit('Gemini API key is invalid',
-                 keyValid=False,
-                 plan='invalid',
-                 detectedPlan='invalid',
-                 error=user_msg,
-                 modelCount=0,
-                 models=[])
-            return
-
-        available.sort(key=lambda model: (model['displayName'].lower(), model['name']))
-        if not available:
-            raise ValueError('No compatible Gemini models are available for this API key.')
-
-        detected_plan = 'paid' if has_pro else 'free'
-        plan = detected_plan
-
-        transcribe_model = 'gemini-3.5-transcribe' if any(m['name'] == 'gemini-3.5-transcribe' for m in available) else 'gemini-3.8-flash'
-        tts_model = 'gemini-3.8-flash-lite-tts' if any(m['name'] == 'gemini-3.8-flash-lite-tts' for m in available) else 'gemini-3.8-flash'
-        summary_model = ('gemini-3.8-pro' if any(m['name'] == 'gemini-3.8-pro' for m in available) else 'gemini-3.8-flash') if plan == 'paid' else 'gemini-3.8-flash'
-        ad_model = ('gemini-3.8-pro' if any(m['name'] == 'gemini-3.8-pro' for m in available) else 'gemini-3.8-flash') if plan == 'paid' else 'gemini-3.8-flash'
-        video_processing = 'agentic' if plan == 'paid' else 'standard'
-
-        selected_models = {
-            'transcript': transcribe_model,
-            'summary': summary_model,
-            'audio_descriptions': ad_model,
-            'text_rewrite': 'gemini-3.8-flash',
-            'tts_audio': tts_model,
-            'screen_text': 'gemini-3.8-flash',
-            'youtube_transcript': 'gemini-3.8-flash',
-        }
-
-        emit('Available Gemini models loaded',
-             models=available,
-             keyValid=True,
-             plan=plan,
-             detectedPlan=detected_plan,
-             hasPro=has_pro,
-             modelCount=len(available),
-             selectedModels=selected_models,
-             selectedVideoProcessing=video_processing)
-    finally:
-        client.close()
+    # Use the same credential verdict and transport-error handling as Check.
+    return check_api_key()
 
 
 def list_voices():

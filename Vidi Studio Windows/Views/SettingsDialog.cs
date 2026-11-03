@@ -152,8 +152,8 @@ public sealed partial class SettingsDialog : Window
     private void ConnectivityChanged(object? sender, EventArgs e)
     {
         if (checkPlanButton != null) {
-            checkPlanButton.IsEnabled = ConnectivityService.Shared.Available(OnlineService.Gemini) && !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"]));
-            ToolTipService.SetToolTip(checkPlanButton, ConnectivityService.Shared.Reason(OnlineService.Gemini) ?? "Check API key");
+            checkPlanButton.IsEnabled = !checkingApiKey && (string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"])) || ConnectivityService.Shared.Available(OnlineService.Gemini));
+            ToolTipService.SetToolTip(checkPlanButton, string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"])) ? "Enter a Gemini API key to check it." : ConnectivityService.Shared.Reason(OnlineService.Gemini) ?? "Check the entered API key");
         }
         if (samplePlayButton != null && SettingsStore.GetString(draft["ttsMode"]) == "gemini")
             samplePlayButton.IsEnabled = ConnectivityService.Shared.Available(OnlineService.Gemini) && HasDraftApiKey && sampleState != SampleState.Generating;

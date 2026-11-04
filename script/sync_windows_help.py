@@ -55,6 +55,11 @@ def add_ids(fragment):
 
 
 def windowsize(fragment):
+    mac_figures = []
+    def preserve_mac_figure(match):
+        mac_figures.append(match.group(0))
+        return f"@@MAC_FIGURE_{len(mac_figures) - 1}@@"
+    fragment = re.sub(r'<figure data-platform="mac">.*?</figure>', preserve_mac_figure, fragment, flags=re.S)
     replacements = [
         ('in the macOS Keychain on Mac, and Windows Credential Manager on Windows', 'in Windows Credential Manager'),
         ('On Mac, voices are stored in Application Support; on Windows, they are stored in your app data folder.', 'On Windows, voices are stored in your app data folder.'),
@@ -120,6 +125,8 @@ def windowsize(fragment):
     fragment = fragment.replace('Use standard Caps Lock navigation and interaction commands.', 'Use standard Narrator navigation and interaction commands with the Narrator modifier (Caps Lock or Insert).')
     if 'id="choose-a-source"' in fragment:
         fragment = fragment.replace('<h2 id="bring-existing-assets">', '<p><strong>Project location.</strong> New Project shows the parent folder where a new portable project folder will be created. Choose Project Location to use another folder or create a parent folder in the Windows folder chooser. Projects opened outside the default library are remembered on this PC.</p>\n<h2 id="bring-existing-assets">')
+    for index, figure in enumerate(mac_figures):
+        fragment = fragment.replace(f"@@MAC_FIGURE_{index}@@", figure)
     return fragment
 
 def keyboard_fragment():

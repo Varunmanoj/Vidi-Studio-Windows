@@ -177,10 +177,14 @@ public sealed partial class MainWindow
     {
         AudioSourcePanel.Children.Clear();
         AudioSourcePanel.Visibility = Model.Project?.IsYouTube == true ? Visibility.Visible : Visibility.Collapsed;
-        if (Model.Project?.IsYouTube == true) AudioSourcePanel.Children.Add(new Views.AudioSourceControls(this, Model));
+        if (Model.Project?.IsYouTube == true) AudioSourcePanel.Children.Add(new Views.AudioSourceControls(this, Model, showHeading: false));
         AudioSourcesButton.Visibility = Model.Project?.IsYouTube == true ? Visibility.Visible : Visibility.Collapsed;
         AudioSourcesSummary.Visibility = AudioSourcesButton.Visibility;
-        if (Model.Project is { } project)
-            AudioSourcesSummary.Text = "Playing: " + (project.AudioSources?.Playback == "imported" ? "Imported audio: " + project.OriginalAudio?.SourceName : "YouTube audio");
+        if (Model.Project is { } project) {
+            AudioSourcesSummary.Glyph = project.AudioSources?.Playback == "imported" ? "\uE8A5" : "\uE714";
+            var label = "Playing: " + (project.AudioSources?.Playback == "imported" ? "Imported audio: " + project.OriginalAudio?.SourceName : "YouTube audio");
+            ToolTipService.SetToolTip(AudioSourcesSummary, label);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(AudioSourcesSummary, label);
+        }
     }
 }

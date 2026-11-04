@@ -4,6 +4,7 @@ import argparse, contextlib, html, json, math, os, platform, plistlib, re, shuti
 import signal
 import queue
 import threading
+import youtube_metadata
 import youtube_audio
 import audio_sources
 import network_activity
@@ -2836,6 +2837,7 @@ def delete_segment_audio(root, p, segment_id):
     remove_empty_directory(audio_root)
 
 def validate_analysis_prerequisites(command, root, project):
+    youtube_metadata.guard(project)
     if command != 'transcribe' and not (project.get('transcriptGenerated') or project.get('transcript')):
         raise ValueError('Run transcription first.')
     if command == 'generate-ad-cues' and not project['summary'].strip():
@@ -2865,6 +2867,8 @@ def main():
     parser.add_argument('--project',type=Path); parser.add_argument('--video',type=Path); parser.add_argument('--library',type=Path); parser.add_argument('--input',type=Path)
     parser.add_argument('--media-format', choices=VIDEO_EXPORT_FORMATS + AUDIO_EXPORT_FORMATS)
     parser.add_argument('--content',choices=['transcript','summary','descriptions','combined'],default='descriptions'); parser.add_argument('--url'); parser.add_argument('--name'); parser.add_argument('--timestamp',type=float,default=0); parser.add_argument('--duration',type=float); parser.add_argument('--segment'); parser.add_argument('--segments', action='append'); parser.add_argument('--format',choices=['srt','vtt','txt','json','md'],default='srt'); parser.add_argument('--changed',action='store_true'); parser.add_argument('--start-stage',default='transcribe')
+    parser.add_argument('--youtube-metadata', type=Path)
+    parser.add_argument('--caption-provenance', type=Path)
     parser.add_argument('--output', type=Path); parser.add_argument('--text')
     parser.add_argument('--regenerate-all', action='store_true', help='Regenerate every narration segment using the selected voice after explicit confirmation.')
     parser.add_argument('--component', action='append', choices=['transcript','summary','descriptions','narration','thumbnails','exports','history'], default=[])
@@ -2875,6 +2879,20 @@ def main():
     import_assets.add_arguments(parser)
     audio_sources.add_arguments(parser)
     args=parser.parse_args()
+    if args.command == 'expire-youtube-cache':
+        if not args.library: raise ValueError('Choose a project library.')
+        for project_file in args.library.glob('*/project.json'):
+            try:
+                with project_lock(project_file.parent):
+                    project = json.loads(project_file.read_text(encoding='utf-8'))
+                    changed, removed = youtube_metadata.expire(project_file.parent, project)
+                    if changed:
+                        save(project_file.parent, project)
+                        for path in removed: path.unlink(missing_ok=True)
+            except (OSError, ValueError, RuntimeError):
+                # Locked, damaged or disconnected projects are retried next launch.
+                continue
+        return
     if args.command == 'read-youtube-metadata':
         if not args.url or not args.output:
             raise ValueError('Choose a YouTube URL and metadata output.')

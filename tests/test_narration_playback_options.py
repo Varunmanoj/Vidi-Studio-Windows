@@ -16,7 +16,7 @@ class NarrationPlaybackOptions(unittest.TestCase):
         mac_model = (ROOT/'VidiStudio Mac/VidiStudio/StudioModel.swift').read_text()
         win_prefs = (ROOT/'Vidi-Studio-Windows/Vidi Studio Windows/Services/ProjectPlaybackPreferences.cs').read_text()
         win_projects = (ROOT/'Vidi-Studio-Windows/Vidi Studio Windows/Views/SettingsDialog.Projects.cs').read_text()
-        self.assertIn('var sections = ["Appearance", "Projects", "Narration", "Gemini API"]', mac_settings)
+        self.assertIn('var sections = ["Appearance", "Projects", "Narration", "Gemini API", "YouTube Accounts"]', mac_settings)
         self.assertIn('sections.append("Developer prompts")', mac_settings)
         self.assertIn('sections += ["Storage", "Help", "About"]', mac_settings)
         self.assertIn('ContentUnavailableView("No Open Projects"', mac_settings)
@@ -72,7 +72,7 @@ class NarrationPlaybackOptions(unittest.TestCase):
         self.assertNotIn('LoadGeminiVoicesAsync', dialog)
         self.assertNotIn('Header = "Filter voices"', dialog)
         self.assertIn('localSpeechControls.Visibility = provider == "gemini" ? Visibility.Collapsed : Visibility.Visible;', dialog)
-        self.assertIn('samplePlayButton.IsEnabled = sampleState != SampleState.Generating && (provider != "gemini" || HasDraftApiKey);', dialog)
+        self.assertIn('samplePlayButton.IsEnabled = sampleState != SampleState.Generating && (provider != "gemini" || HasDraftApiKey && ConnectivityService.Shared.Available(OnlineService.Gemini));', dialog)
 
     def test_windows_migrates_legacy_engines_without_resetting_preview_choice(self):
         source = (ROOT/'Vidi-Studio-Windows/Vidi Studio Windows/Services/SettingsStore.cs').read_text()
@@ -91,7 +91,7 @@ class NarrationPlaybackOptions(unittest.TestCase):
         self.assertIn('"piper" => "Piper Voices"', presentation)
         self.assertIn('_ => "Windows OneCore"', presentation)
         self.assertIn('"Speech engine: " + EngineTitle(Model.Settings.Get("ttsMode", "windows-core"))', presentation)
-        self.assertIn('finally { openSettings = null; ApplyTheme(); Model.Reload(); UpdateApiKeyUi(); UpdateSectionPresentation(); }', window)
+        self.assertIn('finally { if (openSettings == settings) openSettings = null; if (ready) { ApplyTheme(); Model.Reload(); UpdateApiKeyUi(); UpdateSectionPresentation(); } }', window)
 
     def test_windows_bundles_piper_and_removes_the_natural_voice_bridge_promotion(self):
         dialog = (ROOT/'Vidi-Studio-Windows/Vidi Studio Windows/Views/SettingsDialog.cs').read_text()

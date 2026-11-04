@@ -20,9 +20,11 @@ public sealed partial class MainWindow
     {
         if (Model.Busy || Model.Project is not { } project) return;
         var dialog = new Views.ImportAssetsDialog(this, project, scope);
-        var result = await ShowDialogAsync(dialog, 800, 760);
-        if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary)) return;
-        await ImportSelectedAssetsAsync(dialog.Selection, dialog.CombineRequested);
+        try {
+            var result = await ShowDialogAsync(dialog, 800, 760);
+            if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary)) return;
+            await ImportSelectedAssetsAsync(dialog.Selection, dialog.CombineRequested);
+        } finally { dialog.CleanupYouTubeCaptions(); }
     }
 
     private async Task ImportSelectedAssetsAsync(ImportAssetSelection selection, bool combine)
@@ -40,7 +42,7 @@ public sealed partial class MainWindow
             string? transcriptTiming = null, descriptionTiming = null;
             if (selection.TranscriptPath is { } transcriptFile)
             {
-                var (proceed, timing) = await ReviewTimingBeforeImportAsync(transcriptFile, false, "narration", project);
+                var (proceed, timing) = await ReviewTimingBeforeImportAsync(transcriptFile, false, "narration", project, selection.CaptionProvenancePath != null);
                 if (!proceed) return;
                 transcriptTiming = timing;
                 if (timing != null) timingFiles.Add(timing);
@@ -74,6 +76,7 @@ public sealed partial class MainWindow
             if (selection.TranscriptPath is { } transcript)
             {
                 var arguments = new List<string> { "--input", transcript };
+                if (selection.CaptionProvenancePath is { } provenance) arguments.AddRange(new[] { "--caption-provenance", provenance });
                 if (transcriptTiming != null) arguments.AddRange(new[] { "--timing-input", transcriptTiming });
                 arguments.AddRange(replace);
                 await RunImport("import-transcript", arguments);
@@ -98,7 +101,7 @@ public sealed partial class MainWindow
         finally { foreach (var file in timingFiles) if (File.Exists(file)) File.Delete(file); }
     }
 
-    private async Task<(bool Proceed, string? Timing)> ReviewTimingBeforeImportAsync(string path, bool description, string mode, StudioProject project)
+    private async Task<(bool Proceed, string? Timing)> ReviewTimingBeforeImportAsync(string path, bool description, string mode, StudioProject project, bool requireComplete = false)
     {
         if (Path.GetExtension(path).Equals(".txt", StringComparison.OrdinalIgnoreCase))
         {
@@ -114,15 +117,15 @@ public sealed partial class MainWindow
             {
                 Content = new TextBlock
                 {
-                    Text = string.Join("\n\n", warnings) + "\n\nYou can import anyway and edit transcript timings afterward.",
+                    Text = string.Join("\n\n", warnings) + (requireComplete ? "\n\nReview this caption track’s timing before importing. Your existing transcript is unchanged." : "\n\nYou can import anyway and edit transcript timings afterward."),
                     TextWrapping = TextWrapping.Wrap
                 },
                 MaxHeight = 420
             },
-            PrimaryButtonText = "Import Anyway",
+            PrimaryButtonText = requireComplete ? "" : "Import Anyway",
             SecondaryButtonText = "Review Timing…",
             CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary
+            DefaultButton = requireComplete ? ContentDialogButton.Secondary : ContentDialogButton.Primary
         };
         var result = await ShowDialogAsync(warningDialog, 720, 520);
         if (result == ContentDialogResult.Primary) return (true, null);
@@ -182,9 +185,6 @@ public sealed partial class MainWindow
             return;
         }
         var text = new StringBuilder();
-        text.AppendLine($"{report.KindTitle}: {report.SourceName}");
-        text.AppendLine(report.DurationText);
-        text.AppendLine($"{report.RowsImported} imported · {report.RowsFlagged} flagged for retiming · {report.RowsOmittedAfterVideo} ended after the video · {report.RowsOmittedInvalid} invalid or empty");
         foreach (var warning in report.Warnings ?? new List<string>()) text.AppendLine("Warning: " + warning);
         foreach (var row in report.Omitted ?? new List<ImportOmittedRow>())
             text.AppendLine($"Source line {row.SourceLine ?? 0}: {row.Reason} — {row.Text}");
@@ -194,7 +194,8 @@ public sealed partial class MainWindow
             foreach (var conflict in flagged.Conflicts ?? new List<ImportConflict>())
                 text.AppendLine("  " + conflict.Description);
         }
-        if (!string.IsNullOrWhiteSpace(report.Guidance)) text.AppendLine(report.Guidance);
+        if (report.RowsFlagged > 0 || report.RowsOmittedAfterVideo > 0 || report.RowsOmittedInvalid > 0 || report.RowsOmittedTranscriptOverlap > 0) { if (!string.IsNullOrWhiteSpace(report.Guidance)) text.AppendLine(report.Guidance); }
+        else text.AppendLine("No timing issues were reported.");
         var descriptionTiming = report.Kind == "narration";
         var canEditTimings = descriptionTiming ? Model.Project is { Cues.Count: > 0 }
             : report.Kind == "transcript" && Model.Project is { Transcript.Count: > 0 };
@@ -205,7 +206,9 @@ public sealed partial class MainWindow
             Title = "Import Report",
             Content = new ScrollViewer
             {
-                Content = new TextBlock { Text = text.ToString(), TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontFamily = new FontFamily("Cascadia Mono") },
+                Content = new Views.ImportReportSummary(report, text.ToString()),
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 MaxHeight = 520
             },
             PrimaryButtonText = canEditTimings ? editTimingTitle : "",

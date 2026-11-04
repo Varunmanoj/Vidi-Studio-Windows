@@ -604,6 +604,18 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         if (needsProject && Project == null) { Status = "Open a project first."; return new(); }
         ConnectionFailure = false;
         if (OnlineReason(command, extra) is { } unavailable) { await NotifyConnectivityAsync(unavailable); return new(); }
+        string? youtubeMetadataFile = null;
+        if (command == "import-youtube") {
+            var supplied = extra?.ToList() ?? new List<string>();
+            var position = supplied.IndexOf("--url");
+            var id = position >= 0 && position + 1 < supplied.Count ? ExtractYouTubeId(supplied[position + 1]) : null;
+            if (id == null) throw new InvalidOperationException("Enter a valid YouTube video link.");
+            var video = await YouTubeService.Shared.VideoAsync(id);
+            video.RequireAvailable();
+            youtubeMetadataFile = Path.Combine(Path.GetTempPath(), "vidistudio-youtube-" + Guid.NewGuid() + ".json");
+            File.WriteAllText(youtubeMetadataFile, video.Data.ToJsonString());
+            supplied.AddRange(new[] { "--youtube-metadata", youtubeMetadataFile }); extra = supplied;
+        }
         var requestArguments = extra?.ToArray() ?? Array.Empty<string>();
         extra = requestArguments;
         var requestFolder = Project?.Folder;
@@ -782,6 +794,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         catch (Exception ex) { Engine.Log(ex.ToString()); Status = "Could not finish. Check Settings and the diagnostic log, then retry."; DetectAiIssue(ex.Message); }
         finally
         {
+            if (youtubeMetadataFile != null) File.Delete(youtubeMetadataFile);
             if (Project != null && File.Exists(Path.Combine(Project.Folder, "project.json")))
             {
                 try { Project = StudioProject.Load(Project.Folder); ProjectReloaded?.Invoke(this, EventArgs.Empty); }

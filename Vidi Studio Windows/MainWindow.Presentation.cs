@@ -1,3 +1,4 @@
+using Vidi_Studio_Windows.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -284,6 +285,7 @@ public sealed partial class MainWindow
         StopProjectPlayback();
         GalleryPanel.Visibility = Visibility.Visible; EditorWorkspace.Visibility = Visibility.Collapsed;
         UpdateMenuBar(false);
+        App.NotifyOpenProjectsChanged();
         ProjectTitle.Text = "All Projects"; Title = "All Projects — Vidi Studio";
         GallerySearchHost.Visibility = Visibility.Visible;
         GalleryImport.Visibility = Visibility.Visible;
@@ -316,16 +318,27 @@ public sealed partial class MainWindow
         Model.Project = null; loadedProject = null; highlightedSegment = null;
         Segments.ItemsSource = null; ExportGroups.Children.Clear();
         ClearSummaryHighlight(); SummaryRichText.Children.Clear(); summaryLines.Clear(); ReadbackSentence.Text = "";
-        ProjectDetails.Children.Clear(); VideoDetails.Children.Clear(); InspectorExports.Children.Clear();
+        ProjectDetails.Children.Clear(); VideoDetails.Children.Clear(); YouTubeInspectorDetails.Children.Clear(); InspectorExports.Children.Clear();
+        YouTubeDetailsSection.Visibility = Visibility.Collapsed;
         Thumbnails.Children.Clear(); Thumbnails.ColumnDefinitions.Clear(); ThumbnailEmpty.Visibility = Visibility.Visible;
         TranscriptTrack.Children.Clear(); DescriptionTrack.Children.Clear(); UpdateTimelineCursor();
         CaptionText.Text = DescriptionCaptionText.Text = ""; CaptionOverlay.Visibility = Visibility.Collapsed;
         ShowGallery_Click(this, new RoutedEventArgs());
     }
-    private void ShowEditor()
+    private async void ShowEditor()
     {
+        if (Model.Project is { IsYouTube: true } openingProject) {
+            try {
+                var incoming = new Uri(openingProject.YoutubeURL ?? "");
+                var id = incoming.Query.TrimStart('?').Split('&').FirstOrDefault(v => v.StartsWith("v="))?[2..] ?? "";
+                var current = await YouTubeService.Shared.VideoAsync(id);
+                if (Model.Project?.Folder != openingProject.Folder) return;
+                current.RequireAvailable();
+            } catch (Exception ex) { await ShowError(ex); return; }
+        }
         GalleryPanel.Visibility = Visibility.Collapsed; EditorWorkspace.Visibility = Visibility.Visible;
         UpdateMenuBar(true);
+        App.NotifyOpenProjectsChanged();
         GallerySearchHost.Visibility = Visibility.Collapsed;
         GalleryImport.Visibility = Visibility.Collapsed;
         ProjectTitle.Text = Model.Project?.Name ?? "All Projects";
@@ -541,20 +554,22 @@ public sealed partial class MainWindow
     private static void AddInfo(StackPanel panel, string label, string value)
     {
         var row = new Grid { ColumnSpacing = 10 };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); row.ColumnDefinitions.Add(new ColumnDefinition());
-        row.Children.Add(new TextBlock { Text = label, FontSize = 12 });
-        var text = new TextBlock { Text = value, TextTrimming = TextTrimming.CharacterEllipsis, HorizontalAlignment = HorizontalAlignment.Right, FontSize = 12, Opacity = .65 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.6, GridUnitType.Star) });
+        row.Children.Add(new TextBlock { Text = label, FontSize = 12, TextWrapping = TextWrapping.Wrap, Opacity = .7 });
+        var text = new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
         ToolTipService.SetToolTip(text, value); Grid.SetColumn(text, 1); row.Children.Add(text); panel.Children.Add(row);
     }
     private async void UpdateInspector(StudioProject p)
     {
         UpdateAudioSourcePanel();
-        ProjectDetails.Children.Clear(); VideoDetails.Children.Clear(); InspectorExports.Children.Clear();
+        ProjectDetails.Children.Clear(); VideoDetails.Children.Clear(); YouTubeInspectorDetails.Children.Clear(); InspectorExports.Children.Clear();
+        YouTubeDetailsSection.Visibility = p.IsYouTube ? Visibility.Visible : Visibility.Collapsed;
         AddInfo(ProjectDetails, "Name", p.Name); AddInfo(ProjectDetails, "Type", p.IsYouTube ? "YouTube" : "Local Video");
         AddInfo(ProjectDetails, "Folder", p.Folder);
         AddInfo(VideoDetails, "Source", p.IsYouTube ? p.YoutubeURL ?? "" : Path.GetFileName(p.Source));
         AddInfo(VideoDetails, "Duration", TimeSpan.FromSeconds(p.Duration).ToString(@"hh\:mm\:ss"));
-        AddInfo(VideoDetails, "Resolution", $"{p.Width} × {p.Height}");
+        AddInfo(VideoDetails, "Resolution", p.IsYouTube && p.Width <= 0 ? "Not available from YouTube" : $"{p.Width} × {p.Height}");
+        if (p.IsYouTube) PopulateYouTubeInspector(p);
         try
         {
             var probe = p.Resolve("metadata/probe.json");

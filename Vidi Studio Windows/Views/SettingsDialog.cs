@@ -9,6 +9,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Vidi_Studio_Windows.Services;
+using Vidi_Studio_Windows.Models;
 using Vidi_Studio_Windows.ViewModels;
 using Windows.Media.Core;
 using Windows.Media.Playback;
@@ -177,12 +178,14 @@ public sealed partial class SettingsDialog : Window
     private readonly StackPanel localSpeechControls = new() { Spacing = 14 };
     private readonly StackPanel storageAdvancedControls = new() { Spacing = 12 };
     private List<Voice> voices = new();
-    public SettingsDialog(StudioViewModel model, Window window, int initialSection = 0)
+    public SettingsDialog(StudioViewModel model, Window window, int initialSection = 0, StudioProject? projectTarget = null)
     {
         if (initialSection < 0 || initialSection > 7) throw new ArgumentOutOfRangeException(nameof(initialSection));
         requestedSection = initialSection;
         owner = window;
         menuOwner = window as MainWindow;
+        this.projectTarget = projectTarget;
+        allowClosedProjectTarget = projectTarget != null && !App.OpenEditorProjects.Any(p => p.Folder == projectTarget.Folder);
         this.model = model; draft = model.Settings.Data.DeepClone().AsObject();
         // Developer prompts stay hidden until the user enables Developer mode in Appearance.
         if (requestedSection == 4 && !DeveloperModeEnabled) requestedSection = 0;
@@ -203,8 +206,8 @@ public sealed partial class SettingsDialog : Window
         var heading = new TextBlock { Text = "Settings", FontSize = 26, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 20) };
         Grid.SetRow(heading, 1); Grid.SetColumnSpan(heading, 2); layout.Children.Add(heading);
         var sections = new ListView { SelectionMode = ListViewSelectionMode.Single };
-        var labels = new[] { "Appearance", "Projects", "Narration", "Gemini API", "Developer prompts", "Storage", "Help", "About" };
-        var glyphs = new[] { "\uE790", "\uE8F1", "\uE767", "\uE734", "\uE8F2", "\uE8B7", "\uE897", "\uE946" };
+        var labels = new[] { "Appearance", "Projects", "Narration", "Gemini API", "Developer prompts", "Storage", "Help", "About", "YouTube Accounts" };
+        var glyphs = new[] { "\uE790", "\uE8F1", "\uE767", "\uE734", "\uE8F2", "\uE8B7", "\uE897", "\uE946", "\uE714" };
         for (var i = 0; i < labels.Length; i++)
         {
             var row = new Grid { ColumnSpacing = 12 };
@@ -240,6 +243,7 @@ public sealed partial class SettingsDialog : Window
         var progress = new ProgressOverlay();
         Grid.SetRowSpan(progress, 4); Grid.SetColumnSpan(progress, 2); layout.Children.Add(progress);
         progress.Observe(model);
+        App.OpenProjectsChanged += ReceiveOpenProjectsChanged;
         Closed += (_, _) => progress.Detach();
         Content = layout;
         WindowAppearance.ApplyMaterial(this);
@@ -344,6 +348,7 @@ public sealed partial class SettingsDialog : Window
                     break;
                 case 6: BuildHelp(panel); break;
                 case 7: BuildAbout(panel); break;
+                case 8: panel.Children.Add(new YouTubeAccountsPanel()); break;
             }
         };
         sections.SelectedIndex = requestedSection;
@@ -352,6 +357,7 @@ public sealed partial class SettingsDialog : Window
         layout.Loaded += (_, _) => sections.SelectedIndex = requestedSection;
         Closed += (_, _) =>
         {
+            App.OpenProjectsChanged -= ReceiveOpenProjectsChanged;
             App.ThemeChanged -= ReceiveTheme;
             ProjectPlaybackPreferences.Changed -= ReceiveProjectPlaybackPreference;
             model.PropertyChanged -= ReceiveModelProjectChange;

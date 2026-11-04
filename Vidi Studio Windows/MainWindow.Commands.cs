@@ -367,6 +367,8 @@ public sealed partial class MainWindow
             }, commandId: "open-project-here");
         Item("Open in New Window", (_, _) => App.OpenWindow(project.Folder), commandId: "open-editor-window");
         Item("Export", (_, args) => { LoadForEditorAction(); Export_Click(this, args); }, activeApiKey && usable);
+        if (YouTubeService.ProjectWatchURL(project.YoutubeURL) != null) Item("Open in YouTube", (_, _) => OpenProjectInYouTube(project), commandId: "youtube-open-browser");
+        Item("Open Project Settings…", async (_, _) => await ShowSettingsSectionAsync(1, project), usable && Model.Idle, commandId: "project-settings");
         Item("Open project folder", (_, _) => _ = RevealProjectAsync(project));
         if (Model.Settings.GetBool("developerMode"))
             Item("Open project configuration", (_, _) => _ = OpenProjectConfigurationAsync(project),

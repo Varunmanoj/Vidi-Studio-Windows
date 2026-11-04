@@ -4,6 +4,10 @@ using Microsoft.UI.Xaml.Controls;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.Json.Nodes;
+using System.Threading;
+using Vidi_Studio_Windows.Services;
 using Windows.Storage.Pickers;
 using Vidi_Studio_Windows.Models;
 
@@ -26,18 +30,24 @@ public sealed class ImportAssetsPicker : UserControl
     private string? transcript, summary, adTranscript, adAudio;
     private readonly List<Action> refreshRows = new();
     private bool youtube, hasTranscript;
+    private readonly ImportScope scope;
+    private string? captionProvenance;
+    private readonly List<string> captionFiles = new();
+    private readonly CancellationTokenSource captionCancellation = new();
+
     public event EventHandler? SelectionChanged;
     public ImportAssetSelection Selection => new(transcript, summary, adTranscript, adAudio,
         adTranscriptMode.SelectedIndex == 0 ? "narration" : "combined",
         adAudioMode.SelectedIndex == 0 ? "narration" : "fullMix",
         OriginalAudioPath: youtube ? originalAudio : null,
         OriginalAudioPlayback: originalPlayback.SelectedIndex == 1,
-        OriginalAudioTranscription: originalTranscription.SelectedIndex == 1);
+        OriginalAudioTranscription: originalTranscription.SelectedIndex == 1, CaptionProvenancePath: captionProvenance);
     public bool CanImport => Selection.HasAny && (adTranscript == null || adTranscriptMode.SelectedIndex != 0 || hasTranscript || transcript != null);
 
     public ImportAssetsPicker(Window owner, ImportScope scope = ImportScope.All, double width = 640, bool showOriginal = true)
     {
         this.owner = owner;
+        this.scope = scope;
         Width = width;
         Content = panel;
         panel.Children.Add(new TextBlock
@@ -46,7 +56,7 @@ public sealed class ImportAssetsPicker : UserControl
             TextWrapping = TextWrapping.Wrap, Opacity = .75
         });
         if (scope is ImportScope.All or ImportScope.Transcript)
-            panel.Children.Add(Row("Transcript", new[] { ".srt", ".vtt", ".txt" }, () => transcript, value => transcript = value));
+            panel.Children.Add(Row("Transcript", new[] { ".srt", ".vtt", ".txt" }, () => transcript, value => { transcript = value; captionProvenance = null; }));
         if (scope is ImportScope.All or ImportScope.Summary)
             panel.Children.Add(Row("Summary", new[] { ".md", ".markdown", ".txt" }, () => summary, value => summary = value));
         if (scope is ImportScope.All or ImportScope.Descriptions)
@@ -101,6 +111,71 @@ public sealed class ImportAssetsPicker : UserControl
         originalPanel.Visibility = youtube ? Visibility.Visible : Visibility.Collapsed;
         audioPanel.Visibility = Visibility.Visible;
         UpdateState();
+    }
+
+    public void EnableYouTubeCaptions(StudioProject project)
+    {
+        if (!project.IsYouTube || scope is not (ImportScope.All or ImportScope.Transcript) || YouTubeService.ProjectWatchURL(project.YoutubeURL) is not { } url) return;
+        var videoID = new Uri(url).Query.TrimStart('?').Split('&').First(v => v.StartsWith("v="))[2..];
+        var service = YouTubeService.Shared;
+        var body = new StackPanel { Spacing = 8 };
+        var account = new ComboBox { Header = "Caption account", ItemsSource = service.Accounts.ToArray(), SelectedItem = service.Selected, HorizontalAlignment = HorizontalAlignment.Stretch };
+        var tracks = new ComboBox { Header = "Caption track", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var load = new Button { Content = "Load Caption Tracks" };
+        var download = new Button { Content = "Use Selected YouTube Captions", IsEnabled = false };
+        var status = new TextBlock { Text = "Caption downloads require video-edit permission. Confirm Import to save the selected transcript.", TextWrapping = TextWrapping.Wrap };
+        AutomationProperties.SetLiveSetting(status, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
+        var spinner = new ProgressRing { IsActive = false, Width = 24, Height = 24, Visibility = Visibility.Collapsed };
+        bool busy = false;
+        void State(bool loading) {
+            busy = loading; account.IsEnabled = !loading;
+            load.IsEnabled = !loading && account.SelectedItem is YouTubeAccount;
+            download.IsEnabled = !loading && tracks.SelectedItem is YouTubeCaption { Status: "serving" };
+            spinner.IsActive = loading; spinner.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+        }
+        account.SelectionChanged += (_, _) => { tracks.ItemsSource = null; State(busy); };
+        tracks.SelectionChanged += (_, _) => State(busy);
+        load.Click += async (_, _) => {
+            if (account.SelectedItem is not YouTubeAccount connection) return;
+            State(true); status.Text = "Loading YouTube caption tracks…";
+            try {
+                var result = await service.CaptionsAsync(videoID, connection.Id, captionCancellation.Token);
+                if (captionCancellation.IsCancellationRequested || account.SelectedItem is not YouTubeAccount current || current.Id != connection.Id) return;
+                tracks.ItemsSource = result;
+                status.Text = result.Count == 0 ? "No caption tracks were returned for this video." : "Choose a language and ready track, then use it as the transcript.";
+            } catch (OperationCanceledException) { } catch (Exception ex) { status.Text = ex.Message; }
+            finally { State(false); }
+        };
+        download.Click += async (_, _) => {
+            if (account.SelectedItem is not YouTubeAccount connection || tracks.SelectedItem is not YouTubeCaption track) return;
+            State(true); status.Text = "Downloading YouTube captions…";
+            try {
+                var data = await service.DownloadAsync(track, connection.Id, captionCancellation.Token);
+                captionCancellation.Token.ThrowIfCancellationRequested();
+                if (account.SelectedItem is not YouTubeAccount current || current.Id != connection.Id) return;
+                var input = Path.Combine(Path.GetTempPath(), "vidistudio-caption-" + Guid.NewGuid() + ".srt");
+                var provenance = Path.ChangeExtension(input, ".json");
+                captionFiles.Add(input); captionFiles.Add(provenance);
+                await File.WriteAllBytesAsync(input, data, captionCancellation.Token);
+                await File.WriteAllTextAsync(provenance, new JsonObject { ["videoID"] = videoID, ["trackID"] = track.Id, ["language"] = track.Language, ["name"] = track.Name, ["trackKind"] = track.Kind }.ToJsonString(), captionCancellation.Token);
+                captionCancellation.Token.ThrowIfCancellationRequested();
+                transcript = input; captionProvenance = provenance;
+                foreach (var refresh in refreshRows) refresh();
+                status.Text = "Selected: YouTube captions · " + track.Language + " · " + (track.Kind == "ASR" ? "Automatic" : "Standard") + ". Confirm Import to save; existing content has not changed.";
+            } catch (OperationCanceledException) { } catch (Exception ex) { status.Text = ex.Message; }
+            finally { State(false); }
+        };
+        body.Children.Add(account); body.Children.Add(tracks); body.Children.Add(load); body.Children.Add(download); body.Children.Add(spinner); body.Children.Add(status);
+        if (service.Accounts.Count == 0) status.Text = "Connect a Google account in Settings > YouTube Accounts, then reopen this import dialog. Video-edit permission is required.";
+        panel.Children.Insert(2, new Expander { Header = "Download YouTube Captions", Content = body, HorizontalAlignment = HorizontalAlignment.Stretch });
+        Unloaded += (_, _) => captionCancellation.Cancel();
+        State(false);
+    }
+
+    public void CleanupYouTubeCaptions()
+    {
+        captionCancellation.Cancel();
+        foreach (var file in captionFiles) { try { File.Delete(file); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
     }
 
     private void UpdateState()
@@ -187,6 +262,7 @@ public sealed class ImportAssetsDialog : ContentDialog
         Resources["ContentDialogMaxWidth"] = 740d;
         picker = new ImportAssetsPicker(owner, scope);
         picker.SetContext(project.IsYouTube, project.Transcript.Count > 0);
+        picker.EnableYouTubeCaptions(project);
         picker.SelectionChanged += (_, _) => UpdateState();
         var panel = new StackPanel { Spacing = 14, Width = 640 };
         panel.Children.Add(picker);
@@ -197,6 +273,8 @@ public sealed class ImportAssetsDialog : ContentDialog
         SecondaryButtonClick += (_, args) => { args.Cancel = !picker.CanImport; CombineRequested = !args.Cancel; };
         UpdateState();
     }
+
+    public void CleanupYouTubeCaptions() => picker.CleanupYouTubeCaptions();
 
     private void UpdateState()
     {

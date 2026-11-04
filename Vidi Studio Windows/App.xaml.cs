@@ -64,11 +64,23 @@ public partial class App : Application
     internal static int WindowCountForSmokeTest => Windows.Count;
 #endif
 
+    internal static Views.SettingsDialog? SharedSettingsWindow { get; set; }
+    internal static event Action? OpenProjectsChanged;
+    internal static void NotifyOpenProjectsChanged() => OpenProjectsChanged?.Invoke();
+    internal static System.Collections.Generic.IReadOnlyList<Models.StudioProject> OpenEditorProjects => Windows.OfType<MainWindow>()
+        .Select(w => w.SettingsProject).Where(p => p != null).Cast<Models.StudioProject>()
+        .GroupBy(p => p.Folder, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).ToList();
+    internal static MainWindow EditorForProject(Models.StudioProject project) => Windows.OfType<MainWindow>()
+        .FirstOrDefault(w => string.Equals(w.SettingsProject?.Folder, project.Folder, StringComparison.OrdinalIgnoreCase)) ?? OpenWindow(project.Folder);
+
     public static MainWindow OpenWindow(string? folder = null)
     {
         var window = new MainWindow(folder);
         Windows.Add(window);
-        window.Closed += (_, _) => Windows.Remove(window);
+        System.ComponentModel.PropertyChangedEventHandler changed = (_, args) => { if (args.PropertyName == "Project") OpenProjectsChanged?.Invoke(); };
+        window.Model.PropertyChanged += changed;
+        window.Closed += (_, _) => { window.Model.PropertyChanged -= changed; Windows.Remove(window); OpenProjectsChanged?.Invoke(); };
+        OpenProjectsChanged?.Invoke();
         window.Activate(); return window;
     }
     protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)

@@ -23,6 +23,9 @@ namespace Vidi_Studio_Windows.Views;
 /// <summary>Inspects a source without creating a project or copying the video.</summary>
 public sealed class NewProjectDialog : ContentDialog
 {
+    public bool BrowseYouTubeRequested { get; private set; }
+    public bool ChooseYouTubeCaptions => chooseYouTubeCaptions.IsChecked == true && IsYouTube;
+    private readonly CheckBox chooseYouTubeCaptions = new() { Content = "Choose YouTube captions after creating" };
     private readonly Window owner;
     private readonly SettingsStore settings;
     private readonly RadioButton local = new() { GroupName = "project-source" };
@@ -111,6 +114,10 @@ public sealed class NewProjectDialog : ContentDialog
         youtubeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         youtubeRow.Children.Add(youtubeUrl);
         Grid.SetColumn(fetchDetails, 1); youtubeRow.Children.Add(fetchDetails);
+        var browseYouTube = new Button { Content = "My YouTube Videos…" };
+        browseYouTube.Click += (_, _) => { BrowseYouTubeRequested = true; Hide(); };
+        youtubeFields.Children.Add(browseYouTube);
+        youtubeFields.Children.Add(chooseYouTubeCaptions);
         youtubeFields.Children.Add(youtubeRow);
         youtubeFields.Children.Add(youtubePreview);
         youtubeFields.Children.Add(youtubeStatus);
@@ -240,14 +247,12 @@ public sealed class NewProjectDialog : ContentDialog
         try
         {
             var url = "https://www.youtube.com/watch?v=" + id;
-            using var response = await http.GetAsync("https://www.youtube.com/oembed?format=json&url=" + Uri.EscapeDataString(url), request.Token);
-            response.EnsureSuccessStatusCode();
-            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(request.Token));
+            var video = await YouTubeService.Shared.VideoAsync(id, request.Token);
+            video.RequireAvailable();
             if (youtubeInspection != request || request.IsCancellationRequested || id != ValidYouTubeId(YouTubeUrl)) return;
-            var root = document.RootElement;
-            var title = root.GetProperty("title").GetString() ?? "YouTube video";
-            var author = root.TryGetProperty("author_name", out var name) ? name.GetString() ?? "" : "";
-            var thumbnail = root.TryGetProperty("thumbnail_url", out var image) ? image.GetString() ?? "" : "";
+            var title = video.Title;
+            var author = video.Data["channelTitle"]?.ToString() ?? "";
+            var thumbnail = video.Thumbnail;
             fetchedYouTubeId = id;
             ShowYouTubePreview(id, title, author, thumbnail);
             youtubeStatus.Text = "";

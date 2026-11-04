@@ -60,8 +60,8 @@ public sealed partial class MainWindow
         MenuBarItem[] Layout() => new[]
         {
             Menu("File",
-                Command("new-project"), Command("open-project"), Separator(), Command("export"), Separator(),
-                Command("remove-from-list"), Separator(), Command("open-editor-window"), Command("settings"), Command("close-window")),
+                Command("new-project"), Command("open-project"), Command("youtube-browser"), Command("youtube-open-browser"), Separator(), Command("export"), Separator(),
+                Command("remove-from-list"), Separator(), Command("open-editor-window"), Command("settings"), Command("project-settings"), Command("close-window")),
             Menu("View",
                 Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("filter-segments"),
                 Submenu("Sort Segments", Command("sort-start"), Command("sort-duration-asc"), Command("sort-duration-desc"), Command("sort-origin")), Separator(),
@@ -82,6 +82,7 @@ public sealed partial class MainWindow
                     Command("segment-select-all"), Command("segment-deselect-all"), Command("segment-edit-selected"), Command("segment-delete-selected"), Separator(),
                     Command("follow"), Command("undo"), Command("redo")),
                 Submenu("Analysis", Command("analyze"), Separator(), Command("prepare-video"), Command("transcribe"), Command("generate-summary")),
+                Submenu("YouTube", Command("youtube-details"), Command("youtube-refresh"), Command("youtube-captions")),
                 Submenu("Narration",
                     Submenu("AD Segment Generation", Command("generate-ad-cues"), Separator(), Command("delete-descriptions")),
                     Submenu("Narration Audio", Command("synthesize-tts"), Command("synthesize-changed"), Command("review-narration-issues"), Command("review-narration-voices"), Separator(), Command("delete-narration"))),
@@ -89,6 +90,7 @@ public sealed partial class MainWindow
                 Submenu("Import", Command("import-transcript"), Command("import-summary"), Command("import-descriptions"), Command("import-original-audio"), Command("import-ad-audio"), Separator(), Command("import-assets")),
                 Command("show-in-finder"), Command("open-configuration"),
                 Separator(), Command("rename-project"), Command("trash-project")),
+            Menu("YouTube", Command("youtube-browser"), Command("youtube-accounts"), Separator(), Command("youtube-list"), Command("youtube-table"), Separator(), Command("youtube-open-editor"), Command("youtube-open-browser"), Separator(), Command("youtube-refresh-list"), Command("youtube-load-videos"), Command("youtube-load-playlists")),
             Menu("Help", Command("help"), Command("about"))
         };
         galleryMenus.AddRange(Layout());
@@ -121,6 +123,7 @@ public sealed partial class MainWindow
         ["open-project"] = (VirtualKey.O, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+O"),
         ["export"] = (VirtualKey.E, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+E"),
         ["settings"] = ((VirtualKey)188, VirtualKeyModifiers.Control, "Ctrl+,"),
+        ["project-settings"] = ((VirtualKey)188, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+,"),
         ["close-window"] = (VirtualKey.W, VirtualKeyModifiers.Control, "Ctrl+W"),
         ["help"] = (VirtualKey.F1, VirtualKeyModifiers.None, "F1"),
         ["preview"] = (VirtualKey.V, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+V"),
@@ -168,6 +171,13 @@ public sealed partial class MainWindow
         ["import-transcript"] = (VirtualKey.I, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+I"),
         ["import-summary"] = (VirtualKey.M, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+M"),
         ["import-descriptions"] = (VirtualKey.D, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+D"),
+        ["youtube-browser"] = (VirtualKey.Y, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+Y"),
+        ["youtube-accounts"] = (VirtualKey.Y, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+Y"),
+        ["youtube-open-editor"] = (VirtualKey.Enter, VirtualKeyModifiers.Control, "Ctrl+Enter"),
+        ["youtube-open-browser"] = (VirtualKey.Enter, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+Enter"),
+        ["youtube-refresh-list"] = (VirtualKey.R, VirtualKeyModifiers.Control, "Ctrl+R"),
+        ["youtube-load-videos"] = (VirtualKey.L, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+L"),
+        ["youtube-load-playlists"] = (VirtualKey.L, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+L"),
         ["import-assets"] = (VirtualKey.I, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+I")
     };
 
@@ -286,13 +296,19 @@ public sealed partial class MainWindow
 
     private bool CanRunDesktopCommand(string id)
     {
+        if (id == "youtube-open-browser") return youtubeBrowserCanRun != null ? youtubeBrowserCanRun(id) : ProjectManagementTarget() is { } youtubeProject && YouTubeService.ProjectWatchURL(youtubeProject.YoutubeURL) != null;
         if (!Model.Idle) return false;
+        if (id == "project-settings") return desktopEditorVisible && Model.Project is { IntegrityPlaceholder: false } settingsProject && settingsProject.Integrity?.ManifestUnreadable != true && settingsProject.Integrity?.FolderMissing != true;
         if (Model.OnlineReason(id) != null) return false;
         if (id == "new-project") return true;
         if (id is "rename-project" or "trash-project" or "show-in-finder" or "open-configuration") return CanManageProject(id);
         if (id == "remove-from-list") return SelectedBrowserProject() != null;
         if (id is "open-project" or "settings" or "help" or "about" or "close-window") return true;
         if (id is "project-list" or "project-grid") return !(Section.SelectedIndex == 1 && summaryEditMode);
+        if (id == "youtube-accounts") return true;
+        if (id is "youtube-list" or "youtube-table" or "youtube-open-editor" or "youtube-open-browser" or "youtube-refresh-list" or "youtube-load-videos" or "youtube-load-playlists") return youtubeBrowserCanRun?.Invoke(id) == true;
+        if (id == "youtube-browser") return Model.Idle;
+        if (id is "youtube-details" or "youtube-refresh" or "youtube-captions") return desktopEditorVisible && Model.Idle && Model.Project?.IsYouTube == true;
         if (!desktopEditorVisible || Model.Project is not { } p) return false;
         if (p.IsYouTube && (id is "play" or "back" or "forward") && !ConnectivityService.Shared.Available(OnlineService.YouTube)) return id == "play" && IsVideoPlaying();
         var timed = Section.SelectedIndex is 0 or 2 or 4;
@@ -402,6 +418,9 @@ public sealed partial class MainWindow
             "review-narration-voices" => "Review Narration Voices…",
             "delete-descriptions" => "Delete Descriptions…",
             "delete-current" => Section.SelectedIndex switch { 0 => "Delete Transcript…", 1 => "Delete Summary…", 2 => "Delete Descriptions…", _ => "Delete Current Page…" },
+            "youtube-list" => "List View", "youtube-table" => "Table View", "youtube-accounts" => "YouTube Accounts…", "youtube-open-editor" => "Open in Editor", "youtube-open-browser" => "Open in YouTube", "youtube-refresh-list" => "Refresh Videos", "youtube-load-videos" => "Load More Videos", "youtube-load-playlists" => "Load More Playlists",
+            "project-settings" => "Open Project Settings…",
+            "youtube-browser" => "My YouTube Videos…", "youtube-details" => "Video Details…", "youtube-refresh" => "Refresh YouTube Details", "youtube-captions" => "Import YouTube Captions…",
             "import-transcript" => "Import Transcript…", "import-summary" => "Import Summary…",
             "import-descriptions" => "Import Descriptions…", "import-assets" => "Import Existing Assets…",
             "import-original-audio" => "Import Original Audio…", "import-ad-audio" => "Import AD Audio…",
@@ -426,6 +445,8 @@ public sealed partial class MainWindow
             return Views.MenuIcons.Create("Preparing summary…");
         var checkedItem = id switch
         {
+            "youtube-list" => Model.Settings.Get("youtubeVideoLayout", "list") == "list",
+            "youtube-table" => Model.Settings.Get("youtubeVideoLayout", "list") == "table",
             "narration" => Narration.IsOn, "follow" => Follow.IsOn,
             "caption-off" => Model.Settings.Get("captionDisplayMode", "off") == "off",
             "caption-transcript" => Model.Settings.Get("captionDisplayMode") == "transcript",
@@ -506,12 +527,25 @@ public sealed partial class MainWindow
         switch (id)
         {
             case "new-project": await ShowNewProjectDialogAsync(false); break;
+            case "youtube-accounts":
+                if (youtubeBrowserRun != null) youtubeBrowserRun(id);
+                else await ShowDialogAsync(new ContentDialog { Title = "YouTube Accounts", Content = new Views.YouTubeAccountsPanel(), CloseButtonText = "Close" }, 800, 600);
+                break;
+            case "youtube-open-browser":
+                if (youtubeBrowserRun != null) youtubeBrowserRun(id); else if (ProjectManagementTarget() is { } youtubeProject) OpenProjectInYouTube(youtubeProject); break;
+            case "youtube-list": case "youtube-table": case "youtube-open-editor": case "youtube-refresh-list": case "youtube-load-videos": case "youtube-load-playlists":
+                if (youtubeBrowserCanRun?.Invoke(id) == true) youtubeBrowserRun?.Invoke(id); break;
+            case "youtube-browser": await ShowYouTubeBrowserAsync(); break;
+            case "youtube-details": await ShowYouTubeDetailsAsync(); break;
+            case "youtube-refresh": await RefreshYouTubeInspectorAsync(); break;
+            case "youtube-captions": await ShowYouTubeDetailsAsync(true); break;
             case "open-project": OpenProject_Click(this, e); break;
             case "remove-from-list":
                 if (SelectedBrowserProject() is { } listedProject) RemoveProjectFromList(listedProject);
                 break;
             case "export": Export_Click(this, e); break;
             case "settings": Settings_Click(this, e); break;
+            case "project-settings": if (Model.Project is { } settingsProject) await ShowSettingsSectionAsync(1, settingsProject); break;
             case "help": HelpSettings_Click(this, e); break;
             case "filter-segments": await ShowSegmentFilterAsync(); break;
             case "sort-start": SortStart_Click(this, e); break;

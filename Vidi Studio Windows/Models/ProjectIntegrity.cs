@@ -251,23 +251,27 @@ public static class ProjectIntegrityAuditor
             }
         }
 
-        trackedFiles++;
-        const string probePath = "metadata/probe.json";
-        var probeState = FileStateOf(Path.Combine(folder, "metadata", "probe.json"), allowDirectory: false);
-        if (probeState != FileState.Ok)
+        // URL projects use YouTube API details, without a local ffprobe file.
+        if (!manifest.IsYouTubeProject)
         {
-            missingFiles++;
-            problems.Add(new ProjectFileProblem
+            trackedFiles++;
+            const string probePath = "metadata/probe.json";
+            var probeState = FileStateOf(Path.Combine(folder, "metadata", "probe.json"), allowDirectory: false);
+            if (probeState != FileState.Ok)
             {
-                Category = ProjectFileCategory.Metadata,
-                Severity = ProjectIntegrityLevel.Warning,
-                Title = "Video details are missing",
-                Detail = $"{probePath} is {Describe(probeState)}.",
-                Impact = "Project information and the timeline may be incomplete until the video details are regenerated.",
-                Recovery = "Use Analysis → Generate Video Details & Timeline Pictures to recreate this file.",
-                MissingFiles = new[] { new ProjectMissingFile(probePath, probePath) },
-                ExpectedCount = 1
-            });
+                missingFiles++;
+                problems.Add(new ProjectFileProblem
+                {
+                    Category = ProjectFileCategory.Metadata,
+                    Severity = ProjectIntegrityLevel.Warning,
+                    Title = "Video details are missing",
+                    Detail = $"{probePath} is {Describe(probeState)}.",
+                    Impact = "Project information and the timeline may be incomplete until the video details are regenerated.",
+                    Recovery = "Use Analysis → Generate Video Details & Timeline Pictures to recreate this file.",
+                    MissingFiles = new[] { new ProjectMissingFile(probePath, probePath) },
+                    ExpectedCount = 1
+                });
+            }
         }
 
         var thumbnailPaths = UniquePaths(manifest.ThumbnailPaths);

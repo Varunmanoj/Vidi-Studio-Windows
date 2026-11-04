@@ -79,6 +79,38 @@
         {
           "id": "choose-original-audio-for-a-youtube-project",
           "title": "Choose original audio for a YouTube project"
+        },
+        {
+          "id": "youtube-account-library",
+          "title": "Browse your YouTube videos and playlists"
+        },
+        {
+          "id": "youtube-caption-import",
+          "title": "Use captions already on YouTube"
+        },
+        {
+          "id": "youtube-menu-and-keyboard-shortcuts",
+          "title": "YouTube menu and keyboard shortcuts"
+        },
+        {
+          "id": "youtube-loading-progress",
+          "title": "YouTube loading progress"
+        },
+        {
+          "id": "youtube-information-saved-in-the-editor-inspector",
+          "title": "YouTube information saved in the editor inspector"
+        },
+        {
+          "id": "youtube-list-and-table-layouts",
+          "title": "YouTube list and table layouts"
+        },
+        {
+          "id": "open-an-imported-project-on-youtube",
+          "title": "Open an imported project on YouTube"
+        },
+        {
+          "id": "inspector-sections-and-import-reports",
+          "title": "Inspector sections and import reports"
         }
       ]
     },
@@ -327,6 +359,18 @@
         {
           "id": "help",
           "title": "Help"
+        },
+        {
+          "id": "youtube-accounts",
+          "title": "YouTube Accounts"
+        },
+        {
+          "id": "open-settings-for-a-project",
+          "title": "Open settings for a project"
+        },
+        {
+          "id": "choose-a-project-and-manage-its-sources",
+          "title": "Choose a project and manage its sources"
         }
       ]
     },
@@ -477,6 +521,14 @@
         {
           "id": "connection-checks",
           "title": "Connection checks"
+        },
+        {
+          "id": "connected-youtube-accounts",
+          "title": "Connected YouTube accounts"
+        },
+        {
+          "id": "api-cache-lifetime",
+          "title": "API cache lifetime"
         }
       ]
     }

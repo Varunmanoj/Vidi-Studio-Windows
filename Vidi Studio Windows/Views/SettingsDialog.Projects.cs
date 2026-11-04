@@ -12,6 +12,13 @@ namespace Vidi_Studio_Windows.Views;
 
 public sealed partial class SettingsDialog
 {
+    private StudioProject? projectTarget;
+    private bool allowClosedProjectTarget;
+    private bool changingProjectChoice;
+    public void SetProjectTarget(StudioProject? project) {
+        if (project != null) { projectTarget = project; allowClosedProjectTarget = !App.OpenEditorProjects.Any(p => string.Equals(p.Folder, project.Folder, StringComparison.OrdinalIgnoreCase)); }
+        if (sectionList?.SelectedIndex == 1 && currentSectionPanel is { } panel) { panel.Children.Clear(); BuildProjects(panel); }
+    }
     private ToggleSwitch? projectNarrationToggle;
     private ToggleSwitch? projectFollowToggle;
     private bool applyingProjectPlaybackPreference;
@@ -27,7 +34,10 @@ public sealed partial class SettingsDialog
     {
         projectNarrationToggle = null;
         projectFollowToggle = null;
-        if (model.Project is not { } project || string.IsNullOrWhiteSpace(project.Id))
+        var choices = App.OpenEditorProjects.ToList();
+        if (projectTarget != null && allowClosedProjectTarget && !choices.Any(p => string.Equals(p.Folder, projectTarget.Folder, StringComparison.OrdinalIgnoreCase))) choices.Insert(0, projectTarget);
+        var project = choices.FirstOrDefault(p => string.Equals(p.Folder, projectTarget?.Folder, StringComparison.OrdinalIgnoreCase)) ?? choices.FirstOrDefault();
+        if (project == null || string.IsNullOrWhiteSpace(project.Id))
         {
 #if DEBUG
             projectsPageEmpty = true;
@@ -46,6 +56,16 @@ public sealed partial class SettingsDialog
 #if DEBUG
         projectsPageEmpty = false;
 #endif
+        projectTarget = project;
+        var chooser = new ComboBox { Header = "Project settings for", DisplayMemberPath = "Name", ItemsSource = choices, SelectedItem = project, HorizontalAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetName(chooser, "Project settings for");
+        chooser.SelectionChanged += (_, _) => {
+            if (changingProjectChoice || chooser.SelectedItem is not StudioProject selected) return;
+            changingProjectChoice = true;
+            try { projectTarget = selected; allowClosedProjectTarget = !App.OpenEditorProjects.Any(p => p.Folder == selected.Folder); panel.Children.Clear(); BuildProjects(panel); }
+            finally { changingProjectChoice = false; }
+        };
+        panel.Children.Add(chooser);
         panel.Children.Add(new TextBlock
         {
             Text = project.Name,
@@ -71,6 +91,15 @@ public sealed partial class SettingsDialog
             ProjectPlaybackPreferences.FollowEnabled(model.Settings, project),
             enabled => SetProjectFollow(project, enabled));
         panel.Children.Add(card);
+        if (menuOwner != null) panel.Children.Add(new ProjectSourcesSettingsControl(this, menuOwner, project));
+    }
+
+    private void ReceiveOpenProjectsChanged() {
+        if (closed) return;
+        DispatcherQueue.TryEnqueue(() => {
+            if (closed || sectionList?.SelectedIndex != 1 || currentSectionPanel is not { } panel) return;
+            panel.Children.Clear(); BuildProjects(panel);
+        });
     }
 
     private ToggleSwitch? AddProjectToggle(StackPanel panel, string label, string hint, bool isOn, Action<bool> changed)
@@ -139,10 +168,10 @@ public sealed partial class SettingsDialog
 
     private void ReceiveProjectPlaybackPreference(ProjectPlaybackPreferenceChange change)
     {
-        if (closed || model.Project is not { } project || project.Id != change.ProjectId) return;
+        if (closed || (projectTarget ?? model.Project) is not { } project || project.Id != change.ProjectId) return;
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (closed || model.Project is not { } current || current.Id != change.ProjectId) return;
+            if (closed || (projectTarget ?? model.Project) is not { } current || current.Id != change.ProjectId) return;
             applyingProjectPlaybackPreference = true;
             try
             {

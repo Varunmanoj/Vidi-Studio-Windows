@@ -15,12 +15,15 @@ public sealed class AudioSourceControls : UserControl
     private readonly StudioViewModel model;
     private readonly ContentDialog? host;
     private readonly bool exportHost;
+    private readonly bool showHeading;
+    private readonly Func<Task>? chooseAudio;
+    private readonly Func<Task>? reviewAudio;
     private readonly StackPanel panel = new() { Spacing = 8 };
 
-    public AudioSourceControls(MainWindow owner, StudioViewModel model, ContentDialog? host = null, bool exportHost = true)
+    public AudioSourceControls(MainWindow owner, StudioViewModel model, ContentDialog? host = null, bool exportHost = true, bool showHeading = true, Func<Task>? chooseAudio = null, Func<Task>? reviewAudio = null)
     {
         this.owner = owner; this.model = model; this.host = host;
-        this.exportHost = exportHost;
+        this.exportHost = exportHost; this.showHeading = showHeading; this.chooseAudio = chooseAudio; this.reviewAudio = reviewAudio;
         Content = panel;
         Refresh();
     }
@@ -31,7 +34,7 @@ public sealed class AudioSourceControls : UserControl
     {
         panel.Children.Clear();
         if (model.Project is not { IsYouTube: true } project) return;
-        Text("Audio sources");
+        if (showHeading) Text("Audio sources");
         Text(project.OriginalAudio is { } asset ? "Imported audio: " + asset.SourceName : "No original audio file imported");
         var sources = project.AudioSources ?? new();
         Picker("Export source", "--soundtrack-source", sources.Export, "Extract from YouTube when exporting", project);
@@ -46,13 +49,13 @@ public sealed class AudioSourceControls : UserControl
             else if (original.NeedsConfirmation(project.Duration))
             {
                 Text("Audio timing needs confirmation");
-                Action("Review Audio Timing…", async () => { await owner.ImportOriginalAudioAsync(null); });
+                Action("Review Audio Timing…", reviewAudio ?? (async () => { await owner.ImportOriginalAudioAsync(null); }));
             }
             else if (project.Duration <= 0) Text("Duration could not be verified; imported with your confirmation.");
             else if (Math.Abs(original.Duration - project.Duration) > .100000001) Text("Different audio duration accepted for this video.");
             else Text("Audio duration matches the video.");
         }
-        Action("Choose Audio File…", owner.ChooseOriginalAudioAsync);
+        Action("Choose Audio File…", chooseAudio ?? owner.ChooseOriginalAudioAsync);
         if (project.OriginalAudio != null) Action("Remove Selection", async () => { await model.RunAsync("remove-original-audio"); });
     }
 

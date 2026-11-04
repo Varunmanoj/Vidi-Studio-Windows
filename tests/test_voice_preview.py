@@ -59,7 +59,7 @@ class VoicePreview(unittest.TestCase):
             SimpleNamespace(name='models/imagen-4.0-generate-001', display_name='Imagen 4', supported_actions=['predict']),
         ]
         output = io.StringIO()
-        with patch.object(engine, 'gemini_client', return_value=client), redirect_stdout(output):
+        with patch.object(engine, 'gemini_client', return_value=client), patch.object(engine, 'config', return_value={'apiKey':'test-key'}), redirect_stdout(output):
             engine.list_models()
         event = json.loads(output.getvalue())
         self.assertEqual([model['name'] for model in event['models']], [

@@ -63,7 +63,8 @@ public sealed partial class MainWindow : Window
     private Visibility previewFullScreenVisibility;
     private readonly Dictionary<UIElement, Visibility> fullScreenHidden = new();
     private Button? fullScreenExitButton;
-    private Views.SettingsDialog? openSettings;
+    private Views.SettingsDialog? openSettings { get => App.SharedSettingsWindow; set => App.SharedSettingsWindow = value; }
+    internal StudioProject? SettingsProject => desktopEditorVisible ? Model.Project : null;
     private double Position => Model.Project?.IsYouTube == true ? youtubePosition : video.PlaybackSession.Position.TotalSeconds;
     public MainWindow(string? folder = null)
     {
@@ -71,6 +72,14 @@ public sealed partial class MainWindow : Window
         onDeviceNarrator = new OnDeviceNarrator(Model.Settings, Model.Engine);
         onDeviceNarrator.Failed += message => Model.ReportStatus(message);
         InitializeComponent();
+        InitializeInspectorSections();
+        var projectSettingsContext = new MenuFlyout();
+        var projectSettingsItem = new MenuFlyoutItem { Text = "Open Project Settings…", Tag = "project-settings" };
+        projectSettingsItem.Click += async (_, _) => await RunDesktopCommandAsync("project-settings");
+        projectSettingsContext.Items.Add(projectSettingsItem);
+        projectSettingsContext.Opening += (_, _) => projectSettingsItem.IsEnabled = CanRunDesktopCommand("project-settings");
+        EditorWorkspace.ContextFlyout = projectSettingsContext;
+
         InitializeSummaryOriginOptions();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
@@ -117,6 +126,7 @@ public sealed partial class MainWindow : Window
         };
         Closed += (_, _) =>
         {
+            ready = false;
             ConnectivityService.Shared.Changed -= ConnectivityChanged;
             if (fullScreenVideo) { try { ExitFullScreenVideo(); } catch (Exception ex) { Model.Engine.Log(ex.ToString()); } }
             App.ThemeChanged -= ApplyThemeFromApp;
@@ -138,6 +148,7 @@ public sealed partial class MainWindow : Window
             Model.Reload();
             ApplyTheme();
             if (Model.Settings.Get("showPreview", "true") == "false") PreviewPanel.Visibility = Visibility.Collapsed;
+            YouTubeService.ExpireCaches(Model.Settings.Get("libraryPath"));
             if (folder != null) { Model.Open(folder); ShowEditor(); }
             if (Model.Settings.Get("projectPresentation") == "grid") ToggleGrid_Click(this, new RoutedEventArgs());
             UpdateApiKeyUi();
@@ -408,6 +419,9 @@ public sealed partial class MainWindow : Window
 
         try
         {
+            var incoming = new Uri(url);
+            var videoId = incoming.Host.EndsWith("youtu.be", StringComparison.OrdinalIgnoreCase) ? incoming.AbsolutePath.Trim('/') : incoming.Query.TrimStart('?').Split('&').FirstOrDefault(v => v.StartsWith("v="))?[2..];
+            if (videoId != null) (await YouTubeService.Shared.VideoAsync(videoId)).RequireAvailable();
             Model.Reload();
             var existing = Model.ExistingProjectForYouTube(url);
             if (existing != null)
@@ -447,6 +461,7 @@ public sealed partial class MainWindow : Window
         {
             var dialog = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings, youtube);
             var result = await ShowDialogAsync(dialog, 760, 900);
+            if (dialog.BrowseYouTubeRequested) { await ShowYouTubeBrowserAsync(); return; }
             if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary)) return;
             var imports = dialog.AssetSelection;
             List<EngineEvent> created;
@@ -464,6 +479,7 @@ public sealed partial class MainWindow : Window
             }
             ShowEditor();
             if (imports.HasAny) await ImportSelectedAssetsAsync(imports, dialog.CombineRequested);
+            if (dialog.ChooseYouTubeCaptions) await ShowYouTubeDetailsAsync(true);
         }
         catch (Exception ex) { await ShowError(ex); }
     }
@@ -1855,18 +1871,19 @@ public sealed partial class MainWindow : Window
         Model.Settings.Set("showPreview", PreviewPanel.Visibility == Visibility.Visible ? "true" : "false"); Model.Settings.Save();
     }
     private void ToggleTimeline_Click(object sender, RoutedEventArgs e) => TimelinePanel.Visibility = TimelinePanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
-    private async Task ShowSettingsSectionAsync(int section)
+    private async Task ShowSettingsSectionAsync(int section, StudioProject? project = null)
     {
         if (openSettings != null)
         {
+            openSettings.SetProjectTarget(project ?? SettingsProject);
             openSettings.SelectSection(section);
             openSettings.Activate();
             return;
         }
-        var settings = new Views.SettingsDialog(Model, this, section);
+        var settings = new Views.SettingsDialog(Model, this, section, project ?? SettingsProject);
         openSettings = settings;
         try { await settings.ShowAsync(); }
-        finally { openSettings = null; ApplyTheme(); Model.Reload(); UpdateApiKeyUi(); UpdateSectionPresentation(); }
+        finally { if (openSettings == settings) openSettings = null; if (ready) { ApplyTheme(); Model.Reload(); UpdateApiKeyUi(); UpdateSectionPresentation(); } }
     }
     private async void Settings_Click(object sender, RoutedEventArgs e)
     {

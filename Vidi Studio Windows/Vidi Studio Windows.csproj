@@ -8,7 +8,7 @@
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
-    <Version>1.0.199</Version>
+    <Version>1.0.211</Version>
     <Product>Vidi Studio</Product>
     <AssemblyTitle>Vidi Studio</AssemblyTitle>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>
@@ -183,5 +183,6 @@
       <Content Include="$(PiperRuntimeDir)\**\*" Link="piper\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
+  <ItemGroup><Content Include="youtube-config.json" CopyToOutputDirectory="PreserveNewest" Condition="!Exists('..\Config\youtube-release.json')" /><Content Include="..\Config\youtube-release.json" Link="youtube-config.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\Config\youtube-release.json')" /></ItemGroup>
 </Project>
 

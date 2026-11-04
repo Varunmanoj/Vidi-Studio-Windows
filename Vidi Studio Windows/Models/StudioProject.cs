@@ -202,6 +202,8 @@ public sealed class StudioProject : INotifyPropertyChanged
     public string Name { get; set; } = "";
     public string Source { get; set; } = "";
     public string? SourceType { get; set; }
+    [JsonPropertyName("youtubeMetadata")] public JsonElement? YouTubeMetadata { get; set; }
+    [JsonPropertyName("youtubeCaptionSource")] public JsonElement? YouTubeCaptionSource { get; set; }
     public string? YoutubeURL { get; set; }
     public OriginalAudioAsset? OriginalAudio { get; set; }
     public AudioSourceSettings? AudioSources { get; set; }

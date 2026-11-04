@@ -64,9 +64,10 @@ class ProjectPlaybackSettings(unittest.TestCase):
         self.assertIn('ProjectPlaybackPreferences.Changed -= ReceiveProjectPlaybackPreference;', dialog)
         self.assertIn('model.PropertyChanged += ReceiveModelProjectChange;', dialog)
 
-    def test_projects_page_hides_toggles_without_an_open_project(self):
+    def test_projects_page_hides_toggles_without_a_target_or_open_project(self):
         source = self.read('Views/SettingsDialog.Projects.cs')
-        self.assertIn('if (model.Project is not { } project || string.IsNullOrWhiteSpace(project.Id))', source)
+        self.assertIn('var choices = App.OpenEditorProjects.ToList();', source)
+        self.assertIn('if (project == null || string.IsNullOrWhiteSpace(project.Id))', source)
         self.assertIn('Text = "No Open Projects"', source)
         self.assertIn('Text = "Open a project to manage its project-specific playback settings."', source)
         self.assertIn('"Narration during playback",', source)

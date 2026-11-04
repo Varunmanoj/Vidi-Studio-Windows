@@ -50,6 +50,9 @@ public sealed partial class MainWindow
             if (galleryMenus.Concat(editorMenus).SelectMany(menu => menu.Items).OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().Any(item => item.Icon == null) ||
                 SegmentMenu(Model.Project!.Cues[0]).Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().Any(item => item.Icon == null))
                 throw new InvalidOperationException("A menu or segment action has no icon.");
+            if (desktopMenuItems["settings"].Any(item => item.KeyboardAcceleratorTextOverride != "Ctrl+,") ||
+                desktopMenuItems["project-settings"].Any(item => item.KeyboardAcceleratorTextOverride != "Ctrl+Shift+,"))
+                throw new InvalidOperationException("File Settings commands did not display their keyboard shortcuts.");
             if (desktopMenuItems["export"].Last().KeyboardAcceleratorTextOverride != "Ctrl+Shift+E" ||
                 desktopMenuItems["play"].Last().KeyboardAcceleratorTextOverride != "Ctrl+Shift+Space")
                 throw new InvalidOperationException("Menu commands do not show their keyboard shortcuts.");

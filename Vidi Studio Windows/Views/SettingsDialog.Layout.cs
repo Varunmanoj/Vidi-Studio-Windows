@@ -69,17 +69,26 @@ public sealed partial class SettingsDialog
         {
             var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(owner)) / 96d;
             AppWindow.Resize(new SizeInt32(Math.Min(originalSize.Width, (int)(720 * scale)), Math.Min(originalSize.Height, (int)(540 * scale))));
-            foreach (var section in new[] { 0, 3, 5, 6, 7 })
+            foreach (var section in new[] { 0, 1, 2, 3, 5, 6, 7, 8 })
             {
                 NavigateForSmokeTest(section);
                 await System.Threading.Tasks.Task.Delay(100);
                 layout.UpdateLayout();
                 if (sectionHost.ViewportHeight <= 0 || sectionHost.ViewportWidth <= 0)
                     throw new InvalidOperationException("Settings content must keep a bounded, usable scroll viewport when restored.");
-                sectionHost.ChangeView(null, sectionHost.ScrollableHeight, null, true);
-                await System.Threading.Tasks.Task.Delay(60);
+                // Voice/model results and wrapping rows may change the extent after
+                // navigation. Follow the current bottom until layout has settled.
+                for (var attempt = 0; attempt < 20; attempt++)
+                {
+                    layout.UpdateLayout();
+                    var bottom = sectionHost.ScrollableHeight;
+                    sectionHost.ChangeView(null, bottom, null, true);
+                    await System.Threading.Tasks.Task.Delay(50);
+                    if (Math.Abs(sectionHost.ScrollableHeight - bottom) <= 2 &&
+                        Math.Abs(sectionHost.VerticalOffset - sectionHost.ScrollableHeight) <= 2) break;
+                }
                 if (Math.Abs(sectionHost.VerticalOffset - sectionHost.ScrollableHeight) > 2)
-                    throw new InvalidOperationException("The last settings option cannot be reached without maximizing.");
+                    throw new InvalidOperationException($"Settings section {section} cannot reach its last option: offset={sectionHost.VerticalOffset}, bottom={sectionHost.ScrollableHeight}, viewport={sectionHost.ViewportHeight}.");
                 foreach (var footer in layout.Children.OfType<Grid>().Where(child => Grid.GetRow(child) == 3))
                     foreach (var button in footer.Children.OfType<Button>())
                     {

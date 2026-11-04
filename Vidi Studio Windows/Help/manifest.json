@@ -487,6 +487,10 @@
         {
           "id": "api-key-check-results",
           "title": "API key check results"
+        },
+        {
+          "id": "youtube-sign-in-is-not-configured",
+          "title": "YouTube sign-in is not configured"
         }
       ]
     },

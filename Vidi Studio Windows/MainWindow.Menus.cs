@@ -202,6 +202,7 @@ public sealed partial class MainWindow
 
     private void UpdateDesktopMenuStates()
     {
+        if (windowClosed) return;
         foreach (var (id, items) in desktopMenuItems)
             foreach (var item in items)
             {
@@ -296,6 +297,7 @@ public sealed partial class MainWindow
 
     private bool CanRunDesktopCommand(string id)
     {
+        if (windowClosed) return false;
         if (id == "youtube-open-browser") return youtubeBrowserCanRun != null ? youtubeBrowserCanRun(id) : ProjectManagementTarget() is { } youtubeProject && YouTubeService.ProjectWatchURL(youtubeProject.YoutubeURL) != null;
         if (!Model.Idle) return false;
         if (id == "project-settings") return desktopEditorVisible && Model.Project is { IntegrityPlaceholder: false } settingsProject && settingsProject.Integrity?.ManifestUnreadable != true && settingsProject.Integrity?.FolderMissing != true;
@@ -462,6 +464,12 @@ public sealed partial class MainWindow
             "preview" or "fullscreen" => "Show / hide preview", "toggle-timeline" => "Show / hide timeline",
             "show-projects" => "Show / hide projects", "show-inspector" => "Show / hide inspector",
             "project-list" => "Project list", "project-grid" => "List / Grid projects",
+            "YouTube" or "youtube-browser" => "My YouTube Videos…",
+            "youtube-accounts" => "YouTube Accounts…", "youtube-list" => "Project list", "youtube-table" => "Table View",
+            "youtube-open-editor" => "Edit selected", "youtube-open-browser" => "Open in YouTube",
+            "youtube-refresh" or "youtube-refresh-list" => "Refresh video details",
+            "youtube-load-videos" or "youtube-load-playlists" => "Add segment",
+            "youtube-details" => "Video Details…", "youtube-captions" => "Import transcript",
             "Editor Sections" => "Editor sections", "Segments" => "Segments",
             "Transcript Overlay" => "Transcript overlay",
             "caption-cycle" or "caption-off" or "caption-transcript" or "caption-ad-transcript" => "Transcript overlay",
@@ -475,7 +483,7 @@ public sealed partial class MainWindow
             "open-configuration" => "Open project configuration",
             "remove-from-list" => "Remove from List",
             "rename-project" => "Rename", "trash-project" => "Move to Recycle Bin",
-            "open-editor-window" => "Open editor in new window", "export" => "Export", "settings" => "Settings",
+            "open-editor-window" => "Open editor in new window", "export" => "Export", "settings" or "project-settings" => "Settings",
             "close-window" => "Close window", "help" => "Help and keyboard shortcuts", "about" => "About Vidi Studio",
             "back" => "Rewind five seconds", "forward" => "Forward five seconds", "follow" => "Follow active segment",
             "summary-play" => "Play summary", "summary-from-start" => "Read summary from start",

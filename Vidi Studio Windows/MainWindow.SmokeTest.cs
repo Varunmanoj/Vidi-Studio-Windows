@@ -45,8 +45,13 @@ public sealed partial class MainWindow
                 Narration.IsOn != ProjectPlaybackPreferences.NarrationEnabled(Model.Settings, openedProject) ||
                 Follow.IsOn != ProjectPlaybackPreferences.FollowEnabled(Model.Settings, openedProject))
                 throw new InvalidOperationException("Opening a project did not restore its saved playback toggles.");
-            if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Playback", "Project", "Help" }))
+            if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Playback", "Project", "YouTube", "Help" }))
                 throw new InvalidOperationException("Editor menu set does not match the active page.");
+            var youtubeMenu = editorMenus.Single(menu => menu.Title == "YouTube");
+            if (!youtubeMenu.Items.OfType<MenuFlyoutItem>().Select(item => (string)item.Tag).SequenceEqual(new[] {
+                "youtube-browser", "youtube-accounts", "youtube-list", "youtube-table", "youtube-open-editor",
+                "youtube-open-browser", "youtube-refresh-list", "youtube-load-videos", "youtube-load-playlists" }))
+                throw new InvalidOperationException("YouTube menu commands do not match the shared desktop layout.");
             if (galleryMenus.Concat(editorMenus).SelectMany(menu => menu.Items).OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().Any(item => item.Icon == null) ||
                 SegmentMenu(Model.Project!.Cues[0]).Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().Any(item => item.Icon == null))
                 throw new InvalidOperationException("A menu or segment action has no icon.");
@@ -91,13 +96,19 @@ public sealed partial class MainWindow
                 "synthesize-tts", "synthesize-changed", "review-narration-issues", "review-narration-voices", "delete-narration" }) ||
                 (string)InspectorSynthesizeNarrationButton.Tag != "synthesize-tts")
                 throw new InvalidOperationException("Narration Audio must have exactly two bulk generation actions.");
-            if (!projectGroups.SequenceEqual(new[] { "Editor Sections", "Segments", "Analysis", "Narration", "Import" }))
+            if (!projectGroups.SequenceEqual(new[] { "Editor Sections", "Segments", "Analysis", "YouTube", "Narration", "Import" }))
                 throw new InvalidOperationException("Project submenu nesting/order drifted from Mac.");
+            var projectYoutubeMenu = editorMenus.Single(menu => menu.Title == "Project").Items
+                .OfType<MenuFlyoutSubItem>().Single(item => item.Text == "YouTube");
+            if (!projectYoutubeMenu.Items.OfType<MenuFlyoutItem>().Select(item => (string)item.Tag)
+                .SequenceEqual(new[] { "youtube-details", "youtube-refresh", "youtube-captions" }))
+                throw new InvalidOperationException("Project YouTube commands drifted from the shared desktop layout.");
             if (desktopMenuItems.SelectMany(pair => pair.Value).Any(item => item.Icon == null))
                 throw new InvalidOperationException("A nested desktop menu command has no icon.");
-            if (desktopMenuItems.SelectMany(pair => pair.Value).Any(item => item.Icon is FontIcon { Glyph: "\uE8A5" or "\uE712" }) ||
-                desktopMenuGroups.Any(group => group.Item.Icon is FontIcon { Glyph: "\uE8A5" or "\uE712" }))
-                throw new InvalidOperationException("A desktop action still uses the generic document or fallback icon.");
+            var fallbackIcons = desktopMenuItems.Where(pair => pair.Value.Any(item => item.Icon is FontIcon { Glyph: "\uE8A5" or "\uE712" }))
+                .Select(pair => pair.Key).Concat(desktopMenuGroups.Where(group => group.Item.Icon is FontIcon { Glyph: "\uE8A5" or "\uE712" }).Select(group => group.Name));
+            if (fallbackIcons.Any())
+                throw new InvalidOperationException("Desktop actions still use generic document or fallback icons: " + string.Join(", ", fallbackIcons));
             var savedMenuKey = Model.Settings.Get("apiKey");
             var savedMenuTts = Model.Settings.Get("ttsMode", "windows-core");
             Model.Settings.Set("apiKey", ""); Model.Settings.Set("ttsMode", "windows-core");
@@ -364,14 +375,18 @@ public sealed partial class MainWindow
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "editor-transcript.png"));
             Section.SelectedIndex = 2;
             TogglePreview_Click(this, new RoutedEventArgs());
+            var inspectorGroups = ((StackPanel)InspectorScrollViewer.Content).Children.OfType<Expander>().ToArray();
+            var generationGroup = inspectorGroups.SingleOrDefault(group => ReferenceEquals(group.Content, ContextActions));
+            var narrationGroup = inspectorGroups.SingleOrDefault(group => ReferenceEquals(group.Content, NarrationActions));
             if (InspectorSectionTitle.Text != "AD Segment Generation" ||
                 ContextActions.Visibility != Visibility.Visible || NarrationActions.Visibility != Visibility.Visible ||
-                ContextActions.Parent != NarrationActions.Parent)
-                throw new InvalidOperationException("AD generation and Narration Audio must be separate Inspector groups.");
+                generationGroup == null || narrationGroup == null || ReferenceEquals(generationGroup, narrationGroup) ||
+                !ReferenceEquals(generationGroup.Header, InspectorSectionTitle) || narrationGroup.Header is not TextBlock { Text: "Narration Audio" })
+                throw new InvalidOperationException("AD generation and Narration Audio must have separate sibling Inspector expanders.");
             await Task.Delay(200);
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "editor-descriptions.png"));
             ShowGallery_Click(this, new RoutedEventArgs());
-            if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Playback", "Project", "Help" }))
+            if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Playback", "Project", "YouTube", "Help" }))
                 throw new InvalidOperationException("Gallery menu hierarchy drifted from the shared desktop layout.");
             if (CanRunDesktopCommand("export") || CanRunDesktopCommand("review-narration-issues") || CanRunDesktopCommand("review-narration-voices"))
                 throw new InvalidOperationException("Project-only menu commands remained enabled in the gallery.");
@@ -601,7 +616,9 @@ public sealed partial class MainWindow
             if (newProject.IsPrimaryButtonEnabled || !newProject.IsYouTube) throw new InvalidOperationException("New Project allowed a YouTube source before fetching its details.");
             newProject.SetYouTubeDetailsForSmokeTest("Public video preview");
             if (!newProject.IsPrimaryButtonEnabled) throw new InvalidOperationException("New Project did not enable Create after reviewing YouTube details.");
-            if (newProject.AssetSelection.ADAudioPath != null || newProject.SecondaryButtonText.Length != 0) throw new InvalidOperationException("YouTube creation retained a local audio import.");
+            if (newProject.AssetSelection.ADAudioPath != "narration.wav" || newProject.AssetSelection.TranscriptPath != "transcript.srt" ||
+                newProject.SecondaryButtonText != "Create Project & Combine" || !newProject.IsSecondaryButtonEnabled)
+                throw new InvalidOperationException("YouTube creation did not preserve imported assets and its described-audio Combine action.");
             await CaptureSmokeImage(newProject, Path.Combine(Path.GetDirectoryName(report)!, "new-project-youtube-dark.png"));
             newProject.Hide(); await newProjectDisplay;
             PreviewTheme(originalTheme);
@@ -775,6 +792,10 @@ public sealed partial class MainWindow
             await child.RunDesktopCommandAsync("close-window");
             if (await Task.WhenAny(childClosed.Task, Task.Delay(3000)) != childClosed.Task || !childClosed.Task.Result)
                 throw new InvalidOperationException("Close Window did not close the editor window.");
+            child.UpdateDesktopMenuStates();
+            child.UpdatePlaybackControls();
+            if (child.IsVideoPlaying() || child.CanRunDesktopCommand("play") || child.CanRunDesktopCommand("settings"))
+                throw new InvalidOperationException("A closed editor still accepts commands or queries disposed playback state.");
             await Model.RunAsync("export-subtitles", new[] { "--content", "combined", "--format", "srt", "--replace-existing" });
             if (Model.Status != "Complete") throw new InvalidOperationException("Native subtitle export failed: " + Model.Status);
             var subtitle = Model.Project!.Exports.FirstOrDefault(path => path.EndsWith(".srt", StringComparison.OrdinalIgnoreCase));

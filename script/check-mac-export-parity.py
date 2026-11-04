@@ -74,17 +74,24 @@ wt.body = legacy_downloader_nodes(wt)
 mt.body = legacy_downloader_nodes(mt, mac=True)
 wt.body = [node for node in wt.body if not isinstance(node, ast.FunctionDef) or node.name != 'check_cancelled']
 wd, md = ast.dump(wt, include_attributes=False), ast.dump(mt, include_attributes=False)
-# Reviewed 1.0.194: metadata helpers are compared directly above. Both legacy
-# downloader ASTs are unchanged from the 1.0.193 checkout; refresh their exact
-# fingerprints for the current Python AST representation.
-# Windows retains classified worker errors and cancellation markers. Both exact ASTs must
-# match these snapshots; future changes to either downloader still flag drift.
+# Reviewed 1.0.212: both downloaders now report network_activity transitions
+# (Windows 091b15d / Mac c9ea1ec). Windows retains its classified worker errors,
+# retry deadline, and cancellation markers. Keep exact snapshots of both paths.
+# Python 3.13+ omits empty AST fields by default; include them explicitly so the
+# fingerprints agree with Python 3.12, which always includes those fields.
+def downloader_fingerprint(tree):
+    try:
+        dump = ast.dump(tree, include_attributes=False, show_empty=True)
+    except TypeError:  # Python 3.12
+        dump = ast.dump(tree, include_attributes=False)
+    return hashlib.sha256(dump.encode()).hexdigest()
+
 reviewed_downloaders = (
-    'c511ee67fd64de14d81d15d4bdb7b463fa808a5a3614160e94a0dfc6744237c3',
-    'a83a762fc6a110049958b24ac7c3ea5f7f6e75563bb97239df025677a8d2ebdc',
+    '969d75aa4986a0766d13e6483d7a91b1f4458403b4a2f09c1a2c760910034ae9',
+    'f2424ce3939d44d41cd1cffe80ab1e1b8b9ff68144473666143d1e7061aa6930',
 )
-if wd != md and (hashlib.sha256(wd.encode()).hexdigest(), hashlib.sha256(md.encode()).hexdigest()) != reviewed_downloaders:
+if wd != md and (downloader_fingerprint(wt), downloader_fingerprint(mt)) != reviewed_downloaders:
     drift.append('youtube_audio.py')
 if drift:
     raise SystemExit('Export parity needs review: ' + ', '.join(drift))
-print(f'PASS: {len(names)} shared export/progress functions, media formats, and ducking match Mac; downloader matches or has the exact reviewed Windows 1.0.176 worker recovery and cancellation hooks.')
+print(f'PASS: {len(names)} shared export/progress functions, media formats, and ducking match Mac; downloader matches or has the exact reviewed 1.0.212 connectivity, Windows worker recovery, and cancellation hooks.')

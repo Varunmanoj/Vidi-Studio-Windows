@@ -41,6 +41,7 @@ public sealed partial class MainWindow : Window
     private bool youtubePolling;
     private bool youtubeMetadataUpdating;
     private bool ready;
+    private bool windowClosed;
     private string? pendingVideoPath;
     private string? pendingYouTubeUrl;
     private Segment? highlightedSegment;
@@ -126,6 +127,7 @@ public sealed partial class MainWindow : Window
         };
         Closed += (_, _) =>
         {
+            windowClosed = true;
             ready = false;
             ConnectivityService.Shared.Changed -= ConnectivityChanged;
             if (fullScreenVideo) { try { ExitFullScreenVideo(); } catch (Exception ex) { Model.Engine.Log(ex.ToString()); } }
@@ -650,6 +652,7 @@ public sealed partial class MainWindow : Window
     }
     private async void Timer_Tick(object? sender, object e)
     {
+        if (windowClosed) return;
         var polledProject = Model.Project;
         if (polledProject == null) return;
         double? youtubeDuration = null;
@@ -674,7 +677,7 @@ public sealed partial class MainWindow : Window
             catch { /* Player may be navigating. */ }
             finally { youtubePolling = false; }
         }
-        if (!ReferenceEquals(Model.Project, polledProject)) return;
+        if (windowClosed || !ReferenceEquals(Model.Project, polledProject)) return;
         if (!playheadDragging) { updatingPosition = true; Playhead.Value = Position; updatingPosition = false; }
         UpdateTimelineCursor();
         readback.TickWordProgress();
@@ -717,7 +720,7 @@ public sealed partial class MainWindow : Window
     }
     private async void Seek(double value)
     {
-        if (Model.Project == null) return;
+        if (windowClosed || Model.Project == null) return;
         value = Math.Clamp(value, 0, Model.Project.Duration); activeCue = null; narrationPlayer.Pause(); onDeviceNarrator.Stop();
         if (Model.Project?.IsYouTube == true && YouTubePlayer.CoreWebView2 != null)
         { youtubePosition = value; await YouTubePlayer.ExecuteScriptAsync($"window.vidiSeek?.({value.ToString(CultureInfo.InvariantCulture)})"); }
@@ -878,10 +881,18 @@ public sealed partial class MainWindow : Window
         else if (video.PlaybackSession.PlaybackState == MediaPlaybackState.Playing) video.Pause(); else video.Play();
         UpdatePlaybackControls();
     }
-    private bool IsVideoPlaying() => Model.Project?.IsYouTube == true ? youtubePlaying
-        : Model.Project != null && video.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
+    private bool IsVideoPlaying()
+    {
+        if (windowClosed || Model.Project == null) return false;
+        if (Model.Project.IsYouTube) return youtubePlaying;
+        try { return video.PlaybackSession.PlaybackState == MediaPlaybackState.Playing; }
+        // Windows can abort a media-state query while focus and media sources change.
+        // A later playback event or timer tick refreshes the transport state.
+        catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == unchecked((int)0x80004004)) { return false; }
+    }
     private void UpdatePlaybackControls()
     {
+        if (windowClosed) return;
         var playing = IsVideoPlaying();
         VideoPlayPauseButton.IsEnabled = Model.Project != null && (playing || !Model.Project.IsYouTube || ConnectivityService.Shared.Available(OnlineService.YouTube));
         VideoPlayPauseButton.Content = playing ? "\uE769" : "\uE768";

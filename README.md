@@ -94,7 +94,7 @@ Piper voices work entirely on this PC. Voice samples, saved narration files and 
 
 Downloaded voices live in `%APPDATA%\VidiStudio\piper\voices` as `<voice-id>.onnx` plus `<voice-id>.onnx.json`. The bundled runtime lives in the app's `piper` folder. If the app reports that the Piper engine is missing, reinstall Vidi Studio or run `script\fetch-piper.ps1` and build again. The build scripts fetch the verified official Rhasspy Piper Windows x64 release automatically.
 
-Windows SAPI 5 remains available for classic desktop voices and compatible third-party SAPI engines. The former NaturalVoiceSAPIAdapter voice-bridge guidance and the Azure Voices engine were removed because the bridge add-on did not work reliably for live narration and summary read-aloud. Settings saved with the earlier **Natural Voices** engine move to **Windows SAPI 5** automatically; saved **Azure Voices** settings move to **Windows OneCore**.
+Windows SAPI 5 remains available for classic desktop voices and compatible third-party SAPI engines.
 
 When a voice cannot speak, Vidi Studio says why instead of showing a general error, for example that the Piper engine or selected voice is missing, or that the voice produced no audio. Live narration reports the same message in the status bar. A voice that stalls is stopped after two minutes, and a SAPI voice that fails or produces no audio is retried up to three times. **Settings → Storage → Open diagnostics folder** opens `diagnostics.log`, which records the speech helper's full error, including retry notes.
 

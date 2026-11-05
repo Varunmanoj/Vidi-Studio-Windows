@@ -503,6 +503,10 @@
         {
           "id": "generated-text-uses-an-unexpected-language",
           "title": "Generated text uses an unexpected language"
+        },
+        {
+          "id": "deleting-a-segment-reports-a-timing-error",
+          "title": "Deleting a segment reports a timing error"
         }
       ]
     },

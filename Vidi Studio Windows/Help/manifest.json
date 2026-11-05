@@ -131,6 +131,10 @@
         {
           "id": "language-asset-storage",
           "title": "Language and saved-result folders"
+        },
+        {
+          "id": "description-delete-options",
+          "title": "Delete description audio or segments"
         }
       ]
     },

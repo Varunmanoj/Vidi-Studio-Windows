@@ -235,10 +235,17 @@ public sealed partial class MainWindow
         var deletionKind = component is "narration" or "history" ? "descriptions" : component;
         var language = LanguagePicker("Language filter", deletionKind == null || deletionKind == "thumbnails" ? "all" : project.SelectedLanguage, true);
         panel.Children.Add(language);
+        panel.Children.Add(new TextBlock { Text = "Choose content types and saved results. The project and original source are kept.", TextWrapping = TextWrapping.Wrap });
+        string DeletionTitle(string kind) => kind switch {
+            "descriptions" => "Description Segments and Audio", "narration" => "Description Audio Only (Keep Segments)",
+            "history" => "Segment Undo History Only", "thumbnails" => "Thumbnails (Entire Project)", _ => LanguageResult.KindTitle(kind)
+        };
         var options = new List<CheckBox>();
         foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio", "narration", "history", "thumbnails" }) {
-            var box = new CheckBox { Content = kind, Tag = kind, IsChecked = component == kind };
+            var box = new CheckBox { Content = DeletionTitle(kind), Tag = kind, IsChecked = component == kind };
             options.Add(box); panel.Children.Add(box);
+            if (kind is "descriptions" or "narration") panel.Children.Add(new TextBlock {
+                Text = kind == "descriptions" ? "Deletes the selected description results, including their segments and associated audio. Shared files used by retained results or history are kept." : "Removes narration from the selected description results. Keeps description text, timing, and undo history. Shared files used by retained results or history are kept.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
         }
         var rows = new StackPanel { Spacing = 5 }; panel.Children.Add(rows);
         var selected = new HashSet<string>(); var exports = new HashSet<string>();
@@ -246,10 +253,16 @@ public sealed partial class MainWindow
             var rid = project.ActiveResultID(component is "narration" or "history" ? "descriptions" : component);
             if (!string.IsNullOrEmpty(rid)) selected.Add(rid);
         }
+        bool VisibleResult(LanguageResult r) {
+            var code = (language.SelectedItem as OutputLanguage)?.Id ?? "all";
+            var kinds = options.Where(v => v.IsChecked == true).Select(v => (string)v.Tag).ToHashSet();
+            return (code == "all" || r.Language == code) && (kinds.Contains(r.Kind) || kinds.Contains("narration") && r.Kind == "descriptions" || kinds.Contains("history") && r.Kind is "descriptions" or "transcript");
+        }
         void Refresh() {
+            selected.IntersectWith(project.SavedResults.Where(VisibleResult).Select(r => r.Id));
             rows.Children.Clear();
             var code = (language.SelectedItem as OutputLanguage)?.Id ?? "all";
-            foreach (var result in project.SavedResults.Where(r => code == "all" || r.Language == code)) {
+            foreach (var result in project.SavedResults.Where(VisibleResult)) {
                 var box = new CheckBox { Content = OutputLanguage.Label(result.Language) + " · " + LanguageResult.KindTitle(result.Kind) + " · " + result.Title, IsChecked = selected.Contains(result.Id) };
                 box.Checked += (_, _) => selected.Add(result.Id); box.Unchecked += (_, _) => selected.Remove(result.Id); rows.Children.Add(box);
             }
@@ -259,6 +272,17 @@ public sealed partial class MainWindow
                 box.Checked += (_, _) => exports.Add(path); box.Unchecked += (_, _) => exports.Remove(path); rows.Children.Add(box);
             }
         }
+        foreach (var box in options) {
+            box.Checked += (_, _) => {
+                var kind = (string)box.Tag;
+                if (kind is "narration" or "descriptions") foreach (var other in options.Where(v => (string)v.Tag == (kind == "narration" ? "descriptions" : "narration"))) other.IsChecked = false;
+                Refresh();
+            };
+            box.Unchecked += (_, _) => Refresh();
+        }
+        var selectVisible = new Button { Content = "Select Visible Results" };
+        selectVisible.Click += (_, _) => { selected.UnionWith(project.SavedResults.Where(VisibleResult).Select(r => r.Id)); Refresh(); };
+        panel.Children.Insert(panel.Children.IndexOf(rows), selectVisible);
         language.SelectionChanged += (_, _) => Refresh(); Refresh();
         var dialog = new ContentDialog { Title = "Delete Content by Language", Content = new ScrollViewer { Content = panel }, PrimaryButtonText = "Review Deletion", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
         if (await ShowDialogAsync(dialog, 800, 760) != ContentDialogResult.Primary) return;
@@ -276,7 +300,7 @@ public sealed partial class MainWindow
             previewText = $"{data.GetProperty("selectedResultCount")} selected results, {data.GetProperty("exportCount")} exports, and {data.GetProperty("fileCount")} files.\n" +
                 string.Join("\n", data.GetProperty("files").EnumerateArray().Select(v => v.GetString()));
         } finally { File.Delete(previewInput); }
-        if (!await Confirm("Delete selected content permanently?", previewText + "\nContent types: " + string.Join(", ", components) + ". This cannot be undone.", "Delete Selected")) return;
+        if (!await Confirm("Delete selected content permanently?", previewText + "\nContent types: " + string.Join(", ", components.Select(DeletionTitle)) + ". This cannot be undone.", "Delete Selected")) return;
         StopSegmentPreview(); narrationPlayer.Pause();
         await RunResultRequestAsync("delete-results", request);
     }

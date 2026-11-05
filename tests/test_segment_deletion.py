@@ -138,7 +138,7 @@ class SegmentDeletion(unittest.TestCase):
             self.assertNotIn('song', [row['id'] for row in saved['transcript']])
             self.assertEqual([(row['id'], row['start'], row['end']) for row in saved['transcript']],
                              [(row['id'], row['start'], row['end']) for row in project['transcript'] if row['id'] != 'song'])
-            self.assertFalse((audio / 'song-ad.wav').exists())
+            self.assertTrue((audio / 'song-ad.wav').exists())  # retained by undo history
             self.assertTrue((audio / 'opening-ad.wav').exists())
             self.assertTrue((audio / 'conflicting-ad.wav').exists())
             self.assertEqual(saved['status'], 'Ready')

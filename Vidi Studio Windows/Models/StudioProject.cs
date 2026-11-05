@@ -197,6 +197,61 @@ public sealed class ProjectPlaybackSettings
 
 public sealed class StudioProject : INotifyPropertyChanged
 {
+    public string SelectedLanguage { get; set; } = "auto";
+    public Dictionary<string, string> SectionLanguages { get; set; } = new();
+    public string SectionLanguage(string kind) => SectionLanguages.TryGetValue(kind, out var code) ? code : SelectedLanguage;
+    public string OperationLanguage(string command) {
+        var kind = command switch {
+            "transcribe" or "import-transcript" or "reanalyze-transcript-segment" or "undo-transcript" or "redo-transcript" => "transcript",
+            "generate-summary" or "save-summary" or "import-summary" => "summary",
+            "generate-ad-cues" or "synthesize-tts" or "save-cues" or "rewrite-cue" or "reanalyze-segment" or "import-ad-transcript" or "import-segment-narration" or "delete-segment-audio" or "undo-cues" or "redo-cues" => "descriptions",
+            "import-ad-audio" => "adAudio", _ => ""
+        };
+        return kind == "" ? SelectedLanguage : SectionLanguage(kind);
+    }
+    public List<LanguageResult>? LanguageResults { get; set; }
+    public Dictionary<string, Dictionary<string, string>> ActiveResultIDs { get; set; } = new();
+    public Dictionary<string, ExportResultProvenance> ExportResults { get; set; } = new();
+    [JsonIgnore] public IReadOnlyList<LanguageResult> SavedResults {
+        get {
+            if (LanguageResults != null) return LanguageResults;
+            var rows = new List<LanguageResult>();
+            foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
+                var populated = kind switch { "transcript" => Transcript.Count > 0, "summary" => !string.IsNullOrWhiteSpace(Summary), "descriptions" => Cues.Count > 0, _ => ImportedAudioDescription != null };
+                if (populated) rows.Add(new LanguageResult { Id = Id + "-legacy-" + kind, Kind = kind,
+                    Payload = JsonSerializer.SerializeToElement(new { transcript = Transcript, summary = Summary, cues = Cues, importedAudioDescription = ImportedAudioDescription }, Json.Options) });
+            }
+            return rows;
+        }
+    }
+    public string ActiveResultID(string kind, string? language = null) {
+        var code = language ?? SectionLanguage(kind);
+        if (ActiveResultIDs.TryGetValue(code, out var selection) && selection.TryGetValue(kind, out var rid)) return rid;
+        return SavedResults.Where(r => r.Language == code && r.Kind == kind && r.State == "saved").OrderByDescending(r => r.CreatedAt).FirstOrDefault()?.Id ?? "";
+    }
+    public StudioProject WithLanguageResults(string code, IReadOnlyDictionary<string, string>? choices = null) {
+        var result = (StudioProject)MemberwiseClone(); result.SelectedLanguage = code;
+        result.Transcript = new(); result.Summary = ""; result.Cues = new(); result.ImportedAudioDescription = null; result.ImportedADTranscript = null;
+        foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
+            var rid = choices != null && choices.TryGetValue(kind, out var selected) ? selected : ActiveResultID(kind, code);
+            var record = SavedResults.FirstOrDefault(r => r.Id == rid && r.State == "saved" && r.Language == code);
+            if (record == null || record.Payload.ValueKind != JsonValueKind.Object) continue;
+            var data = record.Payload;
+            if (kind == "transcript" && data.TryGetProperty("transcript", out var transcript)) result.Transcript = JsonSerializer.Deserialize<List<Segment>>(transcript.GetRawText(), Json.Options) ?? new();
+            if (kind == "summary" && data.TryGetProperty("summary", out var summary)) result.Summary = summary.GetString() ?? "";
+            if (kind == "descriptions") {
+                if (data.TryGetProperty("cues", out var cues)) result.Cues = JsonSerializer.Deserialize<List<Segment>>(cues.GetRawText(), Json.Options) ?? new();
+                if (data.TryGetProperty("narrationEngine", out var engine)) result.NarrationEngine = engine.GetString();
+                if (data.TryGetProperty("narrationVoice", out var voice)) result.NarrationVoice = voice.GetString();
+                if (data.TryGetProperty("importedADTranscript", out var imported)) result.ImportedADTranscript = JsonSerializer.Deserialize<ImportedADTranscript>(imported.GetRawText(), Json.Options);
+            }
+            if (kind == "adAudio" && data.TryGetProperty("importedAudioDescription", out var audio)) result.ImportedAudioDescription = JsonSerializer.Deserialize<ImportedAudioDescription>(audio.GetRawText(), Json.Options);
+        }
+        for (var i = 0; i < result.Cues.Count; i++) { result.Cues[i].ProjectFolder = Folder; result.Cues[i].IsDescription = true; result.Cues[i].AdNumber = i + 1; }
+        foreach (var row in result.Transcript) { row.ProjectFolder = Folder; row.IsDescription = false; }
+        return result;
+    }
+    public bool MatchesLanguage(string code) => code == "all" || SavedResults.Any(r => r.Language == code);
     public event PropertyChangedEventHandler? PropertyChanged;
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
@@ -438,7 +493,21 @@ public sealed class StudioProject : INotifyPropertyChanged
             if (string.IsNullOrWhiteSpace(cue.Audio)) continue;
             narration.Add(new ProjectNarrationReference(cue.Audio.Trim(), i + 1, $"{cue.StartLabel}–{cue.EndLabel}"));
         }
+        void AddSavedAudio(JsonElement node, string label) {
+            if (node.ValueKind == JsonValueKind.Array) { foreach (var item in node.EnumerateArray()) AddSavedAudio(item, label); }
+            else if (node.ValueKind == JsonValueKind.Object) foreach (var property in node.EnumerateObject()) {
+                if (property.Name == "audio" && property.Value.ValueKind == JsonValueKind.String && property.Value.GetString() is { } relative)
+                    narration.Add(new ProjectNarrationReference(relative, 0, label));
+                else AddSavedAudio(property.Value, label);
+            }
+        }
+        foreach (var result in SavedResults) AddSavedAudio(result.Payload, OutputLanguage.Label(result.Language) + " · " + result.Title);
         var imported = new List<string>();
+        foreach (var result in SavedResults) if (result.Payload.ValueKind == JsonValueKind.Object)
+            foreach (var field in new[] { "importedAudioDescription", "importedADTranscript" })
+                if (result.Payload.TryGetProperty(field, out var asset) && asset.ValueKind == JsonValueKind.Object && asset.TryGetProperty("path", out var relative) && relative.GetString() is { } savedPath) imported.Add(savedPath);
+
+        foreach (var result in SavedResults) if (result.SourceAsset.ValueKind == JsonValueKind.Object && result.SourceAsset.TryGetProperty("path", out var sourcePath) && sourcePath.GetString() is { } path) imported.Add(path);
         if (!string.IsNullOrWhiteSpace(ImportedAudioDescription?.Path)) imported.Add(ImportedAudioDescription.Path);
         if (!string.IsNullOrWhiteSpace(OriginalAudio?.Path)) imported.Add(OriginalAudio.Path);
         if (!string.IsNullOrWhiteSpace(ImportedADTranscript?.Path)) imported.Add(ImportedADTranscript.Path);

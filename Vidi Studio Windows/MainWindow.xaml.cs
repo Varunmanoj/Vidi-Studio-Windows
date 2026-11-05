@@ -73,6 +73,7 @@ public sealed partial class MainWindow : Window
         onDeviceNarrator = new OnDeviceNarrator(Model.Settings, Model.Engine);
         onDeviceNarrator.Failed += message => Model.ReportStatus(message);
         InitializeComponent();
+        InitializeLanguageFilters();
         InitializeInspectorSections();
         var projectSettingsContext = new MenuFlyout();
         var projectSettingsItem = new MenuFlyoutItem { Text = "Open Project Settings…", Tag = "project-settings" };
@@ -82,6 +83,7 @@ public sealed partial class MainWindow : Window
         EditorWorkspace.ContextFlyout = projectSettingsContext;
 
         InitializeSummaryOriginOptions();
+        SummaryProvenance.SelectionChanged += (_, _) => UpdateLanguageControlStates();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         Views.WindowAppearance.ApplyMaterial(this);
@@ -588,6 +590,7 @@ public sealed partial class MainWindow : Window
             SetSummaryEditMode(false);
         }
         RenderSection();
+        RefreshLanguagePanel();
         UpdateSectionOverlay(Model.IsAnalyzing);
     }
     private void RenderTimelineThumbnails(StudioProject project)
@@ -933,9 +936,9 @@ public sealed partial class MainWindow : Window
             await ShowSettingsSectionAsync(3);
             return;
         }
-        if (command is "analyze" or "transcribe" or "generate-summary" or "generate-ad-cues")
-            if (!await Confirm("Generate content", "This replaces existing content for the selected stages and may remove superseded narration or exports. Manual edits in those stages will be replaced. Continue?")) return;
-        await Model.RunAsync(command);
+        var sources = await ChooseLanguageSourcesAsync(command);
+        if (sources == null) return;
+        await Model.RunAsync(command, sources);
     }
     private void Cancel_Click(object sender, RoutedEventArgs e) => Model.Cancel();
     private async void RenameProjectTitle_Click(object sender, RoutedEventArgs e)
@@ -1352,6 +1355,7 @@ public sealed partial class MainWindow : Window
     }
     private async void Edit_Click(object sender, RoutedEventArgs e)
     {
+        if (!editMode || Model.Busy) return;
         if ((sender as FrameworkElement)?.Tag is Segment tagged)
         {
             await EditSegment(tagged);
@@ -1370,7 +1374,7 @@ public sealed partial class MainWindow : Window
     }
     private async Task EditSegment(Segment? existing, string? initialText = null)
     {
-        if (Model.Project is not { } p) return;
+        if ((existing != null && !editMode) || Model.Busy || Section.SelectedIndex is not (0 or 2 or 4) || Model.Project is not { } p) return;
         var isDescription = existing?.IsDescription ?? (Section.SelectedIndex != 0);
         if (isDescription && p.Transcript.Count == 0)
         {
@@ -1733,7 +1737,7 @@ public sealed partial class MainWindow : Window
         if (flags.Contains("--regenerate-all"))
         {
             if (Model.Project.HasNarrationAudio && !await Confirm("Regenerate all AD audio?",
-                $"All generated narration audio will be replaced by newly generated audio for every Audio Description segment using the currently selected voice: {Model.CurrentNarrationSummary()}. This becomes the project's primary narration voice as soon as generation starts. Description text and timing will be kept. Existing audio is replaced only after each segment is generated successfully; if generation fails or is canceled, some old audio may remain. Do you want to continue?",
+                $"A new narration alternative will be created using {Model.CurrentNarrationSummary()}. Existing narration remains available. Review the result afterward to keep both, replace the selected result, or discard the new result.",
                 "Regenerate All AD Audio")) return;
         }
         else if (!await ConfirmNarrationVoiceChangeAsync()) return;
@@ -1751,17 +1755,17 @@ public sealed partial class MainWindow : Window
     }
     private async void NarrateSelected_Click(object sender, RoutedEventArgs e)
     {
-        if (Segments.SelectedItem is Segment { IsDescription: true } c)
+        if (((sender as FrameworkElement)?.Tag as Segment ?? Segments.SelectedItem as Segment) is { IsDescription: true } c)
             await SynthesizeNarrationWithConfirmationAsync(new[] { "--segment", c.Id });
     }
     private async void Rewrite_Click(object sender, RoutedEventArgs e)
     {
         if (!Model.HasApiKey) { await ShowSettingsSectionAsync(3); return; }
-        if (Segments.SelectedItem is Segment { IsDescription: true } c) await Model.RunAsync("rewrite-cue", new[] { "--segment", c.Id });
+        if (((sender as FrameworkElement)?.Tag as Segment ?? Segments.SelectedItem as Segment) is { IsDescription: true } c) await Model.RunAsync("rewrite-cue", new[] { "--segment", c.Id });
     }
     private void PreviewNarration_Click(object sender, RoutedEventArgs e)
     {
-        if (Segments.SelectedItem is Segment { Audio: { } audio } segment && Model.Project is { } p)
+        if (((sender as FrameworkElement)?.Tag as Segment ?? Segments.SelectedItem as Segment) is { Audio: { } audio } segment && Model.Project is { } p)
         {
             StopSegmentPreview();
             previewingSegment = segment;
@@ -1771,27 +1775,25 @@ public sealed partial class MainWindow : Window
         }
     }
     private async void DeleteNarration_Click(object sender, RoutedEventArgs e)
-    { if (Segments.SelectedItem is Segment { IsDescription: true } c && await Confirm("Delete narration", "Remove this segment's saved audio?", "Delete")) { StopSegmentPreview(); await Model.RunAsync("delete-segment-audio", new[] { "--segment", c.Id }); } }
+    { if (((sender as FrameworkElement)?.Tag as Segment ?? Segments.SelectedItem as Segment) is { IsDescription: true } c && await Confirm("Delete narration", "Remove this segment's saved audio?", "Delete")) { StopSegmentPreview(); await Model.RunAsync("delete-segment-audio", new[] { "--segment", c.Id }); } }
     private async void Ocr_Click(object sender, RoutedEventArgs e)
     {
         if (!Model.HasApiKey) { await ShowSettingsSectionAsync(3); return; }
         video.Pause();
         var result = await Model.RunAsync("capture-frame", new[] { "--timestamp", Position.ToString(CultureInfo.InvariantCulture) });
         var evt = result.FirstOrDefault(x => x.Data.TryGetProperty("screenText", out _));
-        if (evt != null) { Section.SelectedIndex = 2; await EditSegment(null, evt.Data.GetProperty("screenText").GetString()); }
+        if (evt != null) {
+            var text = evt.Data.GetProperty("screenText").GetString() ?? "";
+            if (Section.SelectedIndex is 0 or 2 or 4) { Section.SelectedIndex = 2; await EditSegment(null, text); }
+            else await ShowDialogAsync(new ContentDialog { Title = "Screen Text", Content = new TextBox { Text = text, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap }, CloseButtonText = "Close" }, 600, 450);
+        }
     }
     private async void DeleteGenerated_Click(object sender, RoutedEventArgs e)
     {
         if (Model.Project is not { IntegrityPlaceholder: false } || Model.Project.Integrity?.ManifestUnreadable == true) return;
-        var (dialog, boxes) = CreateDeleteGeneratedDialog();
-        if (await ShowDialogAsync(dialog, 620, 820) == ContentDialogResult.Primary)
-        {
-            var selected = boxes.Where(b => b.IsChecked == true).Select(b => (string)b.Tag).ToList();
-            if (selected.Count == 0) return;
-            StopSegmentPreview();
-            await Model.RunAsync("delete-generated", selected.SelectMany(component => new[] { "--component", component }));
-        }
+        await ShowLanguageDeletionAsync();
     }
+
     private static (ContentDialog Dialog, List<CheckBox> Boxes) CreateDeleteGeneratedDialog()
     {
         var content = new StackPanel { MinWidth = 360 };
@@ -1967,6 +1969,7 @@ public sealed partial class MainWindow : Window
             SummaryEditorBox.Focus(FocusState.Programmatic);
         }
         summaryEditMode = edit;
+        RefreshLanguagePanel();
         UpdateEmptySectionActions();
         UpdateEditorActionVisibility();
         UpdateDesktopMenuStates();
@@ -1981,7 +1984,7 @@ public sealed partial class MainWindow : Window
 
     private void SummaryPanel_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        SetSummaryEditMode(true);
+        if (summaryEditMode) SummaryEditorBox.Focus(FocusState.Programmatic);
     }
 
     private void SummaryEditorBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -1990,6 +1993,7 @@ public sealed partial class MainWindow : Window
         var original = NormalizeSummaryText(Model.Project?.Summary);
         var hasChanges = NormalizeSummaryText(SummaryEditorBox.Text) != original;
         SummaryEditNotice.Text = hasChanges ? "• Unsaved changes" : "";
+        UpdateLanguageControlStates();
     }
 
     private void UpdateSummaryWordCount()

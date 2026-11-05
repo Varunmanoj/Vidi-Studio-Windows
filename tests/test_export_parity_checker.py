@@ -25,7 +25,7 @@ class ExportParityChecker(unittest.TestCase):
             (fixture / 'engine').mkdir()
             checker = fixture / 'script/check-mac-export-parity.py'
             shutil.copy2(ROOT / 'script/check-mac-export-parity.py', checker)
-            for name in ('vidistudio_engine.py', 'youtube_audio.py', 'audio_sources.py'):
+            for name in ('vidistudio_engine.py', 'youtube_audio.py', 'audio_sources.py', 'language_results.py'):
                 shutil.copy2(ROOT / 'engine' / name, fixture / 'engine' / name)
             if mutate:
                 downloader = fixture / 'engine/youtube_audio.py'
@@ -38,7 +38,7 @@ class ExportParityChecker(unittest.TestCase):
     def test_reviewed_platform_downloaders_pass(self):
         result = self.check_fixture()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('53 shared export/progress functions', result.stdout)
+        self.assertIn('54 shared export/progress functions', result.stdout)
 
     def test_changed_downloader_retry_behavior_is_rejected(self):
         result = self.check_fixture(mutate=True)

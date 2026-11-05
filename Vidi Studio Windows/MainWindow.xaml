@@ -116,7 +116,7 @@
    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <StackPanel Spacing="4"><TextBlock Text="All Projects" Style="{ThemeResource TitleLargeTextBlockStyle}"/><TextBlock x:Name="ProjectCount" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-     <ComboBox x:Name="GalleryFilter" SelectedIndex="0" SelectionChanged="GalleryFilter_Changed" AutomationProperties.Name="Project source"><ComboBoxItem Content="All projects"/><ComboBoxItem Content="Local video"/><ComboBoxItem Content="YouTube"/></ComboBox>
+     <ComboBox x:Name="GalleryFilter" SelectedIndex="0" SelectionChanged="GalleryFilter_Changed" AutomationProperties.Name="Project source"><ComboBoxItem Content="All projects"/><ComboBoxItem Content="Local video"/><ComboBoxItem Content="YouTube"/></ComboBox><ComboBox x:Name="GalleryLanguageFilter" Header="Language filter" DisplayMemberPath="Title" SelectionChanged="LanguageFilter_Changed"/>
      <Button Content="&#xE8FD;" FontFamily="Segoe Fluent Icons" Click="GalleryLayout_Click" AutomationProperties.Name="Switch list and grid view"/>
     </StackPanel>
    </Grid>
@@ -157,7 +157,7 @@
     <SplitView.Pane>
     <Grid x:Name="InspectorPanel" Background="{ThemeResource LayerFillColorAltBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
      <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-     <ScrollViewer x:Name="InspectorScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" VerticalScrollMode="Enabled" HorizontalScrollMode="Disabled" AutomationProperties.Name="Editor inspector"><StackPanel Padding="18,22" Spacing="18" HorizontalAlignment="Stretch">
+     <ScrollViewer x:Name="InspectorScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" VerticalScrollMode="Enabled" HorizontalScrollMode="Disabled" AutomationProperties.Name="Editor inspector"><StackPanel Padding="18,22" Spacing="18" HorizontalAlignment="Stretch"><StackPanel x:Name="LanguageResultsPanel" Spacing="10"/>
       <StackPanel Spacing="8">
        <Grid>
         <TextBlock Text="Project Information" FontWeight="SemiBold"/>
@@ -205,7 +205,7 @@
     <Grid x:Name="LibraryPanel" Padding="12" RowSpacing="10" Background="{ThemeResource LayerFillColorAltBrush}">
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
      <TextBox x:Name="Search" PlaceholderText="Search projects" TextChanged="Search_Changed" AutomationProperties.Name="Search projects"/>
-     <ComboBox x:Name="SourceFilter" Grid.Row="1" SelectedIndex="0" SelectionChanged="Filter_Changed" HorizontalAlignment="Stretch" AutomationProperties.Name="Project source filter"><ComboBoxItem Content="All projects"/><ComboBoxItem Content="Local videos"/><ComboBoxItem Content="YouTube videos"/></ComboBox>
+     <StackPanel Grid.Row="1" Spacing="6"><ComboBox x:Name="SourceFilter" SelectedIndex="0" SelectionChanged="Filter_Changed" HorizontalAlignment="Stretch" AutomationProperties.Name="Project source filter"><ComboBoxItem Content="All projects"/><ComboBoxItem Content="Local videos"/><ComboBoxItem Content="YouTube videos"/></ComboBox><ComboBox x:Name="ProjectLanguageFilter" Header="Language filter" DisplayMemberPath="Title" SelectionChanged="LanguageFilter_Changed"/></StackPanel>
      <Grid Grid.Row="2"><GridView x:Name="ProjectGrid" Visibility="Collapsed" ItemsSource="{x:Bind Model.Projects}" ItemTemplate="{StaticResource EditorProjectCard}" AutomationProperties.Name="Projects grid" SelectionChanged="ProjectGrid_Changed" ContextRequested="ProjectContext_Requested"/><ListView x:Name="ProjectList" ItemsSource="{x:Bind Model.Projects}" SelectionChanged="Project_Changed" ContextRequested="ProjectContext_Requested" AutomationProperties.Name="Projects"/></Grid>
      <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8"><Button Content="Rename" Click="Rename_Click"/><Button x:Name="EditorRemoveProjectButton" Content="&#xE738;" FontFamily="Segoe Fluent Icons" Click="RemoveListedProject_Click" ToolTipService.ToolTip="Remove the selected project from the list and keep its files" AutomationProperties.Name="Remove selected project from list"/><Button x:Name="EditorDeleteProjectButton" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Click="DeleteListedProject_Click" ToolTipService.ToolTip="Move the selected project and its files to the Recycle Bin after confirmation" AutomationProperties.Name="Delete selected project"/></StackPanel>
     </Grid>

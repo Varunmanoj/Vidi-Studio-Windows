@@ -1,10 +1,12 @@
 using Vidi_Studio_Windows.Services;
+using Vidi_Studio_Windows.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using Vidi_Studio_Windows.ViewModels;
 using Windows.UI;
@@ -35,18 +37,31 @@ public sealed class ExportDialog : ContentDialog
     private string videoFormat = "mkv", audioFormat = "wav", lastTarget = "";
     private int videoAudio = 1, videoCaptions, audioChoice = 1, webAudio = 1, webCaptions, textContent, textFormat;
     private int adSource;
+    private readonly HashSet<string> exportLanguages = new();
+    private readonly HashSet<string> replacementLanguages = new();
+    private readonly Dictionary<string, Dictionary<string, string>> resultSelections = new();
+
+
+    private StudioProject? ExportProject {
+        get {
+            if (model.Project is not { } project) return null;
+            var code = exportLanguages.OrderBy(v => v).FirstOrDefault() ?? project.SelectedLanguage;
+            return project.WithLanguageResults(code, resultSelections.TryGetValue(code, out var chosen) ? chosen : null);
+        }
+    }
 
     public ExportDialog(StudioViewModel model, MainWindow? owner = null)
     {
         this.model = model;
+        exportLanguages.Add(ExportProject?.SelectedLanguage ?? "auto");
         this.owner = owner;
-        var ready = model.Project?.HasCompleteExportNarration == true;
-        var imported = model.Project?.ImportedAudioDescription != null;
+        var ready = ExportProject?.HasCompleteExportNarration == true;
+        var imported = ExportProject?.ImportedAudioDescription != null;
         adSource = imported && !ready ? 1 : 0;
         videoAudio = webAudio = ready || imported ? 1 : 0;
-        videoCaptions = !ready && !imported && model.Project?.CanExportText("transcript") == true ? 1 : 0;
-        audioChoice = model.Project?.IsYouTube == true ? 0 : ready || imported ? 1 : 0;
-        textContent = Array.FindIndex(TextIds, id => model.Project?.CanExportText(id) == true);
+        videoCaptions = !ready && !imported && ExportProject?.CanExportText("transcript") == true ? 1 : 0;
+        audioChoice = ExportProject?.IsYouTube == true ? 0 : ready || imported ? 1 : 0;
+        textContent = Array.FindIndex(TextIds, id => ExportProject?.CanExportText(id) == true);
         if (textContent < 0) textContent = 0;
         Title = "Export";
         Width = 950; MinWidth = 620; MaxWidth = 950;
@@ -68,7 +83,7 @@ public sealed class ExportDialog : ContentDialog
             row.Children.Add(new TextBlock { Text = Sections[i], VerticalAlignment = VerticalAlignment.Center });
             sidebar.Items.Add(new ListViewItem { Content = row, MinHeight = 46,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                IsEnabled = model.Project?.IsYouTube != true || i is 1 or 2 });
+                IsEnabled = ExportProject?.IsYouTube != true || i is 1 or 2 });
         }
         var scroll = new ScrollViewer { Content = page, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         Grid.SetColumn(scroll, 1); shell.Children.Add(scroll);
@@ -77,10 +92,25 @@ public sealed class ExportDialog : ContentDialog
         cancelButton.Click += (_, _) => Hide();
         saveButton.Click += (_, _) =>
         {
-            if (!CanSave()) return;
+            if (!CanSave() || exportLanguages.Count == 0) return;
             var (command, arguments) = BuildRequest();
-            if (replaceExisting.IsChecked == true) arguments.Add("--replace-existing");
-            Closed += async (_, _) => await model.RunAsync(command, arguments);
+            if (owner != null && ExportProject is { } project) {
+                var options = new Dictionary<string, object>();
+                for (var index = 0; index < arguments.Count; index++) {
+                    var key = arguments[index][2..].Replace('-', '_');
+                    if (index + 1 < arguments.Count && !arguments[index + 1].StartsWith("--", StringComparison.Ordinal)) options[key] = arguments[++index];
+                    else options[key] = true;
+                }
+                var jobs = exportLanguages.OrderBy(v => v).Select(code => {
+                    var ids = new Dictionary<string, string>();
+                    foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
+                        var rid = resultSelections.TryGetValue(code, out var selected) && selected.TryGetValue(kind, out var choice) ? choice : project.ActiveResultID(kind, code);
+                        if (!string.IsNullOrEmpty(rid)) ids[kind] = rid;
+                    }
+                    return new { language = code, resultIDs = ids, command, options, replaceExisting = replacementLanguages.Contains(code) };
+                }).ToArray();
+                Closed += async (_, _) => await owner.RunResultRequestAsync("export-batch", new { jobs });
+            } else Closed += async (_, _) => await model.RunAsync(command, arguments);
             Hide();
         };
         replaceExisting.Checked += (_, _) => UpdatePreview();
@@ -102,7 +132,7 @@ public sealed class ExportDialog : ContentDialog
             shell.ColumnDefinitions[0].Width = new GridLength(width < 780 ? 170 : 210);
         };
         sidebar.SelectionChanged += (_, _) => BuildPage();
-        sidebar.SelectedIndex = model.Project?.IsYouTube == true ? 1 : 0;
+        sidebar.SelectedIndex = ExportProject?.IsYouTube == true ? 1 : 0;
     }
 
 #if DEBUG
@@ -128,6 +158,31 @@ public sealed class ExportDialog : ContentDialog
     }
 #endif
 
+    private void AddLanguageSelections()
+    {
+        if (ExportProject is not { } project) return;
+        page.Children.Add(new TextBlock { Text = "Languages and Saved Results", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        foreach (var code in project.SavedResults.Select(r => r.Language).Append(project.SelectedLanguage).Distinct().OrderBy(v => v)) {
+            var toggle = new CheckBox { Content = OutputLanguage.Label(code), IsChecked = exportLanguages.Contains(code) };
+            var fields = new StackPanel { Spacing = 8, Visibility = exportLanguages.Contains(code) ? Visibility.Visible : Visibility.Collapsed };
+            toggle.Checked += (_, _) => { exportLanguages.Add(code); fields.Visibility = Visibility.Visible; UpdatePreview(); };
+            toggle.Unchecked += (_, _) => { exportLanguages.Remove(code); fields.Visibility = Visibility.Collapsed; UpdatePreview(); };
+            page.Children.Add(toggle); page.Children.Add(fields);
+            foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
+                var rows = project.SavedResults.Where(r => r.Kind == kind && r.Language == code && r.State == "saved").ToList();
+                if (rows.Count == 0) continue;
+                if (!resultSelections.TryGetValue(code, out var selected)) resultSelections[code] = selected = new();
+                var rid = selected.TryGetValue(kind, out var chosen) ? chosen : project.ActiveResultID(kind, code);
+                var picker = new ComboBox { Header = LanguageResult.KindTitle(kind), ItemsSource = rows, DisplayMemberPath = "Title" };
+                picker.SelectedItem = rows.FirstOrDefault(r => r.Id == rid) ?? rows[0];
+                picker.SelectionChanged += (_, _) => { if (picker.SelectedItem is LanguageResult value) resultSelections[code][kind] = value.Id; };
+                fields.Children.Add(picker);
+            }
+            var replace = new CheckBox { Content = "Replace this language’s matching export if it exists", IsChecked = replacementLanguages.Contains(code) };
+            replace.Checked += (_, _) => replacementLanguages.Add(code); replace.Unchecked += (_, _) => replacementLanguages.Remove(code); fields.Children.Add(replace);
+        }
+    }
+
     private void BuildPage()
     {
         page.Children.Clear();
@@ -136,9 +191,10 @@ public sealed class ExportDialog : ContentDialog
         var heading = new StackPanel { Spacing = 2 };
         heading.Children.Add(new TextBlock { Text = Sections[section], FontSize = 24,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-        heading.Children.Add(new TextBlock { Text = model.Project?.Name ?? "No project selected", Opacity = .6,
+        heading.Children.Add(new TextBlock { Text = ExportProject?.Name ?? "No project selected", Opacity = .6,
             TextTrimming = TextTrimming.CharacterEllipsis });
         page.Children.Add(heading);
+        AddLanguageSelections();
         switch (section)
         {
             case 0: BuildVideo(); break;
@@ -191,7 +247,7 @@ public sealed class ExportDialog : ContentDialog
 
     private void BuildAudio()
     {
-        var youtube = model.Project?.IsYouTube == true;
+        var youtube = ExportProject?.IsYouTube == true;
         AddFormat("Audio file format", new[] { "wav", "mp3", "m4a" }, audioFormat, value => audioFormat = value);
         var labels = youtube ? new[] { "YouTube audio only", "Narration audio only", "YouTube audio with narration" } :
             new[] { "Original video audio", "Final audio with Audio Description", "Narration audio only" };
@@ -205,7 +261,7 @@ public sealed class ExportDialog : ContentDialog
         var form = new StackPanel { Spacing = 12 };
         var content = new ComboBox { Header = "Content", HorizontalAlignment = HorizontalAlignment.Stretch };
         for (var index = 0; index < TextLabels.Length; index++) content.Items.Add(new ComboBoxItem
-        { Content = TextLabels[index], IsEnabled = model.Project?.CanExportText(TextIds[index]) == true });
+        { Content = TextLabels[index], IsEnabled = ExportProject?.CanExportText(TextIds[index]) == true });
         content.SelectedIndex = textContent;
         var format = new ComboBox { Header = "Format", HorizontalAlignment = HorizontalAlignment.Stretch };
         void RefreshFormats()
@@ -241,16 +297,16 @@ public sealed class ExportDialog : ContentDialog
         page.Children.Add(Card(picker));
     }
 
-    private bool CanUseVideoAudio(int choice) => model.Project is { HasLocalSource: true } project &&
+    private bool CanUseVideoAudio(int choice) => ExportProject is { HasLocalSource: true } project &&
         (choice == 0 || (adSource == 1 ? project.ImportedAudioDescription != null : project.HasCompleteExportNarration));
-    private bool CanUseAudio(int choice) => model.Project is { } project && (project.IsYouTube
+    private bool CanUseAudio(int choice) => ExportProject is { } project && (project.IsYouTube
         ? choice == 0 || (choice == 2 && project.Duration > 0 && project.ImportedAudioDescription != null) || project.HasCompleteExportNarration
         : choice == 0 ? project.HasLocalSource && project.HasAudio
         : choice == 1 ? project.HasLocalSource && (adSource == 1 ? project.ImportedAudioDescription != null : project.HasCompleteExportNarration)
         : project.HasCompleteExportNarration);
     private void AddAdSource()
     {
-        if (model.Project is not { } project || project.ImportedAudioDescription == null) return;
+        if (ExportProject is not { } project || project.ImportedAudioDescription == null) return;
         if (!project.HasCompleteExportNarration)
         {
             page.Children.Add(new TextBlock
@@ -272,7 +328,7 @@ public sealed class ExportDialog : ContentDialog
         page.Children.Add(Card(picker));
     }
 
-    private bool CanUseCaptions(int choice) => model.Project is { } project && (choice switch
+    private bool CanUseCaptions(int choice) => ExportProject is { } project && (choice switch
     {
         0 => true,
         1 or 2 => project.CanExportText("transcript"),
@@ -287,11 +343,11 @@ public sealed class ExportDialog : ContentDialog
         return model.OnlineReason(request.Command, request.Arguments) == null;
     }
     private void ConnectivityChanged(object? sender, EventArgs e) => UpdatePreview();
-    private bool CanSave() => ConnectionReady() && model.Idle && model.Project != null && (sidebar.SelectedIndex switch
+    private bool CanSave() => ConnectionReady() && model.Idle && ExportProject != null && (sidebar.SelectedIndex switch
     {
         0 => CanUseVideoAudio(videoAudio) && CanUseCaptions(videoCaptions) && (videoAudio != 0 || videoCaptions != 0),
         1 => CanUseAudio(audioChoice),
-        2 => model.Project.CanExportText(TextIds[textContent]),
+        2 => ExportProject.CanExportText(TextIds[textContent]),
         3 => CanUseVideoAudio(webAudio) && CanUseCaptions(webCaptions),
         _ => false
     }) && (replaceExisting.Visibility != Visibility.Visible || replaceExisting.IsChecked == true);
@@ -299,7 +355,7 @@ public sealed class ExportDialog : ContentDialog
     private void UpdatePreview()
     {
         if (sidebar.SelectedIndex < 0) return;
-        var project = model.Project;
+        var project = ExportProject;
         var section = sidebar.SelectedIndex;
         explanation.Text = section switch
         {
@@ -358,12 +414,12 @@ public sealed class ExportDialog : ContentDialog
                 if (sidebar.SelectedIndex == 0 && command != "export-original-video") args.AddRange(new[] { "--media-format", videoFormat });
                 break;
             case 1:
-                command = model.Project?.IsYouTube == true ? audioChoice switch
+                command = ExportProject?.IsYouTube == true ? audioChoice switch
                 { 0 => "export-youtube-original-audio", 1 => "export-audio", _ => "export-youtube-described-audio" }
                 : audioChoice == 1 && adSource == 1 ? "combine-imported-audio"
                 : audioChoice switch { 0 => "export-original-audio", 1 => "export-described-audio", _ => "export-audio" };
                 if (audioChoice == 1 && adSource == 1) args.Add("--audio-only");
-                if (model.Project?.IsYouTube == true && audioChoice == 2) args.AddRange(new[] { "--ad-source", adSource == 1 ? "imported" : "generated" });
+                if (ExportProject?.IsYouTube == true && audioChoice == 2) args.AddRange(new[] { "--ad-source", adSource == 1 ? "imported" : "generated" });
                 args.AddRange(new[] { "--media-format", audioFormat });
                 break;
             case 2:
@@ -378,7 +434,7 @@ public sealed class ExportDialog : ContentDialog
 
     private string TargetRelativePath()
     {
-        if (model.Project is not { } project || sidebar.SelectedIndex < 0) return "";
+        if (ExportProject is not { } project || sidebar.SelectedIndex < 0) return "";
         var name = Regex.Replace(project.Name.Trim(), "[<>:\"/\\\\|?*\\x00-\\x1F\\x7F]+", "-");
         name = Regex.Replace(Regex.Replace(name, @"\s*-\s*", " - "), @"\s+", " ").Trim(' ', '.', '-');
         if (name.Length > 100) name = name[..100].Trim(' ', '.', '-');

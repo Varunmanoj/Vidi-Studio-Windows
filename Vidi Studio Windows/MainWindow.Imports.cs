@@ -60,14 +60,9 @@ public sealed partial class MainWindow
             if (selection.SummaryPath != null && !string.IsNullOrWhiteSpace(project.Summary)) replacements.Add("Summary");
             if (selection.ADTranscriptPath != null && (project.Cues.Count > 0 || project.ImportedADTranscript != null)) replacements.Add("AD transcript");
             if (selection.ADAudioPath != null && project.ImportedAudioDescription != null) replacements.Add("AD audio");
-            if (replacements.Count > 0)
-            {
-                if (!await Confirm("Replace existing assets?", "This will replace: " + string.Join(", ", replacements) + ". Files are validated before replacement.", "Replace and Import")) return;
-                replace = new[] { "--replace-existing" };
-            }
             async Task RunImport(string command, IEnumerable<string> arguments)
             {
-                if (await Model.RunAsync(command, arguments) is not { Count: > 0 })
+                if (await Model.RunAsync(command, arguments.Concat(new[] { "--language", selection.Language ?? project.SelectedLanguage })) is not { Count: > 0 })
                 {
                     if (Model.Status.StartsWith("Cancelled", StringComparison.Ordinal)) throw new OperationCanceledException();
                     throw new IOException(Model.Status);
@@ -159,7 +154,7 @@ public sealed partial class MainWindow
         var file = await picker.PickSingleFileAsync();
         if (file == null) return;
         var replace = segment.Audio != null;
-        if (replace && !await Confirm("Replace narration audio?", "The existing narration file is replaced after the imported audio passes validation.", "Replace")) return;
+        if (replace && !await Confirm("Replace narration audio?", "The imported audio becomes an alternative after validation. Review it afterward to keep both, replace the selected result, or discard the new result.", "Replace")) return;
         try
         {
             var args = new List<string> { "--input", file.Path, "--segment", segment.Id };

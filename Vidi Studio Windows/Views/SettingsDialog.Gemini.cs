@@ -121,35 +121,21 @@ public sealed partial class SettingsDialog
 
     private void BuildOutputLanguages(StackPanel panel)
     {
-        var defaultsPath = Path.Combine(AppContext.BaseDirectory, "engine", "ai-defaults.json");
-        var languages = JsonNode.Parse(File.ReadAllText(defaultsPath))?["outputLanguageOptions"]?.AsObject();
-        var options = new List<GeminiModelOption> { new("auto", "Auto (detect from video)") };
-        if (languages != null)
-            options.AddRange(languages.Select(item => new GeminiModelOption(item.Key, SettingsStore.GetString(item.Value)))
-                .OrderBy(item => item.Label, StringComparer.CurrentCultureIgnoreCase));
-        if (draft["outputLanguages"] is not JsonObject) draft["outputLanguages"] = new JsonObject();
-        var saved = draft["outputLanguages"]!.AsObject();
-        foreach (var (stage, title) in new[] { ("transcript", "Transcript"), ("summary", "Summary"), ("audio_descriptions", "Descriptions") })
-        {
-            var group = AddGeminiGroup(panel, title);
-            var selected = SettingsStore.GetString(saved[stage], "auto");
-            var field = new ComboBox { Header = "Output language", ItemsSource = options,
-                SelectedItem = options.FirstOrDefault(item => item.Id == selected) ?? options[0],
-                HorizontalAlignment = HorizontalAlignment.Stretch };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(field, title + " output language");
-            ToolTipService.SetToolTip(field, "Auto detects from the video. Choose a language to generate this section in that language.");
-            field.SelectionChanged += (_, _) =>
-            {
-                if (field.SelectedItem is not GeminiModelOption choice) return;
-                saved[stage] = choice.Id;
-                model.Settings.Data["outputLanguages"] = saved.DeepClone();
+        var group = AddGeminiGroup(panel, "Language");
+        var legacy = draft["outputLanguages"] as JsonObject;
+        var existing = new[] { "transcript", "summary", "audio_descriptions" }.Select(k => SettingsStore.GetString(legacy?[k], "auto")).Distinct().ToList();
+        var selected = SettingsStore.GetString(draft["defaultOutputLanguage"], existing.Count == 1 ? existing[0] : "auto");
+        var field = new ComboBox { Header = "Default Language for New Projects", DisplayMemberPath = "Title", ItemsSource = Vidi_Studio_Windows.Models.OutputLanguage.Options };
+        field.SelectedItem = Vidi_Studio_Windows.Models.OutputLanguage.Options.FirstOrDefault(v => v.Id == selected);
+        field.SelectionChanged += (_, _) => {
+            if (field.SelectedItem is Vidi_Studio_Windows.Models.OutputLanguage choice) {
+                draft["defaultOutputLanguage"] = choice.Id;
+                model.Settings.Data["defaultOutputLanguage"] = choice.Id;
                 model.Settings.Save();
-            };
-            group.Children.Add(field);
-            AddGeminiNote(group, stage == "transcript"
-                ? "Auto preserves every spoken language and original script. A chosen language translates dialogue while keeping speech timing. With a dedicated speech model selected, translation uses the YouTube video model for local and YouTube projects, including imported audio."
-                : "Auto uses the primary language detected from the video; if none is identifiable, it uses English. Choose a language to generate this section in that language.");
-        }
+            }
+        };
+        group.Children.Add(field);
+        AddGeminiNote(group, "Each project has one shared language picker in the right inspector. Existing projects start in Auto; Assign Language preserves their text and audio.");
     }
 
     private void BuildGemini(StackPanel panel)

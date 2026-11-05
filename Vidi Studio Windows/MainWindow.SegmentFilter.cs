@@ -40,6 +40,8 @@ public sealed partial class MainWindow
         var origins = rows.Select(segment => segment.Origin).Distinct().ToList();
         var boxes = new List<CheckBox>();
         var panel = new StackPanel { Spacing = 10, MinWidth = 360 };
+        activeLanguagePanelHost = new ContentControl { Content = BuildLanguageResultsPanel(project) };
+        panel.Children.Add(activeLanguagePanelHost);
         panel.Children.Add(new TextBlock
         {
             Text = "Choose which rows are visible. Leave every origin unchecked to show all origins. Filters do not change project content.",
@@ -81,7 +83,9 @@ public sealed partial class MainWindow
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary
         };
-        var result = await ShowDialogAsync(dialog, 540, 520);
+        ContentDialogResult result;
+        try { result = await ShowDialogAsync(dialog, 540, 520); }
+        finally { activeLanguagePanelHost = null; RefreshLanguagePanel(); }
         if (result == ContentDialogResult.None) return;
         if (result == ContentDialogResult.Secondary) segmentFilter.Clear();
         else

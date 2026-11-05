@@ -33,6 +33,10 @@
         {
           "id": "before-sharing",
           "title": "Before sharing"
+        },
+        {
+          "id": "section-language-targets",
+          "title": "Choose a target language for each section"
         }
       ]
     },
@@ -111,6 +115,14 @@
         {
           "id": "inspector-sections-and-import-reports",
           "title": "Inspector sections and import reports"
+        },
+        {
+          "id": "language-saved-results",
+          "title": "Language and saved results"
+        },
+        {
+          "id": "section-language-targets",
+          "title": "Choose a target language for each section"
         }
       ]
     },
@@ -157,6 +169,14 @@
         {
           "id": "identify-and-choose-audio-sources",
           "title": "Identify and choose audio sources"
+        },
+        {
+          "id": "language-saved-results",
+          "title": "Language and saved results"
+        },
+        {
+          "id": "section-language-targets",
+          "title": "Choose a target language for each section"
         }
       ]
     },
@@ -191,6 +211,14 @@
         {
           "id": "re-analyze-a-section",
           "title": "Re-analyze a section"
+        },
+        {
+          "id": "language-saved-results",
+          "title": "Language and saved results"
+        },
+        {
+          "id": "section-language-targets",
+          "title": "Choose a target language for each section"
         }
       ]
     },
@@ -221,6 +249,14 @@
         {
           "id": "choose-transcription-audio-for-youtube-projects",
           "title": "Choose transcription audio for YouTube projects"
+        },
+        {
+          "id": "language-saved-results",
+          "title": "Language and saved results"
+        },
+        {
+          "id": "section-language-targets",
+          "title": "Choose a target language for each section"
         }
       ]
     },
@@ -259,6 +295,14 @@
         {
           "id": "choose-the-original-soundtrack-heard-during-youtube-playback",
           "title": "Choose the original soundtrack heard during YouTube playback"
+        },
+        {
+          "id": "language-saved-results",
+          "title": "Language and saved results"
+        },
+        {
+          "id": "section-language-targets",
+          "title": "Choose a target language for each section"
         }
       ]
     },
@@ -321,6 +365,10 @@
         {
           "id": "choose-and-check-youtube-audio",
           "title": "Choose and check YouTube audio"
+        },
+        {
+          "id": "language-saved-results",
+          "title": "Language and saved results"
         }
       ]
     },
@@ -379,6 +427,14 @@
         {
           "id": "choose-a-project-and-manage-its-sources",
           "title": "Choose a project and manage its sources"
+        },
+        {
+          "id": "language-saved-results",
+          "title": "Language and saved results"
+        },
+        {
+          "id": "section-language-targets",
+          "title": "Choose a target language for each section"
         }
       ]
     },
@@ -507,6 +563,10 @@
         {
           "id": "deleting-a-segment-reports-a-timing-error",
           "title": "Deleting a segment reports a timing error"
+        },
+        {
+          "id": "section-language-targets",
+          "title": "Language controls and Edit mode"
         }
       ]
     },
@@ -549,6 +609,10 @@
         {
           "id": "api-cache-lifetime",
           "title": "API cache lifetime"
+        },
+        {
+          "id": "language-saved-results",
+          "title": "Language and saved results"
         }
       ]
     }

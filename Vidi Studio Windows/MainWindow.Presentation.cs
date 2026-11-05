@@ -421,6 +421,7 @@ public sealed partial class MainWindow
             return;
         }
         editMode = !editMode; SetEditModeButton(editMode);
+        RefreshLanguagePanel();
         EditToolbar.Visibility = editMode ? Visibility.Visible : Visibility.Collapsed;
         Segments.SelectionMode = editMode ? ListViewSelectionMode.Multiple : ListViewSelectionMode.None;
         UpdateBulkActionState();
@@ -583,6 +584,7 @@ public sealed partial class MainWindow
     }
     private async void UpdateInspector(StudioProject p)
     {
+        RefreshLanguagePanel();
         UpdateAudioSourcePanel();
         ProjectDetails.Children.Clear(); VideoDetails.Children.Clear(); YouTubeInspectorDetails.Children.Clear(); InspectorExports.Children.Clear();
         YouTubeDetailsSection.Visibility = p.IsYouTube ? Visibility.Visible : Visibility.Collapsed;
@@ -644,12 +646,22 @@ public sealed partial class MainWindow
     private void PopulateExportGroups(StackPanel target, StudioProject project)
     {
         target.Children.Clear();
+        var languageFilter = LanguagePicker("Export language filter", exportLanguageFilter, true);
+        languageFilter.SelectionChanged += (_, _) => {
+            if (languageFilter.SelectedItem is OutputLanguage choice) { exportLanguageFilter = choice.Id; PopulateExportGroups(target, project); }
+        };
+        target.Children.Add(languageFilter);
+        var resultChoices = new[] { new { Id = "all", Title = "All Saved Results" } }.Concat(project.SavedResults.Where(r => exportLanguageFilter == "all" || r.Language == exportLanguageFilter).Select(r => new { r.Id, Title = OutputLanguage.Label(r.Language) + " · " + LanguageResult.KindTitle(r.Kind) + " · " + r.Title })).ToList();
+        var resultFilter = new ComboBox { Header = "Saved result filter", ItemsSource = resultChoices, DisplayMemberPath = "Title", SelectedItem = resultChoices.FirstOrDefault(v => v.Id == exportResultFilter) ?? resultChoices[0] };
+        resultFilter.SelectionChanged += (_, _) => { var chosen = resultChoices.FirstOrDefault(v => ReferenceEquals(v, resultFilter.SelectedItem)); exportResultFilter = chosen?.Id ?? "all"; PopulateExportGroups(target, project); };
+        target.Children.Add(resultFilter);
+
         if (project.Exports.Count == 0)
         {
             target.Children.Add(new TextBlock { Text = "No exports yet", Opacity = .65 });
             return;
         }
-        var groups = project.Exports.Select(relative => (Relative: relative, Category: ExportCategoryFor(project, relative)))
+        var groups = project.Exports.Where(path => exportLanguageFilter == "all" || (project.ExportResults.TryGetValue(path, out var provenance) ? provenance.Language : "auto") == exportLanguageFilter).Where(path => exportResultFilter == "all" || project.ExportResults.TryGetValue(path, out var resultProvenance) && resultProvenance.ResultIDs.Values.Contains(exportResultFilter)).Select(relative => (Relative: relative, Category: ExportCategoryFor(project, relative)))
             .GroupBy(item => item.Category.Name).OrderBy(group => group.First().Category.Order);
         foreach (var group in groups)
         {

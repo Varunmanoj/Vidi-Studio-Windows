@@ -1754,8 +1754,47 @@ public sealed partial class MainWindow
         }
         return null;
     }
+    private void VerifyLanguageInspectorForSmokeTest()
+    {
+        if (Model.Project is not { } project) throw new InvalidOperationException("Language controls require a project.");
+        var previousSection = Section.SelectedIndex; var previousEdit = editMode; var previousSummaryEdit = summaryEditMode;
+        try {
+            summaryEditMode = false;
+            foreach (var (tab, kind) in new[] { (0, "transcript"), (1, "summary"), (2, "descriptions") }) {
+                Section.SelectedIndex = tab; editMode = false;
+                var panel = BuildLanguageResultsPanel(project);
+                var headers = panel.Children.OfType<ComboBox>().Select(c => c.Header?.ToString()).ToArray();
+                foreach (var other in new[] { "transcript", "summary", "descriptions" }.Where(k => k != kind))
+                    if (headers.Contains(Models.LanguageResult.KindTitle(other) + " Language")) throw new InvalidOperationException("Inspector leaked language controls from another tab.");
+                if (languageControls.Any(pair => pair.requiresEdit && pair.control.IsEnabled)) throw new InvalidOperationException("Language mutation controls must be disabled in view mode.");
+                if (tab == 1) summaryEditMode = true; else editMode = true;
+                BuildLanguageResultsPanel(project);
+                if (!HasUnsavedLanguageSummary && languageControls.Any(pair => pair.requiresEdit && !pair.control.IsEnabled)) throw new InvalidOperationException("Language controls must be available in Edit mode, including empty sections.");
+                summaryEditMode = false;
+            }
+        } finally { summaryEditMode = previousSummaryEdit; editMode = previousEdit; Section.SelectedIndex = previousSection; RefreshLanguagePanel(); }
+    }
+    private void VerifySegmentEditorAccessForSmokeTest()
+    {
+        var previousSection = Section.SelectedIndex; var previousEdit = editMode;
+        try {
+            foreach (var tab in new[] { 0, 2 }) {
+                Section.SelectedIndex = tab; editMode = false;
+                if (!CanRunDesktopCommand("add")) throw new InvalidOperationException("View mode must allow adding segments.");
+                var row = tab == 0 ? Model.Project?.Transcript.FirstOrDefault() : Model.Project?.Cues.FirstOrDefault();
+                if (row != null && (!EditSegment(row).IsCompletedSuccessfully || editMode)) throw new InvalidOperationException("Opening a segment editor in view mode must return without a dialog or mode change.");
+                if (row != null && SegmentMenu(row).Items.OfType<MenuFlyoutItem>().First(item => item.Text == "Edit segment").IsEnabled) throw new InvalidOperationException("Context editing must require Edit mode.");
+                editMode = true;
+                if (!CanRunDesktopCommand("add")) throw new InvalidOperationException("Edit mode must enable adding a segment.");
+            }
+        } finally { editMode = previousEdit; Section.SelectedIndex = previousSection; RefreshLanguagePanel(); }
+    }
     private void VerifyProjectMenuEntriesForSmokeTest()
     {
+        VerifySegmentEditorAccessForSmokeTest();
+        VerifyLanguageInspectorForSmokeTest();
+        if (DesktopCommandTitle("language-results") != "Language and Saved Results…" || !CanRunDesktopCommand("language-results"))
+            throw new InvalidOperationException("Language and saved results must be available offline in the active editor.");
         var projectMenu = editorMenus.Single(menu => menu.Title == "Project");
         var tail = projectMenu.Items.TakeLast(3).Select(item => item is MenuFlyoutSeparator ? "-" : (string)((MenuFlyoutItem)item).Tag);
         if (!tail.SequenceEqual(new[] { "-", "rename-project", "trash-project" }))

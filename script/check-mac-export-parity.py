@@ -56,6 +56,8 @@ for name in ('VIDEO_EXPORT_FORMATS', 'AUDIO_EXPORT_FORMATS', 'EXPORT_DUCKING_LEV
         return next((ast.dump(node, include_attributes=False) for node in tree.body if isinstance(node, ast.Assign)
                      and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)), None)
     if assignment(windows) != assignment(mac): drift.append(name)
+if ast.dump(parsed('engine/language_results.py', windows_root), include_attributes=False) != ast.dump(parsed('engine/language_results.py', args.mac_root), include_attributes=False):
+    drift.append('language_results.py')
 wt = parsed('engine/youtube_audio.py', windows_root)
 mt = parsed('engine/youtube_audio.py', args.mac_root)
 # Compare the new metadata-only lookup directly, including its bounded cleanup.

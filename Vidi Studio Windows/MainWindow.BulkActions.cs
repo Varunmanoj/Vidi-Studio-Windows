@@ -45,7 +45,7 @@ public sealed partial class MainWindow
         ToolTipService.SetToolTip(BulkNarrateButton,
             descriptionCount == 0
                 ? "Select one or more descriptions; transcript segments do not have narration"
-                : $"{narrationLabel}. Generates audio for the selected descriptions only, one after another, using the current voice. {existingCount} existing file{(existingCount == 1 ? "" : "s")} will be replaced; {newCount} new file{(newCount == 1 ? "" : "s")} will be created. Transcript segments are not narrated.");
+                : $"{narrationLabel}. Generates audio for the selected descriptions only, one after another, using the current voice. Existing narration remains available. A new alternative is saved for review; choose Keep Both, Replace Selected, or Discard New. Transcript segments are not narrated.");
         BulkShiftButton.IsEnabled = count > 0 && Model.Idle;
         SelectionMenuButton.IsEnabled = Segments.Items.Count > 0 && Model.Idle;
         SelectTranscriptsItem.Visibility = Section.SelectedIndex is 0 or 4 ? Visibility.Visible : Visibility.Collapsed;
@@ -163,7 +163,7 @@ public sealed partial class MainWindow
                 ? $"Regenerate Audio for {existingCount} Description{(existingCount == 1 ? "" : "s")}"
                 : $"Generate Audio for {newCount} New and Regenerate Audio for {existingCount} Existing Description{(existingCount == 1 ? "" : "s")}";
         if (!await Confirm("Generate selected narration?",
-                $"{action}, one after another, using {Model.CurrentNarrationSummary()}. {existingCount} existing file{(existingCount == 1 ? "" : "s")} will be replaced; {newCount} new file{(newCount == 1 ? "" : "s")} will be created.",
+                $"{action}, one after another, using {Model.CurrentNarrationSummary()}. Existing narration remains available. A new alternative is saved for review; choose Keep Both, Replace Selected, or Discard New.",
                 "Generate")) return;
         var flags = descriptions.SelectMany(segment => new[] { "--segments", segment.Id }).ToList();
         try { await Model.RunAsync("synthesize-tts", flags); }

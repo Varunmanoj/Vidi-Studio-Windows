@@ -160,6 +160,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     }
     private void Changed([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
 
+    public string LanguageFilter { get; set; } = "all";
     public void Reload(string search = "", string source = "all")
     {
         Settings.Reload();
@@ -216,7 +217,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         }
         var desired = loaded.Where(p =>
                 p.Name.Contains(search, StringComparison.CurrentCultureIgnoreCase)
-                && (source == "all" || p.IsYouTube == (source == "youtube")))
+                && (source == "all" || p.IsYouTube == (source == "youtube")) && p.MatchesLanguage(LanguageFilter))
             .ToList();
         ApplyProjectList(desired);
         appliedSearch = search;
@@ -602,6 +603,19 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     {
         if (Busy) return new();
         if (needsProject && Project == null) { Status = "Open a project first."; return new(); }
+        if (needsProject && Project is { } languageProject) {
+            var suppliedLanguage = extra?.ToList() ?? new List<string>();
+            if (!suppliedLanguage.Contains("--language")) suppliedLanguage.AddRange(new[] { "--language", languageProject.OperationLanguage(command) });
+            var languageIndex = suppliedLanguage.IndexOf("--language");
+            var sameLanguage = languageIndex < 0 || languageIndex + 1 >= suppliedLanguage.Count || suppliedLanguage[languageIndex + 1] == languageProject.OperationLanguage(command);
+            if (sameLanguage && !new[] { "select-language", "select-section-language", "sync-section-languages", "select-result", "assign-result-language", "review-result", "delete-results", "preview-delete-results", "export-batch" }.Contains(command)) {
+                foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
+                    var rid = languageProject.ActiveResultID(kind);
+                    if (!string.IsNullOrEmpty(rid)) suppliedLanguage.AddRange(new[] { "--selected-" + (kind == "adAudio" ? "ad-audio" : kind) + "-id", rid });
+                }
+            }
+            extra = suppliedLanguage;
+        }
         ConnectionFailure = false;
         if (OnlineReason(command, extra) is { } unavailable) { await NotifyConnectivityAsync(unavailable); return new(); }
         string? youtubeMetadataFile = null;

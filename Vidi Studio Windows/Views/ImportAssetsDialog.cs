@@ -16,6 +16,7 @@ namespace Vidi_Studio_Windows.Views;
 /// <summary>Shared file selection for New Project and existing-project imports.</summary>
 public sealed class ImportAssetsPicker : UserControl
 {
+    private readonly ComboBox languagePicker = new() { Header = "Language", DisplayMemberPath = "Title", ItemsSource = OutputLanguage.Options };
     private readonly Window owner;
     private readonly StackPanel panel = new() { Spacing = 10 };
     private readonly StackPanel audioPanel = new() { Spacing = 10 };
@@ -41,7 +42,7 @@ public sealed class ImportAssetsPicker : UserControl
         adAudioMode.SelectedIndex == 0 ? "narration" : "fullMix",
         OriginalAudioPath: youtube ? originalAudio : null,
         OriginalAudioPlayback: originalPlayback.SelectedIndex == 1,
-        OriginalAudioTranscription: originalTranscription.SelectedIndex == 1, CaptionProvenancePath: captionProvenance);
+        OriginalAudioTranscription: originalTranscription.SelectedIndex == 1, CaptionProvenancePath: captionProvenance, Language: (languagePicker.SelectedItem as OutputLanguage)?.Id ?? "auto");
     public bool CanImport => Selection.HasAny && (adTranscript == null || adTranscriptMode.SelectedIndex != 0 || hasTranscript || transcript != null);
 
     public ImportAssetsPicker(Window owner, ImportScope scope = ImportScope.All, double width = 640, bool showOriginal = true)
@@ -50,6 +51,9 @@ public sealed class ImportAssetsPicker : UserControl
         this.scope = scope;
         Width = width;
         Content = panel;
+        languagePicker.SelectedItem = OutputLanguage.Options.FirstOrDefault(v => v.Id == (owner as MainWindow)?.SettingsProject?.SelectedLanguage) ?? OutputLanguage.Options[0];
+        panel.Children.Add(languagePicker);
+        panel.Children.Add(new TextBlock { Text = "Assigns a language without translating. Existing results are retained for review.", TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(new TextBlock
         {
             Text = "Choose existing files to copy into the project. SRT, VTT, or TXT for text; Markdown or TXT for summaries. Review text timing before importing.",

@@ -403,14 +403,14 @@ public sealed partial class MainWindow
     private MenuFlyout SegmentMenu(Segment? segment = null)
     {
         var menu = new MenuFlyout();
-        void Item(string label, RoutedEventHandler action, bool available = true)
+        void Item(string label, RoutedEventHandler action, bool available = true, bool requiresEdit = false)
         {
-            var item = new MenuFlyoutItem { Text = label, Icon = Views.MenuIcons.Create(label), IsEnabled = Model.Idle && available, Tag = segment };
+            var item = new MenuFlyoutItem { Text = label, Icon = Views.MenuIcons.Create(label), IsEnabled = Model.Idle && available && (!requiresEdit || editMode), Tag = segment };
             item.Click += (_, args) =>
             {
+                if (!Model.Idle || (requiresEdit && !editMode)) return;
                 if (segment != null)
                 {
-                    if (!editMode) EditMode_Click(this, args);
                     Segments.SelectedItems.Clear(); Segments.SelectedItem = segment;
                 }
                 action(item, args);
@@ -419,7 +419,7 @@ public sealed partial class MainWindow
         }
         if (segment != null)
         {
-            Item("Edit segment", async (_, _) => await EditSegment(segment));
+            Item("Edit segment", async (_, _) => await EditSegment(segment), requiresEdit: true);
             Item("Play from segment", (_, _) =>
             {
                 if (segment.IsDescription) Narration.IsOn = true;
@@ -449,7 +449,13 @@ public sealed partial class MainWindow
             }
             else
             {
-                Item("Re-Analyze this segment", async (_, _) => await EditSegment(segment), Model.CanUseAI);
+                Item("Re-Analyze this segment", async (_, _) => {
+                    var path = Path.Combine(Path.GetTempPath(), "vidistudio-reanalyze-" + Guid.NewGuid() + ".json");
+                    try {
+                        File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(new { id = segment.Id, start = segment.Start, end = segment.End, text = segment.Text, hint = "" }));
+                        await Model.RunAsync("reanalyze-transcript-segment", new[] { "--input", path });
+                    } finally { File.Delete(path); }
+                }, Model.CanUseAI);
             }
             menu.Items.Add(new MenuFlyoutSeparator());
             Item("Delete segment", async (_, _) =>

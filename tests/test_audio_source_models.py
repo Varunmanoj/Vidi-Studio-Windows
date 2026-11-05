@@ -16,7 +16,7 @@ class AudioSourceModels(unittest.TestCase):
         sdk = subprocess.check_output(['dotnet', '--version'], text=True).strip().split('.')[0]
         with tempfile.TemporaryDirectory(prefix='vidistudio-audio-models-') as temporary:
             folder = Path(temporary)
-            files = ['StudioProject.cs', 'ProjectIntegrity.cs', 'AudioSources.cs']
+            files = ['StudioProject.cs', 'ProjectIntegrity.cs', 'AudioSources.cs', 'LanguageResult.cs']
             includes = ''.join(f'<Compile Include="{escape(str(ROOT / "Vidi Studio Windows/Models" / name))}" />' for name in files)
             (folder/'Models.csproj').write_text(
                 f'<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net{sdk}.0</TargetFramework>'

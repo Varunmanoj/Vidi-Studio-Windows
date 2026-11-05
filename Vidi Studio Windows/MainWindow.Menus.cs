@@ -77,6 +77,7 @@ public sealed partial class MainWindow
                     Command("summary-previous-paragraph"), Command("summary-next-paragraph"), Separator(),
                     Command("summary-from-start"), Command("summary-from-selection"), Command("summary-read-selection"))),
             Menu("Project",
+                Command("language-results"),
                 Submenu("Editor Sections", Command("transcript"), Command("summary"), Command("descriptions"), Command("ad-overview"), Command("ad-transcript")),
                 Submenu("Segments", Command("segment-edit-mode"), Command("add"), Separator(), Command("reanalyze-selection"),
                     Command("segment-select-all"), Command("segment-deselect-all"), Command("segment-edit-selected"), Command("segment-delete-selected"), Separator(),
@@ -315,7 +316,7 @@ public sealed partial class MainWindow
         if (p.IsYouTube && (id is "play" or "back" or "forward") && !ConnectivityService.Shared.Available(OnlineService.YouTube)) return id == "play" && IsVideoPlaying();
         var timed = Section.SelectedIndex is 0 or 2 or 4;
         var hasTranscript = p.HasTranscript || ExtraFlag(p, "transcriptGenerated");
-        var canDescribe = hasTranscript && p.HasSummary;
+        var canDescribe = p.SavedResults.Any(r => r.Kind == "transcript" && r.State == "saved") && p.SavedResults.Any(r => r.Kind == "summary" && r.State == "saved");
         var ai = Model.CanUseAI;
         var tts = Model.Settings.Get("ttsMode", "windows-core") != "gemini" || ai;
         switch (id)
@@ -329,11 +330,12 @@ public sealed partial class MainWindow
                 return !p.IntegrityPlaceholder && p.Integrity?.ManifestUnreadable != true && p.Integrity?.FolderMissing != true;
             case "import-original-audio": return p.IsYouTube && !p.IntegrityPlaceholder && p.Integrity?.ManifestUnreadable != true && p.Integrity?.FolderMissing != true;
             case "trash-project": return true;
-            case "segment-edit-mode": return timed && Segments.Items.Count > 0 || Section.SelectedIndex == 1;
+            case "segment-edit-mode": return timed || Section.SelectedIndex == 1;
             case "add": return Section.SelectedIndex is 0 or 2;
             case "reanalyze-selection": return ai && (Section.SelectedIndex == 0 || Section.SelectedIndex == 2 && canDescribe);
             case "segment-select-all": return timed && editMode && Segments.Items.Count > Segments.SelectedItems.Count;
-            case "segment-deselect-all": case "segment-edit-selected": case "segment-delete-selected": return timed && editMode && Segments.SelectedItems.Count > 0;
+            case "segment-delete-selected": return timed && Segments.SelectedItems.Count > 0;
+            case "segment-deselect-all": case "segment-edit-selected": return timed && editMode && Segments.SelectedItems.Count > 0;
             case "undo": return HasHistory(Section.SelectedIndex == 0 ? "transcriptUndoStack" : "undoStack");
             case "redo": return HasHistory(Section.SelectedIndex == 0 ? "transcriptRedoStack" : "redoStack");
             case "narration": return (Section.SelectedIndex is 2 or 4) && p.Cues.Count > 0;
@@ -346,6 +348,7 @@ public sealed partial class MainWindow
             case "sort-duration-desc":
             case "sort-origin": return timed;
             case "caption-off": return timed;
+            case "language-results": return true;
             case "analyze": case "transcribe": case "generate-summary": return ai;
             case "generate-ad-cues": return ai && canDescribe;
             case "synthesize-tts": return tts && p.Cues.Count > 0;
@@ -399,6 +402,7 @@ public sealed partial class MainWindow
             "summary-previous-sentence" => "Previous Summary Sentence", "summary-next-sentence" => "Next Summary Sentence",
             "summary-previous-paragraph" => "Previous Summary Paragraph", "summary-next-paragraph" => "Next Summary Paragraph",
             "summary-from-start" => "Read Summary from Start", "summary-from-selection" => "Read Summary from Selection", "summary-read-selection" => "Read Selected Summary Text",
+            "language-results" => "Language and Saved Results…",
             "transcript" => "Show Transcript", "summary" => "Show Summary", "descriptions" => "Show Descriptions",
             "ad-overview" => "Show AD Overview", "ad-transcript" => "Show AD Transcript",
             "segment-edit-mode" => Section.SelectedIndex == 1 ? (summaryEditMode ? "Done Editing Summary" : "Edit Summary")
@@ -523,9 +527,7 @@ public sealed partial class MainWindow
 
     private async Task DeleteMenuContentAsync(string component)
     {
-        if (!await Confirm("Delete " + component, "Permanently delete this generated content and its associated audio or exports?", "Delete")) return;
-        StopSegmentPreview(); narrationPlayer.Pause(); onDeviceNarrator.Stop();
-        await Model.RunAsync("delete-generated", new[] { "--component", component });
+        await ShowLanguageDeletionAsync(component);
     }
 
     private async Task RunDesktopCommandAsync(string id)
@@ -534,6 +536,9 @@ public sealed partial class MainWindow
         var e = new RoutedEventArgs();
         switch (id)
         {
+            case "language-results":
+                await ShowLanguageResultsDialogAsync();
+                break;
             case "new-project": await ShowNewProjectDialogAsync(false); break;
             case "youtube-accounts":
                 if (youtubeBrowserRun != null) youtubeBrowserRun(id);

@@ -119,6 +119,39 @@ public sealed partial class SettingsDialog
         }
     }
 
+    private void BuildOutputLanguages(StackPanel panel)
+    {
+        var defaultsPath = Path.Combine(AppContext.BaseDirectory, "engine", "ai-defaults.json");
+        var languages = JsonNode.Parse(File.ReadAllText(defaultsPath))?["outputLanguageOptions"]?.AsObject();
+        var options = new List<GeminiModelOption> { new("auto", "Auto (detect from video)") };
+        if (languages != null)
+            options.AddRange(languages.Select(item => new GeminiModelOption(item.Key, SettingsStore.GetString(item.Value)))
+                .OrderBy(item => item.Label, StringComparer.CurrentCultureIgnoreCase));
+        if (draft["outputLanguages"] is not JsonObject) draft["outputLanguages"] = new JsonObject();
+        var saved = draft["outputLanguages"]!.AsObject();
+        foreach (var (stage, title) in new[] { ("transcript", "Transcript"), ("summary", "Summary"), ("audio_descriptions", "Descriptions") })
+        {
+            var group = AddGeminiGroup(panel, title);
+            var selected = SettingsStore.GetString(saved[stage], "auto");
+            var field = new ComboBox { Header = "Output language", ItemsSource = options,
+                SelectedItem = options.FirstOrDefault(item => item.Id == selected) ?? options[0],
+                HorizontalAlignment = HorizontalAlignment.Stretch };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(field, title + " output language");
+            ToolTipService.SetToolTip(field, "Auto detects from the video. Choose a language to generate this section in that language.");
+            field.SelectionChanged += (_, _) =>
+            {
+                if (field.SelectedItem is not GeminiModelOption choice) return;
+                saved[stage] = choice.Id;
+                model.Settings.Data["outputLanguages"] = saved.DeepClone();
+                model.Settings.Save();
+            };
+            group.Children.Add(field);
+            AddGeminiNote(group, stage == "transcript"
+                ? "Auto preserves every spoken language and original script. A chosen language translates dialogue while keeping speech timing. With a dedicated speech model selected, translation uses the YouTube video model for local and YouTube projects, including imported audio."
+                : "Auto uses the primary language detected from the video; if none is identifiable, it uses English. Choose a language to generate this section in that language.");
+        }
+    }
+
     private void BuildGemini(StackPanel panel)
     {
         DetachFromVisualParent(apiStatusCard);
@@ -133,6 +166,8 @@ public sealed partial class SettingsDialog
         planPillBadge.Child = null;
 
         panel.Children.Add(new TextBlock { Text = "Gemini API", FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) });
+
+        BuildOutputLanguages(panel);
 
         var topStack = new StackPanel { Spacing = 10 };
 

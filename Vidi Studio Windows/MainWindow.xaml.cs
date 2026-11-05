@@ -630,6 +630,7 @@ public sealed partial class MainWindow : Window
             ? rows.Where(segment => segmentFilter.Matches(segment, HasSegmentAudio(p, segment))).ToList()
             : rows;
         RefreshEditingRows();
+        UpdateEmptySectionActions();
         RefreshSummarySourceBadge();
         SummaryText.Text = p.Summary;
         RenderMarkdown(p.Summary);
@@ -1964,6 +1965,7 @@ public sealed partial class MainWindow : Window
             SummaryEditorBox.Focus(FocusState.Programmatic);
         }
         summaryEditMode = edit;
+        UpdateEmptySectionActions();
         UpdateEditorActionVisibility();
         UpdateDesktopMenuStates();
     }
@@ -2122,6 +2124,7 @@ public sealed partial class MainWindow : Window
 
         SetAiButton(GenerateCurrent);
         SetAiButton(InspectorGenerate);
+        UpdateEmptySectionActions();
         OverviewGenerateAllAudioButton.Content = project?.AllADAudioTitle ?? "Generate All AD Audio";
         OverviewGenerateChangedAudioButton.Content = "Generate Missing or Changed AD Audio";
         InspectorSynthesizeNarrationLabel.Text = Model.IsSynthesizingNarration ? Model.ActiveNarrationStatusText : project?.AllADAudioTitle ?? "Generate All AD Audio";

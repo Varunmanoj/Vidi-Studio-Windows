@@ -374,9 +374,31 @@ public sealed partial class MainWindow
 
     private void UpdateEditorActionVisibility()
     {
-        // The inspector owns generation while visible; the toolbar is its fallback.
-        GenerateCurrent.Visibility = Section.SelectedIndex <= 2 && !InspectorSplitView.IsPaneOpen
+        // Keep the section's generation shortcut available beside Add, including with the inspector open.
+        GenerateCurrent.Visibility = Section.SelectedIndex <= 2
             ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateEmptySectionActions()
+    {
+        var p = Model.Project;
+        var index = Section.SelectedIndex;
+        var empty = p != null && (index == 0 && p.Transcript.Count == 0 ||
+            index == 1 && string.IsNullOrWhiteSpace(p.Summary) && !summaryEditMode ||
+            index == 2 && p.Cues.Count == 0);
+        EmptySectionActions.Visibility = empty && Model.Idle ? Visibility.Visible : Visibility.Collapsed;
+        var name = index switch { 0 => "Transcript", 1 => "Summary", _ => "Audio Descriptions" };
+        EmptySectionTitle.Text = $"Your {name.ToLowerInvariant()} appears here";
+        EmptySectionGenerate.Content = $"Generate {name}";
+        EmptySectionGenerate.IsEnabled = CanRunDesktopCommand(index switch { 0 => "transcribe", 1 => "generate-summary", _ => "generate-ad-cues" });
+        ToolTipService.SetToolTip(EmptySectionGenerate, ToolTipService.GetToolTip(GenerateCurrent));
+        EmptySectionImport.Content = index switch { 0 => "Import Transcript…", 1 => "Import Summary…", _ => "Import Descriptions…" };
+        EmptySectionImport.IsEnabled = Model.Idle;
+    }
+
+    private async void EmptySectionImport_Click(object sender, RoutedEventArgs e)
+    {
+        await RunDesktopCommandAsync(Section.SelectedIndex switch { 0 => "import-transcript", 1 => "import-summary", _ => "import-descriptions" });
     }
 
     private void GenerateCurrent_Click(object sender, RoutedEventArgs e)

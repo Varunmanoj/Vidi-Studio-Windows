@@ -1730,9 +1730,8 @@ public sealed partial class MainWindow
             ToolTipService.GetToolTip(EditModeButton) == null ||
             string.IsNullOrWhiteSpace(Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(EditModeButton)))
             throw new InvalidOperationException("Each editable section needs one accent-colour, icon-only Edit/Done button with accessible metadata.");
-        if (Section.SelectedIndex <= 2 &&
-            (GenerateCurrent.Visibility == Visibility.Visible) == (InspectorSplitView.IsPaneOpen))
-            throw new InvalidOperationException("Generation must appear in the inspector or toolbar, never both.");
+        if ((GenerateCurrent.Visibility == Visibility.Visible) != (Section.SelectedIndex <= 2))
+            throw new InvalidOperationException("Generation must remain visible in the toolbar on Transcript, Summary, and Descriptions, regardless of inspector visibility.");
         if (Section.SelectedIndex <= 2)
         {
             var expectedGlyph = Section.SelectedIndex switch { 0 => "\uE90A", 1 => "\uE8E4", _ => "\uE8B9" };

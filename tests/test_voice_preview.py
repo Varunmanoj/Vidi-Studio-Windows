@@ -11,10 +11,10 @@ from test_engine import engine
 
 class VoicePreview(unittest.TestCase):
     def test_shared_models_ignore_legacy_youtube_overrides(self):
-        stages = ('summary', 'audio_descriptions', 'screen_text', 'text_rewrite', 'tts_audio')
+        stages = ('summary', 'screen_text', 'text_rewrite', 'tts_audio')
         models = {stage: 'shared-' + stage for stage in stages}
         models.update({'youtube_' + stage: 'legacy-' + stage for stage in stages})
-        models.update(transcript='gemini-local-transcribe', youtube_transcript='gemini-flash')
+        models.update(transcript='gemini-local-transcribe', youtube_transcript='gemini-flash', audio_descriptions='shared-ad')
         with patch.object(engine, 'config', return_value={'models': models}), patch.object(engine, 'gemini_client', return_value=Mock()):
             for stage in stages:
                 for source in ('local', 'youtube'):

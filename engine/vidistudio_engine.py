@@ -540,15 +540,17 @@ def validate_youtube_for_gemini(url):
 def client_and_model(kind, project=None):
     cfg = config()
     key = {'tts':'tts_audio','transcribe':'transcript','generate-summary':'summary','generate-ad-cues':'audio_descriptions'}.get(kind,kind)
-    # Only transcription differs by source. Ignore legacy per-YouTube overrides.
+    # Keep one set of local-file choices, including imported YouTube audio.
     if key.startswith('youtube_') and key != 'youtube_transcript':
         key = key.removeprefix('youtube_')
-    if key == 'transcript' and project and project.get('sourceType') == 'youtube':
+    if (project and project.get('sourceType') == 'youtube'
+            and key in ('transcript', 'audio_descriptions')
+            and audio_sources.preferences(project)['transcription'] == 'youtube'):
         key = 'youtube_transcript'
     model = cfg['models'].get(key)
     if not model: raise ValueError('Choose a Gemini model in Settings first.')
     if key == 'youtube_transcript' and any(token in model.lower() for token in ('transcribe', 'tts')):
-        raise ValueError('Choose a video model for YouTube transcription in Settings, such as Gemini Flash.')
+        raise ValueError('Choose a video model for YouTube in Settings > Gemini API > YouTube video model, such as Gemini Flash.')
     return gemini_client(), model
 
 

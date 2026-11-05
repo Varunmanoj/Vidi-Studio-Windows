@@ -37,6 +37,8 @@ public sealed partial class SettingsDialog
 {
     private readonly List<GeminiModelOption> availableModels = new();
     private readonly Dictionary<string, ComboBox> modelSelectors = new();
+    private readonly List<(string Stage, ComboBox Selector)> modelSelectorRows = new();
+    private bool synchronizingModelSelection;
 
     private readonly Border apiStatusCard = new();
     private readonly FontIcon apiStatusIcon = new();
@@ -358,6 +360,7 @@ public sealed partial class SettingsDialog
 
         // Local video group matching Mac
         modelSelectors.Clear();
+        modelSelectorRows.Clear();
         var local = AddGeminiGroup(panel, "Local video");
         AddModelSelector(local, "transcript", "Speech transcription");
         AddModelSelector(local, "summary", "Video summaries");
@@ -368,8 +371,10 @@ public sealed partial class SettingsDialog
 
         // YouTube video group matching Mac
         var youtube = AddGeminiGroup(panel, "YouTube video");
-        AddModelSelector(youtube, "youtube_transcript", "YouTube transcription");
-        AddGeminiNote(panel, "YouTube transcription uses a video model such as Gemini Flash.");
+        AddModelSelector(youtube, "youtube_transcript", "YouTube video model");
+        AddModelSelector(youtube, "transcript", "Imported audio transcription");
+        AddModelSelector(youtube, "audio_descriptions", "Audio descriptions with imported audio");
+        AddGeminiNote(panel, "When Transcription source is YouTube video, transcription and Audio Descriptions automatically use the YouTube video model. When it is Imported audio, the two choices above are used and shared with Local video. Descriptions still analyze the YouTube picture and current transcript. Playback and export choices do not change the model. Summary and other task models remain shared. Changes apply to future requests.");
 
         // Advanced group
         var advanced = new StackPanel { Spacing = 12 };
@@ -658,7 +663,7 @@ public sealed partial class SettingsDialog
 
     private void ApplyGeminiModelChoices()
     {
-        foreach (var (stage, selector) in modelSelectors)
+        foreach (var (stage, selector) in modelSelectorRows)
         {
             var current = SettingsStore.GetString(draft["models"]?[stage]);
             var choices = availableModels.Where(option => SupportsModelStage(stage, option.Id)).ToList();
@@ -683,11 +688,23 @@ public sealed partial class SettingsDialog
     private void AddModelSelector(StackPanel panel, string stage, string label)
     {
         var selector = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, MinWidth = 0 };
-        modelSelectors[stage] = selector;
+        modelSelectors.TryAdd(stage, selector);
+        modelSelectorRows.Add((stage, selector));
         selector.SelectionChanged += (_, _) =>
         {
+            if (synchronizingModelSelection) return;
             if (selector.SelectedItem is GeminiModelOption chosen && chosen.Id.Length > 0 && SupportsModelStage(stage, chosen.Id))
+            {
                 draft["models"]!.AsObject()[stage] = chosen.Id;
+                synchronizingModelSelection = true;
+                try
+                {
+                    foreach (var (peerStage, peer) in modelSelectorRows)
+                        if (peerStage == stage && peer != selector)
+                            peer.SelectedItem = (peer.ItemsSource as IEnumerable<GeminiModelOption>)?.FirstOrDefault(option => option.Id == chosen.Id);
+                }
+                finally { synchronizingModelSelection = false; }
+            }
         };
         AddSettingsRow(panel, label, selector, stretchControl: true);
     }
@@ -703,7 +720,7 @@ public sealed partial class SettingsDialog
             int Parse(Group group) => int.TryParse(group.Value, out var number) ? number : 0;
             return (Parse(version.Groups[1]), Parse(version.Groups[2]), Parse(version.Groups[3]), id.Contains("latest", StringComparison.OrdinalIgnoreCase) ? 1 : 0);
         }
-        foreach (var (stage, selector) in modelSelectors)
+        foreach (var (stage, selector) in modelSelectorRows)
         {
             var options = ((IEnumerable<GeminiModelOption>?)selector.ItemsSource)?.Where(item => availableModels.Any(available => available.Id == item.Id)).ToList();
             if (options is not { Count: > 0 }) continue;

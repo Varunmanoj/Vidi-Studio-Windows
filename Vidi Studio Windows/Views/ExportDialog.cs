@@ -162,6 +162,7 @@ public sealed class ExportDialog : ContentDialog
     {
         if (ExportProject is not { } project) return;
         page.Children.Add(new TextBlock { Text = "Languages and Saved Results", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        page.Children.Add(new TextBlock { Text = "Outputs are stored in exports/<language code>/, including auto. Existing tracked exports are organized into those folders when exporting.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
         foreach (var code in project.SavedResults.Select(r => r.Language).Append(project.SelectedLanguage).Distinct().OrderBy(v => v)) {
             var toggle = new CheckBox { Content = OutputLanguage.Label(code), IsChecked = exportLanguages.Contains(code) };
             var fields = new StackPanel { Spacing = 8, Visibility = exportLanguages.Contains(code) ? Visibility.Visible : Visibility.Collapsed };
@@ -459,6 +460,6 @@ public sealed class ExportDialog : ContentDialog
             _ => "Web Playback - " + (audio switch { 0 => "Original Audio", 1 => "Closed Audio Description", _ => "Open Audio Description" }) + captionSuffix
         };
         var extension = section switch { 0 => videoFormat, 1 => audioFormat, 2 => textContent == 1 ? "md" : new[] { "srt", "vtt", "txt", "json" }[textFormat], _ => "" };
-        return $"exports/{name} - {type}" + (extension.Length == 0 ? "" : "." + extension);
+        return $"exports/{project.SelectedLanguage}/{name} - {type}" + (extension.Length == 0 ? "" : "." + extension);
     }
 }

@@ -41,7 +41,7 @@ public sealed partial class MainWindow
     }
     private async Task RunLanguageActionAsync(string command, string[]? arguments = null) {
         if (Model.Busy || HasUnsavedLanguageSummary) return;
-        var changesLanguage = command is "select-language" or "select-section-language" or "sync-section-languages" or "assign-result-language";
+        var changesLanguage = command is "select-section-language" or "sync-section-languages" or "assign-result-language";
         if (changesLanguage && !LanguageEditMode) return;
         StopSegmentPreview(); narrationPlayer.Pause(); readback.Stop();
         SummaryEditorBox.IsEnabled = false; SummaryProvenance.IsEnabled = false;
@@ -86,8 +86,8 @@ public sealed partial class MainWindow
         panel.Children.Add(new TextBlock { Text = "Language and Saved Results", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         if (!LanguageEditMode) panel.Children.Add(new TextBlock { Text = "Enter Edit mode to change language labels or generation targets.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
         if (HasUnsavedLanguageSummary) panel.Children.Add(new TextBlock { Text = "Save or cancel summary edits before switching languages or saved results.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
-        var language = LanguagePicker("Project Language", project.SelectedLanguage);
-        RegisterLanguageControl(language, true);
+        var language = LanguagePicker("View Project Language", project.SelectedLanguage);
+        RegisterLanguageControl(language, false);
         language.SelectionChanged += async (_, _) => {
             if (language.SelectedItem is OutputLanguage value && value.Id != project.SelectedLanguage) {
                 StopSegmentPreview(); narrationPlayer.Pause(); readback.Stop();
@@ -101,7 +101,7 @@ public sealed partial class MainWindow
         foreach (var kind in CurrentLanguageKinds) {
             var sectionOptions = new[] { new OutputLanguage("project", "Follow Project Language") }.Concat(OutputLanguage.Options).ToList();
             var selectedLanguage = project.SectionLanguages.TryGetValue(kind, out var custom) ? custom : "project";
-            var sectionLanguage = new ComboBox { Header = LanguageResult.KindTitle(kind) + " Language", ItemsSource = sectionOptions, DisplayMemberPath = "Title", SelectedItem = sectionOptions.First(v => v.Id == selectedLanguage), HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = !Model.Busy };
+            var sectionLanguage = new ComboBox { Header = LanguageResult.KindTitle(kind) + " Generation Language", ItemsSource = sectionOptions, DisplayMemberPath = "Title", SelectedItem = sectionOptions.First(v => v.Id == selectedLanguage), HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = !Model.Busy };
             AutomationProperties.SetName(sectionLanguage, LanguageResult.KindTitle(kind) + " language");
             sectionLanguage.SelectionChanged += async (_, _) => {
                 if (sectionLanguage.SelectedItem is not OutputLanguage choice) return;
@@ -112,16 +112,18 @@ public sealed partial class MainWindow
             RegisterLanguageControl(sectionLanguage, true);
             panel.Children.Add(sectionLanguage);
 
-            var rows = project.SavedResults.Where(r => r.Kind == kind && r.Language == project.SectionLanguage(kind) && r.State == "saved").OrderByDescending(r => r.CreatedAt).ToList();
+            var viewingOverview = Section.SelectedIndex == 3;
+            var code = viewingOverview ? project.OverviewLanguageCode : project.SelectedLanguage;
+            var rows = project.SavedResults.Where(r => r.Kind == kind && r.Language == code && r.State == "saved").OrderByDescending(r => r.CreatedAt).ToList();
             if (rows.Count == 0) {
-                panel.Children.Add(new TextBlock { Text = "No saved " + LanguageResult.KindTitle(kind).ToLowerInvariant() + " in " + OutputLanguage.Label(project.SectionLanguage(kind)) + ".", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
+                panel.Children.Add(new TextBlock { Text = "No saved " + LanguageResult.KindTitle(kind).ToLowerInvariant() + " in " + OutputLanguage.Label(code) + ".", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
                 continue;
             }
             var picker = new ComboBox { Header = LanguageResult.KindTitle(kind) + " Saved Result", ItemsSource = rows, DisplayMemberPath = "Title", HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = !Model.Busy };
-            picker.SelectedItem = rows.FirstOrDefault(r => r.Id == project.ActiveResultID(kind));
+            picker.SelectedItem = rows.FirstOrDefault(r => r.Id == project.ActiveResultID(kind, code));
             AutomationProperties.SetName(picker, LanguageResult.KindTitle(kind) + " saved result");
             picker.SelectionChanged += async (_, _) => {
-                if (picker.SelectedItem is LanguageResult result && result.Id != project.ActiveResultID(kind)) {
+                if (picker.SelectedItem is LanguageResult result && result.Id != project.ActiveResultID(kind, code)) {
                     StopSegmentPreview(); narrationPlayer.Pause(); readback.Stop();
                     await RunLanguageActionAsync("select-result", new[] { "--result-id", result.Id });
                 }
@@ -220,7 +222,7 @@ public sealed partial class MainWindow
         if (Model.Project is not { } project || Model.Busy) return;
         var panel = new StackPanel { Spacing = 10 };
         var deletionKind = component is "narration" or "history" ? "descriptions" : component;
-        var language = LanguagePicker("Language filter", deletionKind == null || deletionKind == "thumbnails" ? "all" : project.SectionLanguage(deletionKind), true);
+        var language = LanguagePicker("Language filter", deletionKind == null || deletionKind == "thumbnails" ? "all" : project.SelectedLanguage, true);
         panel.Children.Add(language);
         var options = new List<CheckBox>();
         foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio", "narration", "history", "thumbnails" }) {

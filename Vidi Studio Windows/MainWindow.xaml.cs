@@ -2109,12 +2109,12 @@ public sealed partial class MainWindow : Window
         var project = Model.Project;
         if (OverviewReviewNarrationButton != null)
         {
-            OverviewReviewNarrationButton.IsEnabled = Model.Idle && project != null;
+            OverviewReviewNarrationButton.IsEnabled = Model.Idle && project != null && project.OverviewMatchesEditingResult;
             ToolTipService.SetToolTip(OverviewReviewNarrationButton, "Review missing audio, generation failures, and text or timing changes without generating narration");
         }
         if (OverviewReviewNarrationVoicesButton != null)
         {
-            OverviewReviewNarrationVoicesButton.IsEnabled = Model.Idle && project != null;
+            OverviewReviewNarrationVoicesButton.IsEnabled = Model.Idle && project != null && project.OverviewMatchesEditingResult;
             ToolTipService.SetToolTip(OverviewReviewNarrationVoicesButton, "Review how many segments use each voice, which segments use a different voice, and segment timing details");
         }
 

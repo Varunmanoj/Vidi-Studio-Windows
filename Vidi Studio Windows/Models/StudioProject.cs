@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -199,8 +200,13 @@ public sealed class StudioProject : INotifyPropertyChanged
 {
     public string SelectedLanguage { get; set; } = "auto";
     public Dictionary<string, string> SectionLanguages { get; set; } = new();
+    public string OverviewLanguage { get; set; } = "project";
+    [JsonIgnore] public string OverviewLanguageCode => SelectedLanguage;
+    [JsonIgnore] public StudioProject OverviewProject => WithLanguageResults(OverviewLanguageCode);
+    [JsonIgnore] public bool OverviewMatchesEditingResult => OverviewLanguageCode == SelectedLanguage;
     public string SectionLanguage(string kind) => SectionLanguages.TryGetValue(kind, out var code) ? code : SelectedLanguage;
     public string OperationLanguage(string command) {
+        if (!new[] { "transcribe", "generate-summary", "generate-ad-cues", "import-transcript", "import-summary", "import-ad-transcript", "import-ad-audio" }.Contains(command)) return SelectedLanguage;
         var kind = command switch {
             "transcribe" or "import-transcript" or "reanalyze-transcript-segment" or "undo-transcript" or "redo-transcript" => "transcript",
             "generate-summary" or "save-summary" or "import-summary" => "summary",
@@ -225,13 +231,13 @@ public sealed class StudioProject : INotifyPropertyChanged
         }
     }
     public string ActiveResultID(string kind, string? language = null) {
-        var code = language ?? SectionLanguage(kind);
+        var code = language ?? SelectedLanguage;
         if (ActiveResultIDs.TryGetValue(code, out var selection) && selection.TryGetValue(kind, out var rid)) return rid;
         return SavedResults.Where(r => r.Language == code && r.Kind == kind && r.State == "saved").OrderByDescending(r => r.CreatedAt).FirstOrDefault()?.Id ?? "";
     }
     public StudioProject WithLanguageResults(string code, IReadOnlyDictionary<string, string>? choices = null) {
         var result = (StudioProject)MemberwiseClone(); result.SelectedLanguage = code;
-        result.Transcript = new(); result.Summary = ""; result.Cues = new(); result.ImportedAudioDescription = null; result.ImportedADTranscript = null;
+        result.Transcript = new(); result.Summary = ""; result.Cues = new(); result.ImportedAudioDescription = null; result.ImportedADTranscript = null; result.NarrationEngine = null; result.NarrationVoice = null; result.DescriptionTimingAudit = null;
         foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
             var rid = choices != null && choices.TryGetValue(kind, out var selected) ? selected : ActiveResultID(kind, code);
             var record = SavedResults.FirstOrDefault(r => r.Id == rid && r.State == "saved" && r.Language == code);
@@ -240,6 +246,7 @@ public sealed class StudioProject : INotifyPropertyChanged
             if (kind == "transcript" && data.TryGetProperty("transcript", out var transcript)) result.Transcript = JsonSerializer.Deserialize<List<Segment>>(transcript.GetRawText(), Json.Options) ?? new();
             if (kind == "summary" && data.TryGetProperty("summary", out var summary)) result.Summary = summary.GetString() ?? "";
             if (kind == "descriptions") {
+                if (data.TryGetProperty("descriptionTimingAudit", out var audit)) result.DescriptionTimingAudit = JsonSerializer.Deserialize<DescriptionTimingAudit>(audit.GetRawText(), Json.Options);
                 if (data.TryGetProperty("cues", out var cues)) result.Cues = JsonSerializer.Deserialize<List<Segment>>(cues.GetRawText(), Json.Options) ?? new();
                 if (data.TryGetProperty("narrationEngine", out var engine)) result.NarrationEngine = engine.GetString();
                 if (data.TryGetProperty("narrationVoice", out var voice)) result.NarrationVoice = voice.GetString();
@@ -247,7 +254,8 @@ public sealed class StudioProject : INotifyPropertyChanged
             }
             if (kind == "adAudio" && data.TryGetProperty("importedAudioDescription", out var audio)) result.ImportedAudioDescription = JsonSerializer.Deserialize<ImportedAudioDescription>(audio.GetRawText(), Json.Options);
         }
-        for (var i = 0; i < result.Cues.Count; i++) { result.Cues[i].ProjectFolder = Folder; result.Cues[i].IsDescription = true; result.Cues[i].AdNumber = i + 1; }
+        var flagged = result.DescriptionTimingAudit?.Segments.Select(s => s.Id).ToHashSet() ?? new HashSet<string?>();
+        for (var i = 0; i < result.Cues.Count; i++) { result.Cues[i].IsTimingFlagged = flagged.Contains(result.Cues[i].Id); result.Cues[i].ProjectFolder = Folder; result.Cues[i].IsDescription = true; result.Cues[i].AdNumber = i + 1; }
         foreach (var row in result.Transcript) { row.ProjectFolder = Folder; row.IsDescription = false; }
         return result;
     }
@@ -398,7 +406,7 @@ public sealed class StudioProject : INotifyPropertyChanged
     {
         var manifest = Path.Combine(folder, "project.json");
         if (!File.Exists(manifest)) throw new FileNotFoundException("project.json is missing.", manifest);
-        var project = JsonSerializer.Deserialize<StudioProject>(ReadManifestText(manifest), Json.Options)
+        var project = JsonSerializer.Deserialize<StudioProject>(ViewingManifest(ReadManifestText(manifest)), Json.Options)
             ?? throw new InvalidDataException("Invalid project.");
         if (string.IsNullOrWhiteSpace(project.Id) || string.IsNullOrWhiteSpace(project.Name))
             throw new InvalidDataException("project.json is missing required project fields.");
@@ -420,6 +428,21 @@ public sealed class StudioProject : INotifyPropertyChanged
     /// refuses a rename while a reader omits FileShare.Delete, which is why a
     /// background gallery/integrity read could surface as "Access is denied".
     /// </summary>
+    private static string ViewingManifest(string text) {
+        if (JsonNode.Parse(text) is not JsonObject json || json["languageResults"] is not JsonArray records) return text;
+        var code = json["selectedLanguage"]?.GetValue<string>() ?? "auto";
+        var selections = json["activeResultIDs"]?[code];
+        foreach (var field in new[] { "transcript", "transcriptGenerated", "transcriptUndoStack", "transcriptRedoStack", "transcriptAudioSource", "youtubeCaptionSource", "summary", "summaryGenerated", "summaryOrigin", "summaryOriginSource", "summaryOriginOverride", "cues", "descriptionsGenerated", "undoStack", "redoStack", "narrationEngine", "narrationVoice", "descriptionTimingAudit", "importedADTranscript", "importedAudioDescription" }) json.Remove(field);
+        foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
+            var choices = records.OfType<JsonObject>().Where(r => r["kind"]?.GetValue<string>() == kind && r["language"]?.GetValue<string>() == code && r["state"]?.GetValue<string>() == "saved").ToList();
+            var selected = selections?[kind]?.GetValue<string>();
+            var record = choices.FirstOrDefault(r => r["id"]?.GetValue<string>() == selected) ?? choices.OrderByDescending(r => r["createdAt"]?.GetValue<double>() ?? 0).FirstOrDefault();
+            if (record?["payload"] is JsonObject payload) foreach (var pair in payload) json[pair.Key] = pair.Value?.DeepClone();
+        }
+        json["transcript"] ??= new JsonArray(); json["summary"] ??= ""; json["cues"] ??= new JsonArray();
+        return json.ToJsonString();
+    }
+
     internal static string ReadManifestText(string path)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);

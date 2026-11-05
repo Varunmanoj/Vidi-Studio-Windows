@@ -232,7 +232,8 @@ class TestFileExplorerActivation(unittest.TestCase):
         # In-app segment actions
         self.assertIn("canSynthesize = Model.CurrentNarrationEngine() != \"gemini\" || Model.CanUseAI", source)
         self.assertIn('Item("Rewrite description to fit", Rewrite_Click, Model.CanUseAI)', source)
-        self.assertIn('Item("Re-Analyze this segment", async (_, _) => await EditSegment(segment), Model.CanUseAI)', source)
+        self.assertIn('Item("Re-Analyze this segment", async (_, _) => {', source)
+        self.assertIn('await Model.RunAsync("reanalyze-transcript-segment", new[] { "--input", path })', source)
 
     def test_startup_logs_launch_milestones_for_silent_failures(self):
         source = self.app_xaml_cs_path.read_text(encoding="utf-8")

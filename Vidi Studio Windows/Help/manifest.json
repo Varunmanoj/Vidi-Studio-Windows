@@ -123,6 +123,10 @@
         {
           "id": "section-language-targets",
           "title": "Choose a target language for each section"
+        },
+        {
+          "id": "language-export-folders",
+          "title": "Language export folders"
         }
       ]
     },
@@ -177,6 +181,10 @@
         {
           "id": "section-language-targets",
           "title": "Choose a target language for each section"
+        },
+        {
+          "id": "overview-viewing-language",
+          "title": "AD Overview viewing language"
         }
       ]
     },
@@ -303,6 +311,10 @@
         {
           "id": "section-language-targets",
           "title": "Choose a target language for each section"
+        },
+        {
+          "id": "overview-viewing-language",
+          "title": "AD Overview viewing language"
         }
       ]
     },
@@ -369,6 +381,10 @@
         {
           "id": "language-saved-results",
           "title": "Language and saved results"
+        },
+        {
+          "id": "language-export-folders",
+          "title": "Language export folders"
         }
       ]
     },

@@ -441,9 +441,9 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         NarrationVoiceFormatting.CombinedLabel(CurrentNarrationVoice(), CurrentNarrationEngine());
 
     /// <summary>Builds a detailed report of narration voice and engine usage across segments.</summary>
-    public NarrationVoiceReport? NarrationVoiceUsageReport()
+    public NarrationVoiceReport? NarrationVoiceUsageReport(StudioProject? sourceProject = null)
     {
-        if (Project is not { } p) return null;
+        if ((sourceProject ?? Project) is not { } p) return null;
         var narratedEntries = new List<(int Index, Segment Cue, string Engine, string Voice, string Path)>();
         var importedEntries = new List<NarrationVoiceSegmentEntry>();
         for (var i = 0; i < p.Cues.Count; i++)

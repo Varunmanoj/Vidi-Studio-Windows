@@ -509,31 +509,33 @@ public sealed partial class MainWindow
         EditToolbar.Visibility = editMode && index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
         UpdateBulkActionState();
         OverviewPanel.Visibility = index == 3 ? Visibility.Visible : Visibility.Collapsed;
+        var overview = p.OverviewProject;
         OverviewStatistics.Children.Clear(); OriginStatistics.Children.Clear();
-        AddInfo(OverviewStatistics, "Description segments", p.Cues.Count.ToString());
-        AddInfo(OverviewStatistics, "Narration audio ready", p.Cues.Count(c => c.AudioReady).ToString());
-        AddInfo(OverviewStatistics, "Audio needs updating", p.Cues.Count(c => c.AudioNeedsRegeneration).ToString());
-        AddInfo(OverviewStatistics, "Audio missing", p.Cues.Count(c => !c.AudioReady && !c.AudioNeedsRegeneration).ToString());
-        AddInfo(OverviewStatistics, "Description time", TimeSpan.FromSeconds(p.Cues.Sum(c => c.End - c.Start)).ToString(@"mm\:ss"));
-        AddInfo(OverviewStatistics, "Spoken transcript segments", p.Transcript.Count.ToString());
-        var voiceReport = Model.NarrationVoiceUsageReport();
+        AddInfo(OverviewStatistics, "Viewing language", OutputLanguage.Label(p.OverviewLanguageCode));
+        AddInfo(OverviewStatistics, "Description segments", overview.Cues.Count.ToString());
+        AddInfo(OverviewStatistics, "Narration audio ready", overview.Cues.Count(c => c.AudioReady).ToString());
+        AddInfo(OverviewStatistics, "Audio needs updating", overview.Cues.Count(c => c.AudioNeedsRegeneration).ToString());
+        AddInfo(OverviewStatistics, "Audio missing", overview.Cues.Count(c => !c.AudioReady && !c.AudioNeedsRegeneration).ToString());
+        AddInfo(OverviewStatistics, "Description time", TimeSpan.FromSeconds(overview.Cues.Sum(c => c.End - c.Start)).ToString(@"mm\:ss"));
+        AddInfo(OverviewStatistics, "Spoken transcript segments", overview.Transcript.Count.ToString());
+        var voiceReport = Model.NarrationVoiceUsageReport(overview);
         var voiceStat = voiceReport == null || voiceReport.AllSegments.Count == 0
             ? "None"
             : voiceReport.HasDifferentVoices
                 ? $"{voiceReport.VoiceSummaries.Count(s => s.Count > 0)} voices ({voiceReport.DifferentSegments.Count} different)"
                 : voiceReport.PrimaryVoiceLabel ?? Model.CurrentNarrationSummary();
         AddInfo(OverviewStatistics, "Narration voices", voiceStat);
-        AddInfo(OverviewStatistics, "Narration sources", p.NarrationSourcesText);
-        if (p.ImportedNarrationFiles.Count > 0)
-            AddInfo(OverviewStatistics, "Imported audio", $"{p.ImportedNarrationFiles.Count} file{(p.ImportedNarrationFiles.Count == 1 ? "" : "s")}");
-        AddInfo(OverviewStatistics, "Description timing", p.HasDescriptionTimingIssues ? $"{p.DescriptionTimingIssueCount} need retiming" : "Ready");
+        AddInfo(OverviewStatistics, "Narration sources", overview.NarrationSourcesText);
+        if (overview.ImportedNarrationFiles.Count > 0)
+            AddInfo(OverviewStatistics, "Imported audio", $"{overview.ImportedNarrationFiles.Count} file{(overview.ImportedNarrationFiles.Count == 1 ? "" : "s")}");
+        AddInfo(OverviewStatistics, "Description timing", overview.HasDescriptionTimingIssues ? $"{overview.DescriptionTimingIssueCount} need retiming" : "Ready");
         foreach (var origin in new[]
         {
             ("ai", "AI-generated"), ("ai_modified", "AI-generated · modified"),
             ("imported", "Imported"), ("imported_modified", "Imported · modified"),
             ("manual", "Manually added"), ("unknown", "Origin unknown")
         })
-            AddInfo(OriginStatistics, origin.Item2, p.Cues.Count(c => c.Origin == origin.Item1).ToString());
+            AddInfo(OriginStatistics, origin.Item2, overview.Cues.Count(c => c.Origin == origin.Item1).ToString());
         OriginStatistics.Children.Add(new TextBlock { Text = "All six origin labels are counted. Manual choices persist; imported audio and legacy content are never guessed.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
         OverviewVoice.Text = "Speech engine: " + EngineTitle(Model.Settings.Get("ttsMode", "windows-core")) + "\nVoice: " + NarrationVoiceFormatting.VoiceDisplayName(Model.CurrentNarrationVoice());
         if (OverviewVoiceWarningBorder != null && OverviewVoiceWarningText != null)

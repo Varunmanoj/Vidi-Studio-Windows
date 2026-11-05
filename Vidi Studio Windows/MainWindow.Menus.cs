@@ -314,6 +314,7 @@ public sealed partial class MainWindow
         if (id is "youtube-details" or "youtube-refresh" or "youtube-captions") return desktopEditorVisible && Model.Idle && Model.Project?.IsYouTube == true;
         if (!desktopEditorVisible || Model.Project is not { } p) return false;
         if (p.IsYouTube && (id is "play" or "back" or "forward") && !ConnectivityService.Shared.Available(OnlineService.YouTube)) return id == "play" && IsVideoPlaying();
+        if (Section.SelectedIndex == 3 && !p.OverviewMatchesEditingResult && id is "synthesize-tts" or "synthesize-changed" or "review-narration-issues" or "review-narration-voices") return false;
         var timed = Section.SelectedIndex is 0 or 2 or 4;
         var hasTranscript = p.HasTranscript || ExtraFlag(p, "transcriptGenerated");
         var canDescribe = p.SavedResults.Any(r => r.Kind == "transcript" && r.State == "saved") && p.SavedResults.Any(r => r.Kind == "summary" && r.State == "saved");

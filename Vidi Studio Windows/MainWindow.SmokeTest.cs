@@ -1765,7 +1765,7 @@ public sealed partial class MainWindow
                 var panel = BuildLanguageResultsPanel(project);
                 var headers = panel.Children.OfType<ComboBox>().Select(c => c.Header?.ToString()).ToArray();
                 foreach (var other in new[] { "transcript", "summary", "descriptions" }.Where(k => k != kind))
-                    if (headers.Contains(Models.LanguageResult.KindTitle(other) + " Language")) throw new InvalidOperationException("Inspector leaked language controls from another tab.");
+                    if (headers.Contains(Models.LanguageResult.KindTitle(other) + " Generation Language")) throw new InvalidOperationException("Inspector leaked language controls from another tab.");
                 if (languageControls.Any(pair => pair.requiresEdit && pair.control.IsEnabled)) throw new InvalidOperationException("Language mutation controls must be disabled in view mode.");
                 if (tab == 1) summaryEditMode = true; else editMode = true;
                 BuildLanguageResultsPanel(project);

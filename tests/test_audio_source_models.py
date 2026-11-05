@@ -26,6 +26,7 @@ class AudioSourceModels(unittest.TestCase):
             (folder/'Program.cs').write_text(r'''
 using System;
 using System.Text.Json;
+using System.IO;
 using Vidi_Studio_Windows.Models;
 var json = """
 {"sourceType":"youtube","duration":4,"originalAudio":{"path":"imports/a.wav","sourceName":"Creator soundtrack.wav","duration":3,"sha256":"abc","timingAccepted":true,"confirmedVideoDuration":4},"audioSources":{"export":"imported","playback":"youtube","transcription":"imported"},"transcriptAudioSource":{"origin":"mixed"},"exportAudioSources":{"exports/a.wav":{"origin":"imported","sourceName":"Creator soundtrack.wav"}}}
@@ -41,6 +42,23 @@ if (doc.RootElement.GetProperty("originalAudio").GetProperty("sha256").GetString
 if (doc.RootElement.GetProperty("exportAudioSources").GetProperty("exports/a.wav").GetProperty("sourceName").GetString() != "Creator soundtrack.wav") throw new Exception("Export source lost");
 var legacy = JsonSerializer.Deserialize<StudioProject>("{\"sourceType\":\"youtube\"}", Json.Options)!;
 if (legacy.OriginalAudio != null || legacy.AudioSources != null) throw new Exception("Legacy project compatibility changed");
+var folder = Path.Combine(Path.GetTempPath(), "vidi-view-model-" + Guid.NewGuid());
+Directory.CreateDirectory(folder);
+try {
+    var manifest = """
+    {"id":"view","name":"View","selectedLanguage":"auto","sectionLanguages":{"summary":"hi"},"summary":"Hindi stale projection","languageResults":[{"id":"a","kind":"summary","language":"auto","state":"saved","createdAt":1,"payload":{"summary":"Auto saved","summaryOrigin":"manual"}},{"id":"h","kind":"summary","language":"hi","state":"saved","createdAt":2,"payload":{"summary":"Hindi saved","summaryOrigin":"imported"}}]}
+    """;
+    File.WriteAllText(Path.Combine(folder, "project.json"), manifest);
+    var viewed = StudioProject.Load(folder);
+    if (viewed.Summary != "Auto saved" || viewed.SummaryOrigin != "manual" || viewed.SectionLanguage("summary") != "hi") throw new Exception("Viewing projection must preserve target and restore saved provenance");
+    File.WriteAllText(Path.Combine(folder, "project.json"), manifest.Replace("\"selectedLanguage\":\"auto\"", "\"selectedLanguage\":\"hi\""));
+    if (StudioProject.Load(folder).Summary != "Hindi saved") throw new Exception("Viewing language must switch saved content on reopening");
+} finally { Directory.Delete(folder, true); }
+var reportProject = new StudioProject { SelectedLanguage = "hi", OverviewLanguage = "auto", NarrationEngine = "old", NarrationVoice = "old voice", DescriptionTimingAudit = new() { Count = 9 }, LanguageResults = new() { new LanguageResult { Id = "hi", Kind = "descriptions", Language = "hi", Payload = JsonSerializer.SerializeToElement(new { cues = new object[0], descriptionTimingAudit = new { count = 2, segments = new object[0] } }) } } };
+var overview = reportProject.OverviewProject;
+if (overview.DescriptionTimingIssueCount != 2 || overview.NarrationVoice != null) throw new Exception("Overview must use its own timing audit and narration settings");
+reportProject.SelectedLanguage = "ta";
+if (reportProject.OverviewProject.DescriptionTimingIssueCount != 0 || reportProject.OverviewProject.NarrationEngine != null) throw new Exception("An empty viewing language must not inherit another language's metadata");
 Console.WriteLine("PASS: portable C# audio sources, timing approval, legacy decoding, and export provenance");
 ''')
             result = subprocess.run(['dotnet', 'run', '--project', str(folder/'Models.csproj'), '--verbosity', 'quiet'],

@@ -488,6 +488,9 @@ AI_NON_RETRYABLE_SUBSTRINGS = (
     'transcript timing is invalid',
     'already processing',
     'project contains a path outside',
+    'choose a supported video processing mode',
+    'invalid_argument',
+    'api_key_invalid',
 )
 
 
@@ -505,6 +508,13 @@ def ai_retry_delay_seconds(attempt):
 def is_retryable_ai_error(exc):
     if isinstance(exc, ProcessingCancelled) or network_activity.transport_failure(exc):
         return False
+    # Repeating a rejected request cannot repair its parameters or permissions.
+    status = getattr(exc, 'status_code', None) or getattr(exc, 'code', None)
+    try:
+        if 400 <= int(status) < 500 and int(status) not in (408, 429):
+            return False
+    except (TypeError, ValueError):
+        pass
     message = str(exc).lower()
     return not any(marker in message for marker in AI_NON_RETRYABLE_SUBSTRINGS)
 
@@ -634,7 +644,8 @@ def check_api_key():
         tts_model = 'gemini-3.8-flash-lite-tts' if any(m['name'] == 'gemini-3.8-flash-lite-tts' for m in available) else 'gemini-3.8-flash'
         summary_model = ('gemini-3.8-pro' if any(m['name'] == 'gemini-3.8-pro' for m in available) else 'gemini-3.8-flash') if plan == 'paid' else 'gemini-3.8-flash'
         ad_model = ('gemini-3.8-pro' if any(m['name'] == 'gemini-3.8-pro' for m in available) else 'gemini-3.8-flash') if plan == 'paid' else 'gemini-3.8-flash'
-        video_processing = 'agentic' if plan == 'paid' else 'standard'
+        # A credential check must preserve the user's processing choice.
+        video_processing = gemini_adapter.video_processing(config().get('videoProcessing', 'agentic'))
 
         selected_models = {
             'transcript': transcribe_model,

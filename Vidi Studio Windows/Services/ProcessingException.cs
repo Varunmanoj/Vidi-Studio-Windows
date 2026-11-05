@@ -6,10 +6,20 @@ namespace Vidi_Studio_Windows.Services;
 public sealed class ProcessingException : Exception
 {
     public string? RecoveryAction { get; }
-    public ProcessingException(string diagnostic, string? recoveryAction = null)
+    public string Diagnostic { get; }
+    public ProcessingException(string diagnostic, string? recoveryAction = null, string? command = null)
         : base(recoveryAction == "choose-original-audio"
             ? "YouTube audio could not be retrieved. Choose a matching audio file to retry this export. Existing exports are unchanged."
-            : UserMessage(diagnostic)) { RecoveryAction = recoveryAction; }
+            : command == "generate-summary"
+                ? "The summary could not be created. Your transcript is safe. Please try again."
+                : UserMessage(diagnostic)) { RecoveryAction = recoveryAction; Diagnostic = diagnostic; }
+
+    public string DisplayMessage(bool developerMode, string apiKey)
+    {
+        if (!developerMode || string.IsNullOrEmpty(Diagnostic)) return Message;
+        var detail = string.IsNullOrEmpty(apiKey) ? Diagnostic : Diagnostic.Replace(apiKey, "[redacted]");
+        return Message + "\n\nTechnical details:\n" + detail;
+    }
     private static string UserMessage(string diagnostic)
     {
         // Only known validation messages can cross from engine diagnostics into UI.

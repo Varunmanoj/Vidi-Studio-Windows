@@ -345,6 +345,10 @@
           "title": "Gemini API"
         },
         {
+          "id": "video-processing",
+          "title": "Advanced video processing"
+        },
+        {
           "id": "output-languages",
           "title": "Transcript, Summary, and Descriptions languages"
         },

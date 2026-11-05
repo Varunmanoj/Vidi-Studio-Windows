@@ -329,6 +329,8 @@ public sealed partial class MainWindow : Window
         var message = ex is ProcessingException or SpeechFailedException or ConnectivityException
             ? ex.Message
             : "Check your settings and the diagnostic log, then retry. Your saved project remains available.";
+        if (ex is ProcessingException processing)
+            message = processing.DisplayMessage(Model.Settings.GetBool("developerMode"), Model.Settings.Get("apiKey"));
         await ShowDialogAsync(new ContentDialog { Title = "Action could not finish", Content = DialogMessage(message), CloseButtonText = "Close" });
     }
     private async Task ShowErrorMessage(string title, string message)

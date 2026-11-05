@@ -683,7 +683,9 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             if (extra != null) args.AddRange(extra);
             var result = await Engine.RunAsync(args, new Progress<EngineEvent>(e =>
             {
-                Status = e.Message;
+                Status = e.Data.TryGetProperty("error", out var errorFlag) && errorFlag.ValueKind == System.Text.Json.JsonValueKind.True
+                    ? new ProcessingException(e.Message, command: command).DisplayMessage(Settings.GetBool("developerMode"), Settings.Get("apiKey"))
+                    : e.Message;
                 if (e.Data.TryGetProperty("narrationPrimaryVoiceUpdated", out var primaryUpdated) && primaryUpdated.ValueKind == System.Text.Json.JsonValueKind.True && Project != null)
                 {
                     try
@@ -786,10 +788,10 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         catch (OperationCanceledException) { Status = "Cancelled. Completed results remain saved."; }
         catch (ProcessingException ex)
         {
-            Status = ex.Message;
+            Status = ex.DisplayMessage(Settings.GetBool("developerMode"), Settings.Get("apiKey"));
             if (canRecoverYouTubeAudio && requestFolder != null && ex.RecoveryAction == "choose-original-audio")
                 audioRecovery = new(requestFolder, command, requestArguments);
-            else DetectAiIssue(ex.Message);
+            else DetectAiIssue(ex.Diagnostic);
         }
         catch (Exception ex) { Engine.Log(ex.ToString()); Status = "Could not finish. Check Settings and the diagnostic log, then retry."; DetectAiIssue(ex.Message); }
         finally

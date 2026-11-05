@@ -414,7 +414,19 @@ public sealed partial class SettingsDialog
         // Advanced group
         var advanced = new StackPanel { Spacing = 12 };
         AddText(advanced, "API version", "apiVersion", "v1beta");
-        AddChoice(advanced, "Video processing", "videoProcessing", new[] { "agentic", "standard" });
+        var processing = new ComboBox
+        {
+            Header = "Video processing",
+            ItemsSource = new[] { "Agentic", "Static" },
+            SelectedIndex = SettingsStore.GetString(draft["videoProcessing"], "agentic") == "static" ? 1 : 0
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(processing, "Video processing");
+        processing.SelectionChanged += (_, _) =>
+        {
+            if (processing.SelectedIndex >= 0) draft["videoProcessing"] = processing.SelectedIndex == 0 ? "agentic" : "static";
+        };
+        advanced.Children.Add(processing);
+        AddGeminiNote(advanced, "Choose Static for fixed video sampling or Agentic for model-directed video analysis. Applies to summaries and Audio Descriptions for local and YouTube videos, and YouTube screen-text requests. Transcription and selected-range analysis use Static. Availability depends on the selected model and your Gemini access.");
         var latest = new Button { Content = "Use latest available models" };
         latest.Click += (_, _) => SelectLatestModels();
         advanced.Children.Add(latest);

@@ -114,7 +114,7 @@ public sealed class EngineClient
                     ? "choose-original-audio" : null;
                 if (events.Exists(e => e.Data.TryGetProperty("failureKind", out var kind) && kind.GetString() == "connectivity"))
                     { ConnectivityService.Shared.Check(); throw new ConnectivityException("Connection interrupted. Check your internet connection and try again. Completed results remain saved."); }
-                throw new ProcessingException(errDiagnostic, recovery);
+                throw new ProcessingException(errDiagnostic, recovery, requestArguments[0]);
             }
             return events;
         }

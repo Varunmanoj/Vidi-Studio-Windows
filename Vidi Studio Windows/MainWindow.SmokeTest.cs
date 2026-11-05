@@ -786,7 +786,7 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Export progress/completion was not monotonic or did not clear.");
             var replacementDialog = new Views.ExportDialog(Model);
             replacementDialog.RequestForSmokeTest(1, 0, 0);
-            if (replacementDialog.CanSaveForSmokeTest) throw new InvalidOperationException("Existing export replacement did not require an explicit selection.");
+            if (!replacementDialog.CanSaveForSmokeTest) throw new InvalidOperationException("Save must remain available before checking destination collisions.");
             var childClosed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             child.Closed += (_, _) => childClosed.TrySetResult(true);
             await child.RunDesktopCommandAsync("close-window");

@@ -7,6 +7,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 using System.Text.RegularExpressions;
 using Vidi_Studio_Windows.ViewModels;
 using Windows.UI;
@@ -31,14 +33,13 @@ public sealed class ExportDialog : ContentDialog
     private readonly StackPanel footer = new() { Orientation = Orientation.Horizontal,
         HorizontalAlignment = HorizontalAlignment.Center, Spacing = 12, Padding = new Thickness(0, 12, 0, 8) };
     private readonly Button saveButton = new() { Content = "Save", Width = 120 };
-    private readonly CheckBox replaceExisting = new() { Content = "Replace the existing export", Visibility = Visibility.Collapsed };
     private readonly TextBlock replacementNotice = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
     private readonly TextBlock captionNotice = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
-    private string videoFormat = "mkv", audioFormat = "wav", lastTarget = "";
+    private string videoFormat = "mkv", audioFormat = "wav";
     private int videoAudio = 1, videoCaptions, audioChoice = 1, webAudio = 1, webCaptions, textContent, textFormat;
     private int adSource;
     private readonly HashSet<string> exportLanguages = new();
-    private readonly HashSet<string> replacementLanguages = new();
+    private bool awaitingReplacementConfirmation;
     private readonly Dictionary<string, Dictionary<string, string>> resultSelections = new();
 
 
@@ -90,31 +91,7 @@ public sealed class ExportDialog : ContentDialog
         saveButton.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
         var cancelButton = new Button { Content = "Cancel", Width = 120 };
         cancelButton.Click += (_, _) => Hide();
-        saveButton.Click += (_, _) =>
-        {
-            if (!CanSave() || exportLanguages.Count == 0) return;
-            var (command, arguments) = BuildRequest();
-            if (owner != null && ExportProject is { } project) {
-                var options = new Dictionary<string, object>();
-                for (var index = 0; index < arguments.Count; index++) {
-                    var key = arguments[index][2..].Replace('-', '_');
-                    if (index + 1 < arguments.Count && !arguments[index + 1].StartsWith("--", StringComparison.Ordinal)) options[key] = arguments[++index];
-                    else options[key] = true;
-                }
-                var jobs = exportLanguages.OrderBy(v => v).Select(code => {
-                    var ids = new Dictionary<string, string>();
-                    foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
-                        var rid = resultSelections.TryGetValue(code, out var selected) && selected.TryGetValue(kind, out var choice) ? choice : project.ActiveResultID(kind, code);
-                        if (!string.IsNullOrEmpty(rid)) ids[kind] = rid;
-                    }
-                    return new { language = code, resultIDs = ids, command, options, replaceExisting = replacementLanguages.Contains(code) };
-                }).ToArray();
-                Closed += async (_, _) => await owner.RunResultRequestAsync("export-batch", new { jobs });
-            } else Closed += async (_, _) => await model.RunAsync(command, arguments);
-            Hide();
-        };
-        replaceExisting.Checked += (_, _) => UpdatePreview();
-        replaceExisting.Unchecked += (_, _) => UpdatePreview();
+        saveButton.Click += async (_, _) => await SaveAsync();
         footer.Children.Add(cancelButton);
         footer.Children.Add(saveButton);
         Grid.SetRow(footer, 1);
@@ -158,6 +135,51 @@ public sealed class ExportDialog : ContentDialog
     }
 #endif
 
+    private async Task SaveAsync()
+    {
+        if (!CanSave() || exportLanguages.Count == 0) return;
+        var (command, arguments) = BuildRequest();
+        if (owner == null || model.Project is not { } project) {
+            Closed += async (_, _) => await model.RunAsync(command, arguments);
+            Hide(); return;
+        }
+        var options = new Dictionary<string, object>();
+        for (var index = 0; index < arguments.Count; index++) {
+            var key = arguments[index][2..].Replace('-', '_');
+            if (index + 1 < arguments.Count && !arguments[index + 1].StartsWith("--", StringComparison.Ordinal)) options[key] = arguments[++index];
+            else options[key] = true;
+        }
+        var collisions = new List<(int Index, string Path)>();
+        var jobs = new List<Dictionary<string, object>>();
+        foreach (var code in exportLanguages.OrderBy(v => v)) {
+            var ids = new Dictionary<string, string>();
+            foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
+                var rid = resultSelections.TryGetValue(code, out var selected) && selected.TryGetValue(kind, out var choice) ? choice : project.ActiveResultID(kind, code);
+                if (!string.IsNullOrEmpty(rid)) ids[kind] = rid;
+            }
+            var target = project.WithLanguageResults(code, ids);
+            var suffix = string.Join("-", ids.Values.Select(v => v[..Math.Min(8, v.Length)]).OrderBy(v => v, StringComparer.Ordinal)).Replace('-', '.');
+            target.Name = string.Concat(project.Name.EnumerateRunes().Take(40).Select(r => r.ToString())) + " [" + code + (suffix.Length == 0 ? "" : " " + suffix) + "]";
+            var path = TargetRelativePath(target);
+            var legacyExists = project.Exports.Any(old => {
+                var oldCode = project.ExportResults.TryGetValue(old, out var provenance) ? provenance.Language : old.Split('/').Length > 2 ? old.Split('/')[1] : "auto";
+                return oldCode == code && Path.GetFileName(old) == Path.GetFileName(path) && (File.Exists(project.Resolve(old)) || Directory.Exists(project.Resolve(old)));
+            });
+            if (File.Exists(project.Resolve(path)) || Directory.Exists(project.Resolve(path)) || legacyExists) collisions.Add((jobs.Count, path));
+            jobs.Add(new() { ["language"] = code, ["resultIDs"] = ids, ["projectName"] = project.Name, ["command"] = command, ["options"] = options, ["replaceExisting"] = false });
+        }
+        if (collisions.Count > 0) {
+            awaitingReplacementConfirmation = true; UpdatePreview();
+            bool? choice;
+            try { choice = await owner.ConfirmExportReplacementAsync(collisions.Select(c => c.Path).ToArray()); }
+            finally { awaitingReplacementConfirmation = false; UpdatePreview(); }
+            if (choice == null) return;
+            if (choice == true) foreach (var collision in collisions) jobs[collision.Index]["replaceExisting"] = true;
+        }
+        Closed += async (_, _) => await owner.RunResultRequestAsync("export-batch", new { jobs });
+        Hide();
+    }
+
     private void AddLanguageSelections()
     {
         if (ExportProject is not { } project) return;
@@ -179,8 +201,7 @@ public sealed class ExportDialog : ContentDialog
                 picker.SelectionChanged += (_, _) => { if (picker.SelectedItem is LanguageResult value) resultSelections[code][kind] = value.Id; };
                 fields.Children.Add(picker);
             }
-            var replace = new CheckBox { Content = "Replace this language’s matching export if it exists", IsChecked = replacementLanguages.Contains(code) };
-            replace.Checked += (_, _) => replacementLanguages.Add(code); replace.Unchecked += (_, _) => replacementLanguages.Remove(code); fields.Children.Add(replace);
+
         }
     }
 
@@ -206,7 +227,6 @@ public sealed class ExportDialog : ContentDialog
         page.Children.Add(explanation);
         page.Children.Add(captionNotice);
         page.Children.Add(replacementNotice);
-        page.Children.Add(replaceExisting);
         UpdatePreview();
     }
 
@@ -344,14 +364,14 @@ public sealed class ExportDialog : ContentDialog
         return model.OnlineReason(request.Command, request.Arguments) == null;
     }
     private void ConnectivityChanged(object? sender, EventArgs e) => UpdatePreview();
-    private bool CanSave() => ConnectionReady() && model.Idle && ExportProject != null && (sidebar.SelectedIndex switch
+    private bool CanSave() => !awaitingReplacementConfirmation && ConnectionReady() && model.Idle && ExportProject != null && (sidebar.SelectedIndex switch
     {
         0 => CanUseVideoAudio(videoAudio) && CanUseCaptions(videoCaptions) && (videoAudio != 0 || videoCaptions != 0),
         1 => CanUseAudio(audioChoice),
         2 => ExportProject.CanExportText(TextIds[textContent]),
         3 => CanUseVideoAudio(webAudio) && CanUseCaptions(webCaptions),
         _ => false
-    }) && (replaceExisting.Visibility != Visibility.Visible || replaceExisting.IsChecked == true);
+    });
 
     private void UpdatePreview()
     {
@@ -376,11 +396,10 @@ public sealed class ExportDialog : ContentDialog
         captionNotice.Visibility = section is 0 or 3 && (section == 0 ? videoCaptions : webCaptions) is 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
         captionNotice.Text = "Open captions require a new video encode. Picture size is preserved and HDR is kept where possible, but quality or Dolby Vision information may change. Use closed captions for the closest match to the source.";
         var target = TargetRelativePath();
-        if (lastTarget != target) { lastTarget = target; replaceExisting.IsChecked = false; }
         var exists = project != null && target.Length > 0 && (File.Exists(project.Resolve(target)) || Directory.Exists(project.Resolve(target)));
-        replaceExisting.Visibility = replacementNotice.Visibility = exists ? Visibility.Visible : Visibility.Collapsed;
-        replacementNotice.Text = exists ? $"{Path.GetFileName(target)} already exists. Replacing it saves the new export in its place; the old export is kept if generation fails." : "";
-        saveButton.Content = exists ? "Replace export" : "Save";
+        replacementNotice.Visibility = exists ? Visibility.Visible : Visibility.Collapsed;
+        replacementNotice.Text = exists ? $"{Path.GetFileName(target)} already exists. Choose Save to replace it, skip it, or cancel." : "";
+        saveButton.Content = "Save";
         saveButton.IsEnabled = CanSave();
         var request = BuildRequest();
         ToolTipService.SetToolTip(saveButton, model.OnlineReason(request.Command, request.Arguments) ?? "Save export");
@@ -433,12 +452,12 @@ public sealed class ExportDialog : ContentDialog
         return (command, args);
     }
 
-    private string TargetRelativePath()
+    private string TargetRelativePath(StudioProject? targetProject = null)
     {
-        if (ExportProject is not { } project || sidebar.SelectedIndex < 0) return "";
+        if ((targetProject ?? ExportProject) is not { } project || sidebar.SelectedIndex < 0) return "";
         var name = Regex.Replace(project.Name.Trim(), "[<>:\"/\\\\|?*\\x00-\\x1F\\x7F]+", "-");
         name = Regex.Replace(Regex.Replace(name, @"\s*-\s*", " - "), @"\s+", " ").Trim(' ', '.', '-');
-        if (name.Length > 100) name = name[..100].Trim(' ', '.', '-');
+        if (name.Length > 100) name = string.Concat(name.EnumerateRunes().Take(100).Select(r => r.ToString())).Trim(' ', '.', '-');
         if (name.Length == 0) name = "Project";
         var section = sidebar.SelectedIndex;
         var audio = section == 0 ? videoAudio : webAudio;

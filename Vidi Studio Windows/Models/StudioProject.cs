@@ -516,12 +516,12 @@ public sealed class StudioProject : INotifyPropertyChanged
             if (string.IsNullOrWhiteSpace(cue.Audio)) continue;
             narration.Add(new ProjectNarrationReference(cue.Audio.Trim(), i + 1, $"{cue.StartLabel}–{cue.EndLabel}"));
         }
-        void AddSavedAudio(JsonElement node, string label) {
-            if (node.ValueKind == JsonValueKind.Array) { foreach (var item in node.EnumerateArray()) AddSavedAudio(item, label); }
+        void AddSavedAudio(JsonElement node, string label, bool history = false) {
+            if (node.ValueKind == JsonValueKind.Array) { foreach (var item in node.EnumerateArray()) AddSavedAudio(item, label, history); }
             else if (node.ValueKind == JsonValueKind.Object) foreach (var property in node.EnumerateObject()) {
                 if (property.Name == "audio" && property.Value.ValueKind == JsonValueKind.String && property.Value.GetString() is { } relative)
-                    narration.Add(new ProjectNarrationReference(relative, 0, label));
-                else AddSavedAudio(property.Value, label);
+                    narration.Add(new ProjectNarrationReference(relative, 0, label, history));
+                else AddSavedAudio(property.Value, label, history || property.Name is "undoStack" or "redoStack" or "transcriptUndoStack" or "transcriptRedoStack");
             }
         }
         foreach (var result in SavedResults) AddSavedAudio(result.Payload, OutputLanguage.Label(result.Language) + " · " + result.Title);

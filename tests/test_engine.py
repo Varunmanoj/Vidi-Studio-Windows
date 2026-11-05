@@ -289,7 +289,7 @@ class Validation(unittest.TestCase):
             report = next(call.kwargs for call in emit.call_args_list if 'narrationFailures' in call.kwargs)
             self.assertEqual(report['narrationFailures'][0]['reason'], expected)
             self.assertEqual(report['narrationGenerated'], 0)
-            self.assertFalse(list((root/'audio-description').iterdir()))
+            self.assertFalse([path for path in (root/'audio-description').rglob('*') if path.is_file()])
 
     def test_one_failing_description_does_not_stop_the_rest(self):
         with tempfile.TemporaryDirectory(prefix='vidistudio-test-') as temp:
@@ -510,7 +510,7 @@ class Validation(unittest.TestCase):
                 with self.assertRaises(engine.ProcessingCancelled):
                     engine.synthesize(root, project, regenerate_all=True)
             self.assertEqual(json.loads((root/'project.json').read_text())['narrationVoice'], 'Puck')
-            self.assertFalse(list((root/'audio-description').iterdir()))
+            self.assertFalse([path for path in (root/'audio-description').rglob('*') if path.is_file()])
 
     def test_regenerate_all_narration_rejects_partial_generation_flags(self):
         for extra in ({'segment': 'a'}, {'changed': True}):

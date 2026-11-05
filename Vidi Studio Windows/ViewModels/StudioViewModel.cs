@@ -795,7 +795,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             if (folder != null && File.Exists(Path.Combine(folder, "project.json"))) Open(folder);
             if (pendingNarrationFailures is { } narrationReport) { pendingNarrationFailures = null; NarrationFailures?.Invoke(this, narrationReport); }
             if (command is "check-api-key" or "list-models" || IsAICommand(command)) ClearAiIssue();
-            Status = "Complete";
+            var exportSummary = result.LastOrDefault(e => e.Data.TryGetProperty("exportSummary", out _));
+            Status = exportSummary?.Message ?? "Complete";
             return result;
         }
         catch (ConnectivityException ex) { Status = ex.Message; connectionFailure = ex.Message; }

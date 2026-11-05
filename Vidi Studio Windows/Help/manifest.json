@@ -127,6 +127,10 @@
         {
           "id": "language-export-folders",
           "title": "Language export folders"
+        },
+        {
+          "id": "language-asset-storage",
+          "title": "Language and saved-result folders"
         }
       ]
     },
@@ -315,6 +319,10 @@
         {
           "id": "overview-viewing-language",
           "title": "AD Overview viewing language"
+        },
+        {
+          "id": "language-asset-storage",
+          "title": "Language and saved-result folders"
         }
       ]
     },
@@ -583,6 +591,10 @@
         {
           "id": "section-language-targets",
           "title": "Language controls and Edit mode"
+        },
+        {
+          "id": "language-asset-storage",
+          "title": "Language and saved-result folders"
         }
       ]
     },

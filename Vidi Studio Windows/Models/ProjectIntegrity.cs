@@ -21,6 +21,7 @@ public enum ProjectFileCategory
     Metadata,
     Thumbnails,
     Narration,
+    NarrationHistory,
     ImportedAssets,
     Exports,
     SignificantLoss
@@ -48,7 +49,7 @@ public sealed class ProjectFileProblem
         ProjectFileCategory.Source => "\uE714",
         ProjectFileCategory.Metadata => "\uE946",
         ProjectFileCategory.Thumbnails => "\uEB9F",
-        ProjectFileCategory.Narration => "\uE8D6",
+        ProjectFileCategory.Narration or ProjectFileCategory.NarrationHistory => "\uE8D6",
         ProjectFileCategory.ImportedAssets => "\uE896",
         ProjectFileCategory.Exports => "\uE898",
         ProjectFileCategory.SignificantLoss => "\uE7BA",
@@ -56,9 +57,9 @@ public sealed class ProjectFileProblem
     };
 }
 
-public sealed record ProjectNarrationReference(string Path, int SegmentNumber, string TimeRange)
+public sealed record ProjectNarrationReference(string Path, int SegmentNumber, string TimeRange, bool HistoryOnly = false)
 {
-    public string DisplayName => $"{Path} (AD {SegmentNumber}{(string.IsNullOrEmpty(TimeRange) ? "" : $" · {TimeRange}")})";
+    public string DisplayName => $"{Path} ({(HistoryOnly ? "Edit history" : "AD " + SegmentNumber)}{(string.IsNullOrEmpty(TimeRange) ? "" : $" · {TimeRange}")})";
 }
 
 public sealed class ProjectIntegrityManifest
@@ -110,6 +111,7 @@ public sealed class ProjectIntegrityReport
             {
                 return Problems[0].Category switch
                 {
+                    ProjectFileCategory.NarrationHistory => "Edit History Audio Is Missing",
                     ProjectFileCategory.Narration => "Narration Audio Is Missing",
                     ProjectFileCategory.ImportedAssets => "Imported Assets Are Missing",
                     ProjectFileCategory.Thumbnails => "Timeline Pictures Are Missing",
@@ -143,6 +145,8 @@ public sealed class ProjectIntegrityReport
                 var problem = Problems[0];
                 switch (problem.Category)
                 {
+                    case ProjectFileCategory.NarrationHistory:
+                        return $"{problem.MissingCount} older narration recordings referenced only by edit history are missing. Saved description results and their current narration are unaffected.";
                     case ProjectFileCategory.Narration:
                         return $"Narration audio is missing for {problem.MissingCount} AD segment{(problem.MissingCount == 1 ? "" : "s")}. The description text and timing are safe, and the missing audio can be regenerated.";
                     case ProjectFileCategory.ImportedAssets:
@@ -296,7 +300,9 @@ public static class ProjectIntegrityAuditor
             });
         }
 
-        var narrationReferences = UniqueNarration(manifest.NarrationReferences);
+        var allNarration = UniqueNarration(manifest.NarrationReferences.OrderBy(r => r.HistoryOnly));
+        var narrationReferences = allNarration.Where(r => !r.HistoryOnly).ToList();
+        var historyReferences = allNarration.Where(r => r.HistoryOnly).ToList();
         var missingNarration = narrationReferences
             .Where(reference => Resolve(reference.Path, folder) is not { } url || FileStateOf(url, allowDirectory: false) != FileState.Ok)
             .Select(reference => new ProjectMissingFile(reference.Path, reference.DisplayName))
@@ -316,6 +322,18 @@ public static class ProjectIntegrityAuditor
                 MissingFiles = missingNarration,
                 ExpectedCount = narrationReferences.Count
             });
+        }
+
+        var missingHistory = historyReferences.Where(r => Resolve(r.Path, folder) is not { } url || FileStateOf(url, false) != FileState.Ok)
+            .Select(r => new ProjectMissingFile(r.Path, r.DisplayName)).ToList();
+        trackedFiles += historyReferences.Count;
+        if (missingHistory.Count > 0) {
+            missingFiles += missingHistory.Count;
+            problems.Add(new ProjectFileProblem { Category = ProjectFileCategory.NarrationHistory, Severity = ProjectIntegrityLevel.Warning,
+                Title = "Older narration in edit history is missing", Detail = $"{missingHistory.Count} older recordings referenced only by undo/redo history are missing or empty.",
+                Impact = "Saved results and current playback are unaffected. Undoing to these older edits may require generating narration again.",
+                Recovery = "Restore the original recordings from a backup, or regenerate narration after restoring an older edit. Moving current files cannot recreate older recordings.",
+                MissingFiles = missingHistory, ExpectedCount = historyReferences.Count });
         }
 
         var importedPaths = UniquePaths(manifest.ImportedPaths);
@@ -550,7 +568,7 @@ public static class ProjectIntegrityAuditor
         {
             var path = reference.Path.Trim();
             if (path.Length == 0 || !seen.Add(path)) continue;
-            result.Add(new ProjectNarrationReference(path, reference.SegmentNumber, reference.TimeRange));
+            result.Add(new ProjectNarrationReference(path, reference.SegmentNumber, reference.TimeRange, reference.HistoryOnly));
         }
         return result;
     }

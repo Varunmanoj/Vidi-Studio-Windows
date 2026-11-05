@@ -13,6 +13,17 @@ namespace Vidi_Studio_Windows;
 
 public sealed partial class MainWindow
 {
+    internal async Task<bool?> ConfirmExportReplacementAsync(IReadOnlyList<string> paths) {
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(new TextBlock { Text = "These outputs already exist. Replace Existing saves new exports in their place. Skip Existing preserves them and exports the remaining outputs. A Web Playback folder is treated as one output.", TextWrapping = TextWrapping.Wrap });
+        content.Children.Add(new ScrollViewer { MaxHeight = 240, Content = new TextBlock { Text = string.Join("\n", paths), TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } });
+        var result = await ShowDialogAsync(new ContentDialog {
+            Title = paths.Count == 1 ? "Replace Existing Export?" : "Replace Existing Exports?", Content = content,
+            PrimaryButtonText = "Replace Existing", SecondaryButtonText = "Skip Existing", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close
+        }, 650, 480);
+        return result == ContentDialogResult.Primary ? true : result == ContentDialogResult.Secondary ? false : null;
+    }
+
     private ContentControl? activeLanguagePanelHost;
     private readonly List<(Control control, bool requiresEdit)> languageControls = new();
     private bool LanguageEditMode => Section.SelectedIndex == 1 ? summaryEditMode : Section.SelectedIndex is 0 or 2 or 4 && editMode;

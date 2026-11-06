@@ -28,12 +28,6 @@ class PlatformHooks(ast.NodeTransformer):
             return None
         return self.generic_visit(node)
 
-    def visit_If(self, node):
-        # Mac calls its native AVFoundation finalizer after the engine exits.
-        # Windows tags MOV tracks before the engine atomically commits them.
-        if ast.unparse(node.test) == "video_processing and output.suffix == '.mov'":
-            return None
-        return self.generic_visit(node)
 
 
 def parsed(relative, root):

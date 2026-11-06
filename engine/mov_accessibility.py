@@ -47,11 +47,14 @@ def track_type(track):
     return None
 
 
-def update_track(track, characteristic, group):
+def update_track(track, characteristic, group, title=None, language=None):
     characteristics = (characteristic,) if isinstance(characteristic, bytes) else (characteristic or ())
     output = []
     found_userdata = False
     for kind, payload in children(track):
+        if kind == b"mdia" and language is not None:
+            payload = b"".join(atom(k, v) for k, v in children(payload) if k != b"elng")
+            payload += atom(b"elng", bytes(4) + language.encode('ascii') + b"\0")
         if kind == b"tkhd":
             if not payload or payload[0] not in (0, 1):
                 raise ValueError("Unsupported QuickTime track header.")
@@ -64,17 +67,28 @@ def update_track(track, characteristic, group):
                 raise ValueError("Duplicate QuickTime track user data.")
             found_userdata = True
             entries = list(children(payload))
+            if title is not None:
+                entries = [(k, v) for k, v in entries if k not in (b"name", b"\xa9nam")]
+                encoded = title.encode('utf-8')
+                if len(encoded) > 65535: raise ValueError('The track name is too long.')
+                # QuickTime consumes localized full names; VLC consumes the plain name.
+                entries += [(b"\xa9nam", struct.pack('>HH', len(encoded), 0) + encoded), (b"name", encoded)]
             for value in characteristics:
                 if not any(k == b"tagc" and v == value for k, v in entries):
                     entries.append((b"tagc", value))
             payload = b"".join(atom(k, v) for k, v in entries)
         output.append(atom(kind, payload))
-    if characteristics and not found_userdata:
-        output.append(atom(b"udta", b"".join(atom(b"tagc", value) for value in characteristics)))
+    if not found_userdata and (characteristics or title is not None):
+        entries = b"".join(atom(b"tagc", value) for value in characteristics)
+        if title is not None:
+            encoded = title.encode('utf-8')
+            if len(encoded) > 65535: raise ValueError('The track name is too long.')
+            entries += atom(b"\xa9nam", struct.pack('>HH', len(encoded), 0) + encoded) + atom(b"name", encoded)
+        output.append(atom(b"udta", entries))
     return b"".join(output)
 
 
-def tag_movie(movie, described_audio_indices=None, described_subtitle_indices=()):
+def tag_movie(movie, described_audio_indices=None, described_subtitle_indices=(), audio_titles=None, subtitle_titles=None, audio_languages=None, subtitle_languages=None):
     result = []
     audio_count = 0
     subtitle_count = 0
@@ -84,10 +98,10 @@ def tag_movie(movie, described_audio_indices=None, described_subtitle_indices=()
             if media == b"soun":
                 audio_count += 1
                 described = audio_count == 2 if described_audio_indices is None else audio_count - 1 in described_audio_indices
-                payload = update_track(payload, DESCRIPTION if described else None, 1)
+                payload = update_track(payload, DESCRIPTION if described else None, 1, audio_titles[audio_count - 1] if audio_titles is not None and audio_count <= len(audio_titles) else None, audio_languages[audio_count - 1] if audio_languages is not None and audio_count <= len(audio_languages) else None)
             elif media in (b"text", b"sbtl", b"subt", b"clcp"):
                 characteristics = (TRANSCRIPT, DESCRIPTION) if subtitle_count in described_subtitle_indices else (TRANSCRIPT,)
-                payload = update_track(payload, characteristics, 2)
+                payload = update_track(payload, characteristics, 2, subtitle_titles[subtitle_count] if subtitle_titles is not None and subtitle_count < len(subtitle_titles) else None, subtitle_languages[subtitle_count] if subtitle_languages is not None and subtitle_count < len(subtitle_languages) else None)
                 subtitle_count += 1
         result.append(atom(kind, payload))
     if described_audio_indices is None and audio_count != 2:
@@ -96,10 +110,14 @@ def tag_movie(movie, described_audio_indices=None, described_subtitle_indices=()
         raise ValueError("Described audio track index is outside the movie.")
     if any(index < 0 or index >= subtitle_count for index in described_subtitle_indices):
         raise ValueError("Descriptive subtitle track index is outside the movie.")
+    if audio_titles is not None and len(audio_titles) != audio_count or subtitle_titles is not None and len(subtitle_titles) != subtitle_count:
+        raise ValueError("The track-name count does not match the movie.")
+    if audio_languages is not None and len(audio_languages) != audio_count or subtitle_languages is not None and len(subtitle_languages) != subtitle_count:
+        raise ValueError("The track-language count does not match the movie.")
     return b"".join(result)
 
 
-def finalize(path, described_audio_indices=None, described_subtitle_indices=()):
+def finalize(path, described_audio_indices=None, described_subtitle_indices=(), audio_titles=None, subtitle_titles=None, audio_languages=None, subtitle_languages=None):
     """Tag a newly generated MOV before the engine commits its export."""
     path = Path(path)
     with path.open("r+b") as file:
@@ -133,7 +151,7 @@ def finalize(path, described_audio_indices=None, described_subtitle_indices=()):
         if len(movies) != 1:
             raise ValueError("Expected one QuickTime movie header.")
         position, old = movies[0]
-        updated = tag_movie(old, described_audio_indices, described_subtitle_indices)
+        updated = tag_movie(old, described_audio_indices, described_subtitle_indices, audio_titles, subtitle_titles, audio_languages, subtitle_languages)
         if updated == old:
             return
         file.seek(length)

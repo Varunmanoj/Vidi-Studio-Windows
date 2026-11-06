@@ -59,3 +59,29 @@ class MetadataTests(unittest.TestCase):
 
     def test_bad_nested_atom_is_rejected(self):
         with self.assertRaises(ValueError): list(mov.children(struct.pack(">I4s", 999, b"trak")))
+
+    def test_multilingual_names_are_complete_idempotent_and_preserve_media(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'labels.mov'
+            movie = track(b'vide')+track(b'soun')+track(b'soun')+track(b'soun')+track(b'sbtl')
+            original = mov.atom(b'ftyp',b'qt  ')+mov.atom(b'moov',movie)+mov.atom(b'mdat',b'UNCHANGED MEDIA')
+            path.write_bytes(original)
+            names=['Original Audio','English - Audio Description','Chinese (Simplified) - Audio Description']
+            captions=['Hindi AD Transcript']
+            mov.finalize(path,(1,2),(0,),names,captions)
+            result=path.read_bytes()
+            self.assertEqual(result.index(b'UNCHANGED MEDIA'),original.index(b'UNCHANGED MEDIA'))
+            header=next(v for k,v in mov.children(result) if k==b'moov')
+            actual=[]
+            for kind,payload in mov.children(header):
+                if kind!=b'trak' or mov.track_type(payload) not in (b'soun',b'sbtl'):continue
+                userdata=next(v for k,v in mov.children(payload) if k==b'udta')
+                items=dict(mov.children(userdata))
+                name=items[b'name'].decode();actual.append(name)
+                length,locale=struct.unpack_from('>HH',items[b'\xa9nam'])
+                self.assertEqual(items[b'\xa9nam'][4:4+length].decode(),name)
+            self.assertEqual(actual,names+captions)
+            mov.finalize(path,(1,2),(0,),names,captions)
+            self.assertEqual(path.read_bytes(),result)
+            with self.assertRaises(ValueError):mov.finalize(path,(1,2),(0,),['Wrong count'],captions)
+            self.assertEqual(path.read_bytes(),result)

@@ -407,6 +407,30 @@
           "title": "Choose and check YouTube audio"
         },
         {
+          "id": "export-track-names",
+          "title": "Original Audio and language labels in players"
+        },
+        {
+          "id": "selected-media-tracks",
+          "title": "One File with Selected Tracks: On or Off?"
+        },
+        {
+          "id": "export-separate-languages",
+          "title": "Export separate files: switch Off"
+        },
+        {
+          "id": "export-one-file",
+          "title": "Export one file with language choices: switch On"
+        },
+        {
+          "id": "export-track-presentation",
+          "title": "Choose selectable or permanent presentation"
+        },
+        {
+          "id": "formats-names-and-saved-files",
+          "title": "Formats, names, and saved files"
+        },
+        {
           "id": "language-saved-results",
           "title": "Language and saved results"
         },
@@ -619,6 +643,10 @@
         {
           "id": "language-asset-storage",
           "title": "Language and saved-result folders"
+        },
+        {
+          "id": "exported-audio-track-labels",
+          "title": "An exported original track says Unknown language"
         }
       ]
     },

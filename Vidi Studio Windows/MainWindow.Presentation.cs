@@ -627,7 +627,7 @@ public sealed partial class MainWindow
         var extension = Path.GetExtension(relative).ToLowerInvariant();
         var name = ExportDisplayName(project, relative);
         if (extension is ".mp4" or ".mov" or ".m4v" or ".mkv" or ".webm") return ("Video", "\uE714", 0);
-        if (extension is ".mp3" or ".m4a" or ".wav" or ".aac" or ".flac") return ("Audio", "\uE767", 1);
+        if (extension is ".mp3" or ".m4a" or ".mka" or ".wav" or ".aac" or ".flac") return ("Audio", "\uE767", 1);
         if (extension == ".md") return ("Summary", "\uE8E4", 3);
         if (extension is ".srt" or ".vtt" or ".txt" or ".json")
         {
@@ -663,7 +663,7 @@ public sealed partial class MainWindow
             target.Children.Add(new TextBlock { Text = "No exports yet", Opacity = .65 });
             return;
         }
-        var groups = project.Exports.Where(path => exportLanguageFilter == "all" || (project.ExportResults.TryGetValue(path, out var provenance) ? provenance.Language : "auto") == exportLanguageFilter).Where(path => exportResultFilter == "all" || project.ExportResults.TryGetValue(path, out var resultProvenance) && resultProvenance.ResultIDs.Values.Contains(exportResultFilter)).Select(relative => (Relative: relative, Category: ExportCategoryFor(project, relative)))
+        var groups = project.Exports.Where(path => exportLanguageFilter == "all" || (project.ExportResults.TryGetValue(path, out var provenance) ? provenance.Matches(exportLanguageFilter) : exportLanguageFilter == "auto")).Where(path => exportResultFilter == "all" || project.ExportResults.TryGetValue(path, out var resultProvenance) && resultProvenance.ResultIDs.Values.Contains(exportResultFilter)).Select(relative => (Relative: relative, Category: ExportCategoryFor(project, relative)))
             .GroupBy(item => item.Category.Name).OrderBy(group => group.First().Category.Order);
         foreach (var group in groups)
         {

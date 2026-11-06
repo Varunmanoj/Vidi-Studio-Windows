@@ -38,7 +38,7 @@ class ExportParityChecker(unittest.TestCase):
     def test_reviewed_platform_downloaders_pass(self):
         result = self.check_fixture()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('54 shared export/progress functions', result.stdout)
+        self.assertIn('55 shared export/progress functions', result.stdout)
 
     def test_changed_downloader_retry_behavior_is_rejected(self):
         result = self.check_fixture(mutate=True)

@@ -281,7 +281,7 @@ public sealed partial class MainWindow
                 box.Checked += (_, _) => selected.Add(result.Id); box.Unchecked += (_, _) => selected.Remove(result.Id); rows.Children.Add(box);
             }
             rows.Children.Add(new TextBlock { Text = "Optional exports" });
-            foreach (var path in project.Exports.Where(path => code == "all" || (project.ExportResults.TryGetValue(path, out var provenance) ? provenance.Language : "auto") == code)) {
+            foreach (var path in project.Exports.Where(path => code == "all" || (project.ExportResults.TryGetValue(path, out var provenance) ? provenance.Matches(code) : code == "auto"))) {
                 var box = new CheckBox { Content = Path.GetFileName(path), IsChecked = exports.Contains(path) };
                 box.Checked += (_, _) => exports.Add(path); box.Unchecked += (_, _) => exports.Remove(path); rows.Children.Add(box);
             }

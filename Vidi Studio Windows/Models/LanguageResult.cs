@@ -51,6 +51,8 @@ public sealed class LanguageResult
 public sealed class ExportResultProvenance
 {
     public bool? Described { get; set; }
+    public List<string>? Languages { get; set; }
+    public bool Matches(string code) => code == "all" || (Languages ?? new List<string> { Language }).Contains(code);
     public string Language { get; set; } = "auto";
     public Dictionary<string, string> ResultIDs { get; set; } = new();
     public double CreatedAt { get; set; }

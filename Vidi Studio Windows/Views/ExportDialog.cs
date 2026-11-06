@@ -15,7 +15,7 @@ using Windows.UI;
 
 namespace Vidi_Studio_Windows.Views;
 
-public sealed class ExportDialog : ContentDialog
+public sealed partial class ExportDialog : ContentDialog
 {
     private static readonly string[] Sections = { "Video", "Audio", "Text", "Web Playback" };
     private static readonly string[] TextLabels = { "Transcript", "Summary", "Descriptions", "AD Transcript" };
@@ -134,6 +134,7 @@ public sealed class ExportDialog : ContentDialog
 
     private async Task SaveAsync()
     {
+        if (SelectingTracks) { if (CanSave()) await SaveSelectedTracksAsync(); return; }
         if (!CanSave() || exportLanguages.Count == 0) return;
         var (command, arguments) = BuildRequest();
         if (owner == null || model.Project is not { } project) {
@@ -156,7 +157,7 @@ public sealed class ExportDialog : ContentDialog
             }
             var target = project.WithLanguageResults(code, ids);
             var suffix = string.Join("-", ids.Values.Select(v => v[..Math.Min(8, v.Length)]).OrderBy(v => v, StringComparer.Ordinal)).Replace('-', '.');
-            target.Name = string.Concat(project.Name.EnumerateRunes().Take(40).Select(r => r.ToString())) + " [" + code + (suffix.Length == 0 ? "" : " " + suffix) + "]";
+            target.Name = string.Concat(project.Name.EnumerateRunes().Take(40).Select(r => r.ToString())) + " [" + OutputLanguage.Label(code) + (suffix.Length == 0 ? "" : " " + suffix) + "]";
             var path = TargetRelativePath(target);
             var legacyExists = project.Exports.Any(old => {
                 var oldCode = project.ExportResults.TryGetValue(old, out var provenance) ? provenance.Language : old.Split('/').Length > 2 ? old.Split('/')[1] : "auto";
@@ -212,6 +213,13 @@ public sealed class ExportDialog : ContentDialog
         heading.Children.Add(new TextBlock { Text = ExportProject?.Name ?? "No project selected", Opacity = .6,
             TextTrimming = TextTrimming.CharacterEllipsis });
         page.Children.Add(heading);
+        if (section is 0 or 1) {
+            var output = new CheckBox { Content = "One File with Selected Tracks", IsChecked = combineTracks };
+            output.Checked += (_, _) => { combineTracks = true; BuildPage(); };
+            output.Unchecked += (_, _) => { combineTracks = false; BuildPage(); };
+            page.Children.Add(output);
+        }
+        if (SelectingTracks) { BuildTrackChoices(); UpdatePreview(); return; }
         AddLanguageSelections();
         switch (section)
         {
@@ -357,14 +365,14 @@ public sealed class ExportDialog : ContentDialog
         return model.OnlineReason(request.Command, request.Arguments) == null;
     }
     private void ConnectivityChanged(object? sender, EventArgs e) => UpdatePreview();
-    private bool CanSave() => !awaitingReplacementConfirmation && ConnectionReady() && model.Idle && ExportProject != null && (sidebar.SelectedIndex switch
+    private bool CanSave() => !awaitingReplacementConfirmation && ConnectionReady() && model.Idle && ExportProject != null && (SelectingTracks ? TrackSelectionValid : (sidebar.SelectedIndex switch
     {
         0 => CanUseVideoAudio(videoAudio) && CanUseCaptions(videoCaptions) && (videoAudio != 0 || videoCaptions != 0),
         1 => CanUseAudio(audioChoice),
         2 => ExportProject.CanExportText(TextIds[textContent]),
         3 => CanUseVideoAudio(webAudio) && CanUseCaptions(webCaptions),
         _ => false
-    });
+    }));
 
     private void UpdatePreview()
     {

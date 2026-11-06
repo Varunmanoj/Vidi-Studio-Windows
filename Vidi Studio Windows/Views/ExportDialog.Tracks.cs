@@ -1,3 +1,4 @@
+using Vidi_Studio_Windows.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System;
@@ -86,9 +87,9 @@ public sealed partial class ExportDialog
     }
     private void AddTrackResult(StackPanel panel, string label, List<LanguageResult> rows, Dictionary<string,string> selected, string code)
     {
-        var labels = rows.Select(r => LanguageResult.KindTitle(r.Kind) + " · " + r.Title).ToArray();
-        var picker = new ComboBox { Header = label, ItemsSource = labels, SelectedIndex = rows.FindIndex(r => selected.TryGetValue(code, out var id) && r.Id == id), HorizontalAlignment = HorizontalAlignment.Stretch };
-        picker.SelectionChanged += (_, _) => { if (picker.SelectedIndex < 0) return; selected[code] = rows[picker.SelectedIndex].Id; if (label == "Audio Saved Result") BuildPage(); else UpdatePreview(); };
+        var picker = new ComboBox { Header = label, HorizontalAlignment = HorizontalAlignment.Stretch };
+        if (ExportProject is { } project) SavedResultOptions.Populate(picker, rows, project, selected.TryGetValue(code, out var chosen) ? chosen : project.ActiveResultID(rows[0].Kind, code), captionTracks.TryGetValue(code, out var transcript) ? new Dictionary<string,string> { ["transcript"] = transcript } : null);
+        picker.SelectionChanged += (_, _) => { if (picker.SelectedIndex < 0) return; selected[code] = rows[picker.SelectedIndex].Id; BuildPage(); };
         panel.Children.Add(picker);
     }
     private Dictionary<string, object> TrackPlan()

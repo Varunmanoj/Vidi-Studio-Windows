@@ -194,8 +194,8 @@ public sealed partial class ExportDialog : ContentDialog
                 if (!resultSelections.TryGetValue(code, out var selected)) resultSelections[code] = selected = new();
                 var rid = selected.TryGetValue(kind, out var chosen) ? chosen : project.ActiveResultID(kind, code);
                 var picker = new ComboBox { Header = LanguageResult.KindTitle(kind), ItemsSource = rows, DisplayMemberPath = "Title" };
-                picker.SelectedItem = rows.FirstOrDefault(r => r.Id == rid) ?? rows[0];
-                picker.SelectionChanged += (_, _) => { if (picker.SelectedItem is LanguageResult value) resultSelections[code][kind] = value.Id; };
+                SavedResultOptions.Populate(picker, rows, project, rows.FirstOrDefault(r => r.Id == rid)?.Id ?? rows[0].Id, selected);
+                picker.SelectionChanged += (_, _) => { if (SavedResultOptions.Selected(picker) is LanguageResult value) { resultSelections[code][kind] = value.Id; BuildPage(); } };
                 fields.Children.Add(picker);
             }
 

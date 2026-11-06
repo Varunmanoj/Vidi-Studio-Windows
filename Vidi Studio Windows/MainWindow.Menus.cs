@@ -19,6 +19,7 @@ public sealed partial class MainWindow
     private readonly List<(string Name, MenuFlyoutSubItem Item)> desktopMenuGroups = new();
     private readonly List<MenuFlyoutSubItem> projectLanguageMenus = new();
     private string projectLanguageMenuState = "";
+    private readonly List<MenuFlyoutSubItem> savedResultMenus = new();
     private bool desktopEditorVisible;
     private bool? desktopPlaybackWasPlaying;
     internal IEnumerable<(string Label, string Shortcut)> DesktopShortcutReference =>
@@ -66,7 +67,7 @@ public sealed partial class MainWindow
                 Command("delete-project"), Command("delete-content"), Separator(), Command("remove-from-list"), Separator(), Command("open-editor-window"), Command("settings"), Command("project-settings"), Command("close-window")),
             Menu("Edit", Command("copy-to")),
             Menu("View",
-                ProjectLanguageMenu(), Separator(),
+                ProjectLanguageMenu(), Separator(), SavedResultsMenu(), Separator(),
                 Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("filter-segments"),
                 Submenu("Sort Segments", Command("sort-start"), Command("sort-duration-asc"), Command("sort-duration-desc"), Command("sort-origin")), Separator(),
                 Command("show-projects"), Command("show-inspector"), Separator(),
@@ -193,6 +194,42 @@ public sealed partial class MainWindow
         return menu;
     }
 
+    private string SavedResultsMenuTitle => Section.SelectedIndex switch {
+        0 => "Transcript Saved Results", 1 => "Summary Saved Results", 2 or 3 => "Description Saved Results",
+        4 => "AD Transcript Saved Results", _ => "Saved Results"
+    };
+
+    private MenuFlyoutSubItem SavedResultsMenu()
+    {
+        var menu = new MenuFlyoutSubItem { Text = SavedResultsMenuTitle, Tag = "saved-results" };
+        savedResultMenus.Add(menu);
+        return menu;
+    }
+
+    private void RefreshSavedResultMenus()
+    {
+        var project = Model.Project;
+        var enabled = CanRunDesktopCommand("saved-results");
+        foreach (var menu in savedResultMenus) {
+            menu.Text = SavedResultsMenuTitle; menu.IsEnabled = enabled; menu.Items.Clear();
+            if (project == null) continue;
+            foreach (var kind in CurrentLanguageKinds) {
+                foreach (var result in project.SavedResults.Where(r => r.Kind == kind && r.Language == project.SelectedLanguage && r.State == "saved").OrderByDescending(r => r.CreatedAt)) {
+                    var item = new ToggleMenuFlyoutItem { Text = (CurrentLanguageKinds.Length > 1 ? Models.LanguageResult.KindTitle(kind) + " · " : "") + SavedResultOptions.AccessibleName(result, project, false), Tag = "saved-result-" + result.Id,
+                        Icon = SavedResultOptions.MenuIcon(result, project, project.ActiveResultID(kind) == result.Id),
+                        IsChecked = project.ActiveResultID(kind) == result.Id, IsEnabled = enabled };
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, (CurrentLanguageKinds.Length > 1 ? Models.LanguageResult.KindTitle(kind) + ", " : "") + SavedResultOptions.AccessibleName(result, project, item.IsChecked));
+                    item.Click += async (_, _) => {
+                        item.IsChecked = Model.Project?.ActiveResultID(kind) == result.Id;
+                        if (!CanRunDesktopCommand("saved-results") || Model.Project?.Id != project.Id || !CurrentLanguageKinds.Contains(kind) || Model.Project.SelectedLanguage != result.Language || !Model.Project.SavedResults.Any(r => r.Id == result.Id && r.State == "saved") || item.IsChecked) return;
+                        await RunLanguageActionAsync("select-result", new[] { "--result-id", result.Id });
+                    };
+                    menu.Items.Add(item);
+                }
+            }
+        }
+    }
+
     private void RefreshProjectLanguageMenus()
     {
         var project = Model.Project;
@@ -240,6 +277,7 @@ public sealed partial class MainWindow
     {
         if (windowClosed) return;
         RefreshProjectLanguageMenus();
+        RefreshSavedResultMenus();
         foreach (var (id, items) in desktopMenuItems)
             foreach (var item in items)
             {
@@ -387,6 +425,7 @@ public sealed partial class MainWindow
             case "sort-duration-desc":
             case "sort-origin": return timed;
             case "caption-off": return timed;
+            case "saved-results": return !HasUnsavedLanguageSummary && p.SavedResults.Any(r => r.State == "saved" && r.Language == p.SelectedLanguage && CurrentLanguageKinds.Contains(r.Kind));
             case "project-language": return !HasUnsavedLanguageSummary && p.AvailableViewingLanguages.Count > 0;
             case "copy-to": return CanCopyLanguageResults;
             case "language-results": return true;

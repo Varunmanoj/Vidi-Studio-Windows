@@ -45,6 +45,10 @@ public sealed class LanguageResult
             return "No text in this result";
         }
     }
+    public static string SavedResultsTitle(string kind) => kind switch {
+        "transcript" => "Transcript Saved Results", "summary" => "Summary Saved Results",
+        "descriptions" => "Description Saved Results", _ => "Imported AD Audio Saved Results"
+    };
     public static string KindTitle(string kind) => kind switch { "transcript" => "Transcript", "summary" => "Summary", "descriptions" => "Descriptions and Narration", _ => "Imported AD Audio" };
 }
 

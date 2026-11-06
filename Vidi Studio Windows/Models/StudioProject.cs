@@ -216,6 +216,10 @@ public sealed class StudioProject : INotifyPropertyChanged
         return kind == "" ? SelectedLanguage : SectionLanguage(kind);
     }
     [JsonIgnore] public IReadOnlyList<string> AvailableViewingLanguages => SavedResults.Where(r => r.State == "saved" && r.HasContent).Select(r => r.Language).Distinct().OrderBy(v => v).ToList();
+    [JsonIgnore] public IReadOnlyList<string> DeletionLanguages => SavedResults.Select(r => r.Language)
+        .Concat(Exports.SelectMany(path => ExportResults.TryGetValue(path, out var provenance)
+            ? provenance.Languages ?? new List<string> { provenance.Language } : new List<string> { "auto" }))
+        .Distinct().OrderBy(OutputLanguage.Label, StringComparer.CurrentCultureIgnoreCase).ToList();
     public string ViewingLanguageTitle(string code) {
         var kinds = SavedResults.Where(r => r.State == "saved" && r.Language == code && r.HasContent).Select(r => r.Kind).ToHashSet();
         var names = new[] { "transcript", "summary", "descriptions", "adAudio" }.Where(kinds.Contains).Select(k => k switch { "transcript" => "Transcript", "summary" => "Summary", "descriptions" => "Descriptions", _ => "AD Audio" });

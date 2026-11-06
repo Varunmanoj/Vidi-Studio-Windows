@@ -229,6 +229,10 @@
         {
           "id": "file-deletion-actions",
           "title": "Delete from the File menu and follow progress"
+        },
+        {
+          "id": "saved-result-status",
+          "title": "Saved result status icons"
         }
       ]
     },
@@ -489,6 +493,10 @@
         {
           "id": "inspect-saved-versions",
           "title": "Check saved versions and their files"
+        },
+        {
+          "id": "saved-result-status",
+          "title": "Saved result status icons"
         }
       ]
     },

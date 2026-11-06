@@ -151,11 +151,11 @@ public sealed partial class MainWindow
                 panel.Children.Add(new TextBlock { Text = "No saved " + LanguageResult.KindTitle(kind).ToLowerInvariant() + " in " + OutputLanguage.Label(code) + ".", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
                 continue;
             }
-            var picker = new ComboBox { Header = LanguageResult.KindTitle(kind) + " Saved Result", ItemsSource = rows, DisplayMemberPath = "Title", HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = !Model.Busy };
-            picker.SelectedItem = rows.FirstOrDefault(r => r.Id == project.ActiveResultID(kind, code));
-            AutomationProperties.SetName(picker, LanguageResult.KindTitle(kind) + " saved result");
+            var picker = new ComboBox { Header = LanguageResult.SavedResultsTitle(kind), ItemsSource = rows, DisplayMemberPath = "Title", HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = !Model.Busy };
+            SavedResultOptions.Populate(picker, rows, project, project.ActiveResultID(kind, code));
+            AutomationProperties.SetName(picker, LanguageResult.SavedResultsTitle(kind));
             picker.SelectionChanged += async (_, _) => {
-                if (picker.SelectedItem is LanguageResult result && result.Id != project.ActiveResultID(kind, code)) {
+                if (SavedResultOptions.Selected(picker) is LanguageResult result && result.Id != project.ActiveResultID(kind, code)) {
                     StopSegmentPreview(); narrationPlayer.Pause(); readback.Stop();
                     await Run("select-result", new[] { "--result-id", result.Id });
                 }
@@ -169,7 +169,7 @@ public sealed partial class MainWindow
             var assign = new Button { Content = "Assign Language…", Visibility = editing ? Visibility.Visible : Visibility.Collapsed };
             Register(assign, true);
             assign.Click += async (_, _) => {
-                if (picker.SelectedItem is not LanguageResult result) return;
+                if (SavedResultOptions.Selected(picker) is not LanguageResult result) return;
                 var choice = LanguagePicker("Language", result.Language);
                 var dialog = new ContentDialog { Title = "Assign Language", Content = choice, PrimaryButtonText = "Assign Language", CloseButtonText = "Cancel" };
                 if (await ShowDialogAsync(dialog, 550, 320) == ContentDialogResult.Primary && choice.SelectedItem is OutputLanguage value)
@@ -300,10 +300,10 @@ public sealed partial class MainWindow
                 box.Checked += (_, _) => { chosenKinds.Add(kind); UpdatePrimary(); };
                 box.Unchecked += (_, _) => { chosenKinds.Remove(kind); UpdatePrimary(); };
                 if (rows.Count == 0) continue;
-                var picker = new ComboBox { Header = LanguageResult.KindTitle(kind) + " Saved Result", ItemsSource = rows, DisplayMemberPath = "Title",
+                var picker = new ComboBox { Header = LanguageResult.SavedResultsTitle(kind), ItemsSource = rows, DisplayMemberPath = "Title",
                     SelectedItem = rows.FirstOrDefault(r => r.Id == project.ActiveResultID(kind, code)) ?? rows[0],
                     HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = selectedOnly.IsChecked != true };
-                AutomationProperties.SetName(picker, LanguageResult.KindTitle(kind) + " Saved Result");
+                AutomationProperties.SetName(picker, LanguageResult.SavedResultsTitle(kind));
                 pickers[kind] = picker; content.Children.Add(picker);
                 if (selectedOnly.IsChecked == true && segmentIDs?.TryGetValue(kind, out var ids) == true)
                     content.Children.Add(new TextBlock { Text = ids.Length + " selected segments" });
@@ -332,7 +332,12 @@ public sealed partial class MainWindow
         if (Model.Project is not { } project || Model.Busy) return;
         var panel = new StackPanel { Spacing = 10 };
         var deletionKind = component is "narration" or "history" ? "descriptions" : component;
-        var language = LanguagePicker("Language filter", deletionKind == null || deletionKind == "thumbnails" ? "all" : project.SelectedLanguage, true);
+        var languages = new[] { new OutputLanguage("all", "All Languages") }
+            .Concat(project.DeletionLanguages.Select(code => new OutputLanguage(code, OutputLanguage.Label(code)))).ToList();
+        var initialLanguage = deletionKind == null || deletionKind is "thumbnails" or "exports" ? "all" : project.SelectedLanguage;
+        var language = new ComboBox { Header = "Language filter", ItemsSource = languages, DisplayMemberPath = "Title",
+            SelectedItem = languages.FirstOrDefault(v => v.Id == initialLanguage) ?? languages[0], HorizontalAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetName(language, "Language filter");
         panel.Children.Add(language);
         string DeletionTitle(string kind) => kind switch {
             "descriptions" => "Description Segments and Audio", "narration" => "Description Audio Only (Keep Segments)",
@@ -360,7 +365,13 @@ public sealed partial class MainWindow
             rows.Children.Clear();
             var code = (language.SelectedItem as OutputLanguage)?.Id ?? "all";
             foreach (var result in project.SavedResults.Where(VisibleResult)) {
-                var box = new CheckBox { Content = OutputLanguage.Label(result.Language) + " · " + LanguageResult.KindTitle(result.Kind) + " · " + result.Title, IsChecked = selected.Contains(result.Id) };
+                var current = result.State == "saved" && project.ActiveResultID(result.Kind, result.Language) == result.Id;
+                var prefix = OutputLanguage.Label(result.Language) + " · " + LanguageResult.KindTitle(result.Kind) + " · ";
+                var row = SavedResultOptions.Content(result, project, current, titlePrefix: prefix);
+                if (result.State == "draft") row.Children.Add(new TextBlock { Text = "Review draft" });
+                var box = new CheckBox { Content = row, IsChecked = selected.Contains(result.Id) };
+                AutomationProperties.SetName(box, prefix + SavedResultOptions.AccessibleName(result, project, current).Replace(", Selected", ", Selected (current saved result)") + (result.State == "draft" ? ", Review draft" : ""));
+                AutomationProperties.SetAutomationId(box, "delete-saved-result-" + result.Id);
                 box.Checked += (_, _) => selected.Add(result.Id); box.Unchecked += (_, _) => selected.Remove(result.Id); rows.Children.Add(box);
             }
             rows.Children.Add(new TextBlock { Text = "Optional exports" });

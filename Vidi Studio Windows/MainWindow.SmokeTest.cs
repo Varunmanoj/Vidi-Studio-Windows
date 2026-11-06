@@ -395,6 +395,9 @@ public sealed partial class MainWindow
                     throw new InvalidOperationException("Speech engine/language/voice inspector visibility is inconsistent.");
             }
             Section.SelectedIndex = 2; UpdateSectionPresentation();
+            var savedResults = editorMenus.First(menu => menu.Title == "View").Items.OfType<MenuFlyoutSubItem>().Single(item => item.Tag as string == "saved-results");
+            if (savedResults.Items.OfType<MenuFlyoutSubItem>().Any() || savedResults.Text != SavedResultsMenuTitle || savedResults.IsEnabled != CanRunDesktopCommand("saved-results"))
+                throw new InvalidOperationException("Saved Results menu groups or guarded state differ from the inspector.");
             var languages = editorMenus.First(menu => menu.Title == "View").Items.OfType<MenuFlyoutSubItem>().Single(item => item.Tag as string == "project-language");
             if (languages.Items.OfType<ToggleMenuFlyoutItem>().Count() != Model.Project!.AvailableViewingLanguages.Count ||
                 languages.Items.OfType<ToggleMenuFlyoutItem>().Count(item => item.IsChecked) != (Model.Project.AvailableViewingLanguages.Contains(Model.Project.SelectedLanguage) ? 1 : 0))

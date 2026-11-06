@@ -12,7 +12,7 @@ public static class OnlineRequirements
         return host != null && (host.Equals(expected, StringComparison.OrdinalIgnoreCase) || host.EndsWith("." + expected, StringComparison.OrdinalIgnoreCase));
     }
     public static readonly HashSet<string> GeminiCommands = new(StringComparer.Ordinal) {
-        "transcribe", "generate-summary", "generate-ad-cues", "analyze", "regenerate-all",
+        "translate-results", "transcribe", "generate-summary", "generate-ad-cues", "analyze", "regenerate-all",
         "reanalyze-segment", "reanalyze-transcript-segment", "rewrite-cue", "capture-frame",
         "check-api-key", "list-models", "list-voices", "validate-config", "align-imported-text",
         "prepare-analysis-video", "check-video-availability"

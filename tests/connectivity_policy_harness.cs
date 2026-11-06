@@ -20,6 +20,7 @@ class Program {
         if (actual.Length != (service == null ? 0 : 1) || (service != null && actual[0] != service)) throw new Exception(command);
     }
     foreach (var command in new[] {"import-video", "prepare-video", "save-summary", "export-audio", "export-subtitles", "doctor", "synthesize-tts"}) Check(command,null);
+    Check("translate-results",OnlineService.Gemini);Check("copy-results",null);
     foreach (var command in OnlineRequirements.GeminiCommands) Check(command,OnlineService.Gemini);
     settings.Mode="gemini";Check("synthesize-tts",OnlineService.Gemini);
     settings.Mode="piper";Check("synthesize-tts",null);

@@ -62,6 +62,7 @@ public sealed partial class MainWindow
             Menu("File",
                 Command("new-project"), Command("open-project"), Command("youtube-browser"), Command("youtube-open-browser"), Separator(), Command("export"), Separator(),
                 Command("remove-from-list"), Separator(), Command("open-editor-window"), Command("settings"), Command("project-settings"), Command("close-window")),
+            Menu("Edit", Command("copy-to")),
             Menu("View",
                 Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("filter-segments"),
                 Submenu("Sort Segments", Command("sort-start"), Command("sort-duration-asc"), Command("sort-duration-desc"), Command("sort-origin")), Separator(),
@@ -349,6 +350,7 @@ public sealed partial class MainWindow
             case "sort-duration-desc":
             case "sort-origin": return timed;
             case "caption-off": return timed;
+            case "copy-to": return CanCopyLanguageResults;
             case "language-results": return true;
             case "analyze": case "transcribe": case "generate-summary": return ai;
             case "generate-ad-cues": return ai && canDescribe;
@@ -403,6 +405,7 @@ public sealed partial class MainWindow
             "summary-previous-sentence" => "Previous Summary Sentence", "summary-next-sentence" => "Next Summary Sentence",
             "summary-previous-paragraph" => "Previous Summary Paragraph", "summary-next-paragraph" => "Next Summary Paragraph",
             "summary-from-start" => "Read Summary from Start", "summary-from-selection" => "Read Summary from Selection", "summary-read-selection" => "Read Selected Summary Text",
+            "copy-to" => "Copy to…",
             "language-results" => "Language and Saved Results…",
             "transcript" => "Show Transcript", "summary" => "Show Summary", "descriptions" => "Show Descriptions",
             "ad-overview" => "Show AD Overview", "ad-transcript" => "Show AD Transcript",
@@ -499,6 +502,7 @@ public sealed partial class MainWindow
             "Summary Reading" or "Narration" or "Narration Audio" or "narration" or "synthesize-tts" or "synthesize-changed" => "Narration",
             "AD Segment Generation" => "Generate descriptions", "delete-descriptions" => "Delete selected",
             "review-narration-issues" => "Review Narration Issues…", "delete-narration" => "Delete narration",
+            "copy-to" => "Copy",
             "delete-current" or "segment-delete-selected" => "Delete selected",
             "review-narration-voices" => "Review Narration Voices…",
             "segment-edit-mode" or "segment-edit-selected" => "Edit selected", "segment-select-all" => "Select all", "segment-deselect-all" => "Deselect all",
@@ -537,6 +541,11 @@ public sealed partial class MainWindow
         var e = new RoutedEventArgs();
         switch (id)
         {
+            case "copy-to":
+                var selected = Segments.SelectedItems.OfType<Models.Segment>().ToArray();
+                var segmentIDs = selected.GroupBy(s => s.IsDescription ? "descriptions" : "transcript").ToDictionary(g => g.Key, g => g.Select(s => s.Id).ToArray());
+                await ShowCopyToAsync(segmentIDs: Section.SelectedIndex is 0 or 2 or 4 ? segmentIDs : null);
+                break;
             case "language-results":
                 await ShowLanguageResultsDialogAsync();
                 break;

@@ -45,8 +45,11 @@ public sealed partial class MainWindow
                 Narration.IsOn != ProjectPlaybackPreferences.NarrationEnabled(Model.Settings, openedProject) ||
                 Follow.IsOn != ProjectPlaybackPreferences.FollowEnabled(Model.Settings, openedProject))
                 throw new InvalidOperationException("Opening a project did not restore its saved playback toggles.");
-            if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Playback", "Project", "YouTube", "Help" }))
+            if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "Edit", "View", "Playback", "Project", "YouTube", "Help" }))
                 throw new InvalidOperationException("Editor menu set does not match the active page.");
+            var copyMenu = editorMenus.Single(menu => menu.Title == "Edit");
+            if (!copyMenu.Items.OfType<MenuFlyoutItem>().Select(item => (string)item.Tag).SequenceEqual(new[] { "copy-to" }))
+                throw new InvalidOperationException("Edit must expose Copy to.");
             var youtubeMenu = editorMenus.Single(menu => menu.Title == "YouTube");
             if (!youtubeMenu.Items.OfType<MenuFlyoutItem>().Select(item => (string)item.Tag).SequenceEqual(new[] {
                 "youtube-browser", "youtube-accounts", "youtube-list", "youtube-table", "youtube-open-editor",
@@ -386,7 +389,7 @@ public sealed partial class MainWindow
             await Task.Delay(200);
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "editor-descriptions.png"));
             ShowGallery_Click(this, new RoutedEventArgs());
-            if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "View", "Playback", "Project", "YouTube", "Help" }))
+            if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "Edit", "View", "Playback", "Project", "YouTube", "Help" }))
                 throw new InvalidOperationException("Gallery menu hierarchy drifted from the shared desktop layout.");
             if (CanRunDesktopCommand("export") || CanRunDesktopCommand("review-narration-issues") || CanRunDesktopCommand("review-narration-voices"))
                 throw new InvalidOperationException("Project-only menu commands remained enabled in the gallery.");
@@ -1139,7 +1142,8 @@ public sealed partial class MainWindow
                     }
                 }
             }
-            if (!manifest.SequenceEqual(await File.ReadAllBytesAsync(manifestPath)))
+            var finalManifest = await File.ReadAllBytesAsync(manifestPath);
+            if (!manifest.SequenceEqual(finalManifest))
                 throw new InvalidOperationException("Filtering modified the saved project.");
         }
         finally

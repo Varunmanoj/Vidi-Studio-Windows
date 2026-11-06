@@ -106,6 +106,10 @@ public sealed partial class MainWindow
         }
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(new TextBlock { Text = "Language and Saved Results", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        if (!settingsContext) {
+            var copyAll = new Button { Content = "Copy to…", IsEnabled = CanCopyLanguageResults };
+            copyAll.Click += async (_, _) => await ShowCopyToAsync(); panel.Children.Add(copyAll);
+        }
         if (settingsContext) {
             var edit = new Button { Content = editing ? "Finish Editing Languages" : "Edit Languages", IsEnabled = !Model.Busy && !HasUnsavedLanguageSummary };
             edit.Click += (_, _) => setSettingsEditing?.Invoke(!editing); panel.Children.Add(edit);
@@ -158,6 +162,10 @@ public sealed partial class MainWindow
             };
             Register(picker, false);
             panel.Children.Add(picker);
+            if (!settingsContext && kind is "transcript" or "summary" or "descriptions") {
+                var copy = new Button { Content = "Copy " + LanguageResult.KindTitle(kind) + " to…", IsEnabled = CanCopyLanguageResults };
+                copy.Click += async (_, _) => await ShowCopyToAsync(new[] { kind }); panel.Children.Add(copy);
+            }
             var assign = new Button { Content = "Assign Language…", Visibility = editing ? Visibility.Visible : Visibility.Collapsed };
             Register(assign, true);
             assign.Click += async (_, _) => {
@@ -242,6 +250,81 @@ public sealed partial class MainWindow
         var path = Path.Combine(Path.GetTempPath(), "vidistudio-results-" + Guid.NewGuid() + ".json");
         try { File.WriteAllText(path, JsonSerializer.Serialize(request)); await Model.RunAsync(command, new[] { "--input", path }); }
         finally { File.Delete(path); }
+    }
+
+    private bool CanCopyLanguageResults => Model.Idle && !HasUnsavedLanguageSummary && Model.Project is { } p &&
+        p.SavedResults.Any(r => r.State == "saved" && r.HasContent && r.Kind is "transcript" or "summary" or "descriptions");
+
+    private async Task ShowCopyToAsync(string[]? initialKinds = null, Dictionary<string, string[]>? segmentIDs = null)
+    {
+        if (!CanCopyLanguageResults || Model.Project is not { } project) return;
+        var allKinds = new[] { "transcript", "summary", "descriptions" };
+        var source = LanguagePicker("Source Language", project.SelectedLanguage);
+        var target = LanguagePicker("Target Language", project.SelectedLanguage == "auto" ? "en" : project.SelectedLanguage);
+        var panel = new StackPanel { Spacing = 12 };
+        var translate = new CheckBox { Content = "Translate Text", IsChecked = true };
+        panel.Children.Add(source); panel.Children.Add(translate); panel.Children.Add(target);
+        var selectedOnly = new CheckBox { Content = "Selected Segments Only", IsChecked = segmentIDs?.Count > 0,
+            Visibility = segmentIDs?.Count > 0 ? Visibility.Visible : Visibility.Collapsed };
+        panel.Children.Add(selectedOnly);
+        var selectAll = new Button { Content = "Select All" }; panel.Children.Add(selectAll);
+        var content = new StackPanel { Spacing = 8 }; panel.Children.Add(content);
+        var boxes = new Dictionary<string, CheckBox>();
+        var pickers = new Dictionary<string, ComboBox>();
+        var chosenKinds = (initialKinds ?? allKinds).ToHashSet();
+        var dialog = new ContentDialog { Title = "Copy to", Content = new ScrollViewer { Content = panel },
+            PrimaryButtonText = "Copy", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
+        var translationStatus = new TextBlock { Text = "Gemini is unavailable. Check connection and API key.", TextWrapping = TextWrapping.Wrap };
+        panel.Children.Add(translationStatus);
+        void UpdatePrimary() {
+            dialog.PrimaryButtonText = translate.IsChecked == true ? "Translate and Copy" : "Copy";
+            translationStatus.Visibility = translate.IsChecked == true && !Model.CanUseAI ? Visibility.Visible : Visibility.Collapsed;
+            dialog.IsPrimaryButtonEnabled = CanCopyLanguageResults && boxes.Any(v => v.Value.IsEnabled && v.Value.IsChecked == true) &&
+                (translate.IsChecked != true || Model.CanUseAI && (target.SelectedItem as OutputLanguage)?.Id is not null and not "auto");
+        }
+        void RefreshTargets() {
+            var selected = (target.SelectedItem as OutputLanguage)?.Id ?? "en";
+            var choices = OutputLanguage.Options.Where(v => translate.IsChecked != true || v.Id != "auto").ToList();
+            target.ItemsSource = choices; target.SelectedItem = choices.FirstOrDefault(v => v.Id == selected) ?? choices.First(v => v.Id == "en");
+            UpdatePrimary();
+        }
+        void Refresh() {
+            content.Children.Clear(); boxes.Clear(); pickers.Clear();
+            var code = (source.SelectedItem as OutputLanguage)?.Id ?? project.SelectedLanguage;
+            source.IsEnabled = selectedOnly.IsChecked != true;
+            foreach (var kind in allKinds) {
+                var rows = project.SavedResults.Where(r => r.Language == code && r.Kind == kind && r.State == "saved" && r.HasContent).OrderByDescending(r => r.CreatedAt).ToList();
+                var box = new CheckBox { Content = LanguageResult.KindTitle(kind), IsChecked = chosenKinds.Contains(kind),
+                    IsEnabled = rows.Count > 0 && (selectedOnly.IsChecked != true || segmentIDs?.ContainsKey(kind) == true) };
+                boxes[kind] = box; content.Children.Add(box);
+                box.Checked += (_, _) => { chosenKinds.Add(kind); UpdatePrimary(); };
+                box.Unchecked += (_, _) => { chosenKinds.Remove(kind); UpdatePrimary(); };
+                if (rows.Count == 0) continue;
+                var picker = new ComboBox { Header = LanguageResult.KindTitle(kind) + " Saved Result", ItemsSource = rows, DisplayMemberPath = "Title",
+                    SelectedItem = rows.FirstOrDefault(r => r.Id == project.ActiveResultID(kind, code)) ?? rows[0],
+                    HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = selectedOnly.IsChecked != true };
+                AutomationProperties.SetName(picker, LanguageResult.KindTitle(kind) + " Saved Result");
+                pickers[kind] = picker; content.Children.Add(picker);
+                if (selectedOnly.IsChecked == true && segmentIDs?.TryGetValue(kind, out var ids) == true)
+                    content.Children.Add(new TextBlock { Text = ids.Length + " selected segments" });
+            }
+            UpdatePrimary();
+        }
+        target.SelectionChanged += (_, _) => UpdatePrimary();
+        translate.Checked += (_, _) => RefreshTargets(); translate.Unchecked += (_, _) => RefreshTargets();
+        source.SelectionChanged += (_, _) => Refresh();
+        selectedOnly.Checked += (_, _) => { source.SelectedItem = ((IEnumerable<OutputLanguage>)source.ItemsSource).First(v => v.Id == project.SelectedLanguage); Refresh(); }; selectedOnly.Unchecked += (_, _) => Refresh();
+        selectAll.Click += (_, _) => { chosenKinds = allKinds.ToHashSet(); selectedOnly.IsChecked = false; Refresh(); };
+        Refresh(); RefreshTargets();
+        if (await ShowDialogAsync(dialog, 650, 700) != ContentDialogResult.Primary || !CanCopyLanguageResults || Model.Project?.Id != project.Id) return;
+        if (translate.IsChecked == true && (!Model.CanUseAI || (target.SelectedItem as OutputLanguage)?.Id is null or "auto")) return;
+        var kinds = allKinds.Where(k => boxes[k].IsEnabled && boxes[k].IsChecked == true).ToArray();
+        if (kinds.Length == 0) return;
+        var results = kinds.ToDictionary(k => k, k => ((LanguageResult)pickers[k].SelectedItem).Id);
+        var segments = selectedOnly.IsChecked == true ? segmentIDs!.Where(v => kinds.Contains(v.Key)).ToDictionary(v => v.Key, v => v.Value) : new Dictionary<string, string[]>();
+        StopSegmentPreview(); narrationPlayer.Pause(); readback.Stop();
+        await RunResultRequestAsync(translate.IsChecked == true ? "translate-results" : "copy-results", new { sourceLanguage = ((OutputLanguage)source.SelectedItem).Id,
+            targetLanguage = ((OutputLanguage)target.SelectedItem).Id, kinds, resultIDs = results, segmentIDs = segments });
     }
 
     private async Task ShowLanguageDeletionAsync(string? component = null)

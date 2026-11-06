@@ -419,6 +419,10 @@ public sealed partial class MainWindow
         }
         if (segment != null)
         {
+            Item("Copy to…", async (_, _) => {
+                var kind = segment.IsDescription ? "descriptions" : "transcript";
+                await ShowCopyToAsync(new[] { kind }, new Dictionary<string, string[]> { [kind] = new[] { segment.Id } });
+            }, CanCopyLanguageResults);
             Item("Edit segment", async (_, _) => await EditSegment(segment), requiresEdit: true);
             Item("Play from segment", (_, _) =>
             {
@@ -470,7 +474,7 @@ public sealed partial class MainWindow
         {
             var sectionIndex = Section.SelectedIndex;
             var project = Model.Project;
-            foreach (var id in EditorActionIds(sectionIndex, editMode, summaryEditMode))
+            foreach (var id in new[] { "copy-to" }.Concat(EditorActionIds(sectionIndex, editMode, summaryEditMode)))
             {
                 if (id == "-")
                 {
@@ -486,7 +490,7 @@ public sealed partial class MainWindow
                 {
                     // A flyout may outlive its tab, project, or editing mode.
                     if (Section.SelectedIndex != sectionIndex || Model.Project != project ||
-                        !EditorActionIds(sectionIndex, editMode, summaryEditMode).Contains(id)) return;
+                        !(id == "copy-to" || EditorActionIds(sectionIndex, editMode, summaryEditMode).Contains(id))) return;
                     try { await RunDesktopCommandAsync(id); }
                     catch (OperationCanceledException) { }
                     catch (Exception ex) { await ShowError(ex); }

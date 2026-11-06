@@ -197,6 +197,10 @@
         {
           "id": "overview-viewing-language",
           "title": "AD Overview viewing language"
+        },
+        {
+          "id": "copy-to",
+          "title": "Copy and translate content to a language"
         }
       ]
     },
@@ -335,6 +339,10 @@
         {
           "id": "language-asset-storage",
           "title": "Language and saved-result folders"
+        },
+        {
+          "id": "copy-to",
+          "title": "Copy and translate content to a language"
         }
       ]
     },
@@ -693,6 +701,10 @@
         {
           "id": "language-saved-results",
           "title": "Language and saved results"
+        },
+        {
+          "id": "copy-to-translation",
+          "title": "Copy to translation"
         }
       ]
     }

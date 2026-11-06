@@ -430,7 +430,7 @@ public sealed partial class MainWindow
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "gallery.png"));
             GalleryLayout_Click(this, new RoutedEventArgs());
             if (GalleryTable.Visibility != Visibility.Visible || GalleryList.Items.Count != 1 ||
-                Model.Projects[0].DurationLabel != "00:08" || Model.Projects[0].AdSegmentLabel != "1")
+                Model.Projects[0].DurationLabel != "00:00:08.000" || Model.Projects[0].AdSegmentLabel != "1")
                 throw new InvalidOperationException("All Projects table did not display the project metadata columns.");
             PreviewTheme("dark"); await Task.Delay(80);
             if (GalleryList.ActualTheme != ElementTheme.Dark) throw new InvalidOperationException("All Projects table did not change to dark appearance.");

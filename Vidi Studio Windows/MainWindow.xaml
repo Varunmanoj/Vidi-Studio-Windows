@@ -126,7 +126,7 @@
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
      <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Padding="12,8">
       <Grid ColumnSpacing="8">
-       <Grid.ColumnDefinitions><ColumnDefinition Width="2.5*"/><ColumnDefinition Width="0.8*"/><ColumnDefinition Width="0.9*"/><ColumnDefinition Width="1*"/><ColumnDefinition Width="1*"/><ColumnDefinition Width="0.7*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="1.1*"/></Grid.ColumnDefinitions>
+       <Grid.ColumnDefinitions><ColumnDefinition Width="2.5*"/><ColumnDefinition Width="124"/><ColumnDefinition Width="0.9*"/><ColumnDefinition Width="1*"/><ColumnDefinition Width="1*"/><ColumnDefinition Width="0.7*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="1.1*"/></Grid.ColumnDefinitions>
        <TextBlock Text="Name"/><TextBlock Grid.Column="1" Text="Duration"/><TextBlock Grid.Column="2" Text="AD Segments"/><TextBlock Grid.Column="3" Text="Transcript"/><TextBlock Grid.Column="4" Text="Summary"/><TextBlock Grid.Column="5" Text="AD"/><TextBlock Grid.Column="6" Text="Video Export"/><TextBlock Grid.Column="7" Text="Audio Export"/>
       </Grid>
      </Border>
@@ -135,7 +135,7 @@
       <ListView.ItemTemplate><DataTemplate>
        <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="6" Margin="0,2">
         <Grid ColumnSpacing="8" Padding="12,8">
-         <Grid.ColumnDefinitions><ColumnDefinition Width="2.5*"/><ColumnDefinition Width="0.8*"/><ColumnDefinition Width="0.9*"/><ColumnDefinition Width="1*"/><ColumnDefinition Width="1*"/><ColumnDefinition Width="0.7*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="1.1*"/></Grid.ColumnDefinitions>
+         <Grid.ColumnDefinitions><ColumnDefinition Width="2.5*"/><ColumnDefinition Width="124"/><ColumnDefinition Width="0.9*"/><ColumnDefinition Width="1*"/><ColumnDefinition Width="1*"/><ColumnDefinition Width="0.7*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="1.1*"/></Grid.ColumnDefinitions>
          <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Grid Width="70" Height="40" AutomationProperties.AccessibilityView="Raw"><SymbolIcon Symbol="Video" Opacity="0.4"/><Image Source="{Binding ThumbnailUri}" Width="70" Height="40" Stretch="Uniform" AutomationProperties.AccessibilityView="Raw"/></Grid><TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/><TextBlock Grid.Column="2" Text="{Binding IntegrityStatus}" Foreground="#E52B32" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" Visibility="{Binding IntegrityIsDamaged, Converter={StaticResource VisibleWhenTrue}}" AutomationProperties.Name="{Binding IntegrityStatus}"/><TextBlock Grid.Column="2" Text="{Binding IntegrityStatus}" Foreground="#C77A00" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" Visibility="{Binding IntegrityHasWarning, Converter={StaticResource VisibleWhenTrue}}" AutomationProperties.Name="{Binding IntegrityStatus}"/></Grid>
          <TextBlock Grid.Column="1" Text="{Binding DurationLabel}" VerticalAlignment="Center"/>
          <TextBlock Grid.Column="2" Text="{Binding AdSegmentLabel}" VerticalAlignment="Center"/>

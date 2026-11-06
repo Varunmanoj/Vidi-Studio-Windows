@@ -29,7 +29,7 @@ public sealed record YouTubeVideo(JsonObject Data)
     public string Url => "https://www.youtube.com/watch?v=" + Id;
     public string Published => Data["publishedAt"]?.GetValue<string>() ?? "";
     public string Channel => Data["channelTitle"]?.ToString() ?? "";
-    public string DurationLabel => TimeSpan.FromSeconds(Duration).ToString(@"hh\:mm\:ss");
+    public string DurationLabel => Models.NarrationTimeFormat.Timestamp(Duration);
     public string PublishedLabel => DateTimeOffset.TryParse(Published, out var date) ? date.LocalDateTime.ToString("d") : Published;
     public string ViewsLabel => Data["viewCount"]?.ToString() ?? "Unavailable";
     public string LikesLabel => Data["likeCount"]?.ToString() ?? "Unavailable";
@@ -39,7 +39,7 @@ public sealed record YouTubeVideo(JsonObject Data)
     public string StatisticsLabel => "Published: " + PublishedLabel + " · Views: " + ViewsLabel + " · Likes: " + LikesLabel + " · Comments: " + CommentsLabel;
     public string TableAccessibleLabel => "Title: " + Title + ", Channel: " + Channel + ", Visibility: " + Visibility + ", Duration: " + DurationLabel + ", Published: " + PublishedLabel + ", Views: " + ViewsLabel + ", Likes: " + LikesLabel + ", Comments: " + CommentsLabel + ", Captions: " + CaptionsLabel;
     public string Thumbnail => Data["thumbnailURL"]?.GetValue<string>() ?? "";
-    public override string ToString() => Title + " · " + Visibility + " · " + TimeSpan.FromSeconds(Duration).ToString() + " · " + Data["channelTitle"];
+    public override string ToString() => Title + " · " + Visibility + " · " + DurationLabel + " · " + Data["channelTitle"];
     public void RequireAvailable()
     {
         if (Visibility == "private") throw new InvalidOperationException("Private Video Cannot Be Opened. Signing in to Google does not give Gemini access to this private video. Choose a public or unlisted video, or import your original local video.");

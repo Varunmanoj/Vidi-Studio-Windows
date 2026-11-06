@@ -554,7 +554,7 @@ public sealed partial class MainWindow : Window
             ProjectTitle.Text = p.Name;
             Title = p.Name + " — Vidi Studio";
         }
-        ProjectInformation.Text = $"{(p.IsYouTube ? "YouTube" : "Local video")}\n{p.Width} × {p.Height}\n{TimeSpan.FromSeconds(p.Duration):hh\\:mm\\:ss}\n{p.Folder}";
+        ProjectInformation.Text = $"{(p.IsYouTube ? "YouTube" : "Local video")}\n{p.Width} × {p.Height}\n{NarrationTimeFormat.Timestamp(p.Duration)}\n{p.Folder}";
         Playhead.Maximum = Math.Max(1, p.Duration);
         UpdateTimelineCursor();
         UpdatePlaybackControls();
@@ -700,7 +700,8 @@ public sealed partial class MainWindow : Window
         if (!playheadDragging) { updatingPosition = true; Playhead.Value = Position; updatingPosition = false; }
         UpdateTimelineCursor();
         readback.TickWordProgress();
-        TimeLabel.Text = $"{TimeSpan.FromSeconds(Position):hh\\:mm\\:ss\\.fff}";
+        TimeLabel.Text = $"{NarrationTimeFormat.Timestamp(Position)} / {NarrationTimeFormat.Timestamp(Model.Project.Duration)}";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(TimeLabel, $"Current time {NarrationTimeFormat.Timestamp(Position)}, duration {NarrationTimeFormat.Timestamp(Model.Project.Duration)}");
         var playing = Model.Project.IsYouTube ? youtubePlaying : video.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
         if (playing && !wasPlaying) readback.Stop();
         wasPlaying = playing;
@@ -1582,9 +1583,9 @@ public sealed partial class MainWindow : Window
                 errors.Add("Start and end times must be valid numbers.");
                 return errors;
             }
-            if (s < 0 || e > maxDuration)
+            if (s < 0 || e < 0 || s > maxDuration || e > maxDuration)
             {
-                errors.Add("The segment must remain inside the video duration.");
+                errors.Add($"Start and end times must be within {NarrationTimeFormat.Timestamp(maxDuration)} (video duration).");
             }
             if (e <= s)
             {
@@ -1637,6 +1638,7 @@ public sealed partial class MainWindow : Window
 
         var result = await ShowDialogAsync(dialog, 680, 720);
         if (result == ContentDialogResult.None) return;
+        if (ValidateTiming(startPicker.Value, endPicker.Value).Count > 0) return;
 
         if (result == ContentDialogResult.Secondary)
         {

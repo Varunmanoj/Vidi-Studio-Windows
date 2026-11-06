@@ -326,8 +326,8 @@ public sealed class StudioProject : INotifyPropertyChanged
     {
         get { try { var path = Thumbnails.FirstOrDefault(); return path != null && File.Exists(Resolve(path)) ? new Uri(Resolve(path)) : null; } catch { return null; } }
     }
-    [JsonIgnore] public string ProjectSubtitle => $"{TimeSpan.FromSeconds(Duration):mm\\:ss} · {Cues.Count} descriptions";
-    [JsonIgnore] public string DurationLabel => TimeSpan.FromSeconds(Duration).ToString(Duration >= 3600 ? @"hh\:mm\:ss" : @"mm\:ss");
+    [JsonIgnore] public string ProjectSubtitle => $"{DurationLabel} · {Cues.Count} descriptions";
+    [JsonIgnore] public string DurationLabel => NarrationTimeFormat.Timestamp(Duration);
     [JsonIgnore] public string AdSegmentLabel => Cues.Count.ToString();
     [JsonIgnore] public bool HasTranscript => Transcript.Count > 0;
     [JsonIgnore] public bool HasSummary => !string.IsNullOrWhiteSpace(Summary);

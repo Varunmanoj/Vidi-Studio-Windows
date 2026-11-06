@@ -595,7 +595,7 @@ public sealed partial class MainWindow
         AddInfo(ProjectDetails, "Name", p.Name); AddInfo(ProjectDetails, "Type", p.IsYouTube ? "YouTube" : "Local Video");
         AddInfo(ProjectDetails, "Folder", p.Folder);
         AddInfo(VideoDetails, "Source", p.IsYouTube ? p.YoutubeURL ?? "" : Path.GetFileName(p.Source));
-        AddInfo(VideoDetails, "Duration", TimeSpan.FromSeconds(p.Duration).ToString(@"hh\:mm\:ss"));
+        AddInfo(VideoDetails, "Duration", NarrationTimeFormat.Timestamp(p.Duration));
         AddInfo(VideoDetails, "Resolution", p.IsYouTube && p.Width <= 0 ? "Not available from YouTube" : $"{p.Width} × {p.Height}");
         if (p.IsYouTube) PopulateYouTubeInspector(p);
         try

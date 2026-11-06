@@ -105,7 +105,7 @@ public sealed partial class MainWindow
         loadingRow.Children.Add(loadingRing); loadingRow.Children.Add(status); panel.Children.Add(loadingRow);
         var list = new ListView { Height = 280, SelectionMode = ListViewSelectionMode.Single };
         var tableHeader = new Grid { Visibility = Visibility.Collapsed, ColumnSpacing = 8, Padding = new Thickness(12, 8, 12, 8) };
-        var widths = new[] { 90.0, 260, 150, 90, 90, 130, 90, 90, 90, 110 };
+        var widths = new[] { 90.0, 260, 150, 90, 124, 130, 90, 90, 90, 110 };
         var headers = new[] { "Thumbnail", "Title", "Channel", "Visibility", "Duration", "Published", "Views", "Likes", "Comments", "Captions" };
         for (var column = 0; column < headers.Length; column++) {
             tableHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(widths[column]) });

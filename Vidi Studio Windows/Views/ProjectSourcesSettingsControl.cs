@@ -99,7 +99,7 @@ public sealed class ProjectSourcesSettingsControl : UserControl
                 () => { scoped.Project = StudioProject.TryLoad(folder); Rebuild(); }));
             var details = new StackPanel { Spacing = 8 };
             Row(details, "Name", project.Name); Row(details, "Type", project.IsYouTube ? "YouTube video" : "Local video");
-            Row(details, "Duration", TimeSpan.FromSeconds(project.Duration).ToString(@"hh\:mm\:ss")); Row(details, "Folder", project.Folder);
+            Row(details, "Duration", NarrationTimeFormat.Timestamp(project.Duration)); Row(details, "Folder", project.Folder);
             Row(details, "Source", project.IsYouTube ? project.YoutubeURL ?? "" : project.Source);
             Row(details, "Resolution", project.Width > 0 && project.Height > 0 ? project.Width + " × " + project.Height : "Not available");
             Row(details, "Audio", project.HasAudio ? "Present" : "Not available");

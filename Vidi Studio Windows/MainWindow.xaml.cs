@@ -191,7 +191,7 @@ public sealed partial class MainWindow : Window
         if (e.PropertyName is nameof(Model.Busy) or nameof(Model.Idle) or nameof(Model.IsAnalyzing)
             or nameof(Model.IsSynthesizingNarration) or nameof(Model.NarratingSegmentId)
             or nameof(Model.NarratingSegmentIndex) or nameof(Model.ActiveNarrationStatusText)
-            or nameof(Model.ProcessingSection) or nameof(Model.VideoPreparation) or nameof(Model.Status))
+            or nameof(Model.ProcessingSection) or nameof(Model.VideoPreparation) or nameof(Model.ContentTransferProgress) or nameof(Model.Status))
             UpdateProcessingChrome();
         if (e.PropertyName is nameof(Model.Busy) or nameof(Model.HasApiKey) or nameof(Model.Idle) or nameof(Model.IsSynthesizingNarration)
             or nameof(Model.AiIssueMessage) or nameof(Model.AiProcessingBlocked) or nameof(Model.CanUseAI))
@@ -242,6 +242,11 @@ public sealed partial class MainWindow : Window
         {
             EditorWorkspace.IsEnabled = Model.Idle || analyzing || synthesizing;
         }
+        if (ContentTransferProgressBar != null) {
+            ContentTransferProgressBar.Visibility = Model.Busy && Model.ContentTransferCommand != null ? Visibility.Visible : Visibility.Collapsed;
+            ContentTransferProgressBar.IsIndeterminate = Model.ContentTransferProgress == null;
+            ContentTransferProgressBar.Value = Model.ContentTransferProgress ?? 0;
+        }
         UpdateSectionOverlay(analyzing);
         UpdateDesktopMenuStates();
     }
@@ -249,6 +254,10 @@ public sealed partial class MainWindow : Window
     {
         if (!ready || SectionProcessingRing == null || SectionProcessingOverlay == null) return;
         var state = analyzing ? CurrentSectionState() : SectionProcessingState.Idle;
+        if (SectionSelectorRing != null) {
+            SectionSelectorRing.IsActive = state != SectionProcessingState.Idle;
+            SectionSelectorRing.Visibility = state != SectionProcessingState.Idle ? Visibility.Visible : Visibility.Collapsed;
+        }
         if (state == SectionProcessingState.Idle)
         {
             SectionProcessingRing.IsActive = false;
@@ -256,7 +265,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         SectionProcessingRing.IsActive = true;
-        SectionProcessingTitle.Text = state == SectionProcessingState.Queued ? "Waiting to generate…" : Model.ProcessingStageTitle;
+        SectionProcessingTitle.Text = state == SectionProcessingState.Queued ? "Waiting to process…" : Model.ProcessingStageTitle;
         SectionProcessingStatus.Text = state == SectionProcessingState.Queued
             ? "This section updates automatically when its turn arrives. You can keep working in other sections."
             : Model.Status;
@@ -1522,15 +1531,6 @@ public sealed partial class MainWindow : Window
             }
         };
 
-        var hintDesc = new TextBlock
-        {
-            Text = isDescription
-                ? "Optionally tell Gemini what to examine more closely. It may adjust descriptions in this range and its immediate neighbors to fit around dialogue. You can undo the result."
-                : "Generate one or more transcript segments for this range and reconcile its immediate neighbors. All spoken languages and original scripts are preserved. Existing Audio Descriptions and narration are kept; conflicting speech timing is rejected. You can undo the result.",
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush,
-            FontSize = 12
-        };
         var hintBox = new TextBox
         {
             Header = "Optional hint for Gemini",
@@ -1542,7 +1542,7 @@ public sealed partial class MainWindow : Window
                 : "e.g. Dialogue is in French with English subtitles..."
         };
 
-        var contentStack = new StackPanel { Width = 580, Spacing = 14 };
+        var contentStack = new StackPanel { MaxWidth = 580, HorizontalAlignment = HorizontalAlignment.Stretch, Spacing = 14 };
         contentStack.Children.Add(timingTitle);
         contentStack.Children.Add(timingEditor);
         contentStack.Children.Add(validationBorder);
@@ -1553,7 +1553,6 @@ public sealed partial class MainWindow : Window
         if (isDescription) contentStack.Children.Add(ocrPanel);
 
         contentStack.Children.Add(new TextBlock { Text = "Hint for Gemini (Optional)", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15 });
-        contentStack.Children.Add(hintDesc);
         contentStack.Children.Add(hintBox);
 
         var scrollViewer = new ScrollViewer
@@ -1561,8 +1560,9 @@ public sealed partial class MainWindow : Window
             Content = contentStack,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            MaxHeight = 600
+            MaxHeight = 520
         };
+        scrollViewer.Loaded += (_, _) => scrollViewer.ChangeView(null, 0, null, true);
 
         var dialog = Dialog(title, scrollViewer, "Save Segment");
         dialog.SecondaryButtonText = "Re-Analyze This Segment";

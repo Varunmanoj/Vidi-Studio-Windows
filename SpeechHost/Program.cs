@@ -108,7 +108,7 @@ internal static class Program
     }
 
     private static List<Voice> CoreVoices() => SpeechSynthesizer.AllVoices
-        .Select(v => new Voice(v.Id, v.DisplayName, v.Language, v.Gender.ToString())).ToList();
+        .Select(v => new Voice(v.Id, v.DisplayName, v.Language, v.Gender.ToString(), v.Id == SpeechSynthesizer.DefaultVoice.Id)).ToList();
 
     private static async Task CoreSpeech(Request r)
     {
@@ -130,8 +130,11 @@ internal static class Program
     {
         dynamic speech = CreateCom("SAPI.SpVoice");
         dynamic? tokens = null;
+        dynamic? defaultVoice = null;
         try
         {
+            defaultVoice = speech.Voice;
+            string defaultID = defaultVoice.Id;
             tokens = speech.GetVoices();
             var voices = new List<Voice>();
             for (int i = 0; i < tokens.Count; i++)
@@ -141,13 +144,13 @@ internal static class Program
                 {
                     string language = token.GetAttribute("Language");
                     try { language = CultureInfo.GetCultureInfo(Convert.ToInt32(language.Split(';')[0], 16)).Name; } catch (ArgumentException) { }
-                    voices.Add(new Voice(token.Id, token.GetDescription(), language, token.GetAttribute("Gender")));
+                    voices.Add(new Voice(token.Id, token.GetDescription(), language, token.GetAttribute("Gender"), string.Equals((string)token.Id, defaultID, StringComparison.OrdinalIgnoreCase)));
                 }
                 finally { Release(token); }
             }
             return voices;
         }
-        finally { Release(tokens); Release(speech); }
+        finally { Release(defaultVoice); Release(tokens); Release(speech); }
     }
 
     private const int SpeakTimeoutMs = 120_000;
@@ -344,7 +347,7 @@ internal static class Program
         }
     }
 
-    private sealed record Voice(string Id, string Name, string Language, string Gender);
+    private sealed record Voice(string Id, string Name, string Language, string Gender, bool IsDefault = false);
     private sealed record BatchItem(string Text, string Output);
     private sealed record Request(string Command, string Engine, string Voice = "", string Text = "", string Output = "", double Rate = 1,
         string PiperPath = "", string PiperModel = "", string PiperConfig = "", int PiperSpeaker = 0, List<BatchItem>? Items = null);

@@ -12,7 +12,7 @@ namespace Vidi_Studio_Windows.Services;
 /// <summary>One sentence rendered by a single persistent Piper batch.</summary>
 public sealed record SpeechBatchItem(string Text, string Output);
 
-public sealed record Voice(string Id, string Name, string Language, string Gender, bool Available = true, string Note = "", string Group = "")
+public sealed record Voice(string Id, string Name, string Language, string Gender, bool Available = true, string Note = "", string Group = "", bool IsDefault = false)
 {
     public override string ToString()
     {

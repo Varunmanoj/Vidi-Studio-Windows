@@ -388,6 +388,17 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("AD generation and Narration Audio must have separate sibling Inspector expanders.");
             await Task.Delay(200);
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "editor-descriptions.png"));
+            foreach (var index in new[] { 1, 2, 3, 4 }) {
+                Section.SelectedIndex = index; UpdateSectionPresentation();
+                if (NarrationActions.Visibility != Visibility.Visible || !InspectorSpeechLanguage.Text.StartsWith("Language: ") ||
+                    InspectorNarrationControls.Visibility != (index is 2 or 4 ? Visibility.Visible : Visibility.Collapsed))
+                    throw new InvalidOperationException("Speech engine/language/voice inspector visibility is inconsistent.");
+            }
+            Section.SelectedIndex = 2; UpdateSectionPresentation();
+            var languages = editorMenus.First(menu => menu.Title == "View").Items.OfType<MenuFlyoutSubItem>().Single(item => item.Tag as string == "project-language");
+            if (languages.Items.OfType<ToggleMenuFlyoutItem>().Count() != Model.Project!.AvailableViewingLanguages.Count ||
+                languages.Items.OfType<ToggleMenuFlyoutItem>().Count(item => item.IsChecked) != (Model.Project.AvailableViewingLanguages.Contains(Model.Project.SelectedLanguage) ? 1 : 0))
+                throw new InvalidOperationException("Project Language menu choices/checked state differ from the inspector.");
             ShowGallery_Click(this, new RoutedEventArgs());
             if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "Edit", "View", "Playback", "Project", "YouTube", "Help" }))
                 throw new InvalidOperationException("Gallery menu hierarchy drifted from the shared desktop layout.");

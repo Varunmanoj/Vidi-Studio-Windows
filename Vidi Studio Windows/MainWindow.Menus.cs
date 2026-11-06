@@ -17,6 +17,8 @@ public sealed partial class MainWindow
     // checker compares these menu trees with the actual Swift declarations.
     private readonly Dictionary<string, List<MenuFlyoutItem>> desktopMenuItems = new();
     private readonly List<(string Name, MenuFlyoutSubItem Item)> desktopMenuGroups = new();
+    private readonly List<MenuFlyoutSubItem> projectLanguageMenus = new();
+    private string projectLanguageMenuState = "";
     private bool desktopEditorVisible;
     private bool? desktopPlaybackWasPlaying;
     internal IEnumerable<(string Label, string Shortcut)> DesktopShortcutReference =>
@@ -64,6 +66,7 @@ public sealed partial class MainWindow
                 Command("remove-from-list"), Separator(), Command("open-editor-window"), Command("settings"), Command("project-settings"), Command("close-window")),
             Menu("Edit", Command("copy-to")),
             Menu("View",
+                ProjectLanguageMenu(), Separator(),
                 Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("filter-segments"),
                 Submenu("Sort Segments", Command("sort-start"), Command("sort-duration-asc"), Command("sort-duration-desc"), Command("sort-origin")), Separator(),
                 Command("show-projects"), Command("show-inspector"), Separator(),
@@ -183,6 +186,37 @@ public sealed partial class MainWindow
         ["import-assets"] = (VirtualKey.I, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+I")
     };
 
+    private MenuFlyoutSubItem ProjectLanguageMenu()
+    {
+        var menu = new MenuFlyoutSubItem { Text = "Project Language", Tag = "project-language", Icon = new FontIcon { Glyph = "\uE8F2" } };
+        projectLanguageMenus.Add(menu);
+        return menu;
+    }
+
+    private void RefreshProjectLanguageMenus()
+    {
+        var project = Model.Project;
+        var enabled = CanRunDesktopCommand("project-language");
+        var choices = Models.OutputLanguage.Options.Where(v => project?.AvailableViewingLanguages.Contains(v.Id) == true)
+            .Select(v => new Models.OutputLanguage(v.Id, project!.ViewingLanguageTitle(v.Id))).ToList();
+        var state = (project?.Id ?? "") + "|" + (project?.SelectedLanguage ?? "") + "|" + enabled + "|" + string.Join("|", choices.Select(v => v.Id + ":" + v.Title));
+        if (state == projectLanguageMenuState) return;
+        projectLanguageMenuState = state;
+        foreach (var menu in projectLanguageMenus) {
+            menu.IsEnabled = enabled; menu.Items.Clear();
+            foreach (var choice in choices) {
+                var projectID = project!.Id;
+                var item = new ToggleMenuFlyoutItem { Text = choice.Title, Tag = "project-language-" + choice.Id, IsChecked = choice.Id == project.SelectedLanguage, IsEnabled = enabled };
+                item.Click += async (_, _) => {
+                    item.IsChecked = Model.Project?.SelectedLanguage == choice.Id;
+                    if (!CanRunDesktopCommand("project-language") || Model.Project?.Id != projectID || !Model.Project.AvailableViewingLanguages.Contains(choice.Id) || Model.Project.SelectedLanguage == choice.Id) return;
+                    await RunLanguageActionAsync("select-language", new[] { "--language", choice.Id });
+                };
+                menu.Items.Add(item);
+            }
+        }
+    }
+
     private void UpdateMenuBar(bool editor)
     {
         desktopEditorVisible = editor;
@@ -205,6 +239,7 @@ public sealed partial class MainWindow
     private void UpdateDesktopMenuStates()
     {
         if (windowClosed) return;
+        RefreshProjectLanguageMenus();
         foreach (var (id, items) in desktopMenuItems)
             foreach (var item in items)
             {
@@ -350,6 +385,7 @@ public sealed partial class MainWindow
             case "sort-duration-desc":
             case "sort-origin": return timed;
             case "caption-off": return timed;
+            case "project-language": return !HasUnsavedLanguageSummary && p.AvailableViewingLanguages.Count > 0;
             case "copy-to": return CanCopyLanguageResults;
             case "language-results": return true;
             case "analyze": case "transcribe": case "generate-summary": return ai;

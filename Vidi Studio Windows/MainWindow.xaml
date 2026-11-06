@@ -184,10 +184,17 @@
        <TextBlock Text="Narration Audio" FontWeight="SemiBold"/>
        <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10">
         <StackPanel Spacing="6">
+         <StackPanel x:Name="InspectorSpeechInfo" Spacing="6">
+          <TextBlock x:Name="InspectorSpeechEngine" TextWrapping="Wrap"/>
+          <TextBlock x:Name="InspectorSpeechLanguage" TextWrapping="Wrap"/>
+          <TextBlock x:Name="InspectorSpeechVoice" TextWrapping="Wrap"/>
+         </StackPanel>
+         <StackPanel x:Name="InspectorNarrationControls" Spacing="6">
          <StackPanel x:Name="InspectorNarrationProgressPanel" Orientation="Horizontal" Spacing="8" Visibility="Collapsed"><ProgressRing x:Name="InspectorNarrationRing" Width="16" Height="16" IsActive="False" VerticalAlignment="Center"/><FontIcon Glyph="&#xE767;" FontSize="14" VerticalAlignment="Center"/><TextBlock x:Name="InspectorNarrationStatusText" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap"/></StackPanel>
          <Button x:Name="InspectorSynthesizeNarrationButton" Style="{StaticResource InspectorButton}" Tag="synthesize-tts" Click="Command_Click"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE767;" FontSize="14"/><TextBlock x:Name="InspectorSynthesizeNarrationLabel" Text="Generate All AD Audio"/></StackPanel></Button>
          <Button x:Name="InspectorSynthesizeChangedButton" Style="{StaticResource InspectorButton}" Click="ChangedNarration_Click"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE72C;" FontSize="14"/><TextBlock Text="Generate Missing or Changed AD Audio"/></StackPanel></Button>
          <Button Style="{StaticResource InspectorButton}" Click="DeleteNarration_Click"><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE74F;" FontSize="14"/><TextBlock Text="Delete selected narration"/></StackPanel></Button>
+         </StackPanel>
         </StackPanel>
        </Border>
       </StackPanel>
@@ -233,6 +240,7 @@
       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <StackPanel Orientation="Horizontal" Spacing="8">
        <ComboBox x:Name="Section" Width="152" SelectedIndex="0" SelectionChanged="Section_Changed" AutomationProperties.Name="Editor section"><ComboBoxItem Content="Transcript"/><ComboBoxItem Content="Summary"/><ComboBoxItem Content="Descriptions"/><ComboBoxItem Content="AD Overview"/><ComboBoxItem Content="AD Transcript"/></ComboBox>
+       <ProgressRing x:Name="SectionSelectorRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" VerticalAlignment="Center" AutomationProperties.Name="Current section processing"/>
        <Button Content="&#xE714;" FontFamily="Segoe Fluent Icons" Style="{StaticResource CompactButton}" Click="TogglePreview_Click" AutomationProperties.Name="Show or hide video preview"/>
        <Button Content="&#xE740;" FontFamily="Segoe Fluent Icons" Style="{StaticResource CompactButton}" Click="FullScreen_Click" AutomationProperties.Name="Full-screen video"/>
        <DropDownButton x:Name="CaptionOverlayButton" Visibility="Collapsed" Padding="10,5" MinHeight="30" ToolTipService.ToolTip="Transcript overlay" AutomationProperties.Name="Transcript overlay">
@@ -403,6 +411,7 @@
      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
      <ProgressRing x:Name="StatusRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" VerticalAlignment="Center" AutomationProperties.Name="Processing"/>
      <StackPanel Grid.Column="1" VerticalAlignment="Center">
+      <ProgressBar x:Name="ContentTransferProgressBar" Minimum="0" Maximum="1" Visibility="Collapsed" AutomationProperties.Name="Copy or translation progress"/>
       <TextBlock x:Name="StatusStageTitle" FontWeight="SemiBold" FontSize="12" Visibility="Collapsed"/>
       <TextBlock x:Name="StatusText" Text="{x:Bind Model.Status, Mode=OneWay}" TextWrapping="Wrap" FontSize="12"/>
      </StackPanel>

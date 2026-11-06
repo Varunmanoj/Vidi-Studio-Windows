@@ -499,7 +499,9 @@ public sealed partial class MainWindow
         UpdateSegmentMoreVisibility();
         ContextActions.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
         InspectorRewriteButton.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
-        NarrationActions.Visibility = index is 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        NarrationActions.Visibility = index is 1 or 2 or 3 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        InspectorNarrationControls.Visibility = index is 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateInspectorSpeechInfo();
         Narration.Visibility = index is 2 or 3 or 4 ? Visibility.Visible : Visibility.Collapsed;
         Follow.Visibility = index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
         EditModeButton.Visibility = index is 0 or 1 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;

@@ -49,6 +49,9 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public string Status { get => status; private set { status = value; Changed(); } }
     /// <summary>Shows a message in the status bar, for example when live narration cannot speak.</summary>
     public void ReportStatus(string message) => Status = message;
+    public string? ContentTransferCommand { get; private set; }
+    private double? contentTransferProgress;
+    public double? ContentTransferProgress { get => contentTransferProgress; private set { contentTransferProgress = value; Changed(); } }
     private string? processingSection;
     public string? ProcessingSection
     {
@@ -79,6 +82,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     {
         get
         {
+            if (ContentTransferCommand == "translate-results") return "Translating content";
+            if (ContentTransferCommand == "copy-results") return "Copying content";
             if (videoPreparation == "uploading") return "Uploading video";
             if (videoPreparation == "processing") return "Preparing video";
             if (IsSynthesizingNarration) return ActiveNarrationStatusText;
@@ -645,6 +650,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         YouTubeAudioExportRecovery? audioRecovery = null;
         string? connectionFailure = null;
         IsExporting = command.StartsWith("export-", StringComparison.Ordinal) && Project != null;
+        ContentTransferCommand = command is "copy-results" or "translate-results" ? command : null;
+        ContentTransferProgress = null;
         processingPlan.Clear();
         processingPlan.AddRange(AnalysisPlan(command, extra));
         ProcessingSection = InitialProcessingSection(command);
@@ -717,6 +724,9 @@ public sealed class StudioViewModel : INotifyPropertyChanged
                     }
                     catch (Exception ex) { Engine.Log(ex.ToString()); }
                 }
+                if (ContentTransferCommand != null && e.Data.TryGetProperty("contentTransferProgress", out var transferProgress) &&
+                    transferProgress.ValueKind == System.Text.Json.JsonValueKind.Number && transferProgress.TryGetDouble(out var fractionValue) && double.IsFinite(fractionValue))
+                    ContentTransferProgress = Math.Max(ContentTransferProgress ?? 0, Math.Clamp(fractionValue, 0, 1));
                 if (e.Data.TryGetProperty("processingSection", out var section) && section.ValueKind == System.Text.Json.JsonValueKind.String)
                     ProcessingSection = section.GetString();
                 if (e.Data.TryGetProperty("narratingTotal", out var nTotal) && nTotal.ValueKind == System.Text.Json.JsonValueKind.Number && nTotal.TryGetInt32(out var totalVal))
@@ -828,6 +838,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             IsSynthesizingNarration = false; NarratingSegmentId = null; NarratingSegmentIndex = null; NarratingTotalCount = 0; narratingQueueIds.Clear();
             ApplyNarrationStateToProject();
             Changed(nameof(IsSynthesizingNarration)); Changed(nameof(NarratingSegmentId)); Changed(nameof(NarratingSegmentIndex)); Changed(nameof(ActiveNarrationStatusText));
+            ContentTransferCommand = null; ContentTransferProgress = null;
             ProcessingSection = null; VideoPreparation = null; processingPlan.Clear();
             operation.Dispose(); operation = null; IsExporting = false; Busy = false;
         }
@@ -840,6 +851,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public SectionProcessingState StateFor(IReadOnlyList<string> sections)
     {
         if (!IsAnalyzing || sections.Count == 0) return SectionProcessingState.Idle;
+        if (ContentTransferCommand != null) return sections.Any(processingPlan.Contains) ? SectionProcessingState.Processing : SectionProcessingState.Idle;
         var current = processingSection ?? (processingPlan.Count > 0 ? processingPlan[0] : "");
         var currentIndex = processingPlan.IndexOf(current);
         if (currentIndex < 0) return SectionProcessingState.Idle;
@@ -869,6 +881,16 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     /// <summary>Ordered analysis stages for a command, respecting --start-stage.</summary>
     private static List<string> AnalysisPlan(string command, IEnumerable<string>? extra)
     {
+        if (command is "copy-results" or "translate-results") {
+            var args = extra?.ToList() ?? new List<string>();
+            var input = args.IndexOf("--input");
+            if (input < 0 || input + 1 >= args.Count) return new();
+            try {
+                using var request = System.Text.Json.JsonDocument.Parse(File.ReadAllText(args[input + 1]));
+                var kinds = request.RootElement.GetProperty("kinds").EnumerateArray().Select(v => v.GetString()).ToHashSet();
+                return new[] { "transcript", "summary", "descriptions" }.Where(kinds.Contains).ToList();
+            } catch (Exception) { return new(); }
+        }
         var stages = command switch
         {
             "analyze" or "regenerate-all" => new List<string> { "transcript", "summary", "descriptions" },

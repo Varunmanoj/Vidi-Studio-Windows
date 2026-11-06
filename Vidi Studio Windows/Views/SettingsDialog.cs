@@ -25,7 +25,6 @@ public sealed partial class SettingsDialog : Window
     private readonly Grid layout;
     private readonly Window owner;
     private readonly ScrollViewer sectionHost;
-    private bool saved;
     private ListView? sectionList;
     private ListViewItem? developerPromptsItem;
     private StackPanel? currentSectionPanel;
@@ -148,7 +147,6 @@ public sealed partial class SettingsDialog : Window
 #endif
     private readonly StudioViewModel model;
     private readonly JsonObject draft;
-    private readonly string originalTheme;
     private readonly MediaPlayer samplePlayer = new();
     private void ConnectivityChanged(object? sender, EventArgs e)
     {
@@ -192,7 +190,7 @@ public sealed partial class SettingsDialog : Window
         // Seed the key box from Windows Credential Manager; it is never part of config.json.
         var savedApiKey = model.Settings.Get("apiKey");
         if (savedApiKey.Length > 0) draft["apiKey"] = savedApiKey;
-        originalTheme = App.ActiveTheme ?? model.Settings.Get("theme", "system");
+        autoApply = new SettingsAutoApply(draft);
         Title = "Vidi Studio Settings";
         WindowAppearance.ApplyIcon(this);
         layout = new Grid { Padding = new Thickness(24, 0, 24, 20), ColumnSpacing = 24 };
@@ -233,12 +231,9 @@ public sealed partial class SettingsDialog : Window
             HorizontalContentAlignment = HorizontalAlignment.Stretch
         };
         Grid.SetColumn(host, 1); Grid.SetRow(host, 2); layout.Children.Add(sections); layout.Children.Add(host);
-        var footer = new Grid { ColumnSpacing = 12, Margin = new Thickness(0, 12, 0, 0) };
-        footer.ColumnDefinitions.Add(new ColumnDefinition()); footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var footer = new StackPanel { Spacing = 6, Margin = new Thickness(0, 12, 0, 0) };
         footer.Children.Add(status);
-        var cancel = new Button { Content = "Cancel", MinWidth = 100 }; cancel.Click += (_, _) => Close(); Grid.SetColumn(cancel, 1); footer.Children.Add(cancel);
-        var save = new Button { Content = "Save settings", MinWidth = 130, Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
-        save.Click += (_, _) => SaveAndClose(); Grid.SetColumn(save, 2); footer.Children.Add(save);
+        footer.Children.Add(autoApplyError);
         Grid.SetRow(footer, 3); Grid.SetColumnSpan(footer, 2); layout.Children.Add(footer);
         var progress = new ProgressOverlay();
         Grid.SetRowSpan(progress, 4); Grid.SetColumnSpan(progress, 2); layout.Children.Add(progress);
@@ -361,11 +356,13 @@ public sealed partial class SettingsDialog : Window
             App.ThemeChanged -= ReceiveTheme;
             ProjectPlaybackPreferences.Changed -= ReceiveProjectPlaybackPreference;
             model.PropertyChanged -= ReceiveModelProjectChange;
-            if (!saved) App.PreviewTheme(originalTheme);
+            autoApplyTimer.Stop();
+            checkDebounceTimer?.Stop();
             closed = true; voiceRequest++; lifetime.Cancel(); voiceCancellation?.Cancel(); sampleCancellation?.Cancel(); samplePlayer.Dispose();
             foreach (var file in temporaryFiles) { try { File.Delete(file); } catch (IOException) { } }
-            completion.TrySetResult(saved);
+            completion.TrySetResult(true);
         };
+        StartAutoApply();
     }
     public Task<bool> ShowAsync() { PositionOverOwner(); Activate(); return completion.Task; }
     private bool DeveloperModeEnabled => SettingsStore.GetBool(draft["developerMode"], model.Settings.GetBool("developerMode"));
@@ -390,17 +387,7 @@ public sealed partial class SettingsDialog : Window
         requestedSection = section;
         sectionList.SelectedIndex = section;
     }
-    public void Hide() => Close();
-    private void SaveAndClose()
-    {
-        // The Gemini key is stored in Windows Credential Manager, never in config.json.
-        var apiKey = SettingsStore.GetString(draft["apiKey"]);
-        draft.Remove("apiKey");
-        draft.Remove("azureSpeechKey");
-        foreach (var item in draft) model.Settings.Data[item.Key] = item.Value?.DeepClone();
-        model.Settings.Set("apiKey", apiKey);
-        model.Settings.Save(); saved = true; App.CommitTheme(model.Settings.Get("theme", "system")); Close();
-    }
+    public void Hide() { if (ApplyPreferences()) Close(); }
     private void ApplyWindowTheme(string theme)
     {
         App.PreviewTheme(theme);

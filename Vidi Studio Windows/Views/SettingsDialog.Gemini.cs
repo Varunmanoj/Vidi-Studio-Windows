@@ -130,8 +130,6 @@ public sealed partial class SettingsDialog
         field.SelectionChanged += (_, _) => {
             if (field.SelectedItem is Vidi_Studio_Windows.Models.OutputLanguage choice) {
                 draft["defaultOutputLanguage"] = choice.Id;
-                model.Settings.Data["defaultOutputLanguage"] = choice.Id;
-                model.Settings.Save();
             }
         };
         group.Children.Add(field);
@@ -206,10 +204,8 @@ public sealed partial class SettingsDialog
             draft["apiKey"] = "";
             draft.Remove("apiKeyValid");
             draft["apiPlan"] = "none";
-            CredentialStore.Delete();
-            model.Settings.Set("apiKey", "");
+            if (!ApplyPreferences()) return;
             model.ClearAiIssue();
-            model.Settings.Save();
             availableModels.Clear();
             ApplyGeminiModelChoices();
             UpdatePlanDisplay(null, "", 0);

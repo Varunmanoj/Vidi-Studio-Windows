@@ -1887,6 +1887,18 @@ public sealed partial class MainWindow : Window
         Model.Settings.Set("showPreview", PreviewPanel.Visibility == Visibility.Visible ? "true" : "false"); Model.Settings.Save();
     }
     private void ToggleTimeline_Click(object sender, RoutedEventArgs e) => TimelinePanel.Visibility = TimelinePanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+    internal void ApplySettingsChanges(System.Collections.Generic.IReadOnlyCollection<string> changed)
+    {
+        Model.Settings.Reload();
+        Model.NotifySettingsChanged();
+        if (changed.Contains("theme")) App.PreviewTheme(Model.Settings.Get("theme", "system"));
+        if (!ready) return;
+        if (changed.Contains("libraryPath") || changed.Contains("projectLocations")) Filter();
+        UpdateApiKeyUi();
+        UpdateCaptions();
+        UpdateSectionPresentation();
+    }
+
     private async Task ShowSettingsSectionAsync(int section, StudioProject? project = null)
     {
         if (openSettings != null)
@@ -1899,7 +1911,7 @@ public sealed partial class MainWindow : Window
         var settings = new Views.SettingsDialog(Model, this, section, project ?? SettingsProject);
         openSettings = settings;
         try { await settings.ShowAsync(); }
-        finally { if (openSettings == settings) openSettings = null; if (ready) { ApplyTheme(); Model.Reload(); UpdateApiKeyUi(); UpdateSectionPresentation(); } }
+        finally { if (openSettings == settings) openSettings = null; }
     }
     private async void Settings_Click(object sender, RoutedEventArgs e)
     {

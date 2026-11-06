@@ -478,6 +478,7 @@ public sealed partial class MainWindow
             var display = settings.ShowAsync();
             await Task.Delay(250);
             await settings.VerifyLayoutForSmokeTestAsync();
+            await settings.VerifyAutomaticSettingsForSmokeTestAsync();
             settings.VerifyDeveloperModeGateForSmokeTest();
             settings.VerifyProjectPlaybackSettingsForSmokeTest();
             await settings.VerifyAdvancedOptionsForSmokeTestAsync();
@@ -525,7 +526,15 @@ public sealed partial class MainWindow
             foreach (var section in new[] { 0, 1, 2, 3, 4, 5, 6, 7, 2, 0 }) { settings.NavigateForSmokeTest(section); await Task.Delay(200); }
             await settings.VerifyProviderSwitchingAsync();
             await settings.VerifyLocalVoiceSamplesAsync();
+            var originalAutoApplySize = Model.Settings.Number("captionFontSize", 24);
+            settings.StageFinalSettingsEditForSmokeTest();
             settings.Hide(); await display;
+            var closedPreferences = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Services.SettingsStore.ConfigPath))!;
+            if (closedPreferences["captionFontSize"]!.GetValue<int>() != 33 || CaptionText.FontSize != 33)
+                throw new InvalidOperationException("Closing Settings lost its final edit or failed to update an open editor.");
+            Model.Settings.Set("captionFontSize", originalAutoApplySize);
+            Model.Settings.Save();
+            App.ApplySettingsChanges(new[] { "captionFontSize" });
             foreach (var section in new[] { 2, 6, 7 })
             {
                 var targeted = new Views.SettingsDialog(Model, this, section);

@@ -25,6 +25,10 @@ public partial class App : Application
         ActiveTheme = theme is "light" or "dark" ? theme : "system";
         ThemeChanged?.Invoke(ActiveTheme);
     }
+    internal static void ApplySettingsChanges(IReadOnlyCollection<string> changed)
+    {
+        foreach (var window in Windows.ToArray()) window.ApplySettingsChanges(changed);
+    }
     internal static void CommitTheme(string theme)
     {
         foreach (var window in Windows) window.Model.Settings.Set("theme", theme);

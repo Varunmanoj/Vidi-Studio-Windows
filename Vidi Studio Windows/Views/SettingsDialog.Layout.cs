@@ -89,13 +89,9 @@ public sealed partial class SettingsDialog
                 }
                 if (Math.Abs(sectionHost.VerticalOffset - sectionHost.ScrollableHeight) > 2)
                     throw new InvalidOperationException($"Settings section {section} cannot reach its last option: offset={sectionHost.VerticalOffset}, bottom={sectionHost.ScrollableHeight}, viewport={sectionHost.ViewportHeight}.");
-                foreach (var footer in layout.Children.OfType<Grid>().Where(child => Grid.GetRow(child) == 3))
-                    foreach (var button in footer.Children.OfType<Button>())
-                    {
-                        var point = button.TransformToVisual(layout).TransformPoint(new Windows.Foundation.Point());
-                        if (point.X < 0 || point.Y < 0 || point.X + button.ActualWidth > layout.ActualWidth + 1 || point.Y + button.ActualHeight > layout.ActualHeight + 1)
-                            throw new InvalidOperationException("Settings Save/Cancel must remain visible in a restored window.");
-                    }
+                if (layout.Children.OfType<StackPanel>().Where(child => Grid.GetRow(child) == 3)
+                    .SelectMany(footer => footer.Children).OfType<Button>().Any())
+                    throw new InvalidOperationException("Automatically applied Settings must not show Save or Cancel buttons.");
                 sectionHost.ChangeView(null, 0, null, true);
             }
         }

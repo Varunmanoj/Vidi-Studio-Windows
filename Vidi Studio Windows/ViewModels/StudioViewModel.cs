@@ -160,6 +160,13 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     }
     private void Changed([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
 
+    internal void NotifySettingsChanged()
+    {
+        Changed(nameof(HasApiKey));
+        Changed(nameof(IsApiKeyInvalid));
+        Changed(nameof(ApiPlan));
+    }
+
     public string LanguageFilter { get; set; } = "all";
     public void Reload(string search = "", string source = "all")
     {

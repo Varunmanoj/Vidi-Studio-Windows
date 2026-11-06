@@ -158,7 +158,9 @@ class Parity(unittest.TestCase):
         gemini_dialog = credential.parent.parent / 'Views' / 'SettingsDialog.Gemini.cs'
         if gemini_dialog.is_file():
             gemini_source = gemini_dialog.read_text(encoding='utf-8')
-            self.assertIn('CredentialStore.Delete()', gemini_source)
+            self.assertIn('if (!ApplyPreferences()) return;', gemini_source)
+            auto_apply = (credential.parent.parent / 'Views' / 'SettingsDialog.AutoApply.cs').read_text(encoding='utf-8')
+            self.assertIn('!CredentialStore.Write(apiKey)', auto_apply)
             self.assertIn(r'\uE74D', gemini_source)
             self.assertIn('deleteKeyButton', gemini_source)
 

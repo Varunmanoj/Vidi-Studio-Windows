@@ -80,7 +80,6 @@ public sealed class ImportAssetsPicker : UserControl
             originalTranscription.SelectedIndex = 0;
             originalPanel.Children.Add(originalPlayback);
             originalPanel.Children.Add(originalTranscription);
-            originalPanel.Children.Add(new TextBlock { Text = "Timing is checked before import. Differences over 0.1 seconds, or an unknown video duration, require your confirmation.", TextWrapping = TextWrapping.Wrap });
             panel.Children.Add(originalPanel);
             originalPlayback.SelectionChanged += (_, _) => UpdateState();
             originalTranscription.SelectionChanged += (_, _) => UpdateState();

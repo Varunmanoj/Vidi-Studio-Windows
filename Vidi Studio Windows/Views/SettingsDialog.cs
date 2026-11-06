@@ -534,8 +534,6 @@ public sealed partial class SettingsDialog : Window
         panel.Children.Add(mode); panel.Children.Add(piperControls);
         panel.Children.Add(voice); panel.Children.Add(sapiHost);
         AddPlaybackChoice(panel);
-        panel.Children.Add(new TextBlock { Text = "The selected engine generates saved narration audio; Gemini Voices stays selected in either playback mode.", TextWrapping = TextWrapping.Wrap });
-        panel.Children.Add(new TextBlock { Text = "Speaking with an on-device voice uses the selected Windows OneCore, SAPI 5, or Piper voice. With Gemini Voices selected, the default Windows voice speaks instead.", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
         var refresh = new Button { Content = "Refresh voices" }; refresh.Click += async (_, _) => await RefreshVoices(); localSpeechControls.Children.Add(refresh);
         AddSpeechSlider(localSpeechControls, "Speech rate", "systemSpeechRate", 1, .5, 2);
         AddSpeechSlider(localSpeechControls, "Speech pitch", "systemSpeechPitch", 1, .5, 2);

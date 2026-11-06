@@ -21,6 +21,18 @@ public sealed class LanguageResult
     public JsonElement SourceAsset { get; set; }
     public string? ReplacesResultID { get; set; }
     public Dictionary<string, string>? SourceResultIDs { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public bool HasContent {
+        get {
+            if (Payload.ValueKind != JsonValueKind.Object) return false;
+            var key = Kind switch { "transcript" => "transcript", "summary" => "summary", "descriptions" => "cues", _ => "importedAudioDescription" };
+            if (Payload.TryGetProperty(key, out var value)) {
+                if (Kind == "summary" && value.ValueKind == JsonValueKind.String) return !string.IsNullOrWhiteSpace(value.GetString());
+                if (value.ValueKind == JsonValueKind.Array && value.GetArrayLength() > 0) return true;
+                if (Kind == "adAudio" && value.ValueKind == JsonValueKind.Object && value.TryGetProperty("path", out var path)) return !string.IsNullOrWhiteSpace(path.GetString());
+            }
+            return Kind == "descriptions" && Payload.TryGetProperty("importedADTranscript", out var imported) && imported.ValueKind == JsonValueKind.Object && imported.TryGetProperty("segments", out var rows) && rows.ValueKind == JsonValueKind.Array && rows.GetArrayLength() > 0;
+        }
+    }
     public string Title => $"Version {Version} · {Origin} · {DateTimeOffset.FromUnixTimeSeconds((long)CreatedAt).ToLocalTime():g}";
     public string Preview {
         get {

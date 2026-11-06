@@ -215,6 +215,12 @@ public sealed class StudioProject : INotifyPropertyChanged
         };
         return kind == "" ? SelectedLanguage : SectionLanguage(kind);
     }
+    [JsonIgnore] public IReadOnlyList<string> AvailableViewingLanguages => SavedResults.Where(r => r.State == "saved" && r.HasContent).Select(r => r.Language).Distinct().OrderBy(v => v).ToList();
+    public string ViewingLanguageTitle(string code) {
+        var kinds = SavedResults.Where(r => r.State == "saved" && r.Language == code && r.HasContent).Select(r => r.Kind).ToHashSet();
+        var names = new[] { "transcript", "summary", "descriptions", "adAudio" }.Where(kinds.Contains).Select(k => k switch { "transcript" => "Transcript", "summary" => "Summary", "descriptions" => "Descriptions", _ => "AD Audio" });
+        return OutputLanguage.Label(code) + (kinds.Count == 0 ? "" : " (" + string.Join(", ", names) + ")");
+    }
     public List<LanguageResult>? LanguageResults { get; set; }
     public Dictionary<string, Dictionary<string, string>> ActiveResultIDs { get; set; } = new();
     public Dictionary<string, ExportResultProvenance> ExportResults { get; set; } = new();

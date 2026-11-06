@@ -15,7 +15,6 @@ public sealed partial class MainWindow
 {
     internal async Task<bool?> ConfirmExportReplacementAsync(IReadOnlyList<string> paths) {
         var content = new StackPanel { Spacing = 12 };
-        content.Children.Add(new TextBlock { Text = "These outputs already exist. Replace Existing saves new exports in their place. Skip Existing preserves them and exports the remaining outputs. A Web Playback folder is treated as one output.", TextWrapping = TextWrapping.Wrap });
         content.Children.Add(new ScrollViewer { MaxHeight = 240, Content = new TextBlock { Text = string.Join("\n", paths), TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } });
         var result = await ShowDialogAsync(new ContentDialog {
             Title = paths.Count == 1 ? "Replace Existing Export?" : "Replace Existing Exports?", Content = content,
@@ -36,8 +35,10 @@ public sealed partial class MainWindow
         languageControls.Add((control, requiresEdit)); UpdateLanguageControlStates();
     }
     private void UpdateLanguageControlStates() {
-        foreach (var (control, requiresEdit) in languageControls)
-            control.IsEnabled = !Model.Busy && !HasUnsavedLanguageSummary && (!requiresEdit || LanguageEditMode);
+        foreach (var (control, requiresEdit) in languageControls) {
+            var noViewingData = control is ComboBox picker && picker.Header as string == "View Project Language" && picker.ItemsSource is IEnumerable<OutputLanguage> choices && choices.All(v => v.Id == "unavailable");
+            control.IsEnabled = !noViewingData && !Model.Busy && !HasUnsavedLanguageSummary && (!requiresEdit || LanguageEditMode);
+        }
     }
     private void RefreshLanguagePanel() {
         if (Model.Project is not { } project) return;
@@ -50,10 +51,10 @@ public sealed partial class MainWindow
         try { await ShowDialogAsync(new ContentDialog { Title = "Language and Saved Results", Content = activeLanguagePanelHost, CloseButtonText = "Close" }, 650, 700); }
         finally { activeLanguagePanelHost = null; RefreshLanguagePanel(); }
     }
-    private async Task RunLanguageActionAsync(string command, string[]? arguments = null) {
+    private async Task RunLanguageActionAsync(string command, string[]? arguments = null, bool settingsEditing = false) {
         if (Model.Busy || HasUnsavedLanguageSummary) return;
         var changesLanguage = command is "select-section-language" or "sync-section-languages" or "assign-result-language";
-        if (changesLanguage && !LanguageEditMode) return;
+        if (changesLanguage && !LanguageEditMode && !settingsEditing) return;
         StopSegmentPreview(); narrationPlayer.Pause(); readback.Stop();
         SummaryEditorBox.IsEnabled = false; SummaryProvenance.IsEnabled = false;
         try {
@@ -90,26 +91,42 @@ public sealed partial class MainWindow
         return field;
     }
 
-    private StackPanel BuildLanguageResultsPanel(StudioProject project)
+    private StackPanel BuildLanguageResultsPanel(StudioProject project, bool settingsContext = false, bool editingSettings = false, Action<bool>? setSettingsEditing = null, Action? settingsChanged = null)
     {
-        languageControls.Clear();
+        if (!settingsContext) languageControls.Clear();
+        var editing = settingsContext ? editingSettings : LanguageEditMode;
+        var kinds = settingsContext ? new[] { "transcript", "summary", "descriptions", "adAudio" } : CurrentLanguageKinds;
+        void Register(Control control, bool needsEdit) {
+            if (!settingsContext) RegisterLanguageControl(control, needsEdit);
+            else control.IsEnabled = !Model.Busy && !HasUnsavedLanguageSummary && (!needsEdit || editing);
+        }
+        async Task Run(string command, string[]? arguments = null) {
+            await RunLanguageActionAsync(command, arguments, settingsContext && editing);
+            settingsChanged?.Invoke();
+        }
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(new TextBlock { Text = "Language and Saved Results", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-        if (!LanguageEditMode) panel.Children.Add(new TextBlock { Text = "Enter Edit mode to change language labels or generation targets.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
-        if (HasUnsavedLanguageSummary) panel.Children.Add(new TextBlock { Text = "Save or cancel summary edits before switching languages or saved results.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
-        var language = LanguagePicker("View Project Language", project.SelectedLanguage);
-        RegisterLanguageControl(language, false);
+        if (settingsContext) {
+            var edit = new Button { Content = editing ? "Finish Editing Languages" : "Edit Languages", IsEnabled = !Model.Busy && !HasUnsavedLanguageSummary };
+            edit.Click += (_, _) => setSettingsEditing?.Invoke(!editing); panel.Children.Add(edit);
+        }
+        if (HasUnsavedLanguageSummary) panel.Children.Add(new TextBlock { Text = "Save or cancel summary edits first.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
+        var choices = OutputLanguage.Options.Where(v => editing || project.AvailableViewingLanguages.Contains(v.Id)).Select(v => new OutputLanguage(v.Id, project.ViewingLanguageTitle(v.Id))).ToList();
+        if (!editing && !choices.Any(v => v.Id == project.SelectedLanguage)) choices.Insert(0, new OutputLanguage("unavailable", "No saved content selected"));
+        var language = new ComboBox { Header = editing ? "Edit Project Language" : "View Project Language", ItemsSource = choices, DisplayMemberPath = "Title", SelectedItem = choices.FirstOrDefault(v => v.Id == project.SelectedLanguage) ?? choices.FirstOrDefault(), HorizontalAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetName(language, editing ? "Edit Project Language" : "View Project Language");
+        Register(language, false);
         language.SelectionChanged += async (_, _) => {
-            if (language.SelectedItem is OutputLanguage value && value.Id != project.SelectedLanguage) {
+            if (language.SelectedItem is OutputLanguage value && value.Id != "unavailable" && value.Id != project.SelectedLanguage) {
                 StopSegmentPreview(); narrationPlayer.Pause(); readback.Stop();
-                await RunLanguageActionAsync("select-language", new[] { "--language", value.Id });
+                await Run("select-language", new[] { "--language", value.Id });
             }
         };
+        if (!editing && project.AvailableViewingLanguages.Count == 0) language.IsEnabled = false;
         panel.Children.Add(language);
-        panel.Children.Add(new TextBlock { Text = "Sections can follow the project language or use their own choice. Switching preserves all saved results.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .7 });
         var synchronize = new Button { Content = "Keep All Sections in Sync", IsEnabled = !Model.Busy };
-        synchronize.Click += async (_, _) => { StopSegmentPreview(); narrationPlayer.Pause(); readback.Stop(); await RunLanguageActionAsync("sync-section-languages"); }; RegisterLanguageControl(synchronize, true); panel.Children.Add(synchronize);
-        foreach (var kind in CurrentLanguageKinds) {
+        synchronize.Click += async (_, _) => { StopSegmentPreview(); narrationPlayer.Pause(); readback.Stop(); await Run("sync-section-languages"); }; Register(synchronize, true); panel.Children.Add(synchronize);
+        foreach (var kind in kinds) {
             var sectionOptions = new[] { new OutputLanguage("project", "Follow Project Language") }.Concat(OutputLanguage.Options).ToList();
             var selectedLanguage = project.SectionLanguages.TryGetValue(kind, out var custom) ? custom : "project";
             var sectionLanguage = new ComboBox { Header = LanguageResult.KindTitle(kind) + " Generation Language", ItemsSource = sectionOptions, DisplayMemberPath = "Title", SelectedItem = sectionOptions.First(v => v.Id == selectedLanguage), HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = !Model.Busy };
@@ -118,12 +135,12 @@ public sealed partial class MainWindow
                 if (sectionLanguage.SelectedItem is not OutputLanguage choice) return;
                 var arguments = choice.Id == "project" ? new[] { "--section", kind, "--follow-project" } : new[] { "--section", kind, "--language", choice.Id };
                 StopSegmentPreview(); narrationPlayer.Pause(); readback.Stop();
-                await RunLanguageActionAsync("select-section-language", arguments);
+                await Run("select-section-language", arguments);
             };
-            RegisterLanguageControl(sectionLanguage, true);
+            Register(sectionLanguage, true);
             panel.Children.Add(sectionLanguage);
 
-            var viewingOverview = Section.SelectedIndex == 3;
+            var viewingOverview = !settingsContext && Section.SelectedIndex == 3;
             var code = viewingOverview ? project.OverviewLanguageCode : project.SelectedLanguage;
             var rows = project.SavedResults.Where(r => r.Kind == kind && r.Language == code && r.State == "saved").OrderByDescending(r => r.CreatedAt).ToList();
             if (rows.Count == 0) {
@@ -136,31 +153,31 @@ public sealed partial class MainWindow
             picker.SelectionChanged += async (_, _) => {
                 if (picker.SelectedItem is LanguageResult result && result.Id != project.ActiveResultID(kind, code)) {
                     StopSegmentPreview(); narrationPlayer.Pause(); readback.Stop();
-                    await RunLanguageActionAsync("select-result", new[] { "--result-id", result.Id });
+                    await Run("select-result", new[] { "--result-id", result.Id });
                 }
             };
-            RegisterLanguageControl(picker, false);
+            Register(picker, false);
             panel.Children.Add(picker);
-            var assign = new Button { Content = "Assign Language…", Visibility = LanguageEditMode ? Visibility.Visible : Visibility.Collapsed };
-            RegisterLanguageControl(assign, true);
+            var assign = new Button { Content = "Assign Language…", Visibility = editing ? Visibility.Visible : Visibility.Collapsed };
+            Register(assign, true);
             assign.Click += async (_, _) => {
                 if (picker.SelectedItem is not LanguageResult result) return;
                 var choice = LanguagePicker("Language", result.Language);
                 var dialog = new ContentDialog { Title = "Assign Language", Content = choice, PrimaryButtonText = "Assign Language", CloseButtonText = "Cancel" };
                 if (await ShowDialogAsync(dialog, 550, 320) == ContentDialogResult.Primary && choice.SelectedItem is OutputLanguage value)
-                    await RunLanguageActionAsync("assign-result-language", new[] { "--result-id", result.Id, "--language", value.Id });
+                    await Run("assign-result-language", new[] { "--result-id", result.Id, "--language", value.Id });
             };
             panel.Children.Add(assign);
         }
-        if (project.SavedResults.Any(r => CurrentLanguageKinds.Contains(r.Kind) && r.State == "draft")) {
+        if (project.SavedResults.Any(r => kinds.Contains(r.Kind) && r.State == "draft")) {
             var filter = LanguagePicker("Review language filter", reviewLanguageFilter, true);
             var drafts = new StackPanel { Spacing = 6 };
             void RefreshDrafts() {
                 drafts.Children.Clear();
-                foreach (var draft in project.SavedResults.Where(r => CurrentLanguageKinds.Contains(r.Kind) && r.State == "draft" && (reviewLanguageFilter == "all" || r.Language == reviewLanguageFilter))) {
+                foreach (var draft in project.SavedResults.Where(r => kinds.Contains(r.Kind) && r.State == "draft" && (reviewLanguageFilter == "all" || r.Language == reviewLanguageFilter))) {
                     var button = new Button { Content = "Review " + OutputLanguage.Label(draft.Language) + " " + LanguageResult.KindTitle(draft.Kind) + "…" };
-                    RegisterLanguageControl(button, false);
-                    button.Click += async (_, _) => await ReviewLanguageResultAsync(project, draft); drafts.Children.Add(button);
+                    Register(button, false);
+                    button.Click += async (_, _) => { await ReviewLanguageResultAsync(project, draft); settingsChanged?.Invoke(); }; drafts.Children.Add(button);
                 }
             }
             filter.SelectionChanged += (_, _) => { reviewLanguageFilter = (filter.SelectedItem as OutputLanguage)?.Id ?? "all"; RefreshDrafts(); };
@@ -172,7 +189,6 @@ public sealed partial class MainWindow
     private async Task ReviewLanguageResultAsync(StudioProject project, LanguageResult draft)
     {
         var body = new StackPanel { Spacing = 12 };
-        body.Children.Add(new TextBlock { Text = "Choose which results to retain. Your saved result stays available until Replace Selected.", TextWrapping = TextWrapping.Wrap });
         var old = project.SavedResults.FirstOrDefault(r => r.Id == draft.ReplacesResultID);
         body.Children.Add(new TextBlock { Text = "Selected saved result", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         body.Children.Add(new TextBox { Text = old?.Preview ?? "No previous result", IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 180 });
@@ -235,7 +251,6 @@ public sealed partial class MainWindow
         var deletionKind = component is "narration" or "history" ? "descriptions" : component;
         var language = LanguagePicker("Language filter", deletionKind == null || deletionKind == "thumbnails" ? "all" : project.SelectedLanguage, true);
         panel.Children.Add(language);
-        panel.Children.Add(new TextBlock { Text = "Choose content types and saved results. The project and original source are kept.", TextWrapping = TextWrapping.Wrap });
         string DeletionTitle(string kind) => kind switch {
             "descriptions" => "Description Segments and Audio", "narration" => "Description Audio Only (Keep Segments)",
             "history" => "Segment Undo History Only", "thumbnails" => "Thumbnails (Entire Project)", _ => LanguageResult.KindTitle(kind)
@@ -244,8 +259,7 @@ public sealed partial class MainWindow
         foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio", "narration", "history", "thumbnails" }) {
             var box = new CheckBox { Content = DeletionTitle(kind), Tag = kind, IsChecked = component == kind };
             options.Add(box); panel.Children.Add(box);
-            if (kind is "descriptions" or "narration") panel.Children.Add(new TextBlock {
-                Text = kind == "descriptions" ? "Deletes the selected description results, including their segments and associated audio. Shared files used by retained results or history are kept." : "Removes narration from the selected description results. Keeps description text, timing, and undo history. Shared files used by retained results or history are kept.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
+
         }
         var rows = new StackPanel { Spacing = 5 }; panel.Children.Add(rows);
         var selected = new HashSet<string>(); var exports = new HashSet<string>();

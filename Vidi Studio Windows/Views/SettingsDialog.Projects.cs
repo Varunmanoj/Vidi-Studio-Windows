@@ -15,6 +15,8 @@ public sealed partial class SettingsDialog
     private StudioProject? projectTarget;
     private bool allowClosedProjectTarget;
     private bool changingProjectChoice;
+    private string projectChoiceSignature = "";
+    private string ProjectChoiceSignature() => string.Join("\n", App.OpenEditorProjects.Select(p => p.Folder + "|" + p.Name)) + "|" + projectTarget?.Folder + "|" + projectTarget?.Name;
     public void SetProjectTarget(StudioProject? project) {
         if (project != null) { projectTarget = project; allowClosedProjectTarget = !App.OpenEditorProjects.Any(p => string.Equals(p.Folder, project.Folder, StringComparison.OrdinalIgnoreCase)); }
         if (sectionList?.SelectedIndex == 1 && currentSectionPanel is { } panel) { panel.Children.Clear(); BuildProjects(panel); }
@@ -32,6 +34,7 @@ public sealed partial class SettingsDialog
     /// </summary>
     private void BuildProjects(StackPanel panel)
     {
+        projectChoiceSignature = ProjectChoiceSignature();
         projectNarrationToggle = null;
         projectFollowToggle = null;
         var choices = App.OpenEditorProjects.ToList();
@@ -98,7 +101,7 @@ public sealed partial class SettingsDialog
         if (closed) return;
         DispatcherQueue.TryEnqueue(() => {
             if (closed || sectionList?.SelectedIndex != 1 || currentSectionPanel is not { } panel) return;
-            panel.Children.Clear(); BuildProjects(panel);
+            if (projectChoiceSignature != ProjectChoiceSignature()) { panel.Children.Clear(); BuildProjects(panel); }
         });
     }
 
@@ -161,8 +164,7 @@ public sealed partial class SettingsDialog
         DispatcherQueue.TryEnqueue(() =>
         {
             if (closed || sectionList?.SelectedIndex != 1 || currentSectionPanel is not { } panel) return;
-            panel.Children.Clear();
-            BuildProjects(panel);
+            if (projectChoiceSignature != ProjectChoiceSignature()) { panel.Children.Clear(); BuildProjects(panel); }
         });
     }
 

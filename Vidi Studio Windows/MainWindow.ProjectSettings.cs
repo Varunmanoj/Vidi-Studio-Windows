@@ -7,6 +7,10 @@ namespace Vidi_Studio_Windows;
 
 public sealed partial class MainWindow
 {
+    internal bool CanUseProjectLanguageSettings => !Model.Busy && !HasUnsavedLanguageSummary;
+    internal Microsoft.UI.Xaml.Controls.StackPanel ProjectLanguageSettingsPanel(bool editing, Action<bool> setEditing, Action changed) =>
+        BuildLanguageResultsPanel(Model.Project!, true, editing, setEditing, changed);
+
     internal async Task RunProjectSettingsActionAsync(string command)
     {
         if (!ready || Root.XamlRoot == null) {

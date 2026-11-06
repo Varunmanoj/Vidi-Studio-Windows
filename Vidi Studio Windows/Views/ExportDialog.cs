@@ -29,12 +29,9 @@ public sealed class ExportDialog : ContentDialog
     private readonly MainWindow? owner;
     private readonly ListView sidebar = new() { SelectionMode = ListViewSelectionMode.Single };
     private readonly StackPanel page = new() { Spacing = 18, Padding = new Thickness(26, 22, 26, 20) };
-    private readonly TextBlock explanation = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .7 };
     private readonly StackPanel footer = new() { Orientation = Orientation.Horizontal,
         HorizontalAlignment = HorizontalAlignment.Center, Spacing = 12, Padding = new Thickness(0, 12, 0, 8) };
     private readonly Button saveButton = new() { Content = "Save", Width = 120 };
-    private readonly TextBlock replacementNotice = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
-    private readonly TextBlock captionNotice = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
     private string videoFormat = "mkv", audioFormat = "wav";
     private int videoAudio = 1, videoCaptions, audioChoice = 1, webAudio = 1, webCaptions, textContent, textFormat;
     private int adSource;
@@ -184,7 +181,6 @@ public sealed class ExportDialog : ContentDialog
     {
         if (ExportProject is not { } project) return;
         page.Children.Add(new TextBlock { Text = "Languages and Saved Results", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-        page.Children.Add(new TextBlock { Text = "Outputs are stored in exports/<language code>/, including auto. Existing tracked exports are organized into those folders when exporting.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
         foreach (var code in project.SavedResults.Select(r => r.Language).Append(project.SelectedLanguage).Distinct().OrderBy(v => v)) {
             var toggle = new CheckBox { Content = OutputLanguage.Label(code), IsChecked = exportLanguages.Contains(code) };
             var fields = new StackPanel { Spacing = 8, Visibility = exportLanguages.Contains(code) ? Visibility.Visible : Visibility.Collapsed };
@@ -224,9 +220,6 @@ public sealed class ExportDialog : ContentDialog
             case 2: BuildText(); break;
             case 3: BuildWeb(); break;
         }
-        page.Children.Add(explanation);
-        page.Children.Add(captionNotice);
-        page.Children.Add(replacementNotice);
         UpdatePreview();
     }
 
@@ -378,27 +371,6 @@ public sealed class ExportDialog : ContentDialog
         if (sidebar.SelectedIndex < 0) return;
         var project = ExportProject;
         var section = sidebar.SelectedIndex;
-        explanation.Text = section switch
-        {
-            0 when videoAudio == 0 => videoCaptions == 0 ? "Choose captions or Audio Description to create a video export." : "Save the original soundtrack with the selected captions.",
-            0 when videoAudio == 1 => "Save the original soundtrack and a separate described soundtrack viewers can choose.",
-            0 => "Save the video with synchronized Audio Description mixed into its soundtrack.",
-            1 when project?.IsYouTube == true && audioChoice == 0 => "Save the selected original audio source in the chosen format.",
-            1 when project?.IsYouTube == true && audioChoice == 2 => "Create described audio from the selected original and Audio Description sources.",
-            1 when project?.IsYouTube == true || audioChoice == 2 => "Save synchronized narration without the original soundtrack in the selected format.",
-            1 when audioChoice == 0 => "Save the original video soundtrack in the selected format.",
-            1 => "Save the original soundtrack mixed with synchronized Audio Description in the selected format.",
-            2 when textContent == 1 => "Save the project summary as Markdown.",
-            2 when textContent == 3 => "Save transcript and Audio Description segments together, including their timing.",
-            2 => "Save the selected text and segment timing in the chosen format.",
-            _ => "Save an adaptive HLS Web Playback folder with the selected audio and captions."
-        };
-        captionNotice.Visibility = section is 0 or 3 && (section == 0 ? videoCaptions : webCaptions) is 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
-        captionNotice.Text = "Open captions require a new video encode. Picture size is preserved and HDR is kept where possible, but quality or Dolby Vision information may change. Use closed captions for the closest match to the source.";
-        var target = TargetRelativePath();
-        var exists = project != null && target.Length > 0 && (File.Exists(project.Resolve(target)) || Directory.Exists(project.Resolve(target)));
-        replacementNotice.Visibility = exists ? Visibility.Visible : Visibility.Collapsed;
-        replacementNotice.Text = exists ? $"{Path.GetFileName(target)} already exists. Choose Save to replace it, skip it, or cancel." : "";
         saveButton.Content = "Save";
         saveButton.IsEnabled = CanSave();
         var request = BuildRequest();

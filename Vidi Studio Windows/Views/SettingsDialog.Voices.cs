@@ -70,8 +70,6 @@ public sealed partial class SettingsDialog
         var heading = new TextBlock { Text = "Summary read-aloud", FontSize = 17, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 0) };
         AutomationProperties.SetHeadingLevel(heading, Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2);
         summaryControls.Children.Add(heading);
-        summaryControls.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .75,
-            Text = "The summary is read with the same engine and voice chosen for narration. It never creates files in the project." });
         UpdatePiperStatus();
     }
 

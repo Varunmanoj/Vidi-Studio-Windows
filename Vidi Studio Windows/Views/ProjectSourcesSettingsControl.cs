@@ -22,6 +22,8 @@ public sealed class ProjectSourcesSettingsControl : UserControl
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap };
     private readonly ProgressRing progress = new() { Width = 22, Height = 22, Visibility = Visibility.Collapsed };
     private bool rebuilding, actionRunning, observing;
+    private bool editingLanguages;
+    private MainWindow? languageEditor;
 
     public ProjectSourcesSettingsControl(Window settingsWindow, MainWindow owner, StudioProject project)
     {
@@ -29,9 +31,9 @@ public sealed class ProjectSourcesSettingsControl : UserControl
         Content = root; bodyHost.Content = body; root.Children.Add(bodyHost); root.Children.Add(progress); root.Children.Add(status);
         AutomationProperties.SetLiveSetting(status, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
         scoped.Project = StudioProject.TryLoad(folder) ?? project;
-        scoped.ReportStatus("Project source changes and imports are saved immediately.");
+        scoped.ReportStatus("");
         Loaded += (_, _) => { if (!observing) { observing = true; scoped.PropertyChanged += Changed; settingsWindow.Activated += Activated; } };
-        Unloaded += (_, _) => { observing = false; scoped.PropertyChanged -= Changed; settingsWindow.Activated -= Activated; };
+        Unloaded += (_, _) => { observing = false; scoped.PropertyChanged -= Changed; settingsWindow.Activated -= Activated; if (languageEditor != null) languageEditor.Model.PropertyChanged -= LanguageEditorChanged; };
         Rebuild();
     }
     private void Activated(object sender, WindowActivatedEventArgs args)
@@ -43,9 +45,15 @@ public sealed class ProjectSourcesSettingsControl : UserControl
         UpdateProgress();
         if (!rebuilding && !scoped.Busy && args.PropertyName == nameof(StudioViewModel.Project)) Rebuild();
     }
+    private void LanguageEditorChanged(object? sender, PropertyChangedEventArgs args) {
+        UpdateProgress();
+        if (!rebuilding && languageEditor?.Model.Busy == false && args.PropertyName is nameof(StudioViewModel.Project) or nameof(StudioViewModel.Busy)) {
+            scoped.Project = StudioProject.TryLoad(folder); Rebuild();
+        }
+    }
     private void UpdateProgress()
     {
-        var busy = scoped.Busy || actionRunning;
+        var busy = scoped.Busy || actionRunning || languageEditor?.Model.Busy == true;
         bodyHost.IsEnabled = !busy;
         progress.IsActive = busy; progress.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         status.Text = actionRunning ? "Opening this project's editor…" : scoped.Status;
@@ -81,6 +89,14 @@ public sealed class ProjectSourcesSettingsControl : UserControl
         try {
             body.Children.Clear();
             if (scoped.Project is not { } project) { body.Children.Add(Text("This project is unavailable. Open its folder again from All Projects.")); return; }
+            var editor = App.EditorForProject(project);
+            if (languageEditor != editor) {
+                if (languageEditor != null) languageEditor.Model.PropertyChanged -= LanguageEditorChanged;
+                languageEditor = editor; languageEditor.Model.PropertyChanged += LanguageEditorChanged;
+            }
+            body.Children.Add(languageEditor.ProjectLanguageSettingsPanel(editingLanguages,
+                enabled => { editingLanguages = enabled; Rebuild(); },
+                () => { scoped.Project = StudioProject.TryLoad(folder); Rebuild(); }));
             var details = new StackPanel { Spacing = 8 };
             Row(details, "Name", project.Name); Row(details, "Type", project.IsYouTube ? "YouTube video" : "Local video");
             Row(details, "Duration", TimeSpan.FromSeconds(project.Duration).ToString(@"hh\:mm\:ss")); Row(details, "Folder", project.Folder);
@@ -103,11 +119,9 @@ public sealed class ProjectSourcesSettingsControl : UserControl
             Actions(imports, ("Import Transcript…", "import-transcript"), ("Import Summary…", "import-summary"), ("Import Descriptions…", "import-descriptions"), ("Import AD Audio…", "import-ad-audio"), ("Import Existing Assets…", "import-assets"));
             if (project.IsYouTube) {
                 imports.Children.Add(Action("Import Original Audio…", "import-original-audio"));
-                imports.Children.Add(Text("Import Transcript and Import Existing Assets also offer Download YouTube Captions. Video-edit permission is required."));
             }
             body.Children.Add(new Expander { Header = "Import into this project", Content = imports, IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
             Actions(body, ("Export…", "export"), ("Open in Editor", "open-editor"), ("Open Project Folder", "show-folder"), ("Rename…", "rename-project"));
-            body.Children.Add(Text("Imports and exports open this project's editor. Project source choices and imports are saved immediately. Narration engine and voice choices are managed in Narration settings."));
         } finally { rebuilding = false; UpdateProgress(); }
     }
     private async System.Threading.Tasks.Task RunAction(string command)

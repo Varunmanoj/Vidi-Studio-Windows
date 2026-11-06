@@ -117,7 +117,6 @@ public sealed partial class SettingsDialog
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(developerMode, "Developer mode");
         AddSettingsRow(advanced, "Developer mode", developerMode);
-        advanced.Children.Add(new TextBlock { Text = "Shows project configuration controls, Developer prompts, and advanced executable-path overrides in Narration and Storage.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
         developerMode.Toggled += (_, _) =>
         {
             draft["developerMode"] = developerMode.IsOn;

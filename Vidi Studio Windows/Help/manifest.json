@@ -135,6 +135,10 @@
         {
           "id": "description-delete-options",
           "title": "Delete description audio or segments"
+        },
+        {
+          "id": "project-language-settings",
+          "title": "Project language in Settings and the inspector"
         }
       ]
     },
@@ -273,6 +277,10 @@
         {
           "id": "section-language-targets",
           "title": "Choose a target language for each section"
+        },
+        {
+          "id": "project-language-settings",
+          "title": "Project language in Settings and the inspector"
         }
       ]
     },
@@ -463,6 +471,10 @@
         {
           "id": "section-language-targets",
           "title": "Choose a target language for each section"
+        },
+        {
+          "id": "project-language-settings",
+          "title": "Project language in Settings and the inspector"
         }
       ]
     },

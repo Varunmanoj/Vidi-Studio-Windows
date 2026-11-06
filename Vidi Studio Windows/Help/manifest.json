@@ -371,6 +371,14 @@
           "title": "Audio Description for YouTube Studio"
         },
         {
+          "id": "check-youtube-channel-access",
+          "title": "Check YouTube channel access"
+        },
+        {
+          "id": "upload-the-described-soundtrack",
+          "title": "Upload the described soundtrack"
+        },
+        {
           "id": "export-text",
           "title": "Export text"
         },

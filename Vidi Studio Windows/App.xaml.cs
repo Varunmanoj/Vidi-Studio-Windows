@@ -77,6 +77,14 @@ public partial class App : Application
     internal static MainWindow EditorForProject(Models.StudioProject project) => Windows.OfType<MainWindow>()
         .FirstOrDefault(w => string.Equals(w.SettingsProject?.Folder, project.Folder, StringComparison.OrdinalIgnoreCase)) ?? OpenWindow(project.Folder);
 
+    internal static void CloseEditorsForDeletedProject(string folder)
+    {
+        var editors = Windows.Where(window => window.IsEditingFolder(folder)).ToArray();
+        if (editors.Length > 0 && editors.Length == Windows.Count) OpenWindow();
+        foreach (var editor in editors) editor.CloseDeletedProjectEditor();
+        foreach (var window in Windows.ToArray()) window.RefreshAfterProjectDeletion();
+    }
+
     public static MainWindow OpenWindow(string? folder = null)
     {
         var window = new MainWindow(folder);

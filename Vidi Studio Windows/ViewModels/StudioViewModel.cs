@@ -426,6 +426,23 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         catch { }
         return null;
     }
+    public async Task<bool> DeleteProjectFolderAsync(StudioProject project)
+    {
+        if (Busy) return false;
+        Busy = true;
+        using var activity = DeletionActivity.Begin("Moving project to Recycle Bin…", project.Name);
+        Status = "Moving project to Recycle Bin…";
+        try
+        {
+            if (Directory.Exists(project.Folder)) await DeletionActivity.RecycleAsync(project.Folder);
+            ForgetProject(project);
+            Status = "Project removed";
+            return true;
+        }
+        catch { Status = "Could not delete project"; throw; }
+        finally { Busy = false; }
+    }
+
     public void Cancel() => operation?.Cancel();
     public string CurrentNarrationEngine()
     {
@@ -694,6 +711,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             Changed(nameof(NarratingSegmentIndex));
             Changed(nameof(ActiveNarrationStatusText));
         }
+        using var deletionActivity = DeletionActivity.BeginForCommand(command, Project?.Name ?? "Project");
         Busy = true;
         operation = new();
         Status = "Starting…";

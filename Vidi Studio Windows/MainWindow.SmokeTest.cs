@@ -399,10 +399,20 @@ public sealed partial class MainWindow
             if (languages.Items.OfType<ToggleMenuFlyoutItem>().Count() != Model.Project!.AvailableViewingLanguages.Count ||
                 languages.Items.OfType<ToggleMenuFlyoutItem>().Count(item => item.IsChecked) != (Model.Project.AvailableViewingLanguages.Contains(Model.Project.SelectedLanguage) ? 1 : 0))
                 throw new InvalidOperationException("Project Language menu choices/checked state differ from the inspector.");
+            var fileDeletes = editorMenus.First(menu => menu.Title == "File").Items.OfType<MenuFlyoutItem>()
+                .Where(item => item.Tag as string is "delete-project" or "delete-content").ToList();
+            if (fileDeletes.Count != 2 || !CanRunDesktopCommand("delete-project") || !CanRunDesktopCommand("delete-content"))
+                throw new InvalidOperationException("Editor File deletion commands are missing or unavailable.");
+            using (var deletion = DeletionActivity.Begin("Deleting selected content…", Model.Project!.Name)) {
+                UpdateProcessingChrome();
+                if (!StatusRing.IsActive || StatusStageTitle.Visibility != Visibility.Visible || CancelProcessingButton.Visibility != Visibility.Collapsed)
+                    throw new InvalidOperationException("Deletion progress is missing or incorrectly offers cancellation.");
+            }
+            UpdateProcessingChrome();
             ShowGallery_Click(this, new RoutedEventArgs());
             if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "Edit", "View", "Playback", "Project", "YouTube", "Help" }))
                 throw new InvalidOperationException("Gallery menu hierarchy drifted from the shared desktop layout.");
-            if (CanRunDesktopCommand("export") || CanRunDesktopCommand("review-narration-issues") || CanRunDesktopCommand("review-narration-voices"))
+            if (CanRunDesktopCommand("delete-project") || CanRunDesktopCommand("delete-content") || CanRunDesktopCommand("export") || CanRunDesktopCommand("review-narration-issues") || CanRunDesktopCommand("review-narration-voices"))
                 throw new InvalidOperationException("Project-only menu commands remained enabled in the gallery.");
             GalleryGrid.SelectedItem = null;
             GalleryList.SelectedItem = null;

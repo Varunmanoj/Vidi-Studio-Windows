@@ -139,6 +139,10 @@
         {
           "id": "project-language-settings",
           "title": "Project language in Settings and the inspector"
+        },
+        {
+          "id": "file-deletion-actions",
+          "title": "Delete from the File menu and follow progress"
         }
       ]
     },
@@ -191,6 +195,26 @@
           "title": "Language and saved results"
         },
         {
+          "id": "saved-versions",
+          "title": "Understand, compare and inspect saved versions"
+        },
+        {
+          "id": "read-a-version-label-and-identify-the-newest-result",
+          "title": "Read a version label and identify the newest result"
+        },
+        {
+          "id": "switch-between-saved-versions-in-the-editor",
+          "title": "Switch between saved versions in the editor"
+        },
+        {
+          "id": "check-which-audio-and-export-files-belong-to-a-version",
+          "title": "Check which audio and export files belong to a version"
+        },
+        {
+          "id": "distinguish-export-choices-from-deletion-choices",
+          "title": "Distinguish export choices from deletion choices"
+        },
+        {
           "id": "section-language-targets",
           "title": "Choose a target language for each section"
         },
@@ -201,6 +225,10 @@
         {
           "id": "copy-to",
           "title": "Copy and translate content to a language"
+        },
+        {
+          "id": "file-deletion-actions",
+          "title": "Delete from the File menu and follow progress"
         }
       ]
     },
@@ -285,6 +313,14 @@
         {
           "id": "project-language-settings",
           "title": "Project language in Settings and the inspector"
+        },
+        {
+          "id": "inspect-saved-versions",
+          "title": "Check saved versions and their files"
+        },
+        {
+          "id": "file-deletion-actions",
+          "title": "Delete from the File menu and follow progress"
         }
       ]
     },
@@ -343,6 +379,10 @@
         {
           "id": "copy-to",
           "title": "Copy and translate content to a language"
+        },
+        {
+          "id": "inspect-saved-versions",
+          "title": "Check saved versions and their files"
         }
       ]
     },
@@ -445,6 +485,10 @@
         {
           "id": "language-export-folders",
           "title": "Language export folders"
+        },
+        {
+          "id": "inspect-saved-versions",
+          "title": "Check saved versions and their files"
         }
       ]
     },

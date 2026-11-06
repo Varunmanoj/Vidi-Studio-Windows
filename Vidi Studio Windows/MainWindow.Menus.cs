@@ -63,7 +63,7 @@ public sealed partial class MainWindow
         {
             Menu("File",
                 Command("new-project"), Command("open-project"), Command("youtube-browser"), Command("youtube-open-browser"), Separator(), Command("export"), Separator(),
-                Command("remove-from-list"), Separator(), Command("open-editor-window"), Command("settings"), Command("project-settings"), Command("close-window")),
+                Command("delete-project"), Command("delete-content"), Separator(), Command("remove-from-list"), Separator(), Command("open-editor-window"), Command("settings"), Command("project-settings"), Command("close-window")),
             Menu("Edit", Command("copy-to")),
             Menu("View",
                 ProjectLanguageMenu(), Separator(),
@@ -358,6 +358,8 @@ public sealed partial class MainWindow
         var tts = Model.Settings.Get("ttsMode", "windows-core") != "gemini" || ai;
         switch (id)
         {
+            case "delete-project": return !HasUnsavedLanguageSummary;
+            case "delete-content": return !HasUnsavedLanguageSummary && !p.IntegrityPlaceholder;
             case "rename-project": return !p.IntegrityPlaceholder && p.Integrity?.ManifestUnreadable != true && p.Integrity?.FolderMissing != true;
             case "import-assets":
             case "import-transcript":
@@ -424,6 +426,7 @@ public sealed partial class MainWindow
         var p = Model.Project;
         return id switch
         {
+            "delete-project" => "Delete Project…", "delete-content" => "Choose What to Delete…",
             "remove-from-list" => "Remove from List",
             "new-project" => "New Project…", "open-project" => "Open Project Folder…", "export" => "Export…",
             "open-editor-window" => "Open Editor in New Window", "settings" => "Settings…", "close-window" => "Close Window",
@@ -602,6 +605,8 @@ public sealed partial class MainWindow
             case "remove-from-list":
                 if (SelectedBrowserProject() is { } listedProject) RemoveProjectFromList(listedProject);
                 break;
+            case "delete-project": if (Model.Project is { } deletingProject) await DeleteProjectAsync(deletingProject); break;
+            case "delete-content": await ShowLanguageDeletionAsync(); break;
             case "export": Export_Click(this, e); break;
             case "settings": Settings_Click(this, e); break;
             case "project-settings": if (Model.Project is { } settingsProject) await ShowSettingsSectionAsync(1, settingsProject); break;

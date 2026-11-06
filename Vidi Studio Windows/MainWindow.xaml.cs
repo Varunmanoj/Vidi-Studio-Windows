@@ -93,6 +93,7 @@ public sealed partial class MainWindow : Window
         Views.WindowAppearance.ApplyMaterial(this);
         ActiveExports.Observe(Model);
         Model.PropertyChanged += UpdateStatusFooter;
+        DeletionActivity.Changed += DeletionActivityChanged;
         Model.YouTubeAudioRecoveryRequested += RecoverYouTubeAudioExportAsync;
         Model.ConnectivityNotification += ShowConnectivityNoticeAsync;
         Views.WindowAppearance.ApplyIcon(this);
@@ -133,6 +134,7 @@ public sealed partial class MainWindow : Window
         };
         Closed += (_, _) =>
         {
+            DeletionActivity.Changed -= DeletionActivityChanged;
             windowClosed = true;
             ready = false;
             ConnectivityService.Shared.Changed -= ConnectivityChanged;
@@ -199,11 +201,18 @@ public sealed partial class MainWindow : Window
         if (e.PropertyName is nameof(Model.Busy) or nameof(Model.Idle) or nameof(Model.Project))
             UpdateProjectIntegrityUi();
     }
+    private void DeletionActivityChanged(object? sender, EventArgs e)
+    {
+        DispatcherQueue.TryEnqueue(() => { if (!windowClosed) UpdateProcessingChrome(); });
+    }
+
     private void UpdateProcessingChrome()
     {
+        StatusText.Visibility = DeletionActivity.Message != null ? Visibility.Collapsed : Visibility.Visible;
         var analyzing = Model.IsAnalyzing;
         var synthesizing = Model.IsSynthesizingNarration;
-        var activeStage = analyzing || synthesizing;
+        var deleting = DeletionActivity.Message != null;
+        var activeStage = analyzing || synthesizing || deleting;
         if (StatusRing != null)
         {
             StatusRing.IsActive = activeStage;
@@ -211,12 +220,12 @@ public sealed partial class MainWindow : Window
         }
         if (StatusStageTitle != null)
         {
-            StatusStageTitle.Text = activeStage ? Model.ProcessingStageTitle : "";
+            StatusStageTitle.Text = DeletionActivity.Message ?? (activeStage ? Model.ProcessingStageTitle : "");
             StatusStageTitle.Visibility = activeStage ? Visibility.Visible : Visibility.Collapsed;
         }
         if (CancelProcessingButton != null)
         {
-            CancelProcessingButton.Visibility = activeStage ? Visibility.Visible : Visibility.Collapsed;
+            CancelProcessingButton.Visibility = activeStage && !deleting ? Visibility.Visible : Visibility.Collapsed;
         }
         if (InspectorNarrationProgressPanel != null)
         {
@@ -1008,13 +1017,29 @@ public sealed partial class MainWindow : Window
             {
                 StopProjectPlayback(); video.Source = null; speech.Source = null; narrationPlayer.Source = null;
             }
-            if (folderExists)
-                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(p.Folder, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-            Model.ForgetProject(p);
-            if (deletingLoadedProject) ClearProject();
-            else { RefreshGalleryCount(); UpdateProjectIntegrityUi(); }
+            if (!await Model.DeleteProjectFolderAsync(p)) return;
+            App.CloseEditorsForDeletedProject(p.Folder);
+            if (!windowClosed) { RefreshGalleryCount(); UpdateProjectIntegrityUi(); }
         }
         catch (Exception ex) { await ShowError(ex); }
+    }
+
+    internal bool IsEditingFolder(string folder) => desktopEditorVisible &&
+        string.Equals(Model.Project?.Folder ?? loadedProject, folder, StringComparison.OrdinalIgnoreCase);
+
+    internal void CloseDeletedProjectEditor()
+    {
+        StopProjectPlayback();
+        SetSummaryEditMode(false);
+        video.Source = speech.Source = narrationPlayer.Source = null;
+        Model.Project = null;
+        loadedProject = null;
+        Close();
+    }
+
+    internal void RefreshAfterProjectDeletion()
+    {
+        if (!windowClosed && Model.Idle) { Model.Reload(); RefreshGalleryCount(); UpdateProjectIntegrityUi(); }
     }
 
     private void RefreshProjectIntegrity()

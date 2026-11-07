@@ -214,14 +214,14 @@ public sealed partial class MainWindow
             menu.Text = SavedResultsMenuTitle; menu.IsEnabled = enabled; menu.Items.Clear();
             if (project == null) continue;
             foreach (var kind in CurrentLanguageKinds) {
-                foreach (var result in project.SavedResults.Where(r => r.Kind == kind && r.Language == project.SelectedLanguage && r.State == "saved").OrderByDescending(r => r.CreatedAt)) {
+                foreach (var result in project.SavedResults.Where(r => r.Kind == kind && r.Language == project.SelectedLanguage).OrderByDescending(r => r.CreatedAt)) {
                     var item = new ToggleMenuFlyoutItem { Text = (CurrentLanguageKinds.Length > 1 ? Models.LanguageResult.KindTitle(kind) + " · " : "") + SavedResultOptions.AccessibleName(result, project, false), Tag = "saved-result-" + result.Id,
                         Icon = SavedResultOptions.MenuIcon(result, project, project.ActiveResultID(kind) == result.Id),
                         IsChecked = project.ActiveResultID(kind) == result.Id, IsEnabled = enabled };
                     Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, (CurrentLanguageKinds.Length > 1 ? Models.LanguageResult.KindTitle(kind) + ", " : "") + SavedResultOptions.AccessibleName(result, project, item.IsChecked));
                     item.Click += async (_, _) => {
                         item.IsChecked = Model.Project?.ActiveResultID(kind) == result.Id;
-                        if (!CanRunDesktopCommand("saved-results") || Model.Project?.Id != project.Id || !CurrentLanguageKinds.Contains(kind) || Model.Project.SelectedLanguage != result.Language || !Model.Project.SavedResults.Any(r => r.Id == result.Id && r.State == "saved") || item.IsChecked) return;
+                        if (!CanRunDesktopCommand("saved-results") || Model.Project?.Id != project.Id || !CurrentLanguageKinds.Contains(kind) || Model.Project.SelectedLanguage != result.Language || !Model.Project.SavedResults.Any(r => r.Id == result.Id) || item.IsChecked) return;
                         await RunLanguageActionAsync("select-result", new[] { "--result-id", result.Id });
                     };
                     menu.Items.Add(item);
@@ -425,7 +425,7 @@ public sealed partial class MainWindow
             case "sort-duration-desc":
             case "sort-origin": return timed;
             case "caption-off": return timed;
-            case "saved-results": return !HasUnsavedLanguageSummary && p.SavedResults.Any(r => r.State == "saved" && r.Language == p.SelectedLanguage && CurrentLanguageKinds.Contains(r.Kind));
+            case "saved-results": return !HasUnsavedLanguageSummary && p.SavedResults.Any(r => r.Language == p.SelectedLanguage && CurrentLanguageKinds.Contains(r.Kind));
             case "project-language": return !HasUnsavedLanguageSummary && p.AvailableViewingLanguages.Count > 0;
             case "copy-to": return CanCopyLanguageResults;
             case "language-results": return true;

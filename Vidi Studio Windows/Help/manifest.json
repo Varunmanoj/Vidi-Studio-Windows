@@ -769,6 +769,10 @@
         {
           "id": "copy-to-translation",
           "title": "Copy to translation"
+        },
+        {
+          "id": "youtube-summary-context",
+          "title": "YouTube summary context"
         }
       ]
     }

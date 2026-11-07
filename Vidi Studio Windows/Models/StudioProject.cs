@@ -215,13 +215,13 @@ public sealed class StudioProject : INotifyPropertyChanged
         };
         return kind == "" ? SelectedLanguage : SectionLanguage(kind);
     }
-    [JsonIgnore] public IReadOnlyList<string> AvailableViewingLanguages => SavedResults.Where(r => r.State == "saved" && r.HasContent).Select(r => r.Language).Distinct().OrderBy(v => v).ToList();
+    [JsonIgnore] public IReadOnlyList<string> AvailableViewingLanguages => SavedResults.Select(r => r.Language).Distinct().OrderBy(v => v).ToList();
     [JsonIgnore] public IReadOnlyList<string> DeletionLanguages => SavedResults.Select(r => r.Language)
         .Concat(Exports.SelectMany(path => ExportResults.TryGetValue(path, out var provenance)
             ? provenance.Languages ?? new List<string> { provenance.Language } : new List<string> { "auto" }))
         .Distinct().OrderBy(OutputLanguage.Label, StringComparer.CurrentCultureIgnoreCase).ToList();
     public string ViewingLanguageTitle(string code) {
-        var kinds = SavedResults.Where(r => r.State == "saved" && r.Language == code && r.HasContent).Select(r => r.Kind).ToHashSet();
+        var kinds = SavedResults.Where(r => r.Language == code).Select(r => r.Kind).ToHashSet();
         var names = new[] { "transcript", "summary", "descriptions", "adAudio" }.Where(kinds.Contains).Select(k => k switch { "transcript" => "Transcript", "summary" => "Summary", "descriptions" => "Descriptions", _ => "AD Audio" });
         return OutputLanguage.Label(code) + (kinds.Count == 0 ? "" : " (" + string.Join(", ", names) + ")");
     }
@@ -245,12 +245,12 @@ public sealed class StudioProject : INotifyPropertyChanged
         if (ActiveResultIDs.TryGetValue(code, out var selection) && selection.TryGetValue(kind, out var rid)) return rid;
         return SavedResults.Where(r => r.Language == code && r.Kind == kind && r.State == "saved").OrderByDescending(r => r.CreatedAt).FirstOrDefault()?.Id ?? "";
     }
-    public StudioProject WithLanguageResults(string code, IReadOnlyDictionary<string, string>? choices = null) {
+    public StudioProject WithLanguageResults(string code, IReadOnlyDictionary<string, string>? choices = null, bool includingDrafts = false) {
         var result = (StudioProject)MemberwiseClone(); result.SelectedLanguage = code;
         result.Transcript = new(); result.Summary = ""; result.Cues = new(); result.ImportedAudioDescription = null; result.ImportedADTranscript = null; result.NarrationEngine = null; result.NarrationVoice = null; result.DescriptionTimingAudit = null;
         foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
             var rid = choices != null && choices.TryGetValue(kind, out var selected) ? selected : ActiveResultID(kind, code);
-            var record = SavedResults.FirstOrDefault(r => r.Id == rid && r.State == "saved" && r.Language == code);
+            var record = SavedResults.FirstOrDefault(r => r.Id == rid && (includingDrafts || r.State == "saved") && r.Language == code);
             if (record == null || record.Payload.ValueKind != JsonValueKind.Object) continue;
             var data = record.Payload;
             if (kind == "transcript" && data.TryGetProperty("transcript", out var transcript)) result.Transcript = JsonSerializer.Deserialize<List<Segment>>(transcript.GetRawText(), Json.Options) ?? new();

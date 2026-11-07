@@ -20,7 +20,7 @@ public static class SavedResultOptions
     }
     public static List<string> Status(LanguageResult result, StudioProject project, bool selected, IReadOnlyDictionary<string,string>? choices = null)
     {
-        var view = project.WithLanguageResults(result.Language, Choices(result, choices));
+        var view = project.WithLanguageResults(result.Language, Choices(result, choices), includingDrafts: true);
         var allAudio = result.Kind == "descriptions" && view.HasCompleteExportNarration;
         var validTiming = !view.Cues.Any(c => view.Transcript.Any(t => c.Start < t.End && c.End > t.Start) ||
             view.Cues.Any(other => !ReferenceEquals(c, other) && c.Start < other.End && c.End > other.Start));
@@ -36,8 +36,9 @@ public static class SavedResultOptions
         if (ready) labels.Add("Export ready");
         return labels;
     }
+    public static string DisplayTitle(LanguageResult result) => result.Title + (result.State == "draft" ? " · Review draft" : "");
     public static string AccessibleName(LanguageResult result, StudioProject project, bool selected, IReadOnlyDictionary<string,string>? choices = null) =>
-        string.Join(", ", new[] { result.Title }.Concat(Status(result, project, selected, choices)));
+        string.Join(", ", new[] { DisplayTitle(result) }.Concat(Status(result, project, selected, choices)));
     public static StackPanel Content(LanguageResult result, StudioProject project, bool selected, IReadOnlyDictionary<string,string>? choices = null, string titlePrefix = "")
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
@@ -46,7 +47,7 @@ public static class SavedResultOptions
                 Glyph = label == "Selected" ? "\uE73E" : label == "Export ready" ? "\uE898" : "\uE767" };
             AutomationProperties.SetName(icon, label); ToolTipService.SetToolTip(icon, label); row.Children.Add(icon);
         }
-        row.Children.Add(new TextBlock { Text = titlePrefix + result.Title });
+        row.Children.Add(new TextBlock { Text = titlePrefix + DisplayTitle(result) });
         AutomationProperties.SetName(row, AccessibleName(result, project, selected, choices));
         return row;
     }

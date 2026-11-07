@@ -147,7 +147,7 @@ public sealed partial class MainWindow
 
             var viewingOverview = !settingsContext && Section.SelectedIndex == 3;
             var code = viewingOverview ? project.OverviewLanguageCode : project.SelectedLanguage;
-            var rows = project.SavedResults.Where(r => r.Kind == kind && r.Language == code && r.State == "saved").OrderByDescending(r => r.CreatedAt).ToList();
+            var rows = project.SavedResults.Where(r => r.Kind == kind && r.Language == code).OrderByDescending(r => r.CreatedAt).ToList();
             if (rows.Count == 0) {
                 panel.Children.Add(new TextBlock { Text = "No saved " + LanguageResult.KindTitle(kind).ToLowerInvariant() + " in " + OutputLanguage.Label(code) + ".", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
                 continue;
@@ -369,9 +369,8 @@ public sealed partial class MainWindow
                 var current = result.State == "saved" && project.ActiveResultID(result.Kind, result.Language) == result.Id;
                 var prefix = OutputLanguage.Label(result.Language) + " · " + LanguageResult.KindTitle(result.Kind) + " · ";
                 var row = SavedResultOptions.Content(result, project, current, titlePrefix: prefix);
-                if (result.State == "draft") row.Children.Add(new TextBlock { Text = "Review draft" });
                 var box = new CheckBox { Content = row, IsChecked = selected.Contains(result.Id) };
-                AutomationProperties.SetName(box, prefix + SavedResultOptions.AccessibleName(result, project, current).Replace(", Selected", ", Selected (current saved result)") + (result.State == "draft" ? ", Review draft" : ""));
+                AutomationProperties.SetName(box, prefix + SavedResultOptions.AccessibleName(result, project, current).Replace(", Selected", ", Selected (current saved result)"));
                 AutomationProperties.SetAutomationId(box, "delete-saved-result-" + result.Id);
                 box.Checked += (_, _) => selected.Add(result.Id); box.Unchecked += (_, _) => selected.Remove(result.Id); rows.Children.Add(box);
             }

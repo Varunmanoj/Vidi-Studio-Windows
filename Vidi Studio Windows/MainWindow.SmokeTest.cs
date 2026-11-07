@@ -315,10 +315,30 @@ public sealed partial class MainWindow
                 ((Microsoft.UI.Xaml.Media.SolidColorBrush)activeSummaryBlock.TextHighlighters[0].Background).Color.B != 255 ||
                 ((Microsoft.UI.Xaml.Media.SolidColorBrush)activeSummaryBlock.TextHighlighters[1].Background).Color.R != 255)
                 throw new InvalidOperationException("Summary sentence or word highlighting did not use Settings colors.");
+            var zoomBlock = activeSummaryBlock;
+            var zoomSelection = SummarySelection();
+            var previousPreview = PreviewPanel.Visibility;
+            PreviewPanel.Visibility = Visibility.Collapsed;
+            await RunDesktopCommandAsync("summary-zoom-in");
+            await Task.Delay(150);
+            SummaryPanel.UpdateLayout(); ReflowSummaryZoom(); UpdateSummaryZoomControls();
+            if (Math.Abs(SummaryPanel.ZoomFactor - 1.1) > .01 || SummaryZoomFooter.Visibility != Visibility.Visible
+                || !ReferenceEquals(activeSummaryBlock, zoomBlock) || activeSummaryBlock.TextHighlighters.Count != 2
+                || SummarySelection() != zoomSelection || SummaryZoomContent.Width * SummaryPanel.ZoomFactor > SummaryPanel.ViewportWidth + 1)
+                throw new InvalidOperationException("Summary zoom lost wrapping, highlight, selection, or footer controls.");
+            PreviewPanel.Visibility = Visibility.Visible; UpdateSummaryZoomControls();
+            if (SummaryZoomFooter.Visibility != Visibility.Collapsed) throw new InvalidOperationException("Summary slider remains visible with preview.");
+            await RunDesktopCommandAsync("summary-zoom-reset"); await Task.Delay(150);
+            PreviewPanel.Visibility = previousPreview; UpdateSummaryZoomControls();
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "summary-highlight.png"));
             await CaptureSmokeImage(SummaryRichText, Path.Combine(Path.GetDirectoryName(report)!, "summary-text-highlight.png"));
             ClearSummaryHighlight();
             var spokenSummary = readback.SpeakAsync(fixtureSentence);
+            await Task.Delay(100);
+            var sourceDuringZoom = readback.State;
+            await RunDesktopCommandAsync("summary-zoom-in");
+            if (sourceDuringZoom != SummaryReadbackState.Stopped && readback.State == SummaryReadbackState.Stopped)
+                throw new InvalidOperationException("Zoom stopped Summary reading.");
             for (var attempt = 0; attempt < 40 && activeSummaryBlock?.TextHighlighters.Count != 2; attempt++) await Task.Delay(50);
             if (activeSummaryBlock?.TextHighlighters.Count != 2)
                 throw new InvalidOperationException("Spoken summary did not synchronize its sentence and word highlight with the visible text.");

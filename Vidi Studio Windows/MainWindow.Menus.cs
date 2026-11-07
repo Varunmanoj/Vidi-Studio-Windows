@@ -68,7 +68,8 @@ public sealed partial class MainWindow
             Menu("Edit", Command("copy-to")),
             Menu("View",
                 ProjectLanguageMenu(), Separator(), SavedResultsMenu(), Separator(),
-                Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("toggle-thumbnail-images"), Command("filter-segments"),
+                Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("toggle-thumbnail-images"),
+                Command("summary-zoom-in"), Command("summary-zoom-out"), Command("summary-zoom-reset"), Command("filter-segments"),
                 Submenu("Sort Segments", Command("sort-start"), Command("sort-duration-asc"), Command("sort-duration-desc"), Command("sort-origin")), Separator(),
                 Command("show-projects"), Command("show-inspector"), Separator(),
                 Command("project-list"), Command("project-grid")),
@@ -110,6 +111,11 @@ public sealed partial class MainWindow
                 catch (OperationCanceledException) { }
                 catch (Exception ex) { await ShowError(ex); }
             }, () => CanRunDesktopCommand(id));
+        foreach (var (key, modifiers, command) in new[] {
+            ((VirtualKey)187, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "summary-zoom-in"),
+            (VirtualKey.Add, VirtualKeyModifiers.Control, "summary-zoom-in"),
+            (VirtualKey.Subtract, VirtualKeyModifiers.Control, "summary-zoom-out") })
+            AddShortcut(key, modifiers, async (_, _) => await RunDesktopCommandAsync(command), () => CanRunDesktopCommand(command));
         AddShortcut(VirtualKey.F11, VirtualKeyModifiers.None, (_, _) => FullScreen_Click(this, new RoutedEventArgs()));
         GalleryGrid.SelectionChanged += (_, _) => UpdateDesktopMenuStates();
         GalleryList.SelectionChanged += (_, _) => UpdateDesktopMenuStates();
@@ -161,6 +167,9 @@ public sealed partial class MainWindow
         ["segment-delete-selected"] = (VirtualKey.Delete, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+Delete"),
         ["follow"] = (VirtualKey.F, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+F"),
         ["delete-narration"] = (VirtualKey.Back, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+Backspace"),
+        ["summary-zoom-in"] = ((VirtualKey)187, VirtualKeyModifiers.Control, "Ctrl+="),
+        ["summary-zoom-out"] = ((VirtualKey)189, VirtualKeyModifiers.Control, "Ctrl+-"),
+        ["summary-zoom-reset"] = (VirtualKey.Number0, VirtualKeyModifiers.Control, "Ctrl+0"),
         ["summary-play"] = (VirtualKey.P, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+P"),
         ["summary-pause"] = (VirtualKey.P, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+P"),
         ["summary-stop"] = (VirtualKey.S, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+S"),
@@ -302,6 +311,10 @@ public sealed partial class MainWindow
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(TopInspectorToggle, label);
             ToolTipService.SetToolTip(TopInspectorToggle, label + " (" + DesktopShortcuts["show-inspector"].Text + ")");
         }
+        foreach (var id in new[] { "summary-zoom-in", "summary-zoom-out", "summary-zoom-reset" })
+            foreach (var item in desktopMenuItems.TryGetValue(id, out var zoomItems) ? zoomItems : new List<MenuFlyoutItem>())
+                item.Visibility = desktopEditorVisible && Section.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateSummaryZoomControls();
         var timedSection = Section.SelectedIndex is 0 or 2 or 4;
         foreach (var item in desktopMenuItems.TryGetValue("filter-segments", out var filterItems) ? filterItems : new List<MenuFlyoutItem>())
             item.Visibility = timedSection ? Visibility.Visible : Visibility.Collapsed;
@@ -439,6 +452,10 @@ public sealed partial class MainWindow
                 { 0 => hasTranscript, 1 => p.HasSummary || ExtraFlag(p, "summaryGenerated"), 2 => p.Cues.Count > 0 || ExtraFlag(p, "descriptionsGenerated"), _ => false };
             case "fullscreen": return !p.IsYouTube;
         }
+        if (id is "summary-zoom-in" or "summary-zoom-out" or "summary-zoom-reset")
+            return Section.SelectedIndex == 1 && !summaryEditMode && p.HasSummary && Model.Idle
+                && (id != "summary-zoom-in" || SummaryPanel.ZoomFactor < 4)
+                && (id != "summary-zoom-out" || SummaryPanel.ZoomFactor > .5);
         if (id.StartsWith("summary-", StringComparison.Ordinal))
         {
             if (Section.SelectedIndex != 1 || summaryEditMode || !p.HasSummary) return false;
@@ -480,6 +497,7 @@ public sealed partial class MainWindow
             "back" => "Rewind 5 Seconds", "forward" => "Fast Forward 5 Seconds", "narration" => "Toggle Narration",
             "caption-cycle" => "Cycle Transcript Overlay", "caption-off" => "Turn Transcript Overlay Off",
             "caption-transcript" => "Show Transcript Overlay", "caption-ad-transcript" => "Show AD Transcript Overlay",
+            "summary-zoom-in" => "Zoom In", "summary-zoom-out" => "Zoom Out", "summary-zoom-reset" => "Actual Size (100%)",
             "summary-play" => "Play or Resume Summary Reading", "summary-pause" => "Pause Summary Reading", "summary-stop" => "Stop Summary Reading",
             "summary-previous-sentence" => "Previous Summary Sentence", "summary-next-sentence" => "Next Summary Sentence",
             "summary-previous-paragraph" => "Previous Summary Paragraph", "summary-next-paragraph" => "Next Summary Paragraph",
@@ -714,6 +732,9 @@ public sealed partial class MainWindow
             case "open-configuration": if (ProjectManagementTarget() is { } configurationProject) await OpenProjectConfigurationAsync(configurationProject); break;
             case "rename-project": if (ProjectManagementTarget() is { } renameProject) await RenameProjectAsync(renameProject); break;
             case "trash-project": if (ProjectManagementTarget() is { } trashProject) await DeleteProjectAsync(trashProject); break;
+            case "summary-zoom-in": SetSummaryZoom((Math.Floor(SummaryPanel.ZoomFactor * 10 + .001) + 1) / 10); break;
+            case "summary-zoom-out": SetSummaryZoom((Math.Ceiling(SummaryPanel.ZoomFactor * 10 - .001) - 1) / 10); break;
+            case "summary-zoom-reset": SetSummaryZoom(1); break;
             case "summary-play": if (readback.State == SummaryReadbackState.Paused) readback.Resume(); else await readback.PlayFromStartAsync(); break;
             case "summary-pause": readback.Pause(); break;
             case "summary-stop": readback.Stop(); break;

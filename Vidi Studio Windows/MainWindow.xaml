@@ -277,7 +277,7 @@
        </ListView.ItemContainerStyle>
       </ListView>
       <Grid x:Name="SummaryView" Visibility="Collapsed">
-       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
        <Grid Padding="14,12">
         <Grid.ColumnDefinitions>
          <ColumnDefinition Width="*"/>
@@ -298,11 +298,14 @@
          <Button x:Name="SummaryNextSentenceButton" Content="&#xE893;" FontFamily="Segoe Fluent Icons" Style="{StaticResource CompactButton}" Click="NextSummarySentence_Click" ToolTipService.ToolTip="Next sentence (Ctrl+Shift+])" AutomationProperties.Name="Next summary sentence"/>
          <Button x:Name="SummaryNextParagraphButton" Content="&#xE70D;" FontFamily="Segoe Fluent Icons" Style="{StaticResource CompactButton}" Click="NextSummaryParagraph_Click" ToolTipService.ToolTip="Next paragraph (Ctrl+Alt+])" AutomationProperties.Name="Next summary paragraph"/>
          <Button x:Name="SummaryStopButton" Content="Stop" Click="StopSpeech_Click" IsEnabled="False"/>
+         <Button x:Name="SummaryZoomOutButton" Content="−" Tag="summary-zoom-out" Click="SummaryZoom_Click" ToolTipService.ToolTip="Zoom Out (Ctrl+-)" AutomationProperties.Name="Zoom out summary"/>
+         <Button x:Name="SummaryZoomResetButton" Content="100%" Tag="summary-zoom-reset" Click="SummaryZoom_Click" ToolTipService.ToolTip="Actual Size (100%) (Ctrl+0)" AutomationProperties.Name="Reset summary zoom to 100 percent"/>
+         <Button x:Name="SummaryZoomInButton" Content="+" Tag="summary-zoom-in" Click="SummaryZoom_Click" ToolTipService.ToolTip="Zoom In (Ctrl+=)" AutomationProperties.Name="Zoom in summary"/>
         </StackPanel>
        </Grid>
        <Grid Grid.Row="1">
-        <ScrollViewer x:Name="SummaryPanel" DoubleTapped="SummaryPanel_DoubleTapped" AutomationProperties.Name="Project summary" AutomationProperties.HelpText="Use Edit this section to edit the summary, or double-click the text.">
-         <StackPanel Padding="14,0,14,16" Spacing="18">
+        <ScrollViewer x:Name="SummaryPanel" ZoomMode="Enabled" MinZoomFactor="0.5" MaxZoomFactor="4" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" ViewChanged="SummaryZoom_ViewChanged" SizeChanged="SummaryZoom_SizeChanged" DoubleTapped="SummaryPanel_DoubleTapped" AutomationProperties.Name="Project summary" AutomationProperties.HelpText="Use Edit this section to edit the summary, or double-click the text.">
+         <StackPanel x:Name="SummaryZoomContent" HorizontalAlignment="Left" Padding="14,0,14,16" Spacing="18">
           <StackPanel x:Name="SummaryRichText" Spacing="8"/>
           <TextBlock x:Name="SummaryText" Visibility="Collapsed"/>
           <TextBlock x:Name="ReadbackSentence" TextWrapping="Wrap" FontStyle="Italic" Visibility="Collapsed"/>
@@ -364,6 +367,12 @@
          </Grid>
         </Grid>
        </Grid>
+       <StackPanel x:Name="SummaryZoomFooter" Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Padding="14,8" Spacing="8" Visibility="Collapsed">
+        <TextBlock Text="−" VerticalAlignment="Center"/>
+        <Slider x:Name="SummaryZoomSlider" Width="160" Minimum="50" Maximum="400" Value="100" StepFrequency="1" ValueChanged="SummaryZoomSlider_Changed" AutomationProperties.Name="Summary zoom"/>
+        <TextBlock Text="+" VerticalAlignment="Center"/>
+        <TextBlock x:Name="SummaryZoomPercent" Text="100%" Width="48" TextAlignment="Right" VerticalAlignment="Center" AutomationProperties.Name="Summary zoom percentage"/>
+       </StackPanel>
       </Grid>
        <ScrollViewer x:Name="OverviewPanel" Visibility="Collapsed"><StackPanel Padding="14,24" Spacing="22"><Grid ColumnSpacing="20"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><StackPanel Spacing="10"><TextBlock Text="Audio description overview" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel x:Name="OverviewStatistics" Spacing="16"/></Border></StackPanel><StackPanel Grid.Column="1" Spacing="10"><TextBlock Text="Description origins" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel x:Name="OriginStatistics" Spacing="16"/></Border></StackPanel></Grid><TextBlock x:Name="Overview" Visibility="Collapsed"/><TextBlock Text="Create narration audio" FontWeight="SemiBold"/><Border Background="{ThemeResource LayerFillColorAltBrush}" CornerRadius="8" Padding="14"><StackPanel Spacing="12"><TextBlock x:Name="OverviewVoice" TextWrapping="Wrap"/><StackPanel x:Name="OverviewNarrationProgressPanel" Orientation="Horizontal" Spacing="8" Visibility="Collapsed"><ProgressRing x:Name="OverviewNarrationRing" Width="16" Height="16" IsActive="False" VerticalAlignment="Center"/><FontIcon Glyph="&#xE767;" FontSize="14" VerticalAlignment="Center"/><TextBlock x:Name="OverviewNarrationStatusText" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap"/></StackPanel><Border x:Name="OverviewVoiceWarningBorder" Visibility="Collapsed" Background="#22D87919" BorderBrush="#99D87919" BorderThickness="1" CornerRadius="6" Padding="10"><TextBlock x:Name="OverviewVoiceWarningText" TextWrapping="Wrap" FontSize="12"/></Border>
         <StackPanel Orientation="Horizontal" Spacing="8"><Button x:Name="OverviewGenerateAllAudioButton" Content="Generate All AD Audio" Tag="synthesize-tts" Click="Command_Click"/><Button x:Name="OverviewGenerateChangedAudioButton" Content="Generate Missing or Changed AD Audio" Click="ChangedNarration_Click"/></StackPanel>

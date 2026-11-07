@@ -1919,6 +1919,7 @@ public sealed partial class MainWindow : Window
     {
         PreviewPanel.Visibility = PreviewPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
         Model.Settings.Set("showPreview", PreviewPanel.Visibility == Visibility.Visible ? "true" : "false"); Model.Settings.Save();
+        UpdateSummaryZoomControls();
     }
     private void ToggleTimeline_Click(object sender, RoutedEventArgs e) => TimelinePanel.Visibility = TimelinePanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
     private void ToggleThumbnailImages_Click(object sender, RoutedEventArgs e)

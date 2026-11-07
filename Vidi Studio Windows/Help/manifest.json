@@ -159,6 +159,10 @@
           "title": "Choose an editor section"
         },
         {
+          "id": "summary-zoom",
+          "title": "Zoom the Summary reader"
+        },
+        {
           "id": "edit-and-select-timed-segments",
           "title": "Edit and select timed segments"
         },

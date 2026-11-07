@@ -30,6 +30,7 @@ public sealed partial class MainWindow
     {
         if (activeSummaryBlock == null || start < 0 || length <= 0 || start + length > activeSummaryLength) return;
         ApplySummaryHighlight(activeSummaryStart + start, length);
+        FollowSummaryCharacter(activeSummaryStart + start);
     }
     private static Windows.UI.Color SummaryColor(string value, string fallback)
     {
@@ -74,11 +75,7 @@ public sealed partial class MainWindow
                 activeSummaryBlock = block; activeSummaryStart = match; activeSummaryLength = sentence.Length;
                 summarySearchLine = i; summarySearchOffset = match + sentence.Length;
                 ApplySummaryHighlight();
-                if (SummaryView.Visibility == Visibility.Visible)
-                {
-                    var point = block.TransformToVisual(SummaryPanel).TransformPoint(new Windows.Foundation.Point(0, 0));
-                    SummaryPanel.ChangeView(null, Math.Max(0, point.Y + SummaryPanel.VerticalOffset - 24), null);
-                }
+                FollowSummaryCharacter(match);
                 return;
             }
         }

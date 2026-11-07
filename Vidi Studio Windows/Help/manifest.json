@@ -707,6 +707,10 @@
         {
           "id": "exported-audio-track-labels",
           "title": "An exported original track says Unknown language"
+        },
+        {
+          "id": "sharing-after-update",
+          "title": "Windows sharing warns that VidiStudio differs from previously opened versions"
         }
       ]
     },

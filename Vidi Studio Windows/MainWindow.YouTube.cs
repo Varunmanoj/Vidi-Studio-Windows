@@ -35,19 +35,6 @@ public sealed partial class MainWindow
             Row("Embedding allowed", "embeddable"); Row("Processing", "uploadStatus"); Row("Live status", "liveStatus");
             Row("Video ID", "videoID"); Row("Channel ID", "channelID");
             if (value.TryGetProperty("fetchedAt", out var at) && at.TryGetDouble(out var seconds)) AddInfo(YouTubeInspectorDetails, "Fetched", DateTimeOffset.FromUnixTimeSeconds((long)seconds).LocalDateTime.ToString("g"));
-            if (value.TryGetProperty("openedFromPlaylist", out var opened) && opened.ValueKind == JsonValueKind.Object && opened.TryGetProperty("title", out var title)) AddInfo(YouTubeInspectorDetails, "Opened from playlist", title.ToString());
-            Row("Playlist channel", "playlistChannelTitle");
-            if (value.TryGetProperty("playlists", out var playlists) && playlists.ValueKind == JsonValueKind.Array) {
-                if (playlists.GetArrayLength() == 0) AddInfo(YouTubeInspectorDetails, "Playlists", "No matching playlists returned for this channel");
-                foreach (var list in playlists.EnumerateArray()) {
-                    string Field(string key) => list.TryGetProperty(key, out var field) ? field.ToString() : "Unavailable";
-                    var content = new StackPanel { Spacing = 6 };
-                    AddInfo(content, "Visibility", Field("visibility")); AddInfo(content, "Videos", Field("count")); AddInfo(content, "Published", Field("publishedAt"));
-                    content.Children.Add(new TextBlock { Text = Field("description"), TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
-                    YouTubeInspectorDetails.Children.Add(new Expander { Header = Field("title"), Content = content, HorizontalAlignment = HorizontalAlignment.Stretch });
-                }
-            }
-            if (Get("playlistLookupStatus") != "Unavailable") YouTubeInspectorDetails.Children.Add(new TextBlock { Text = Get("playlistLookupStatus"), TextWrapping = TextWrapping.Wrap });
             foreach (var field in new[] { ("Description", "description"), ("Tags", "tags") }) {
                 if (Get(field.Item2) == "Unavailable") continue;
                 var text = value.GetProperty(field.Item2);
@@ -60,9 +47,9 @@ public sealed partial class MainWindow
         refresh.Click += async (_, _) => await RefreshYouTubeInspectorAsync(); YouTubeInspectorDetails.Children.Add(refresh);
         if (youtubeInspectorRefreshing) {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            row.Children.Add(new ProgressRing { IsActive = true, Width = 18, Height = 18 }); row.Children.Add(new TextBlock { Text = "Fetching YouTube details and playlists…", TextWrapping = TextWrapping.Wrap }); YouTubeInspectorDetails.Children.Add(row);
+            row.Children.Add(new ProgressRing { IsActive = true, Width = 18, Height = 18 }); row.Children.Add(new TextBlock { Text = "Fetching YouTube details…", TextWrapping = TextWrapping.Wrap }); YouTubeInspectorDetails.Children.Add(row);
         }
-        var missing = project.YouTubeMetadata is not JsonElement { ValueKind: JsonValueKind.Object } stored || !stored.TryGetProperty("playlists", out _);
+        var missing = project.YouTubeMetadata is not JsonElement { ValueKind: JsonValueKind.Object };
         if (missing && !youtubeInspectorRefreshing && youtubeInspectorLoaded.Add(project.Folder)) _ = RefreshYouTubeInspectorAsync();
     }
     private async Task RefreshYouTubeInspectorAsync() {
@@ -72,7 +59,8 @@ public sealed partial class MainWindow
         try {
             var url = new Uri(project.YoutubeURL ?? "");
             var id = url.Query.TrimStart('?').Split('&').FirstOrDefault(v => v.StartsWith("v="))?[2..] ?? "";
-            var video = await YouTubeService.Shared.VideoWithPlaylistsAsync(id);
+            var video = await YouTubeService.Shared.VideoAsync(id);
+            video.RequireAvailable();
             while (Model.Busy && Model.Project?.Folder == project.Folder) await Task.Delay(100);
             if (Model.Project?.Folder != project.Folder) return;
             File.WriteAllText(file, video.Data.ToJsonString());

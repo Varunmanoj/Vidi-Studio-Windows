@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Vidi_Studio_Windows.Models;
+using Vidi_Studio_Windows.Services;
 
 namespace Vidi_Studio_Windows;
 

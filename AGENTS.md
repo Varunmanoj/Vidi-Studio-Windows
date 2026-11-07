@@ -21,6 +21,8 @@ Build using `powershell script/build-windows.ps1`. UI smoke tests run via `power
 
 ## Installed app updates
 
+When a Windows change also advances the Mac version, include the Mac Share and Finder extensions in that release update. Follow the sibling Mac `AGENTS.md` extension signing, version/build, replacement installation and PlugInKit verification requirements; updating Windows version files alone does not validate or install the Mac extensions. Record platform installation blockers explicitly.
+
 When registering or installing a new build, first remove the previously registered or installed package and any stale unpacked copies (for example old development MSIX registrations and earlier `bin` outputs), so Start, taskbar, and Search show one current Vidi Studio entry and one current app path. `script/build-windows.ps1` builds and packages but does not install; registering or installing the package is a separate step that must delete the old copy first. After installing, confirm `Get-AppxPackage` lists one current version and old build/install paths are gone, and record the result in `PROGRESS.md`.
 
 Install on every version update. After bumping the version, do not stop at a package in `AppPackages` or `bin`: remove the previous package, register/install the new build on the Windows host, and confirm `Get-AppxPackage` reports the new version with only one entry remaining. A version bump is not complete until that install is done and recorded in `PROGRESS.md`.

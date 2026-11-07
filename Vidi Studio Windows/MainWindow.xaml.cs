@@ -1418,20 +1418,6 @@ public sealed partial class MainWindow : Window
     {
         if ((existing != null && !editMode) || Model.Busy || Section.SelectedIndex is not (0 or 2 or 4) || Model.Project is not { } p) return;
         var isDescription = existing?.IsDescription ?? (Section.SelectedIndex != 0);
-        if (isDescription && p.Transcript.Count == 0)
-        {
-            await ShowDialogAsync(new ContentDialog
-            {
-                Title = "Transcript Required",
-                Content = new TextBlock
-                {
-                    Text = "Import or generate a transcript before adding or editing descriptions. It is required for overlap validation. Use Project > Import Existing Assets… to bring a transcript now.",
-                    TextWrapping = TextWrapping.Wrap
-                },
-                CloseButtonText = "Close"
-            });
-            return;
-        }
         var maxDuration = p.Duration;
         var initialStart = existing?.Start ?? Position;
         var initialEnd = existing?.End ?? Math.Min(maxDuration, initialStart + (isDescription ? 3.0 : 4.0));

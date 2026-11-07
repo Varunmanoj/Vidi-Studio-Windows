@@ -13,7 +13,12 @@ public sealed class SettingsStore
     {
         var defaultsPath = Path.Combine(AppContext.BaseDirectory, "engine", "ai-defaults.json");
         Data = File.Exists(defaultsPath) ? JsonNode.Parse(File.ReadAllText(defaultsPath))!.AsObject() : new();
-        if (File.Exists(ConfigPath)) Merge(Data, JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject());
+        if (File.Exists(ConfigPath))
+        {
+            var saved = JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject();
+            PromptDefaults.Upgrade(saved, Data);
+            Merge(Data, saved);
+        }
         if (Get("videoProcessing") == "standard") Set("videoProcessing", "static");
         if (Data["ttsMode"] == null || Get("ttsMode") == "system") Set("ttsMode", "windows-core");
         if (Data["libraryPath"] == null) Set("libraryPath", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VidiStudio Projects"));
@@ -46,7 +51,12 @@ public sealed class SettingsStore
     {
         var defaultsPath = Path.Combine(AppContext.BaseDirectory, "engine", "ai-defaults.json");
         Data = File.Exists(defaultsPath) ? JsonNode.Parse(File.ReadAllText(defaultsPath))!.AsObject() : new();
-        if (File.Exists(ConfigPath)) Merge(Data, JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject());
+        if (File.Exists(ConfigPath))
+        {
+            var saved = JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject();
+            PromptDefaults.Upgrade(saved, Data);
+            Merge(Data, saved);
+        }
         if (Data["ttsMode"] == null || Get("ttsMode") == "system") Set("ttsMode", "windows-core");
         if (Data["libraryPath"] == null) Set("libraryPath", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VidiStudio Projects"));
         if (NormalizeNarrationPlayback() | NormalizeSpeechEngine() | NormalizeSummaryVoice()) Save();

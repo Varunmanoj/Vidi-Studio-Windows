@@ -287,6 +287,10 @@
           "title": "Choose the action you need"
         },
         {
+          "id": "dialogue-free-video",
+          "title": "Dialogue-free films, silent videos, and music videos"
+        },
+        {
           "id": "generation-prerequisites",
           "title": "Generation prerequisites"
         },
@@ -711,6 +715,10 @@
         {
           "id": "sharing-after-update",
           "title": "Windows sharing warns that VidiStudio differs from previously opened versions"
+        },
+        {
+          "id": "summary-instructions",
+          "title": "The summary repeats instructions or discusses a blank transcript"
         }
       ]
     },

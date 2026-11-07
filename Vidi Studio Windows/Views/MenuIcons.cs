@@ -47,6 +47,7 @@ public static class MenuIcons
             "Show / hide preview" or "Play video" => "\uE714",
             "Seek to segment" or "Skip to segment" or "Forward five seconds" => "\uE893",
             "Show / hide timeline" => "\uE823",
+            "Show / hide thumbnail images" => "\uE91B",
             "Full-screen video" => "\uE740",
             "Transcript" or "Generate transcript" => "\uE90A",
             "AD Transcript" or "Transcript overlay" => "\uE8BA",

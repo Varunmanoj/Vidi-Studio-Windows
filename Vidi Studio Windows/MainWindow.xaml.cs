@@ -158,6 +158,7 @@ public sealed partial class MainWindow : Window
             Model.Reload();
             ApplyTheme();
             if (Model.Settings.Get("showPreview", "true") == "false") PreviewPanel.Visibility = Visibility.Collapsed;
+            ThumbnailImagesRow.Visibility = Model.Settings.Get("thumbnailImagesVisible", "false") == "true" ? Visibility.Visible : Visibility.Collapsed;
             YouTubeService.ExpireCaches(Model.Settings.Get("libraryPath"));
             if (folder != null) { Model.Open(folder); ShowEditor(); }
             if (Model.Settings.Get("projectPresentation") == "grid") ToggleGrid_Click(this, new RoutedEventArgs());
@@ -618,6 +619,8 @@ public sealed partial class MainWindow : Window
     private void RenderTimelineThumbnails(StudioProject project)
     {
         Thumbnails.Children.Clear(); Thumbnails.ColumnDefinitions.Clear();
+        ThumbnailEmpty.Visibility = Visibility.Visible;
+        if (ThumbnailImagesRow.Visibility != Visibility.Visible) return;
         foreach (var thumbnail in project.Thumbnails)
         {
             try
@@ -1918,12 +1921,24 @@ public sealed partial class MainWindow : Window
         Model.Settings.Set("showPreview", PreviewPanel.Visibility == Visibility.Visible ? "true" : "false"); Model.Settings.Save();
     }
     private void ToggleTimeline_Click(object sender, RoutedEventArgs e) => TimelinePanel.Visibility = TimelinePanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+    private void ToggleThumbnailImages_Click(object sender, RoutedEventArgs e)
+    {
+        ThumbnailImagesRow.Visibility = ThumbnailImagesRow.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+        Model.Settings.Set("thumbnailImagesVisible", ThumbnailImagesRow.Visibility == Visibility.Visible ? "true" : "false");
+        Model.Settings.Save();
+        App.ApplySettingsChanges(new[] { "thumbnailImagesVisible" });
+    }
     internal void ApplySettingsChanges(System.Collections.Generic.IReadOnlyCollection<string> changed)
     {
         Model.Settings.Reload();
         Model.NotifySettingsChanged();
         if (changed.Contains("theme")) App.PreviewTheme(Model.Settings.Get("theme", "system"));
         if (!ready) return;
+        if (changed.Contains("thumbnailImagesVisible"))
+        {
+            ThumbnailImagesRow.Visibility = Model.Settings.Get("thumbnailImagesVisible", "false") == "true" ? Visibility.Visible : Visibility.Collapsed;
+            if (Model.Project is { } project) RenderTimelineThumbnails(project);
+        }
         if (changed.Contains("libraryPath") || changed.Contains("projectLocations")) Filter();
         UpdateApiKeyUi();
         UpdateCaptions();

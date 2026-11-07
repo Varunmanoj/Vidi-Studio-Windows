@@ -193,6 +193,17 @@ public sealed partial class MainWindow
                 SummaryPreviousParagraphButton.Content as string != "\uE70E" || SummaryNextParagraphButton.Content as string != "\uE70D")
                 throw new InvalidOperationException("Summary previous and next sentence or paragraph buttons are missing.");
             UpdateDesktopMenuStates();
+            var originalThumbnailsVisible = ThumbnailImagesRow.Visibility == Visibility.Visible;
+            if (originalThumbnailsVisible) await RunDesktopCommandAsync("toggle-thumbnail-images");
+            Root.UpdateLayout();
+            if (ThumbnailImagesRow.Visibility != Visibility.Collapsed || Thumbnails.Children.Count != 0 ||
+                DesktopCommandTitle("toggle-thumbnail-images") != "Show Thumbnail Images" ||
+                Playhead.Visibility != Visibility.Visible || TimelinePanel.Visibility != Visibility.Visible)
+                throw new InvalidOperationException("Hiding thumbnail images must keep seeking and timeline tracks available.");
+            await RunDesktopCommandAsync("toggle-thumbnail-images");
+            if (DesktopCommandTitle("toggle-thumbnail-images") != "Hide Thumbnail Images" ||
+                Model.Settings.Get("thumbnailImagesVisible", "false") != "true")
+                throw new InvalidOperationException("Showing thumbnail images must update its command title and saved preference.");
             var originalTheme = Model.Settings.Get("theme", "system");
             var thumbnailProject = Models.StudioProject.Load(folder);
             var thumbnail = File.Exists(Path.Combine(folder, "youtube-thumbnail.jpg")) ? "youtube-thumbnail.jpg" : thumbnailProject.Thumbnails[0];
@@ -282,6 +293,7 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Timeline playhead did not follow the video position.");
             if (ThumbnailScrubSurface.ActualWidth > 0 && Microsoft.UI.Xaml.Controls.Canvas.GetLeft(ThumbnailCursor) < ThumbnailScrubSurface.ActualWidth * .2)
                 throw new InvalidOperationException("Thumbnail playhead did not follow the video position.");
+            if (!originalThumbnailsVisible) await RunDesktopCommandAsync("toggle-thumbnail-images");
             if (Section.Items.Count != 5 || Section.Items.OfType<ComboBoxItem>().Any(item => item.Content as string == "Created Exports"))
                 throw new InvalidOperationException("The editor section selector still offers Created Exports.");
             Section.SelectedIndex = 1;

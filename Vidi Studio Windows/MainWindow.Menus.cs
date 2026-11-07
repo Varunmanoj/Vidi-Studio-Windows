@@ -68,7 +68,7 @@ public sealed partial class MainWindow
             Menu("Edit", Command("copy-to")),
             Menu("View",
                 ProjectLanguageMenu(), Separator(), SavedResultsMenu(), Separator(),
-                Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("filter-segments"),
+                Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("toggle-thumbnail-images"), Command("filter-segments"),
                 Submenu("Sort Segments", Command("sort-start"), Command("sort-duration-asc"), Command("sort-duration-desc"), Command("sort-origin")), Separator(),
                 Command("show-projects"), Command("show-inspector"), Separator(),
                 Command("project-list"), Command("project-grid")),
@@ -472,6 +472,7 @@ public sealed partial class MainWindow
             "help" => "VidiStudio Help", "about" => "About VidiStudio",
             "preview" => PreviewPanel.Visibility == Visibility.Visible ? "Hide Preview" : "Show Preview",
             "toggle-timeline" => TimelinePanel.Visibility == Visibility.Visible ? "Hide Timeline" : "Show Timeline",
+            "toggle-thumbnail-images" => ThumbnailImagesRow.Visibility == Visibility.Visible ? "Hide Thumbnail Images" : "Show Thumbnail Images",
             "show-projects" => ProjectSplitView.IsPaneOpen ? "Hide Project List" : "Show Project List",
             "show-inspector" => InspectorSplitView.IsPaneOpen ? "Hide Inspector" : "Show Inspector",
             "project-list" => "Project List View", "project-grid" => "Project Grid View",
@@ -548,6 +549,7 @@ public sealed partial class MainWindow
         {
             "stop" or "summary-stop" => "Stop summary",
             "preview" or "fullscreen" => "Show / hide preview", "toggle-timeline" => "Show / hide timeline",
+            "toggle-thumbnail-images" => "Show / hide thumbnail images",
             "show-projects" => "Show / hide projects", "show-inspector" => "Show / hide inspector",
             "project-list" => "Project list", "project-grid" => "List / Grid projects",
             "YouTube" or "youtube-browser" => "My YouTube Videos…",
@@ -660,6 +662,7 @@ public sealed partial class MainWindow
             case "open-editor-window": OpenEditor_Click(this, e); break;
             case "preview": TogglePreview_Click(this, e); break;
             case "toggle-timeline": ToggleTimeline_Click(this, e); break;
+            case "toggle-thumbnail-images": ToggleThumbnailImages_Click(this, e); break;
             case "show-projects": ToggleLibrary_Click(this, e); break;
             case "show-inspector": ToggleInspector_Click(this, e); break;
             case "project-list": SetProjectLayout(false); break;

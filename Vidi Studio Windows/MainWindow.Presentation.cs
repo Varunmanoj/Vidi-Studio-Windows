@@ -347,7 +347,13 @@ public sealed partial class MainWindow
     }
     private void GalleryFilter_Changed(object sender, SelectionChangedEventArgs e) { if (galleryReady) FilterGallery(); }
     private void GallerySearch_Changed(object sender, TextChangedEventArgs e) { if (galleryReady) FilterGallery(); }
-    private void FilterGallery() => Model.Reload(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", _ => "all" });
+    private void FilterGallery()
+    {
+        Model.Reload(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", _ => "all" });
+        if (GalleryGrid.SelectedItem is Models.StudioProject gridProject && !Model.Projects.Contains(gridProject)) GalleryGrid.SelectedItem = null;
+        if (GalleryList.SelectedItem is Models.StudioProject listProject && !Model.Projects.Contains(listProject)) GalleryList.SelectedItem = null;
+        UpdateDesktopMenuStates();
+    }
     private void GalleryLayout_Click(object sender, RoutedEventArgs e)
     {
         var selected = SelectedGalleryProject();

@@ -20,6 +20,9 @@ public sealed partial class MainWindow
     private readonly List<MenuFlyoutSubItem> projectLanguageMenus = new();
     private string projectLanguageMenuState = "";
     private readonly List<MenuFlyoutSubItem> savedResultMenus = new();
+    private readonly List<MenuFlyoutSubItem> libraryLanguageMenus = new();
+    private string libraryLanguageMenuState = "";
+    private readonly HashSet<MenuFlyoutItem> libraryOnlyMenuItems = new();
     private bool desktopEditorVisible;
     private bool? desktopPlaybackWasPlaying;
     internal IEnumerable<(string Label, string Shortcut)> DesktopShortcutReference =>
@@ -29,7 +32,7 @@ public sealed partial class MainWindow
 
     private void BuildMenus()
     {
-        MenuFlyoutItem Command(string id)
+        MenuFlyoutItem Command(string id, bool libraryOnly = false)
         {
             var item = new MenuFlyoutItem { Tag = id, Text = DesktopCommandTitle(id), Icon = DesktopCommandIcon(id) };
             if (DesktopShortcuts.TryGetValue(id, out var shortcut)) item.KeyboardAcceleratorTextOverride = shortcut.Text;
@@ -42,6 +45,7 @@ public sealed partial class MainWindow
             };
             if (!desktopMenuItems.TryGetValue(id, out var items)) desktopMenuItems[id] = items = new();
             items.Add(item);
+            if (libraryOnly) libraryOnlyMenuItems.Add(item);
             return item;
         }
         static MenuFlyoutSeparator Separator() => new();
@@ -67,6 +71,8 @@ public sealed partial class MainWindow
                 Command("delete-project"), Command("delete-content"), Separator(), Command("remove-from-list"), Separator(), Command("open-editor-window"), Command("settings"), Command("project-settings"), Command("close-window")),
             Menu("Edit", Command("copy-to")),
             Menu("View",
+                Submenu("Filter Projects by Source", Command("projects-source-all"), Command("projects-source-local"), Command("projects-source-youtube")),
+                LibraryLanguageMenu(), Command("projects-reset-filters"), Separator(),
                 ProjectLanguageMenu(), Separator(), SavedResultsMenu(), Separator(),
                 Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("toggle-thumbnail-images"),
                 Command("summary-zoom-in"), Command("summary-zoom-out"), Command("summary-zoom-reset"), Command("filter-segments"),
@@ -83,12 +89,13 @@ public sealed partial class MainWindow
                     Command("summary-previous-paragraph"), Command("summary-next-paragraph"), Separator(),
                     Command("summary-from-start"), Command("summary-from-selection"), Command("summary-read-selection"))),
             Menu("Project",
+                Command("open-selected-project"), Separator(),
                 Command("language-results"),
                 Submenu("Editor Sections", Command("transcript"), Command("summary"), Command("descriptions"), Command("ad-overview"), Command("ad-transcript")),
                 Submenu("Segments", Command("segment-edit-mode"), Command("add"), Separator(), Command("reanalyze-selection"),
                     Command("segment-select-all"), Command("segment-deselect-all"), Command("segment-edit-selected"), Command("segment-delete-selected"), Separator(),
                     Command("follow"), Command("undo"), Command("redo")),
-                Submenu("Analysis", Command("analyze"), Separator(), Command("prepare-video"), Command("transcribe"), Command("generate-summary")),
+                Submenu("Analysis", Command("analyze"), Separator(), Command("prepare-video"), Command("transcribe"), Command("generate-summary"), Command("generate-ad-cues", libraryOnly: true)),
                 Submenu("YouTube", Command("youtube-details"), Command("youtube-refresh"), Command("youtube-captions")),
                 Submenu("Narration",
                     Submenu("AD Segment Generation", Command("generate-ad-cues"), Separator(), Command("delete-descriptions")),
@@ -196,6 +203,35 @@ public sealed partial class MainWindow
         ["import-assets"] = (VirtualKey.I, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+I")
     };
 
+    private MenuFlyoutSubItem LibraryLanguageMenu()
+    {
+        var menu = new MenuFlyoutSubItem { Text = "Filter Projects by Language", Tag = "projects-language-filter", Icon = new FontIcon { Glyph = "\uE8F2" } };
+        libraryLanguageMenus.Add(menu);
+        return menu;
+    }
+
+    private void RefreshLibraryLanguageMenus()
+    {
+        var state = desktopEditorVisible + "|" + Model.LanguageFilter;
+        if (state == libraryLanguageMenuState) return;
+        libraryLanguageMenuState = state;
+        foreach (var menu in libraryLanguageMenus)
+        {
+            menu.Visibility = desktopEditorVisible ? Visibility.Collapsed : Visibility.Visible;
+            menu.Items.Clear();
+            foreach (var language in new[] { new Models.OutputLanguage("all", "All Languages") }.Concat(Models.OutputLanguage.Options))
+            {
+                var item = new ToggleMenuFlyoutItem { Text = language.Title, IsChecked = Model.LanguageFilter == language.Id };
+                item.Click += (_, _) => {
+                    if (desktopEditorVisible) return;
+                    GalleryLanguageFilter.SelectedItem = (GalleryLanguageFilter.ItemsSource as IEnumerable<Models.OutputLanguage>)?.FirstOrDefault(v => v.Id == language.Id);
+                    UpdateDesktopMenuStates();
+                };
+                menu.Items.Add(item);
+            }
+        }
+    }
+
     private MenuFlyoutSubItem ProjectLanguageMenu()
     {
         var menu = new MenuFlyoutSubItem { Text = "Project Language", Tag = "project-language", Icon = new FontIcon { Glyph = "\uE8F2" } };
@@ -285,6 +321,7 @@ public sealed partial class MainWindow
     private void UpdateDesktopMenuStates()
     {
         if (windowClosed) return;
+        RefreshLibraryLanguageMenus();
         RefreshProjectLanguageMenus();
         RefreshSavedResultMenus();
         foreach (var (id, items) in desktopMenuItems)
@@ -293,6 +330,7 @@ public sealed partial class MainWindow
                 item.Text = DesktopCommandTitle(id);
                 item.Icon = DesktopCommandIcon(id);
                 item.IsEnabled = CanRunDesktopCommand(id);
+                item.Visibility = (libraryOnlyMenuItems.Contains(item) ? !desktopEditorVisible : LibraryCommandVisible(id)) ? Visibility.Visible : Visibility.Collapsed;
                 if (id == "open-configuration")
                     item.Visibility = Model.Settings.GetBool("developerMode") ? Visibility.Visible : Visibility.Collapsed;
             }
@@ -315,12 +353,17 @@ public sealed partial class MainWindow
             foreach (var item in desktopMenuItems.TryGetValue(id, out var zoomItems) ? zoomItems : new List<MenuFlyoutItem>())
                 item.Visibility = desktopEditorVisible && Section.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
         UpdateSummaryZoomControls();
-        var timedSection = Section.SelectedIndex is 0 or 2 or 4;
+        var timedSection = desktopEditorVisible && Section.SelectedIndex is 0 or 2 or 4;
         foreach (var item in desktopMenuItems.TryGetValue("filter-segments", out var filterItems) ? filterItems : new List<MenuFlyoutItem>())
             item.Visibility = timedSection ? Visibility.Visible : Visibility.Collapsed;
         foreach (var (name, group) in desktopMenuGroups)
         {
             group.IsEnabled = desktopEditorVisible && Model.Project != null && (Model.Idle || ((name is "Narration" or "Narration Audio") && Model.IsSynthesizingNarration));
+            group.Visibility = desktopEditorVisible
+                ? (name == "Filter Projects by Source" ? Visibility.Collapsed : Visibility.Visible)
+                : (name is "Filter Projects by Source" or "Analysis" ? Visibility.Visible : Visibility.Collapsed);
+            if (name == "Filter Projects by Source") group.IsEnabled = !desktopEditorVisible;
+            if (name == "Analysis" && !desktopEditorVisible) group.IsEnabled = SelectedGalleryProject() != null && Model.Idle;
             if (name == "Summary Reading") group.IsEnabled &= Section.SelectedIndex == 1 && !summaryEditMode;
             if (name == "Sort Segments")
             {
@@ -337,6 +380,17 @@ public sealed partial class MainWindow
                 group.Visibility = desktopEditorVisible && (Section.SelectedIndex is 0 or 2 or 4) ? Visibility.Visible : Visibility.Collapsed;
             }
         }
+        foreach (var menu in galleryMenus.Concat(editorMenus)) {
+            menu.Visibility = !desktopEditorVisible && menu.Title is "Playback" or "Edit" ? Visibility.Collapsed : Visibility.Visible;
+            if (!desktopEditorVisible) {
+                foreach (var group in menu.Items.OfType<MenuFlyoutSubItem>().Where(g => g.Tag as string is "project-language" or "saved-results"))
+                    group.Visibility = Visibility.Collapsed;
+            } else {
+                foreach (var group in menu.Items.OfType<MenuFlyoutSubItem>().Where(g => g.Tag as string is "project-language" or "saved-results"))
+                    group.Visibility = Visibility.Visible;
+            }
+            NormalizeMenuSeparators(menu.Items);
+        }
         // Mac inserts the overlay separator only on timed sections. Hide its
         // Windows counterpart with the submenu rather than leaving two dividers.
         foreach (var menu in galleryMenus.Concat(editorMenus).Where(menu => menu.Title == "Playback"))
@@ -345,6 +399,33 @@ public sealed partial class MainWindow
             var index = menu.Items.IndexOf(overlay);
             if (index > 0 && menu.Items[index - 1] is MenuFlyoutSeparator separator)
                 separator.Visibility = overlay.Visibility;
+        }
+    }
+
+    private bool LibraryCommandVisible(string id)
+    {
+        if (desktopEditorVisible) return !id.StartsWith("projects-", StringComparison.Ordinal) && id != "open-selected-project";
+        return id is "new-project" or "open-project" or "youtube-browser" or "youtube-accounts" or "youtube-open-browser"
+            or "export" or "delete-project" or "delete-content" or "remove-from-list" or "settings" or "project-settings"
+            or "close-window" or "help" or "about" or "project-list" or "project-grid" or "open-selected-project"
+            or "analyze" or "prepare-video" or "transcribe" or "generate-summary" or "show-in-finder" or "open-configuration"
+            or "rename-project" or "trash-project" || id.StartsWith("projects-", StringComparison.Ordinal);
+    }
+
+    private static void NormalizeMenuSeparators(IList<MenuFlyoutItemBase> items)
+    {
+        MenuFlyoutSeparator? pending = null;
+        var hasContent = false;
+        foreach (var item in items)
+        {
+            if (item is MenuFlyoutSeparator separator) {
+                separator.Visibility = Visibility.Collapsed;
+                if (hasContent) pending = separator;
+            } else if (item.Visibility == Visibility.Visible) {
+                if (pending != null) pending.Visibility = Visibility.Visible;
+                pending = null; hasContent = true;
+                if (item is MenuFlyoutSubItem submenu) NormalizeMenuSeparators(submenu.Items);
+            }
         }
     }
 
@@ -387,14 +468,30 @@ public sealed partial class MainWindow
     {
         if (windowClosed) return false;
         if (id == "youtube-open-browser") return youtubeBrowserCanRun != null ? youtubeBrowserCanRun(id) : ProjectManagementTarget() is { } youtubeProject && YouTubeService.ProjectWatchURL(youtubeProject.YoutubeURL) != null;
+        if (id.StartsWith("projects-source-", StringComparison.Ordinal)) return !desktopEditorVisible;
+        if (id == "projects-reset-filters") return !desktopEditorVisible && (!string.IsNullOrEmpty(GallerySearch.Text) || GalleryFilter.SelectedIndex != 0 || Model.LanguageFilter != "all");
+        if (!desktopEditorVisible && id is "project-list" or "project-grid") return true;
         if (!Model.Idle) return false;
-        if (id == "project-settings") return desktopEditorVisible && Model.Project is { IntegrityPlaceholder: false } settingsProject && settingsProject.Integrity?.ManifestUnreadable != true && settingsProject.Integrity?.FolderMissing != true;
-        if (Model.OnlineReason(id) != null) return false;
+        if (id == "project-settings") return ProjectManagementTarget() is { IntegrityPlaceholder: false } settingsProject && settingsProject.Integrity?.ManifestUnreadable != true && settingsProject.Integrity?.FolderMissing != true;
+        if (OnlineRequirements.Services(id, ProjectManagementTarget(), Model.Settings).Any(service => ConnectivityService.Shared.Reason(service) != null)) return false;
+        if (!desktopEditorVisible && id is "open-selected-project" or "export" or "delete-project" or "delete-content" or "prepare-video" or "analyze" or "transcribe" or "generate-summary" or "generate-ad-cues")
+        {
+            if (SelectedGalleryProject() is not { } selected) return false;
+            if (id == "delete-project") return true;
+            if (selected.IntegrityPlaceholder || selected.Integrity?.ManifestUnreadable == true || selected.Integrity?.FolderMissing == true) return false;
+            return id switch {
+                "delete-content" => selected.SavedResults.Count > 0 || selected.Exports.Count > 0 || selected.Thumbnails.Count > 0 || selected.Cues.Count > 0 || selected.HasTranscript || selected.HasSummary,
+                "analyze" or "transcribe" or "generate-summary" => Model.CanUseAI,
+                "generate-ad-cues" => Model.CanUseAI && selected.SavedResults.Any(r => r.Kind == "transcript" && r.State == "saved") && selected.SavedResults.Any(r => r.Kind == "summary" && r.State == "saved"),
+                "prepare-video" => !selected.IsYouTube || ConnectivityService.Shared.Available(OnlineService.YouTube),
+                _ => true
+            };
+        }
         if (id == "new-project") return true;
         if (id is "rename-project" or "trash-project" or "show-in-finder" or "open-configuration") return CanManageProject(id);
         if (id == "remove-from-list") return SelectedBrowserProject() != null;
         if (id is "open-project" or "settings" or "help" or "about" or "close-window") return true;
-        if (id is "project-list" or "project-grid") return !(Section.SelectedIndex == 1 && summaryEditMode);
+        if (id is "project-list" or "project-grid") return !desktopEditorVisible || !(Section.SelectedIndex == 1 && summaryEditMode);
         if (id == "youtube-accounts") return true;
         if (id is "youtube-list" or "youtube-table" or "youtube-open-editor" or "youtube-open-browser" or "youtube-refresh-list" or "youtube-load-videos" or "youtube-load-playlists") return youtubeBrowserCanRun?.Invoke(id) == true;
         if (id == "youtube-browser") return Model.Idle;
@@ -479,9 +576,12 @@ public sealed partial class MainWindow
 
     private string DesktopCommandTitle(string id)
     {
-        var p = Model.Project;
+        var p = ProjectManagementTarget();
         return id switch
         {
+            "open-selected-project" => "Open Selected Project",
+            "projects-source-all" => "All Projects", "projects-source-local" => "Local Video Projects", "projects-source-youtube" => "YouTube Projects",
+            "projects-reset-filters" => "Reset Project Filters",
             "delete-project" => "Delete Project…", "delete-content" => "Choose What to Delete…",
             "remove-from-list" => "Remove from List",
             "new-project" => "New Project…", "open-project" => "Open Project Folder…", "export" => "Export…",
@@ -557,6 +657,11 @@ public sealed partial class MainWindow
             "narration" => Narration.IsOn, "follow" => Follow.IsOn,
             "caption-off" => Model.Settings.Get("captionDisplayMode", "off") == "off",
             "caption-transcript" => Model.Settings.Get("captionDisplayMode") == "transcript",
+            "projects-source-all" => GalleryFilter.SelectedIndex == 0,
+            "projects-source-local" => GalleryFilter.SelectedIndex == 1,
+            "projects-source-youtube" => GalleryFilter.SelectedIndex == 2,
+            "project-list" => desktopEditorVisible ? ProjectList.Visibility == Visibility.Visible : GalleryTable.Visibility == Visibility.Visible,
+            "project-grid" => desktopEditorVisible ? ProjectGrid.Visibility == Visibility.Visible : GalleryGrid.Visibility == Visibility.Visible,
             "caption-ad-transcript" => Model.Settings.Get("captionDisplayMode") == "combined",
             "sort-start" => segmentSort == "start",
             "sort-duration-asc" => segmentSort == "durationAscending",
@@ -579,6 +684,8 @@ public sealed partial class MainWindow
             "Editor Sections" => "Editor sections", "Segments" => "Segments",
             "Transcript Overlay" => "Transcript overlay",
             "caption-cycle" or "caption-off" or "caption-transcript" or "caption-ad-transcript" => "Transcript overlay",
+            "Filter Projects by Source" or "projects-source-all" or "projects-source-local" or "projects-source-youtube" or "projects-reset-filters" => "Filter segments",
+            "open-selected-project" => "Open editor in new window",
             "new-project" or "add" => "New project", "open-project" or "show-in-finder" => "Open project folder",
             "Import" => "Import", "import-assets" => "Import existing assets", "import-transcript" => "Import transcript",
             "import-summary" => "Import summary", "import-descriptions" => "Import descriptions", "filter-segments" => "Filter segments",
@@ -636,9 +743,21 @@ public sealed partial class MainWindow
     private async Task RunDesktopCommandAsync(string id)
     {
         if (!CanRunDesktopCommand(id)) return;
+        if (!desktopEditorVisible && id is "export" or "delete-content" or "prepare-video" or "analyze" or "transcribe" or "generate-summary" or "generate-ad-cues")
+        {
+            if (SelectedGalleryProject() is not { } selected) return;
+            if (!string.Equals(Model.Project?.Folder, selected.Folder, StringComparison.OrdinalIgnoreCase)) Model.Open(selected.Folder);
+        }
         var e = new RoutedEventArgs();
         switch (id)
         {
+            case "open-selected-project": if (SelectedGalleryProject() is { } openingProject) App.OpenWindow(openingProject.Folder); break;
+            case "projects-source-all": GalleryFilter.SelectedIndex = 0; break;
+            case "projects-source-local": GalleryFilter.SelectedIndex = 1; break;
+            case "projects-source-youtube": GalleryFilter.SelectedIndex = 2; break;
+            case "projects-reset-filters":
+                GallerySearch.Text = ""; GalleryFilter.SelectedIndex = 0;
+                GalleryLanguageFilter.SelectedIndex = 0; FilterGallery(); break;
             case "copy-to":
                 var selected = Segments.SelectedItems.OfType<Models.Segment>().ToArray();
                 var segmentIDs = selected.GroupBy(s => s.IsDescription ? "descriptions" : "transcript").ToDictionary(g => g.Key, g => g.Select(s => s.Id).ToArray());
@@ -664,11 +783,11 @@ public sealed partial class MainWindow
             case "remove-from-list":
                 if (SelectedBrowserProject() is { } listedProject) RemoveProjectFromList(listedProject);
                 break;
-            case "delete-project": if (Model.Project is { } deletingProject) await DeleteProjectAsync(deletingProject); break;
+            case "delete-project": if (ProjectManagementTarget() is { } deletingProject) await DeleteProjectAsync(deletingProject); break;
             case "delete-content": await ShowLanguageDeletionAsync(); break;
             case "export": Export_Click(this, e); break;
             case "settings": Settings_Click(this, e); break;
-            case "project-settings": if (Model.Project is { } settingsProject) await ShowSettingsSectionAsync(1, settingsProject); break;
+            case "project-settings": if (ProjectManagementTarget() is { } settingsProject) await ShowSettingsSectionAsync(1, settingsProject); break;
             case "help": HelpSettings_Click(this, e); break;
             case "filter-segments": await ShowSegmentFilterAsync(); break;
             case "sort-start": SortStart_Click(this, e); break;
@@ -783,10 +902,13 @@ public sealed partial class MainWindow
         }
         else
         {
+            var selected = SelectedGalleryProject();
             GalleryGrid.Visibility = grid ? Visibility.Visible : Visibility.Collapsed;
             GalleryTable.Visibility = grid ? Visibility.Collapsed : Visibility.Visible;
+            GalleryGrid.SelectedItem = selected; GalleryList.SelectedItem = selected;
         }
         Model.Settings.Set("projectPresentation", grid ? "grid" : "list"); Model.Settings.Save();
         UpdateEditorProjectButtons();
+        UpdateDesktopMenuStates();
     }
 }

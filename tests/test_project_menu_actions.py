@@ -25,8 +25,13 @@ class ProjectMenuActions(unittest.TestCase):
         source = (PROJECT / 'MainWindow.xaml.cs').read_text(encoding='utf-8')
         action = source.split('private async Task DeleteProjectAsync(', 1)[1].split('private void RefreshProjectIntegrity()', 1)[0]
         self.assertIn('if (!await Confirm(title, message, action)) return;', action)
-        self.assertIn('RecycleOption.SendToRecycleBin', action)
-        self.assertIn('if (deletingLoadedProject) ClearProject();', action)
+        self.assertIn('if (!await Model.DeleteProjectFolderAsync(p)) return;', action)
+        self.assertIn('App.CloseEditorsForDeletedProject(p.Folder);', action)
+        model = (PROJECT / 'ViewModels/StudioViewModel.cs').read_text(encoding='utf-8')
+        recycling = (PROJECT / 'Services/DeletionActivity.cs').read_text(encoding='utf-8')
+        self.assertIn('await DeletionActivity.RecycleAsync(project.Folder)', model)
+        self.assertIn('RecycleOption.SendToRecycleBin', recycling)
+        self.assertNotIn('DeleteOption.DeletePermanently', recycling)
 
     def test_native_smoke_checks_offline_actions_and_cancels_recycling(self):
         source = (PROJECT / 'MainWindow.SmokeTest.cs').read_text(encoding='utf-8')

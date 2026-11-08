@@ -447,14 +447,23 @@ public sealed partial class MainWindow
             ShowGallery_Click(this, new RoutedEventArgs());
             if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "Edit", "View", "Playback", "Project", "YouTube", "Help" }))
                 throw new InvalidOperationException("Gallery menu hierarchy drifted from the shared desktop layout.");
+            GalleryGrid.SelectedItem = null; GalleryList.SelectedItem = null;
             if (CanRunDesktopCommand("delete-project") || CanRunDesktopCommand("delete-content") || CanRunDesktopCommand("export") || CanRunDesktopCommand("review-narration-issues") || CanRunDesktopCommand("review-narration-voices"))
                 throw new InvalidOperationException("Project-only menu commands remained enabled in the gallery.");
             GalleryGrid.SelectedItem = null;
             GalleryList.SelectedItem = null;
+            var galleryViewMenu = galleryMenus.Single(menu => menu.Title == "View");
+            if (!galleryViewMenu.Items.OfType<MenuFlyoutSubItem>().Where(item => item.Visibility == Visibility.Visible)
+                .Select(item => item.Text).SequenceEqual(new[] { "Filter Projects by Source", "Filter Projects by Language" }))
+                throw new InvalidOperationException("All Projects View must show only library filter submenus.");
+            if (desktopMenuItems["preview"].Any(item => item.Visibility == Visibility.Visible) ||
+                desktopMenuItems["show-inspector"].Any(item => item.Visibility == Visibility.Visible) ||
+                desktopMenuItems["language-results"].Any(item => item.Visibility == Visibility.Visible))
+                throw new InvalidOperationException("Editor-only commands remained visible in All Projects.");
             if (CanRunDesktopCommand("rename-project") || CanRunDesktopCommand("trash-project"))
                 throw new InvalidOperationException("Project management requires a gallery selection or an open editor.");
             GalleryGrid.SelectedItem = Model.Projects.First();
-            if (!CanRunDesktopCommand("rename-project") || !CanRunDesktopCommand("trash-project"))
+            if (!CanRunDesktopCommand("rename-project") || !CanRunDesktopCommand("trash-project") || !CanRunDesktopCommand("project-settings") || !CanRunDesktopCommand("open-selected-project") || !CanRunDesktopCommand("export"))
                 throw new InvalidOperationException("Selected gallery projects must support Rename and Recycle Bin without opening an editor.");
             GalleryGrid.SelectedItem = null;
             await VerifyRemoveFromListFileMenuForSmokeTestAsync();

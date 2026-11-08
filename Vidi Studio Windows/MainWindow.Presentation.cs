@@ -512,9 +512,13 @@ public sealed partial class MainWindow
         UpdateBulkActionState();
         OverviewPanel.Visibility = index == 3 ? Visibility.Visible : Visibility.Collapsed;
         var overview = p.OverviewProject;
+        DescriptionStatisticsSection.Visibility = index is 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
+        DescriptionStatistics.Children.Clear();
+        AddInfo(DescriptionStatistics, "Total AD characters", (index == 3 ? overview : p).DescriptionCharacterCount.ToString("N0"));
         OverviewStatistics.Children.Clear(); OriginStatistics.Children.Clear();
         AddInfo(OverviewStatistics, "Viewing language", OutputLanguage.Label(p.OverviewLanguageCode));
         AddInfo(OverviewStatistics, "Description segments", overview.Cues.Count.ToString());
+        AddInfo(OverviewStatistics, "Total AD characters", overview.DescriptionCharacterCount.ToString("N0"));
         AddInfo(OverviewStatistics, "Narration audio ready", overview.Cues.Count(c => c.AudioReady).ToString());
         AddInfo(OverviewStatistics, "Audio needs updating", overview.Cues.Count(c => c.AudioNeedsRegeneration).ToString());
         AddInfo(OverviewStatistics, "Audio missing", overview.Cues.Count(c => !c.AudioReady && !c.AudioNeedsRegeneration).ToString());

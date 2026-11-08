@@ -151,6 +151,10 @@
       "title": "Find your way around the editor",
       "sections": [
         {
+          "id": "ad-character-count",
+          "title": "Total AD characters"
+        },
+        {
           "id": "play-and-seek",
           "title": "Play and seek"
         },
@@ -244,6 +248,10 @@
       "slug": "descriptions",
       "title": "Write and edit audio descriptions",
       "sections": [
+        {
+          "id": "ad-character-count",
+          "title": "Total AD characters"
+        },
         {
           "id": "add-a-segment",
           "title": "Add a segment"
@@ -343,6 +351,10 @@
         {
           "id": "saved-audio-or-live-speech",
           "title": "Saved audio or live speech?"
+        },
+        {
+          "id": "ad-character-count",
+          "title": "Total AD characters"
         },
         {
           "id": "choose-an-windows-voice",

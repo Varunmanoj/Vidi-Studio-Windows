@@ -333,6 +333,8 @@ public sealed class StudioProject : INotifyPropertyChanged
     [JsonIgnore] public string ProjectSubtitle => $"{DurationLabel} · {Cues.Count} descriptions";
     [JsonIgnore] public string DurationLabel => NarrationTimeFormat.Timestamp(Duration);
     [JsonIgnore] public string AdSegmentLabel => Cues.Count.ToString();
+    // Match Swift's displayed-character count, including whitespace and punctuation.
+    [JsonIgnore] public int DescriptionCharacterCount => Cues.Sum(c => new StringInfo(c.Text).LengthInTextElements);
     [JsonIgnore] public bool HasTranscript => Transcript.Count > 0;
     [JsonIgnore] public bool HasSummary => !string.IsNullOrWhiteSpace(Summary);
     [JsonIgnore] public int DescriptionTimingIssueCount => DescriptionTimingAudit?.Count ?? 0;

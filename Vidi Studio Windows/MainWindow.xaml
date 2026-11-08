@@ -169,6 +169,7 @@
        <TextBlock x:Name="ProjectInformation" Visibility="Collapsed"/>
       </StackPanel>
       <StackPanel Spacing="8"><TextBlock Text="Video Information" FontWeight="SemiBold"/><Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10"><StackPanel x:Name="VideoDetails" Spacing="8"/></Border></StackPanel>
+      <StackPanel x:Name="DescriptionStatisticsSection" Spacing="8" Visibility="Collapsed"><TextBlock Text="Audio Description" FontWeight="SemiBold"/><Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10"><StackPanel x:Name="DescriptionStatistics" Spacing="8"/></Border></StackPanel>
       <StackPanel x:Name="YouTubeDetailsSection" Spacing="8" Visibility="Collapsed"><TextBlock Text="YouTube Information" FontWeight="SemiBold"/><Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10"><StackPanel x:Name="YouTubeInspectorDetails" Spacing="8"/></Border></StackPanel>
       <StackPanel x:Name="AudioSourcePanel" Spacing="8" Visibility="Collapsed"/>
       <StackPanel x:Name="ContextActions" Spacing="8">

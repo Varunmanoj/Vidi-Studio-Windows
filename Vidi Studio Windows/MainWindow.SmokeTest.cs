@@ -545,6 +545,7 @@ public sealed partial class MainWindow
             var settings = new Views.SettingsDialog(Model, this);
             var display = settings.ShowAsync();
             await Task.Delay(250);
+            settings.VerifyPiperSampleMenuForSmokeTest();
             await settings.VerifyLayoutForSmokeTestAsync();
             await settings.VerifyAutomaticSettingsForSmokeTestAsync();
             settings.VerifyDeveloperModeGateForSmokeTest();

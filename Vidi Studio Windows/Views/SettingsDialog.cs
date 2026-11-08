@@ -496,6 +496,7 @@ public sealed partial class SettingsDialog : Window
             mode.SelectionChanged += async (_, _) =>
             {
                 if (mode.SelectedItem is not SpeechEngineOption selected) return;
+                StopSample(false);
                 draft["ttsMode"] = selected.Id;
                 if (selected.Id is not "gemini") draft["systemVoice"] = SettingsStore.GetString(draft[VoiceKey(selected.Id)]);
                 await RefreshVoices();
@@ -513,6 +514,7 @@ public sealed partial class SettingsDialog : Window
                     voice.SelectedItem = (voice.ItemsSource as IEnumerable<Voice>)?.FirstOrDefault(v => v.Available && v.Id == savedId);
                     return;
                 }
+                StopSample(false);
                 if (provider == "gemini") draft["geminiVoice"] = selected.Id;
                 else { draft[VoiceKey(provider)] = selected.Id; draft["systemVoice"] = selected.Id; }
                 UpdateSampleControls();
@@ -530,7 +532,12 @@ public sealed partial class SettingsDialog : Window
         panel.Children.Add(sample);
         var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         samplePlayButton = new Button();
-        samplePlayButton.Click += async (_, _) => await ToggleSampleAsync(sample.Text);
+        samplePlayButton.Click += async (_, _) =>
+        {
+            if (SettingsStore.GetString(draft["ttsMode"]) == "piper") await TogglePiperSampleAsync(sample.Text);
+            else await ToggleSampleAsync(sample.Text);
+        };
+        ConfigurePiperSampleMenu(sample);
         controls.Children.Add(samplePlayButton);
         sampleStopButton = new Button { Content = "Stop" };
         sampleStopButton.Click += (_, _) => StopSample();
@@ -559,6 +566,7 @@ public sealed partial class SettingsDialog : Window
             if (provider == "piper") samplePlayButton.IsEnabled &= PiperService.IsVoiceDownloaded(SettingsStore.GetString(draft["piperVoice"]));
         }
         if (sampleStopButton != null) sampleStopButton.IsEnabled = sampleState != SampleState.Stopped;
+        UpdatePiperSampleControls();
     }
     private async Task ToggleSampleAsync(string text)
     {

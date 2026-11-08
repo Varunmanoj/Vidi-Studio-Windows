@@ -47,6 +47,7 @@ public sealed partial class SettingsDialog
         AutomationProperties.SetName(manage, "Download or remove Piper voices");
         manage.Click += async (_, _) =>
         {
+            StopSample(false);
             var dialog = new PiperVoicesDialog();
             await WindowedDialog.ShowAsync(dialog, this, 780, 740);
             await RefreshVoices();
@@ -59,6 +60,7 @@ public sealed partial class SettingsDialog
         AutomationProperties.SetHelpText(delete, "Lists downloaded Piper voices so you can listen to a sample and remove the ones you no longer need");
         delete.Click += async (_, _) =>
         {
+            StopSample(false);
             var dialog = new PiperDeleteVoicesDialog();
             await WindowedDialog.ShowAsync(dialog, this, 720, 700);
             await RefreshVoices();
@@ -89,6 +91,68 @@ public sealed partial class SettingsDialog
                 ? "No Piper voices are downloaded yet. Choose Download or remove voices to add one."
                 : $"{installed.Count} Piper voice{(installed.Count == 1 ? "" : "s")} downloaded and ready to use.";
     }
+
+    private MenuFlyout? piperSampleMenu;
+    private MenuFlyoutItem? piperPlaySampleMenuItem;
+    private MenuFlyoutItem? piperStopSampleMenuItem;
+    private bool CanPlayPiperSample => !closed && sectionList?.SelectedIndex == 2 &&
+        SettingsStore.GetString(draft["ttsMode"]) == "piper" && sampleState == SampleState.Stopped &&
+        PiperService.IsRuntimeAvailable && PiperService.IsVoiceDownloaded(SettingsStore.GetString(draft["piperVoice"]));
+    private bool CanStopPiperSample => SettingsStore.GetString(draft["ttsMode"]) == "piper" && sampleState != SampleState.Stopped;
+
+    private async Task PlayPiperSampleAsync(string text)
+    {
+        if (!CanPlayPiperSample) return;
+        await Preview(text);
+    }
+    private async Task TogglePiperSampleAsync(string text)
+    {
+        if (CanStopPiperSample) StopSample();
+        else await PlayPiperSampleAsync(text);
+    }
+    private void ConfigurePiperSampleMenu(TextBox sample)
+    {
+        piperSampleMenu = new MenuFlyout();
+        piperPlaySampleMenuItem = new MenuFlyoutItem { Text = "Play Sample", Tag = "piper-settings-play-sample" };
+        piperStopSampleMenuItem = new MenuFlyoutItem { Text = "Stop Sample", Tag = "piper-settings-stop-sample" };
+        AutomationProperties.SetAutomationId(piperPlaySampleMenuItem, "piper-settings-play-sample");
+        AutomationProperties.SetAutomationId(piperStopSampleMenuItem, "piper-settings-stop-sample");
+        piperPlaySampleMenuItem.Click += async (_, _) => await PlayPiperSampleAsync(sample.Text);
+        piperStopSampleMenuItem.Click += (_, _) => { if (CanStopPiperSample) StopSample(); };
+        piperSampleMenu.Items.Add(piperPlaySampleMenuItem);
+        piperSampleMenu.Items.Add(piperStopSampleMenuItem);
+        piperSampleMenu.Opening += (_, _) => UpdatePiperSampleControls();
+    }
+    private void UpdatePiperSampleControls()
+    {
+        var piper = SettingsStore.GetString(draft["ttsMode"]) == "piper";
+        if (samplePlayButton != null)
+        {
+            samplePlayButton.ContextFlyout = piper ? piperSampleMenu : null;
+            AutomationProperties.SetName(samplePlayButton, samplePlayButton.Content as string ?? "Play selected voice sample");
+            if (piper)
+            {
+                samplePlayButton.Content = CanStopPiperSample ? "Stop Sample" : "Play Sample";
+                samplePlayButton.IsEnabled = CanPlayPiperSample || CanStopPiperSample;
+                AutomationProperties.SetName(samplePlayButton, (CanStopPiperSample ? "Stop sample of " : "Play sample of ") +
+                    (voice.SelectedItem as Voice)?.Name);
+            }
+        }
+        if (piperPlaySampleMenuItem != null) piperPlaySampleMenuItem.IsEnabled = CanPlayPiperSample;
+        if (piperStopSampleMenuItem != null) piperStopSampleMenuItem.IsEnabled = CanStopPiperSample;
+    }
+#if DEBUG
+    internal void VerifyPiperSampleMenuForSmokeTest()
+    {
+        NavigateForSmokeTest(2);
+        if (piperSampleMenu?.Items.Count != 2 || piperPlaySampleMenuItem?.Tag as string != "piper-settings-play-sample" ||
+            piperStopSampleMenuItem?.Tag as string != "piper-settings-stop-sample")
+            throw new InvalidOperationException("Piper sample context menu must expose Play Sample and Stop Sample.");
+        UpdatePiperSampleControls();
+        if (piperPlaySampleMenuItem.IsEnabled != CanPlayPiperSample || piperStopSampleMenuItem.IsEnabled != CanStopPiperSample)
+            throw new InvalidOperationException("Piper sample menu availability must match the guarded UI actions.");
+    }
+#endif
 
     private static Voice Heading(string id, string text) => new("heading:" + id, text, "", "", false, text, VoiceGroups.Heading);
 

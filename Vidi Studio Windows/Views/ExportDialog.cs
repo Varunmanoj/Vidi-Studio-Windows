@@ -147,8 +147,8 @@ public sealed partial class ExportDialog : ContentDialog
             if (index + 1 < arguments.Count && !arguments[index + 1].StartsWith("--", StringComparison.Ordinal)) options[key] = arguments[++index];
             else options[key] = true;
         }
-        var collisions = new List<(int Index, string Path)>();
         var jobs = new List<Dictionary<string, object>>();
+        var paths = new List<string>();
         foreach (var code in exportLanguages.OrderBy(v => v)) {
             var ids = new Dictionary<string, string>();
             foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
@@ -156,26 +156,11 @@ public sealed partial class ExportDialog : ContentDialog
                 if (!string.IsNullOrEmpty(rid)) ids[kind] = rid;
             }
             var target = project.WithLanguageResults(code, ids);
-            var suffix = string.Join("-", ids.Values.Select(v => v[..Math.Min(8, v.Length)]).OrderBy(v => v, StringComparer.Ordinal)).Replace('-', '.');
-            target.Name = string.Concat(project.Name.EnumerateRunes().Take(40).Select(r => r.ToString())) + " [" + OutputLanguage.Label(code) + (suffix.Length == 0 ? "" : " " + suffix) + "]";
-            var path = TargetRelativePath(target);
-            var legacyExists = project.Exports.Any(old => {
-                var oldCode = project.ExportResults.TryGetValue(old, out var provenance) ? provenance.Language : old.Split('/').Length > 2 ? old.Split('/')[1] : "auto";
-                return oldCode == code && Path.GetFileName(old) == Path.GetFileName(path) && (File.Exists(project.Resolve(old)) || Directory.Exists(project.Resolve(old)));
-            });
-            if (File.Exists(project.Resolve(path)) || Directory.Exists(project.Resolve(path)) || legacyExists) collisions.Add((jobs.Count, path));
+            SetExportName(target, project, code, ids);
+            paths.Add(TargetRelativePath(target));
             jobs.Add(new() { ["language"] = code, ["resultIDs"] = ids, ["projectName"] = project.Name, ["command"] = command, ["options"] = options, ["replaceExisting"] = false });
         }
-        if (collisions.Count > 0) {
-            awaitingReplacementConfirmation = true; UpdatePreview();
-            bool? choice;
-            try { choice = await owner.ConfirmExportReplacementAsync(collisions.Select(c => c.Path).ToArray()); }
-            finally { awaitingReplacementConfirmation = false; UpdatePreview(); }
-            if (choice == null) return;
-            if (choice == true) foreach (var collision in collisions) jobs[collision.Index]["replaceExisting"] = true;
-        }
-        Closed += async (_, _) => await owner.RunResultRequestAsync("export-batch", new { jobs });
-        Hide();
+        await SubmitJobsAsync(project, jobs, paths);
     }
 
     private void AddLanguageSelections()
@@ -219,7 +204,7 @@ public sealed partial class ExportDialog : ContentDialog
             output.Unchecked += (_, _) => { combineTracks = false; BuildPage(); };
             page.Children.Add(output);
         }
-        if (SelectingTracks) { BuildTrackChoices(); UpdatePreview(); return; }
+        if (SelectingTracks) { BuildTrackChoices(); AttachExportMenus(page); UpdatePreview(); return; }
         AddLanguageSelections();
         switch (section)
         {
@@ -228,6 +213,7 @@ public sealed partial class ExportDialog : ContentDialog
             case 2: BuildText(); break;
             case 3: BuildWeb(); break;
         }
+        AttachExportMenus(page);
         UpdatePreview();
     }
 

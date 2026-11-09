@@ -52,6 +52,8 @@ for name in ('VIDEO_EXPORT_FORMATS', 'AUDIO_EXPORT_FORMATS', 'EXPORT_DUCKING_LEV
     if assignment(windows) != assignment(mac): drift.append(name)
 if ast.dump(parsed('engine/language_results.py', windows_root), include_attributes=False) != ast.dump(parsed('engine/language_results.py', args.mac_root), include_attributes=False):
     drift.append('language_results.py')
+if ast.dump(parsed('engine/multitrack_exports.py', windows_root), include_attributes=False) != ast.dump(parsed('engine/multitrack_exports.py', args.mac_root), include_attributes=False):
+    drift.append('multitrack_exports.py')
 wt = parsed('engine/youtube_audio.py', windows_root)
 mt = parsed('engine/youtube_audio.py', args.mac_root)
 # Compare the new metadata-only lookup directly, including its bounded cleanup.

@@ -241,6 +241,14 @@
         {
           "id": "saved-result-status",
           "title": "Saved result status icons"
+        },
+        {
+          "id": "ad-audio-readiness",
+          "title": "AD audio readiness by language"
+        },
+        {
+          "id": "export-language-groups",
+          "title": "Created Exports by language"
         }
       ]
     },
@@ -287,6 +295,10 @@
         {
           "id": "section-language-targets",
           "title": "Choose a target language for each section"
+        },
+        {
+          "id": "ad-audio-readiness",
+          "title": "AD audio readiness by language"
         }
       ]
     },
@@ -407,6 +419,10 @@
         {
           "id": "inspect-saved-versions",
           "title": "Check saved versions and their files"
+        },
+        {
+          "id": "ad-audio-readiness",
+          "title": "AD audio readiness by language"
         }
       ]
     },
@@ -495,6 +511,10 @@
           "title": "Export one file with language choices: switch On"
         },
         {
+          "id": "export-standalone-text",
+          "title": "Export standalone text"
+        },
+        {
           "id": "export-track-presentation",
           "title": "Choose selectable or permanent presentation"
         },
@@ -517,6 +537,14 @@
         {
           "id": "saved-result-status",
           "title": "Saved result status icons"
+        },
+        {
+          "id": "ad-audio-readiness",
+          "title": "AD audio readiness by language"
+        },
+        {
+          "id": "export-language-groups",
+          "title": "Created Exports by language"
         }
       ]
     },

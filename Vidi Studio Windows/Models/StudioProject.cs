@@ -269,6 +269,15 @@ public sealed class StudioProject : INotifyPropertyChanged
         foreach (var row in result.Transcript) { row.ProjectFolder = Folder; row.IsDescription = false; }
         return result;
     }
+    public List<string> LanguagesForExport(string path)
+    {
+        if (ExportResults.TryGetValue(path, out var result))
+            return (result.Languages is { Count: > 0 } ? result.Languages : new List<string> { result.Language }).Distinct().OrderBy(code => code, StringComparer.Ordinal).ToList();
+        var parts = path.Split('/');
+        return parts.Length > 2 && parts[0] == "exports" ? parts[1].Split('+').Distinct().OrderBy(code => code, StringComparer.Ordinal).ToList() : new() { "auto" };
+    }
+    [JsonIgnore] public List<string> ExportLanguageCodes => Exports.SelectMany(LanguagesForExport).Distinct().OrderBy(code => code, StringComparer.Ordinal).ToList();
+    public string LanguageGroupForExport(string path) { var codes = LanguagesForExport(path); return codes.Count > 1 ? "multilingual" : codes.FirstOrDefault() ?? "auto"; }
     public bool MatchesLanguage(string code) => code == "all" || SavedResults.Any(r => r.Language == code);
     public event PropertyChangedEventHandler? PropertyChanged;
     public string Id { get; set; } = "";
@@ -371,12 +380,20 @@ public sealed class StudioProject : INotifyPropertyChanged
     {
         get { try { return !IsYouTube && !string.IsNullOrEmpty(Source) && File.Exists(Resolve(Source)); } catch (Exception) { return false; } }
     }
-    [JsonIgnore] public bool HasCompleteExportNarration => double.IsFinite(Duration) && Duration > 0 && Cues.Count > 0 && Cues.All(c =>
+    public bool HasUsableExportNarration(Segment c)
     {
-        if (string.IsNullOrWhiteSpace(c.Text) || !c.AudioReady || string.IsNullOrEmpty(c.Audio) ||
+        if (!double.IsFinite(Duration) || Duration <= 0 || string.IsNullOrWhiteSpace(c.Text) || !c.AudioReady || string.IsNullOrEmpty(c.Audio) ||
             !double.IsFinite(c.Start) || !double.IsFinite(c.End) || c.Start < 0 || c.End <= c.Start || c.End > Duration) return false;
         try { return new FileInfo(Resolve(c.Audio)) is { Exists: true, Length: > 0 }; } catch (Exception) { return false; }
-    });
+    }
+    [JsonIgnore] public bool HasCompleteExportNarration => Cues.Count > 0 && Cues.All(HasUsableExportNarration);
+    public ADAudioReadiness AudioReadiness(string code)
+    {
+        var view = code == SelectedLanguage ? this : WithLanguageResults(code, includingDrafts: true);
+        return new(code, view.Cues.Count, view.Cues.Count(view.HasUsableExportNarration));
+    }
+    [JsonIgnore] public List<ADAudioReadiness> AudioReadinessByLanguage => SavedResults.Where(r => r.Kind == "descriptions" && r.HasContent).Select(r => r.Language)
+        .Append(SelectedLanguage).Distinct().OrderBy(code => code == SelectedLanguage ? 0 : 1).ThenBy(code => code, StringComparer.Ordinal).Select(AudioReadiness).ToList();
     public bool CanExportText(string content) => content switch
     {
         "transcript" => Transcript.Count > 0,
@@ -855,4 +872,14 @@ public sealed class NarrationVoiceReport
     public int ImportedCount { get; set; }
     public bool HasMixedSources { get; set; }
     public List<string> ImportedFiles { get; set; } = new();
+}
+
+
+public sealed record ADAudioReadiness(string Language, int Total, int Ready)
+{
+    public bool Complete => Total > 0 && Ready == Total;
+    public string Title => $"{OutputLanguage.Label(Language)} · {Ready}/{Total} AD audio";
+    public string AccessibleName => Total == 0 ? $"{OutputLanguage.Label(Language)}: No AD segments. AD narration is not ready."
+        : Complete ? $"{OutputLanguage.Label(Language)}: All {Total} AD segments have usable text and audio."
+        : $"{OutputLanguage.Label(Language)}: {Ready} of {Total} AD segments have usable text and audio. {Total - Ready} missing or unusable. Exports using generated AD narration require complete audio.";
 }

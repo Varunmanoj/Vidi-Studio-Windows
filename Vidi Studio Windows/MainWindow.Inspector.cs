@@ -7,6 +7,42 @@ namespace Vidi_Studio_Windows;
 
 public sealed partial class MainWindow
 {
+    private readonly StackPanel inspectorAudioReadiness = new() { Spacing = 6 };
+    private readonly FontIcon inspectorActiveAudioReadiness = new() { FontSize = 16, VerticalAlignment = VerticalAlignment.Center };
+
+    private void InitializeADAudioReadiness()
+    {
+        if (InspectorExportButton.Parent is not StackPanel parent) return;
+        var position = parent.Children.IndexOf(InspectorExportButton);
+        parent.Children.Remove(InspectorExportButton);
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        row.Children.Add(InspectorExportButton); row.Children.Add(inspectorActiveAudioReadiness);
+        parent.Children.Insert(position, row); parent.Children.Insert(position + 1, inspectorAudioReadiness);
+    }
+    private static void SetADAudioIcon(FontIcon icon, Models.ADAudioReadiness status)
+    {
+        icon.Glyph = status.Complete ? "\uE73E" : "\uE711";
+        icon.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(status.Complete ? Windows.UI.Color.FromArgb(255, 32, 148, 71) : Windows.UI.Color.FromArgb(255, 210, 38, 48));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(icon, status.AccessibleName);
+        ToolTipService.SetToolTip(icon, status.AccessibleName);
+    }
+    private static FrameworkElement ADAudioReadinessRow(Models.ADAudioReadiness status)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        var icon = new FontIcon { FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
+        SetADAudioIcon(icon, status);
+        row.Children.Add(icon); row.Children.Add(new TextBlock { Text = status.Title, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(row, status.AccessibleName);
+        ToolTipService.SetToolTip(row, status.AccessibleName);
+        return row;
+    }
+    private void UpdateADAudioReadiness(Models.StudioProject project)
+    {
+        SetADAudioIcon(inspectorActiveAudioReadiness, project.AudioReadiness(project.SelectedLanguage));
+        inspectorAudioReadiness.Children.Clear();
+        foreach (var status in project.AudioReadinessByLanguage) inspectorAudioReadiness.Children.Add(ADAudioReadinessRow(status));
+    }
+
     private string inspectorVoiceRequest = "";
     private string inspectorVoiceLanguage = "Unknown";
 

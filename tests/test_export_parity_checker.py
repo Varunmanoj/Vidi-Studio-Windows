@@ -25,9 +25,12 @@ class ExportParityChecker(unittest.TestCase):
             (fixture / 'engine').mkdir()
             checker = fixture / 'script/check-mac-export-parity.py'
             shutil.copy2(ROOT / 'script/check-mac-export-parity.py', checker)
-            for name in ('vidistudio_engine.py', 'youtube_audio.py', 'audio_sources.py', 'language_results.py'):
+            for name in ('vidistudio_engine.py', 'youtube_audio.py', 'audio_sources.py', 'language_results.py', 'multitrack_exports.py'):
                 shutil.copy2(ROOT / 'engine' / name, fixture / 'engine' / name)
-            if mutate:
+            if mutate == 'tracks':
+                tracks = fixture / 'engine/multitrack_exports.py'
+                tracks.write_text(tracks.read_text().replace("'Original Audio'", "'Original Sound'"))
+            elif mutate:
                 downloader = fixture / 'engine/youtube_audio.py'
                 source = downloader.read_text(encoding='utf-8')
                 self.assertIn('DOWNLOAD_ATTEMPTS = 3', source)
@@ -44,3 +47,8 @@ class ExportParityChecker(unittest.TestCase):
         result = self.check_fixture(mutate=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Export parity needs review: youtube_audio.py', result.stdout + result.stderr)
+
+    def test_multitrack_engine_drift_is_rejected(self):
+        result = self.check_fixture(mutate='tracks')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('multitrack_exports.py', result.stdout + result.stderr)

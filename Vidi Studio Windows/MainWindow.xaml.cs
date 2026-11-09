@@ -75,6 +75,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         InitializeLanguageFilters();
         InitializeInspectorSections();
+        InitializeADAudioReadiness();
         var projectSettingsContext = new MenuFlyout();
         var projectSettingsItem = new MenuFlyoutItem { Text = "Open Project Settings…", Tag = "project-settings" };
         projectSettingsItem.Click += async (_, _) => await RunDesktopCommandAsync("project-settings");

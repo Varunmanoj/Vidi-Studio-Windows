@@ -521,6 +521,8 @@ public sealed partial class MainWindow
         DescriptionStatisticsSection.Visibility = index is 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
         DescriptionStatistics.Children.Clear();
         AddInfo(DescriptionStatistics, "Total AD characters", (index == 3 ? overview : p).DescriptionCharacterCount.ToString("N0"));
+        DescriptionStatistics.Children.Add(ADAudioReadinessRow((index == 3 ? overview : p).AudioReadiness(p.SelectedLanguage)));
+        UpdateADAudioReadiness(p);
         OverviewStatistics.Children.Clear(); OriginStatistics.Children.Clear();
         AddInfo(OverviewStatistics, "Viewing language", OutputLanguage.Label(p.OverviewLanguageCode));
         AddInfo(OverviewStatistics, "Description segments", overview.Cues.Count.ToString());
@@ -660,10 +662,22 @@ public sealed partial class MainWindow
     private void PopulateExportGroups(StackPanel target, StudioProject project)
     {
         target.Children.Clear();
+        var exportCodes = project.ExportLanguageCodes;
+        if (exportLanguageFilter != "all" && !exportCodes.Contains(exportLanguageFilter)) exportLanguageFilter = "all";
         var languageFilter = LanguagePicker("Export language filter", exportLanguageFilter, true);
+        var languageChoices = new[] { new OutputLanguage("all", "All Languages") }.Concat(exportCodes.Select(code => new OutputLanguage(code, OutputLanguage.Label(code)))).ToList();
+        languageFilter.ItemsSource = languageChoices;
+        languageFilter.SelectedItem = languageChoices.First(choice => choice.Id == exportLanguageFilter);
         languageFilter.SelectionChanged += (_, _) => {
-            if (languageFilter.SelectedItem is OutputLanguage choice) { exportLanguageFilter = choice.Id; PopulateExportGroups(target, project); }
+            if (languageFilter.SelectedItem is OutputLanguage choice) { exportLanguageFilter = choice.Id; exportResultFilter = "all"; PopulateExportGroups(target, project); }
         };
+        var languageMenu = new MenuFlyout();
+        foreach (var choice in languageChoices) {
+            var item = new ToggleMenuFlyoutItem { Text = choice.Title, IsChecked = choice.Id == exportLanguageFilter, IsEnabled = languageFilter.IsEnabled };
+            item.Click += (_, _) => languageFilter.SelectedItem = choice;
+            languageMenu.Items.Add(item);
+        }
+        languageFilter.ContextFlyout = languageMenu;
         target.Children.Add(languageFilter);
         var resultChoices = new[] { new { Id = "all", Title = "All Saved Results" } }.Concat(project.SavedResults.Where(r => exportLanguageFilter == "all" || r.Language == exportLanguageFilter).Select(r => new { r.Id, Title = OutputLanguage.Label(r.Language) + " · " + LanguageResult.KindTitle(r.Kind) + " · " + r.Title })).ToList();
         var resultFilter = new ComboBox { Header = "Saved result filter", ItemsSource = resultChoices, DisplayMemberPath = "Title", SelectedItem = resultChoices.FirstOrDefault(v => v.Id == exportResultFilter) ?? resultChoices[0] };
@@ -675,8 +689,18 @@ public sealed partial class MainWindow
             target.Children.Add(new TextBlock { Text = "No exports yet", Opacity = .65 });
             return;
         }
-        var groups = project.Exports.Where(path => exportLanguageFilter == "all" || (project.ExportResults.TryGetValue(path, out var provenance) ? provenance.Matches(exportLanguageFilter) : exportLanguageFilter == "auto")).Where(path => exportResultFilter == "all" || project.ExportResults.TryGetValue(path, out var resultProvenance) && resultProvenance.ResultIDs.Values.Contains(exportResultFilter)).Select(relative => (Relative: relative, Category: ExportCategoryFor(project, relative)))
-            .GroupBy(item => item.Category.Name).OrderBy(group => group.First().Category.Order);
+        var languages = project.Exports.Where(path => exportLanguageFilter == "all" || project.LanguagesForExport(path).Contains(exportLanguageFilter))
+            .Where(path => exportResultFilter == "all" || project.ExportResults.TryGetValue(path, out var provenance) && provenance.ResultIDs.Values.Contains(exportResultFilter))
+            .GroupBy(project.LanguageGroupForExport).OrderBy(group => group.Key == "multilingual" ? 0 : 1).ThenBy(group => OutputLanguage.Label(group.Key), StringComparer.Ordinal);
+        foreach (var languageGroup in languages) {
+            var languageSection = new StackPanel { Spacing = 8, Margin = new Thickness(0, 10, 0, 0) };
+            var languageTitle = languageGroup.Key == "multilingual" ? "Multilingual" : OutputLanguage.Label(languageGroup.Key);
+            var languageHeading = new TextBlock { Text = languageTitle, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHeadingLevel(languageHeading, Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level3);
+            languageSection.Children.Add(languageHeading);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(languageSection, languageTitle + " exports");
+            var groups = languageGroup.Select(relative => (Relative: relative, Category: ExportCategoryFor(project, relative)))
+                .GroupBy(item => item.Category.Name).OrderBy(group => group.First().Category.Order);
         foreach (var group in groups)
         {
             var category = group.First().Category;
@@ -684,7 +708,7 @@ public sealed partial class MainWindow
             var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             heading.Children.Add(new FontIcon { Glyph = category.Glyph, FontSize = 16,
                 Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0, 120, 212)) });
-            heading.Children.Add(new TextBlock { Text = category.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            heading.Children.Add(new TextBlock { Text = category.Name == "Text" ? "Text and Subtitles" : category.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
                 VerticalAlignment = VerticalAlignment.Center });
             section.Children.Add(heading);
             foreach (var item in group)
@@ -705,10 +729,14 @@ public sealed partial class MainWindow
                 Grid.SetColumn(info, 1);
                 row.Children.Add(info);
                 section.Children.Add(row);
+                if (languageGroup.Key == "multilingual") section.Children.Add(new TextBlock { Text = string.Join(", ", project.LanguagesForExport(item.Relative).Select(OutputLanguage.Label)), FontSize = 12, Opacity = .7, TextWrapping = TextWrapping.Wrap });
             }
-            target.Children.Add(section);
+            languageSection.Children.Add(section);
+        }
+            target.Children.Add(languageSection);
         }
     }
+
     private void UpdateAvailability()
     {
         if (Model.Project is not { } p) return;

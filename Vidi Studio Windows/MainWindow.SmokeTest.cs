@@ -811,6 +811,7 @@ public sealed partial class MainWindow
             }
             if (!Model.Project!.HasCompleteExportNarration) throw new InvalidOperationException("Current narration was rejected for export.");
             var readyExport = new Views.ExportDialog(Model);
+            readyExport.VerifyExportCategoriesForSmokeTest();
             if (!readyExport.AudioChoiceForSmokeTest(1) || !readyExport.AudioChoiceForSmokeTest(2)) throw new InvalidOperationException("Current narration did not enable audio choices.");
             var cue = Model.Project.Cues[0];
             var savedText = cue.Text;

@@ -521,6 +521,80 @@
       ]
     },
     {
+      "slug": "playback",
+      "title": "Switch audio and caption tracks in video players",
+      "sections": [
+        {
+          "id": "choose-tracks",
+          "title": "Choose the tracks you want"
+        },
+        {
+          "id": "playback-formats-codecs",
+          "title": "Formats, codecs and track availability"
+        },
+        {
+          "id": "vlc",
+          "title": "VLC media player \u2014 Windows and macOS"
+        },
+        {
+          "id": "vlc-audio",
+          "title": "Switch audio tracks on Mac"
+        },
+        {
+          "id": "vlc-captions",
+          "title": "Switch caption tracks or hide them on Mac"
+        },
+        {
+          "id": "vlc-windows",
+          "title": "Equivalent VLC controls on Windows"
+        },
+        {
+          "id": "windows-players",
+          "title": "Windows Media Player and Movies & TV"
+        },
+        {
+          "id": "quicktime",
+          "title": "QuickTime Player \u2014 macOS"
+        },
+        {
+          "id": "quicktime-audio",
+          "title": "Switch original and described audio"
+        },
+        {
+          "id": "quicktime-captions",
+          "title": "Turn captions on or off and choose their language"
+        },
+        {
+          "id": "apple-tv",
+          "title": "Apple TV app \u2014 macOS and Windows"
+        },
+        {
+          "id": "iina",
+          "title": "IINA \u2014 macOS"
+        },
+        {
+          "id": "mpc-hc",
+          "title": "MPC-HC \u2014 Windows"
+        },
+        {
+          "id": "youtube",
+          "title": "YouTube \u2014 browser on Windows or macOS"
+        },
+        {
+          "id": "web-playback",
+          "title": "VidiStudio Web Playback"
+        },
+        {
+          "id": "missing-tracks",
+          "title": "If a track is missing or will not turn off"
+        },
+        {
+          "id": "player-sources",
+          "title": "Player support references"
+        }
+      ]
+    },
+    {
       "slug": "settings",
       "title": "Settings reference",
       "sections": [

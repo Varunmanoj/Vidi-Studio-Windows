@@ -25,7 +25,7 @@ TARGET = ROOT / 'Vidi Studio Windows' / 'Help'
 if not MAC_HELP.is_dir():
     parser.error('The Mac Help sources are required; pass --mac-root or VIDISTUDIO_DESKTOP_WORKSPACE.')
 ORDER = ['welcome', 'first-project', 'projects', 'editor', 'descriptions', 'analysis',
-         'narration', 'exports', 'settings', 'keyboard', 'troubleshooting', 'privacy']
+         'narration', 'exports', 'playback', 'settings', 'keyboard', 'troubleshooting', 'privacy']
 
 def plain(value):
     return html.unescape(re.sub(r'<[^>]+>', '', value)).strip()
@@ -164,7 +164,10 @@ for slug in ORDER:
         fragment = source.read_text(encoding='utf-8') if source.is_file() else None
     if fragment is None:
         continue
-    fragment = windowsize(fragment)
+    # External-player instructions intentionally cover both operating systems.
+    # Keep their product names, menu paths and shortcuts exactly as authored.
+    if slug != 'playback':
+        fragment = windowsize(fragment)
     fragment, sections = add_ids(fragment)
     title_match = re.search(r'<h1[^>]*>(.*?)</h1>', fragment, flags=re.S)
     title = plain(title_match.group(1)) if title_match else slug.replace('-', ' ').title()

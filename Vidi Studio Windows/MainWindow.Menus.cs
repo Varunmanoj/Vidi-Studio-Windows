@@ -69,7 +69,7 @@ public sealed partial class MainWindow
             Menu("File",
                 Command("new-project"), Command("open-project"), Command("youtube-browser"), Command("youtube-open-browser"), Separator(), Command("export"), Separator(),
                 Command("delete-project"), Command("delete-content"), Separator(), Command("remove-from-list"), Separator(), Command("open-editor-window"), Command("settings"), Command("project-settings"), Command("close-window")),
-            Menu("Edit", Command("copy-to")),
+            Menu("Edit", Command("copy-to"), Command("segment-edit-mode")),
             Menu("View",
                 Submenu("Filter Projects by Source", Command("projects-source-all"), Command("projects-source-local"), Command("projects-source-youtube")),
                 LibraryLanguageMenu(), Command("projects-reset-filters"), Separator(),

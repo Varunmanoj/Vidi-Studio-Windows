@@ -48,8 +48,8 @@ public sealed partial class MainWindow
             if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "Edit", "View", "Playback", "Project", "YouTube", "Help" }))
                 throw new InvalidOperationException("Editor menu set does not match the active page.");
             var copyMenu = editorMenus.Single(menu => menu.Title == "Edit");
-            if (!copyMenu.Items.OfType<MenuFlyoutItem>().Select(item => (string)item.Tag).SequenceEqual(new[] { "copy-to" }))
-                throw new InvalidOperationException("Edit must expose Copy to.");
+            if (!copyMenu.Items.OfType<MenuFlyoutItem>().Select(item => (string)item.Tag).SequenceEqual(new[] { "copy-to", "segment-edit-mode" }))
+                throw new InvalidOperationException("Edit must expose Copy to followed by Edit/Done Editing.");
             var youtubeMenu = editorMenus.Single(menu => menu.Title == "YouTube");
             if (!youtubeMenu.Items.OfType<MenuFlyoutItem>().Select(item => (string)item.Tag).SequenceEqual(new[] {
                 "youtube-browser", "youtube-accounts", "youtube-list", "youtube-table", "youtube-open-editor",
@@ -170,7 +170,7 @@ public sealed partial class MainWindow
                 await Task.Delay(80);
                 VerifySegmentMoreButtonsForSmokeTest(false);
                 VerifyEditorPrimaryActionForSmokeTest(false);
-                EditMode_Click(this, new RoutedEventArgs());
+                await RunDesktopCommandAsync("segment-edit-mode");
                 await Task.Delay(80);
                 VerifySegmentMoreButtonsForSmokeTest(true);
                 VerifyEditorPrimaryActionForSmokeTest(true);
@@ -1804,6 +1804,13 @@ public sealed partial class MainWindow
 
     private void VerifyEditorPrimaryActionForSmokeTest(bool editing)
     {
+        UpdateDesktopMenuStates();
+        var editTitle = DesktopCommandTitle("segment-edit-mode");
+        if (FindButton(LanguageResultsPanel, editTitle) is not { } inspectorEdit ||
+            inspectorEdit.IsEnabled != CanRunDesktopCommand("segment-edit-mode") ||
+            desktopMenuItems["segment-edit-mode"].Any(item => item.Text != editTitle || item.IsEnabled != inspectorEdit.IsEnabled) ||
+            editTitle.StartsWith("Done Editing", StringComparison.Ordinal) != editing)
+            throw new InvalidOperationException("Inspector, Edit menu, and Project menu must share the current Edit/Done state.");
         if (EditModeButton.Visibility != Visibility.Visible ||
             EditModeButton.Content is not FontIcon icon || icon.Glyph != (editing ? "\uE73E" : "\uE70F") ||
             !ReferenceEquals(EditModeButton.Style, Application.Current.Resources["AccentButtonStyle"]) ||

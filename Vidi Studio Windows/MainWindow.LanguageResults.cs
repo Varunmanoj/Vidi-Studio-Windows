@@ -37,6 +37,11 @@ public sealed partial class MainWindow
     }
     private void UpdateLanguageControlStates() {
         foreach (var (control, requiresEdit) in languageControls) {
+            if (control is Button edit && edit.Tag as string == "segment-edit-mode") {
+                edit.Content = DesktopCommandTitle("segment-edit-mode");
+                edit.IsEnabled = CanRunDesktopCommand("segment-edit-mode");
+                continue;
+            }
             var noViewingData = control is ComboBox picker && picker.Header as string == "View Project Language" && picker.ItemsSource is IEnumerable<OutputLanguage> choices && choices.All(v => v.Id == "unavailable");
             control.IsEnabled = !noViewingData && !Model.Busy && !HasUnsavedLanguageSummary && (!requiresEdit || LanguageEditMode);
         }
@@ -114,6 +119,10 @@ public sealed partial class MainWindow
         if (settingsContext) {
             var edit = new Button { Content = editing ? "Finish Editing Languages" : "Edit Languages", IsEnabled = !Model.Busy && !HasUnsavedLanguageSummary };
             edit.Click += (_, _) => setSettingsEditing?.Invoke(!editing); panel.Children.Add(edit);
+        } else if (Section.SelectedIndex is 0 or 1 or 2 or 4) {
+            var edit = new Button { Content = DesktopCommandTitle("segment-edit-mode"), Tag = "segment-edit-mode" };
+            edit.Click += async (_, _) => await RunDesktopCommandAsync("segment-edit-mode");
+            Register(edit, false); panel.Children.Add(edit);
         }
         if (HasUnsavedLanguageSummary) panel.Children.Add(new TextBlock { Text = "Save or cancel summary edits first.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
         var choices = OutputLanguage.Options.Where(v => editing || project.AvailableViewingLanguages.Contains(v.Id)).Select(v => new OutputLanguage(v.Id, project.ViewingLanguageTitle(v.Id))).ToList();

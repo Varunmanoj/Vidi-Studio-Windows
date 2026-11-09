@@ -432,6 +432,7 @@ public sealed partial class MainWindow
         Segments.SelectionMode = editMode ? ListViewSelectionMode.Multiple : ListViewSelectionMode.None;
         UpdateBulkActionState();
         RefreshEditingRows();
+        UpdateDesktopMenuStates();
     }
     private void RefreshEditingRows()
     {

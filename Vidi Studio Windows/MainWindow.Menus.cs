@@ -466,6 +466,7 @@ public sealed partial class MainWindow
 
     private bool CanRunDesktopCommand(string id)
     {
+        if (validationShowcaseActive) return false;
         if (windowClosed) return false;
         if (id == "youtube-open-browser") return youtubeBrowserCanRun != null ? youtubeBrowserCanRun(id) : ProjectManagementTarget() is { } youtubeProject && YouTubeService.ProjectWatchURL(youtubeProject.YoutubeURL) != null;
         if (id.StartsWith("projects-source-", StringComparison.Ordinal)) return !desktopEditorVisible;

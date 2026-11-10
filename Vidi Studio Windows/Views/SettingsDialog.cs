@@ -485,6 +485,18 @@ public sealed partial class SettingsDialog : Window
         foreach (var element in new FrameworkElement[] { mode, voice, sapiHost, localSpeechControls }) if (element.Parent is Panel parent) parent.Children.Remove(element);
         localSpeechControls.Children.Clear();
         BuildVoiceEngineControls();
+        var timingSound = new CheckBox { Content = "Sound when timing validation fails",
+            IsChecked = SettingsStore.GetBool(draft["soundWhenTimingInvalid"], true) };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(timingSound, "timing-validation-sound");
+        timingSound.Checked += (_, _) => draft["soundWhenTimingInvalid"] = true;
+        timingSound.Unchecked += (_, _) => draft["soundWhenTimingInvalid"] = false;
+        var timingSoundMenu = new MenuFlyout();
+        var timingSoundItem = new ToggleMenuFlyoutItem { Text = "Sound when timing validation fails", Tag = "timing-validation-sound-menu" };
+        timingSoundMenu.Opening += (_, _) => timingSoundItem.IsChecked = timingSound.IsChecked == true;
+        timingSoundItem.Click += (_, _) => timingSound.IsChecked = timingSoundItem.IsChecked;
+        timingSoundMenu.Items.Add(timingSoundItem);
+        timingSound.ContextFlyout = timingSoundMenu;
+        panel.Children.Add(timingSound);
         UpdateNarrationEngineOptions();
         var initialProvider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
         if (initialProvider is "windows-core" or "sapi5" && draft[VoiceKey(initialProvider)] == null)

@@ -658,7 +658,7 @@ public sealed partial class MainWindow : Window
         };
         rows = ApplySegmentSort(rows);
         Segments.ItemsSource = segmentFilter.IsActive && Section.SelectedIndex is 0 or 2 or 4
-            ? rows.Where(segment => segmentFilter.Matches(segment, HasSegmentAudio(p, segment))).ToList()
+            ? rows.Where(segment => segmentFilter.Matches(segment, HasSegmentAudio(p, segment)) || ValidationKey(segment) == validationHighlightKey).ToList()
             : rows;
         RefreshEditingRows();
         UpdateEmptySectionActions();
@@ -1415,6 +1415,10 @@ public sealed partial class MainWindow : Window
             await EditSegment(single);
         }
     }
+    private static string ValidationKey(Segment segment) => (segment.IsDescription ? "ad:" : "transcript:") + segment.Id;
+    private bool validationShowcaseActive;
+    private string? validationHighlightKey;
+
     private async Task EditSegment(Segment? existing, string? initialText = null)
     {
         if (Model.Busy || Section.SelectedIndex is not (0 or 2 or 4) || Model.Project is not { } p) return;
@@ -1580,7 +1584,15 @@ public sealed partial class MainWindow : Window
         };
         scrollViewer.Loaded += (_, _) => scrollViewer.ChangeView(null, 0, null, true);
 
-        var dialog = Dialog(title, scrollViewer, "Save Segment");
+        var showIssue = new Button { Visibility = Visibility.Collapsed, HorizontalAlignment = HorizontalAlignment.Right };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(showIssue, "show-validation-issue");
+        var dialogLayout = new Grid { RowSpacing = 12 };
+        dialogLayout.RowDefinitions.Add(new RowDefinition());
+        dialogLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        dialogLayout.Children.Add(scrollViewer);
+        Grid.SetRow(showIssue, 1);
+        dialogLayout.Children.Add(showIssue);
+        var dialog = Dialog(title, dialogLayout, "Save Segment");
         dialog.SecondaryButtonText = "Re-Analyze This Segment";
 
         string PreciseTimecode(double sec) => TimeSpan.FromSeconds(Math.Max(0, sec)).ToString(@"hh\:mm\:ss\.fff");
@@ -1611,7 +1623,7 @@ public sealed partial class MainWindow : Window
                 var allRows = p.Transcript.Concat(p.Cues);
                 var currentId = existing?.Id ?? "";
                 var overlaps = allRows
-                    .Where(other => other.Id != currentId && s < other.End && e > other.Start)
+                    .Where(other => (other.Id != currentId || other.IsDescription != isDescription) && s < other.End && e > other.Start)
                     .OrderBy(other => other.Start)
                     .ToList();
                 foreach (var other in overlaps)
@@ -1623,11 +1635,65 @@ public sealed partial class MainWindow : Window
             return errors;
         }
 
+        List<Segment> ValidationTargets() => p.Transcript.Concat(p.Cues)
+            .Where(other => (other.Id != existing?.Id || other.IsDescription != isDescription)
+                && double.IsFinite(startPicker.Value) && double.IsFinite(endPicker.Value)
+                && startPicker.Value >= 0 && endPicker.Value > startPicker.Value && endPicker.Value <= maxDuration
+                && startPicker.Value < other.End && endPicker.Value > other.Start)
+            .OrderBy(other => other.Start).ThenBy(ValidationKey).ToList();
+        string ValidationTitle()
+        {
+            var targets = ValidationTargets();
+            if (targets.Count > 0 && targets.All(s => s.IsDescription)) return "Show Description";
+            if (targets.Count > 0 && targets.All(s => !s.IsDescription)) return "Show Transcript";
+            return targets.Count > 1 ? "Show Validation Issues" : "Show Validation Issue";
+        }
+        bool showcaseRequested = false;
+        void ShowValidationIssue()
+        {
+            if (ValidateTiming(startPicker.Value, endPicker.Value).Count == 0 || showcaseRequested) return;
+            if (ValidationTargets().Count == 0)
+            {
+                validationBorder.StartBringIntoView();
+                validationBorder.BorderThickness = new Thickness(3);
+                var reset = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+                reset.Tick += (_, _) => { reset.Stop(); validationBorder.BorderThickness = new Thickness(1); };
+                reset.Start();
+            }
+            else { showcaseRequested = true; dialog.Hide(); }
+        }
+        showIssue.Click += (_, _) => ShowValidationIssue();
+        var issueMenu = new MenuFlyout();
+        var issueMenuItem = new MenuFlyoutItem { Tag = "show-validation-issue-menu" };
+        issueMenuItem.Click += (_, _) => ShowValidationIssue();
+        issueMenu.Items.Add(issueMenuItem);
+        issueMenu.Opening += (_, _) => { issueMenuItem.Text = ValidationTitle(); issueMenuItem.IsEnabled = showIssue.Visibility == Visibility.Visible; };
+        showIssue.ContextFlyout = issueMenu;
+        var showIssueShortcut = new KeyboardAccelerator { Key = VirtualKey.V, Modifiers = VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu };
+        showIssueShortcut.Invoked += (_, args) => { args.Handled = true; ShowValidationIssue(); };
+        dialog.KeyboardAccelerators.Add(showIssueShortcut);
+        var validationSound = new MediaPlayer { AudioCategory = MediaPlayerAudioCategory.SoundEffects };
+        var previousErrors = new HashSet<string>();
+        var lastValidationSound = DateTime.MinValue;
         void UpdateDialogState()
         {
             var s = startPicker.Value;
             var e = endPicker.Value;
             var errors = ValidateTiming(s, e);
+            var introduced = errors.Any(error => !previousErrors.Contains(error));
+            previousErrors = errors.ToHashSet();
+            if (introduced && Model.Settings.GetBool("soundWhenTimingInvalid", true) && (DateTime.UtcNow - lastValidationSound).TotalMilliseconds > 350)
+            {
+                var soundPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Sounds", "Buzzer1.wav");
+                if (File.Exists(soundPath))
+                {
+                    validationSound.Source = MediaSource.CreateFromUri(new Uri(soundPath));
+                    validationSound.Play();
+                    lastValidationSound = DateTime.UtcNow;
+                }
+            }
+            showIssue.Content = ValidationTitle();
+            showIssue.Visibility = errors.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             if (errors.Count > 0)
             {
                 errorTitle.Text = errors.Count == 1 ? "Timing error" : $"{errors.Count} timing errors";
@@ -1651,7 +1717,77 @@ public sealed partial class MainWindow : Window
         textBox.TextChanged += (_, _) => UpdateDialogState();
         UpdateDialogState();
 
-        var result = await ShowDialogAsync(dialog, 680, 720);
+        ContentDialogResult result;
+        try
+        {
+            do
+            {
+                showcaseRequested = false;
+                result = await ShowDialogAsync(dialog, 680, 720);
+                if (!showcaseRequested) break;
+                var originalSection = Section.SelectedIndex;
+                var originalEditMode = editMode;
+                var originalSelection = Segments.SelectedItems.Cast<Segment>().ToList();
+                validationShowcaseActive = true;
+                var returnRequested = new TaskCompletionSource<bool>();
+                var returnToEdit = new Button { Content = "Return to Edit", HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(16) };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(returnToEdit, "validation-return-to-edit");
+                returnToEdit.Click += (_, _) => returnRequested.TrySetResult(true);
+                var returnMenu = new MenuFlyout();
+                var returnItem = new MenuFlyoutItem { Text = "Return to Edit" };
+                returnItem.Click += (_, _) => returnRequested.TrySetResult(true);
+                returnMenu.Items.Add(returnItem);
+                returnToEdit.ContextFlyout = returnMenu;
+                var showcaseOverlay = new Border { Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), Child = returnToEdit };
+                var returnKey = new KeyboardAccelerator { Key = VirtualKey.Escape };
+                returnKey.Invoked += (_, args) => { args.Handled = true; returnRequested.TrySetResult(true); };
+                showcaseOverlay.KeyboardAccelerators.Add(returnKey);
+                Root.Children.Add(showcaseOverlay);
+                returnToEdit.Focus(FocusState.Programmatic);
+                try
+                {
+                    video.Pause();
+                    foreach (var issueTarget in ValidationTargets())
+                    {
+                        if (Model.Project?.Id != p.Id || returnRequested.Task.IsCompleted) break;
+                        validationHighlightKey = ValidationKey(issueTarget);
+                        Section.SelectedIndex = issueTarget.IsDescription ? 2 : 0;
+                        RenderSection();
+                        Segments.ScrollIntoView(issueTarget);
+                        Segments.UpdateLayout();
+                        if (Segments.ContainerFromItem(issueTarget) is ListViewItem item)
+                        {
+                            item.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(90, 255, 160, 0));
+                            item.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Orange);
+                            item.BorderThickness = new Thickness(3);
+                            var peer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.FromElement(item)
+                                ?? Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(item);
+                            peer?.RaiseNotificationEvent(Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationKind.Other,
+                                Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationProcessing.ImportantMostRecent,
+                                $"Timing validation issue: {issueTarget.Text}", "timing-validation");
+                            await Task.WhenAny(Task.Delay(2000), returnRequested.Task);
+                            item.ClearValue(Control.BackgroundProperty);
+                            item.ClearValue(Control.BorderBrushProperty);
+                            item.ClearValue(Control.BorderThicknessProperty);
+                        }
+                        else await Task.WhenAny(Task.Delay(2000), returnRequested.Task);
+                    }
+                }
+                finally
+                {
+                    validationHighlightKey = null;
+                    Section.SelectedIndex = originalSection;
+                    if (editMode != originalEditMode) EditMode_Click(this, new RoutedEventArgs());
+                    RenderSection();
+                    foreach (var item in originalSelection) if (Segments.Items.Contains(item) && !Segments.SelectedItems.Contains(item)) Segments.SelectedItems.Add(item);
+                    Root.Children.Remove(showcaseOverlay);
+                    validationShowcaseActive = false;
+                }
+            } while (Model.Project?.Id == p.Id);
+        }
+        finally { validationSound.Dispose(); }
+
         if (result == ContentDialogResult.None) return;
         if (ValidateTiming(startPicker.Value, endPicker.Value).Count > 0) return;
 

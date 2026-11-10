@@ -35,6 +35,7 @@ public sealed partial class MainWindow
                 await File.WriteAllTextAsync(report, "PASS: native Apply Filter, Clear Filter, Cancel, and all four sort commands in Transcript, Descriptions, and AD Transcript, in viewing and editing modes, without project changes.");
                 return;
             }
+            await VerifyTimingValidationNavigationForSmokeTestAsync();
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_DIALOGS_ONLY") == "1")
             {
                 await VerifyCompanionDialogsForSmokeTestAsync(report);
@@ -1923,6 +1924,66 @@ public sealed partial class MainWindow
         if (originalAudio.Icon == null || originalAudio.Text != "Import Original Audio…" || originalAudio.IsEnabled != youtube || CanRunDesktopCommand("import-original-audio") != youtube)
             throw new InvalidOperationException("Import Original Audio must share the YouTube-only command guard.");
     }
+    private async Task VerifyTimingValidationNavigationForSmokeTestAsync()
+    {
+        if (Model.Project is not { } project || project.Transcript.FirstOrDefault() is not { } transcript || project.Cues.FirstOrDefault() is not { } cue)
+            throw new InvalidOperationException("Timing validation smoke fixture needs transcript and description rows.");
+        var manifestPath = Path.Combine(project.Folder, "project.json");
+        var originalManifest = await File.ReadAllBytesAsync(manifestPath);
+        var originalSection = Section.SelectedIndex;
+        Section.SelectedIndex = 0;
+        var first = new TaskCompletionSource<ContentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var restored = new TaskCompletionSource<ContentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var count = 0;
+        void Capture(ContentDialog dialog, Window window)
+        {
+            if (dialog.Title?.ToString() != "Edit Transcript Segment") return;
+            if (++count == 1) first.TrySetResult(dialog); else restored.TrySetResult(dialog);
+        }
+        void Invoke(Button button)
+        {
+            var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(button);
+            ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+        }
+        Views.WindowedDialog.ReadyToShow += Capture;
+        ContentDialog? active = null;
+        Task? editing = null;
+        try
+        {
+            editing = EditSegment(transcript);
+            active = await first.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            var layout = (Grid)active.Content;
+            var controls = (StackPanel)((ScrollViewer)layout.Children[0]).Content;
+            var timing = controls.Children.OfType<Views.SegmentTimingEditor>().Single();
+            var show = layout.Children.OfType<Button>().Single();
+            var texts = controls.Children.OfType<TextBox>().ToArray();
+            timing.StartPicker.Value = Math.Max(0, cue.Start);
+            timing.EndPicker.Value = Math.Min(project.Duration, cue.End);
+            texts[0].Text = "Unsaved validation smoke draft";
+            texts[1].Text = "Preserve this Gemini hint";
+            var end = timing.EndPicker.Value;
+            if (show.Visibility != Visibility.Visible || active.IsPrimaryButtonEnabled || show.ContextFlyout is not MenuFlyout menu ||
+                menu.Items.OfType<MenuFlyoutItem>().Single().Tag?.ToString() != "show-validation-issue-menu" ||
+                Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(show) != "show-validation-issue")
+                throw new InvalidOperationException("Validation footer/menu guards are missing.");
+            Invoke(show);
+            active = await restored.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            if (texts[0].Text != "Unsaved validation smoke draft" || texts[1].Text != "Preserve this Gemini hint" ||
+                timing.EndPicker.Value != end || Section.SelectedIndex != 0 || validationShowcaseActive || validationHighlightKey != null)
+                throw new InvalidOperationException("Validation showcase lost draft state or did not return to Transcript.");
+            active.Hide();
+            await editing.WaitAsync(TimeSpan.FromSeconds(15));
+            if (!originalManifest.SequenceEqual(await File.ReadAllBytesAsync(manifestPath)))
+                throw new InvalidOperationException("Showing validation issues or Cancel changed the project.");
+        }
+        finally
+        {
+            active?.Hide();
+            Views.WindowedDialog.ReadyToShow -= Capture;
+            Section.SelectedIndex = originalSection;
+        }
+    }
+
     private async Task VerifyProjectMenuActionsForSmokeTestAsync()
     {
         var originalName = Model.Project!.Name;

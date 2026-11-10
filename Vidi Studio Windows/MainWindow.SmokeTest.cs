@@ -1865,14 +1865,14 @@ public sealed partial class MainWindow
     {
         var previousSection = Section.SelectedIndex; var previousEdit = editMode;
         try {
-            foreach (var tab in new[] { 0, 2 }) {
+            foreach (var tab in new[] { 0, 2, 4 }) {
                 Section.SelectedIndex = tab; editMode = false;
-                if (!CanRunDesktopCommand("add")) throw new InvalidOperationException("View mode must allow adding segments.");
+                if (CanRunDesktopCommand("add") != (tab is 0 or 2)) throw new InvalidOperationException("View mode must allow adding segments in Transcript and Descriptions.");
                 var row = tab == 0 ? Model.Project?.Transcript.FirstOrDefault() : Model.Project?.Cues.FirstOrDefault();
-                if (row != null && (!EditSegment(row).IsCompletedSuccessfully || editMode)) throw new InvalidOperationException("Opening a segment editor in view mode must return without a dialog or mode change.");
-                if (row != null && SegmentMenu(row).Items.OfType<MenuFlyoutItem>().First(item => item.Text == "Edit segment").IsEnabled) throw new InvalidOperationException("Context editing must require Edit mode.");
+                if (row != null && !SegmentMenu(row).Items.OfType<MenuFlyoutItem>().First(item => item.Text == "Edit segment").IsEnabled) throw new InvalidOperationException("Context editing must be available in view mode.");
+                if (editMode || CanRunDesktopCommand("segment-edit-selected")) throw new InvalidOperationException("Single-segment context editing must leave bulk Edit mode off.");
                 editMode = true;
-                if (!CanRunDesktopCommand("add")) throw new InvalidOperationException("Edit mode must enable adding a segment.");
+                if (CanRunDesktopCommand("add") != (tab is 0 or 2)) throw new InvalidOperationException("Edit mode must keep Add scoped to Transcript and Descriptions.");
             }
         } finally { editMode = previousEdit; Section.SelectedIndex = previousSection; RefreshLanguagePanel(); }
     }

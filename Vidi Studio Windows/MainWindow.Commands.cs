@@ -420,7 +420,7 @@ public sealed partial class MainWindow
                 var kind = segment.IsDescription ? "descriptions" : "transcript";
                 await ShowCopyToAsync(new[] { kind }, new Dictionary<string, string[]> { [kind] = new[] { segment.Id } });
             }, CanCopyLanguageResults);
-            Item("Edit segment", async (_, _) => await EditSegment(segment), requiresEdit: true);
+            Item("Edit segment", async (_, _) => await EditSegment(segment));
             Item("Play from segment", (_, _) =>
             {
                 if (segment.IsDescription) Narration.IsOn = true;

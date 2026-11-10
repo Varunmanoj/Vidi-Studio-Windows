@@ -1417,7 +1417,7 @@ public sealed partial class MainWindow : Window
     }
     private async Task EditSegment(Segment? existing, string? initialText = null)
     {
-        if ((existing != null && !editMode) || Model.Busy || Section.SelectedIndex is not (0 or 2 or 4) || Model.Project is not { } p) return;
+        if (Model.Busy || Section.SelectedIndex is not (0 or 2 or 4) || Model.Project is not { } p) return;
         var isDescription = existing?.IsDescription ?? (Section.SelectedIndex != 0);
         var maxDuration = p.Duration;
         var initialStart = existing?.Start ?? Position;

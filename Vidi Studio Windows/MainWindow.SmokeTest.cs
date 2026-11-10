@@ -1876,8 +1876,33 @@ public sealed partial class MainWindow
             }
         } finally { editMode = previousEdit; Section.SelectedIndex = previousSection; RefreshLanguagePanel(); }
     }
+    private void VerifyInspectorContentStatusForSmokeTest()
+    {
+        if (Model.Project is not { } project) throw new InvalidOperationException("Content status requires a project.");
+        var previousSection = Section.SelectedIndex;
+        try {
+            foreach (var tab in new[] { 0, 1, 2, 3, 4 }) {
+                Section.SelectedIndex = tab;
+                UpdateADAudioReadiness(project);
+                var view = tab == 3 ? project.OverviewProject : project;
+                var expected = view.ContentStatus(tab, project.SelectedLanguage)!;
+                if (tab == 3 && !OverviewVoice.Text.Contains("\n" + InspectorSpeechLanguage.Text + "\n")) throw new InvalidOperationException("AD Overview must use the same selected voice language and dialect as the inspector.");
+                var ad = tab is 2 or 3 or 4;
+                if (expected.Title.Contains("AD audio") != ad) throw new InvalidOperationException("Inspector status leaked another tab's content.");
+                if (Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(inspectorActiveAudioReadiness) != expected.AccessibleName)
+                    throw new InvalidOperationException("Active inspector status does not match the displayed tab and language.");
+                var titles = inspectorAudioReadiness.Children.OfType<StackPanel>().Select(row => row.Children.OfType<TextBlock>().Single().Text);
+                if (!titles.SequenceEqual(view.ContentStatuses(tab).Select(status => status.Title))) throw new InvalidOperationException("Per-language status rows do not match the tab.");
+            }
+            foreach (var rows in new[] { project.Transcript, project.Cues })
+                for (var i = 0; i < rows.Count; i++)
+                    if (rows[i].SegmentNumber != i + 1 || rows[i].SegmentNumberText != $"#{i + 1}" || !rows[i].SegmentNumberLabel.Contains($"segment {i + 1}"))
+                        throw new InvalidOperationException("Segment numbers must match the complete selected result before filtering or sorting.");
+        } finally { Section.SelectedIndex = previousSection; UpdateADAudioReadiness(project); }
+    }
     private void VerifyProjectMenuEntriesForSmokeTest()
     {
+        VerifyInspectorContentStatusForSmokeTest();
         VerifySegmentEditorAccessForSmokeTest();
         VerifyLanguageInspectorForSmokeTest();
         if (DesktopCommandTitle("language-results") != "Language and Saved Results…" || !CanRunDesktopCommand("language-results"))

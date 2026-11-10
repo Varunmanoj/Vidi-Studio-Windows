@@ -53,7 +53,7 @@ public sealed partial class ExportDialog
             if (generatedSelection != null) descriptionTracks[code] = generatedSelection.Id;
             var panel = new StackPanel { Spacing = 8 };
             panel.Children.Add(new TextBlock { Text = OutputLanguage.Label(code), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-            var audio = project.SavedResults.Where(r => r.State == "saved" && r.Language == code && r.HasContent && r.Kind is "descriptions" or "adAudio").ToList();
+            var audio = project.SavedResults.Where(r => r.State == "saved" && r.Language == code && (r.Kind == "adAudio" ? r.HasContent : r.HasExportableText) && r.Kind is "descriptions" or "adAudio").ToList();
             if (audio.Count > 0) {
                 var toggle = new CheckBox { Content = "AD Audio", IsChecked = audioTracks.ContainsKey(code) };
                 toggle.Checked += (_, _) => { audioTracks[code] = audio[0].Id; BuildPage(); };
@@ -61,9 +61,9 @@ public sealed partial class ExportDialog
                 panel.Children.Add(toggle);
                 if (audioTracks.ContainsKey(code)) AddTrackResult(panel, "Audio Saved Result", audio, audioTracks, code);
             }
-            var transcripts = project.SavedResults.Where(r => r.State == "saved" && r.Language == code && r.Kind == "transcript" && r.HasContent).ToList();
+            var transcripts = project.SavedResults.Where(r => r.State == "saved" && r.Language == code && r.Kind == "transcript" && r.HasExportableText).ToList();
             if (video && transcripts.Count > 0) {
-                var descriptions = project.SavedResults.Where(r => r.State == "saved" && r.Language == code && r.Kind == "descriptions" && r.HasContent).ToList();
+                var descriptions = project.SavedResults.Where(r => r.State == "saved" && r.Language == code && r.Kind == "descriptions" && r.HasExportableText).ToList();
                 foreach (var ad in new[] { false, true }) {
                     var selected = ad ? adCaptionTracks : transcriptCaptionTracks;
                     var toggle = new CheckBox { Content = ad ? "AD Transcript" : "Transcript", IsChecked = selected.Contains(code), IsEnabled = !ad || descriptions.Count > 0 };

@@ -21,26 +21,43 @@ public sealed partial class MainWindow
     }
     private static void SetADAudioIcon(FontIcon icon, Models.ADAudioReadiness status)
     {
-        icon.Glyph = status.Complete ? "\uE73E" : "\uE711";
-        icon.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(status.Complete ? Windows.UI.Color.FromArgb(255, 32, 148, 71) : Windows.UI.Color.FromArgb(255, 210, 38, 48));
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(icon, status.AccessibleName);
-        ToolTipService.SetToolTip(icon, status.AccessibleName);
+        SetInspectorStatusIcon(icon, status.Complete, status.AccessibleName);
+    }
+    private static void SetInspectorStatusIcon(FontIcon icon, bool complete, string accessibleName)
+    {
+        icon.Glyph = complete ? "\uE73E" : "\uE711";
+        icon.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(complete ? Windows.UI.Color.FromArgb(255, 32, 148, 71) : Windows.UI.Color.FromArgb(255, 210, 38, 48));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(icon, accessibleName);
+        ToolTipService.SetToolTip(icon, accessibleName);
     }
     private static FrameworkElement ADAudioReadinessRow(Models.ADAudioReadiness status)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         var icon = new FontIcon { FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
         SetADAudioIcon(icon, status);
-        row.Children.Add(icon); row.Children.Add(new TextBlock { Text = status.Title, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+        row.Children.Add(icon); row.Children.Add(new TextBlock { Text = status.Title, FontSize = 12, TextWrapping = TextWrapping.Wrap, Foreground = icon.Foreground });
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(row, status.AccessibleName);
         ToolTipService.SetToolTip(row, status.AccessibleName);
         return row;
     }
     private void UpdateADAudioReadiness(Models.StudioProject project)
     {
-        SetADAudioIcon(inspectorActiveAudioReadiness, project.AudioReadiness(project.SelectedLanguage));
+        var section = Section.SelectedIndex;
+        var view = section == 3 ? project.OverviewProject : project;
+        var active = view.ContentStatus(section, view.SelectedLanguage);
+        inspectorActiveAudioReadiness.Visibility = active == null ? Visibility.Collapsed : Visibility.Visible;
+        if (active != null) SetInspectorStatusIcon(inspectorActiveAudioReadiness, active.Complete, active.AccessibleName);
         inspectorAudioReadiness.Children.Clear();
-        foreach (var status in project.AudioReadinessByLanguage) inspectorAudioReadiness.Children.Add(ADAudioReadinessRow(status));
+        foreach (var status in view.ContentStatuses(section)) {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            var icon = new FontIcon { FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
+            SetInspectorStatusIcon(icon, status.Complete, status.AccessibleName);
+            row.Children.Add(icon);
+            row.Children.Add(new TextBlock { Text = status.Title, FontSize = 12, TextWrapping = TextWrapping.Wrap, Foreground = icon.Foreground });
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(row, status.AccessibleName);
+            ToolTipService.SetToolTip(row, status.AccessibleName);
+            inspectorAudioReadiness.Children.Add(row);
+        }
     }
 
     private string inspectorVoiceRequest = "";
@@ -68,6 +85,8 @@ public sealed partial class MainWindow
         InspectorSpeechEngine.Text = "Engine: " + engine;
         InspectorSpeechLanguage.Text = "Language: " + language;
         InspectorSpeechVoice.Text = "Voice: " + voice;
+        OverviewVoice.Text = $"Speech engine: {engine}\nLanguage: {language}\nSelected voice: {voice}";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(OverviewVoice, $"Engine: {engine}, Language: {language}, Voice: {voice}");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(InspectorSpeechInfo, $"Engine: {engine}, Language: {language}, Voice: {voice}");
     }
 

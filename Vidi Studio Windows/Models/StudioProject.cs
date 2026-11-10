@@ -74,6 +74,9 @@ public sealed class Segment : INotifyPropertyChanged
     [JsonIgnore] public bool IsDescription { get; set; }
     [JsonIgnore] public bool ShowKind { get; set; }
     [JsonIgnore] public int AdNumber { get; set; }
+    [JsonIgnore] public int SegmentNumber { get; set; }
+    [JsonIgnore] public string SegmentNumberText => $"#{SegmentNumber}";
+    [JsonIgnore] public string SegmentNumberLabel => $"{(IsDescription ? "Audio description" : "Transcript")} segment {SegmentNumber}";
     private bool isNarrating;
     [JsonIgnore]
     public bool IsNarrating
@@ -265,8 +268,8 @@ public sealed class StudioProject : INotifyPropertyChanged
             if (kind == "adAudio" && data.TryGetProperty("importedAudioDescription", out var audio)) result.ImportedAudioDescription = JsonSerializer.Deserialize<ImportedAudioDescription>(audio.GetRawText(), Json.Options);
         }
         var flagged = result.DescriptionTimingAudit?.Segments.Select(s => s.Id).ToHashSet() ?? new HashSet<string?>();
-        for (var i = 0; i < result.Cues.Count; i++) { result.Cues[i].IsTimingFlagged = flagged.Contains(result.Cues[i].Id); result.Cues[i].ProjectFolder = Folder; result.Cues[i].IsDescription = true; result.Cues[i].AdNumber = i + 1; }
-        foreach (var row in result.Transcript) { row.ProjectFolder = Folder; row.IsDescription = false; }
+        for (var i = 0; i < result.Cues.Count; i++) { result.Cues[i].IsTimingFlagged = flagged.Contains(result.Cues[i].Id); result.Cues[i].ProjectFolder = Folder; result.Cues[i].IsDescription = true; result.Cues[i].AdNumber = i + 1; result.Cues[i].SegmentNumber = i + 1; }
+        for (var i = 0; i < result.Transcript.Count; i++) { var row = result.Transcript[i]; row.ProjectFolder = Folder; row.IsDescription = false; row.SegmentNumber = i + 1; }
         return result;
     }
     public List<string> LanguagesForExport(string path)
@@ -394,12 +397,36 @@ public sealed class StudioProject : INotifyPropertyChanged
     }
     [JsonIgnore] public List<ADAudioReadiness> AudioReadinessByLanguage => SavedResults.Where(r => r.Kind == "descriptions" && r.HasContent).Select(r => r.Language)
         .Append(SelectedLanguage).Distinct().OrderBy(code => code == SelectedLanguage ? 0 : 1).ThenBy(code => code, StringComparer.Ordinal).Select(AudioReadiness).ToList();
+    public InspectorContentStatus? ContentStatus(int section, string code)
+    {
+        var kind = InspectorContentStatus.Kind(section);
+        if (kind == null) return null;
+        if (kind == "descriptions") {
+            var status = AudioReadiness(code);
+            return new(code, status.Complete, status.Title, status.AccessibleName);
+        }
+        var view = code == SelectedLanguage ? this : WithLanguageResults(code, includingDrafts: true);
+        var available = kind == "transcript" ? view.Transcript.Any(row => !string.IsNullOrWhiteSpace(row.Text)) : !string.IsNullOrWhiteSpace(view.Summary);
+        var name = kind == "transcript" ? "Transcript" : "Summary";
+        var count = kind == "transcript" ? view.Transcript.Count : System.Globalization.StringInfo.ParseCombiningCharacters(view.Summary).Length;
+        var unit = kind == "transcript" ? "segments" : "characters";
+        var state = available ? "available" : "unavailable";
+        return new(code, available, $"{OutputLanguage.Label(code)} · {count:N0} {name} {unit}", $"{OutputLanguage.Label(code)}: {count} {name.ToLowerInvariant()} {unit}. {name} {state} in the selected result.");
+    }
+    public List<InspectorContentStatus> ContentStatuses(int section)
+    {
+        var kind = InspectorContentStatus.Kind(section);
+        if (kind == null) return new();
+        return SavedResults.Where(r => r.Kind == kind && r.HasContent).Select(r => r.Language).Append(SelectedLanguage).Distinct()
+            .OrderBy(code => code == SelectedLanguage ? 0 : 1).ThenBy(code => code, StringComparer.Ordinal)
+            .Select(code => ContentStatus(section, code)!).ToList();
+    }
     public bool CanExportText(string content) => content switch
     {
-        "transcript" => Transcript.Count > 0,
+        "transcript" => Transcript.Any(row => !string.IsNullOrWhiteSpace(row.Text)),
         "summary" => !string.IsNullOrWhiteSpace(Summary),
-        "descriptions" => Cues.Count > 0,
-        "combined" => Transcript.Count > 0 && Cues.Count > 0,
+        "descriptions" => Cues.Any(row => !string.IsNullOrWhiteSpace(row.Text)),
+        "combined" => CanExportText("transcript") && CanExportText("descriptions"),
         _ => false
     };
     [JsonIgnore] public int VideoExportCount => Exports.Count(path =>
@@ -445,10 +472,10 @@ public sealed class StudioProject : INotifyPropertyChanged
         for (var i = 0; i < project.Cues.Count; i++)
         {
             var cue = project.Cues[i];
-            cue.IsDescription = true; cue.AdNumber = i + 1; cue.ProjectFolder = project.Folder;
+            cue.IsDescription = true; cue.AdNumber = i + 1; cue.SegmentNumber = i + 1; cue.ProjectFolder = project.Folder;
             cue.IsTimingFlagged = flagged.Contains(cue.Id);
         }
-        foreach (var item in project.Transcript) { item.IsDescription = false; item.ProjectFolder = project.Folder; }
+        for (var i = 0; i < project.Transcript.Count; i++) { var item = project.Transcript[i]; item.IsDescription = false; item.ProjectFolder = project.Folder; item.SegmentNumber = i + 1; }
         return project;
     }
 
@@ -882,4 +909,10 @@ public sealed record ADAudioReadiness(string Language, int Total, int Ready)
     public string AccessibleName => Total == 0 ? $"{OutputLanguage.Label(Language)}: No AD segments. AD narration is not ready."
         : Complete ? $"{OutputLanguage.Label(Language)}: All {Total} AD segments have usable text and audio."
         : $"{OutputLanguage.Label(Language)}: {Ready} of {Total} AD segments have usable text and audio. {Total - Ready} missing or unusable. Exports using generated AD narration require complete audio.";
+}
+
+
+public sealed record InspectorContentStatus(string Language, bool Complete, string Title, string AccessibleName)
+{
+    public static string? Kind(int section) => section switch { 0 => "transcript", 1 => "summary", 2 or 3 or 4 => "descriptions", _ => null };
 }

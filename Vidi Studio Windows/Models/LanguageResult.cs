@@ -33,6 +33,16 @@ public sealed class LanguageResult
             return Kind == "descriptions" && Payload.TryGetProperty("importedADTranscript", out var imported) && imported.ValueKind == JsonValueKind.Object && imported.TryGetProperty("segments", out var rows) && rows.ValueKind == JsonValueKind.Array && rows.GetArrayLength() > 0;
         }
     }
+    [System.Text.Json.Serialization.JsonIgnore] public bool HasExportableText {
+        get {
+            if (Payload.ValueKind != JsonValueKind.Object) return false;
+            if (Kind == "summary") return Payload.TryGetProperty("summary", out var summary) && summary.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(summary.GetString());
+            if (Kind is not ("transcript" or "descriptions")) return false;
+            bool HasText(JsonElement rows) => rows.ValueKind == JsonValueKind.Array && rows.EnumerateArray().Any(row => row.ValueKind == JsonValueKind.Object && row.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(text.GetString()));
+            if (Payload.TryGetProperty(Kind == "transcript" ? "transcript" : "cues", out var rows) && HasText(rows)) return true;
+            return Kind == "descriptions" && Payload.TryGetProperty("importedADTranscript", out var imported) && imported.ValueKind == JsonValueKind.Object && imported.TryGetProperty("segments", out var importedRows) && HasText(importedRows);
+        }
+    }
     public string Title => $"Version {Version} · {Origin} · {DateTimeOffset.FromUnixTimeSeconds((long)CreatedAt).ToLocalTime():g}";
     public string Preview {
         get {

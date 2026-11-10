@@ -24,7 +24,7 @@ public static class SavedResultOptions
         var allAudio = result.Kind == "descriptions" && view.HasCompleteExportNarration;
         var validTiming = !view.Cues.Any(c => view.Transcript.Any(t => c.Start < t.End && c.End > t.Start) ||
             view.Cues.Any(other => !ReferenceEquals(c, other) && c.Start < other.End && c.End > other.Start));
-        var ready = result.Kind == "descriptions" ? allAudio && validTiming : result.HasContent;
+        var ready = result.Kind == "descriptions" ? allAudio && validTiming : result.HasExportableText;
         if (result.Kind == "adAudio") {
             try { ready = view.ImportedAudioDescription is { } audio && new FileInfo(view.Resolve(audio.Path)) is { Exists: true, Length: > 0 }; }
             catch (Exception) { ready = false; }

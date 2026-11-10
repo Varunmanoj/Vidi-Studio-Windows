@@ -174,7 +174,7 @@ public sealed partial class ExportDialog : ContentDialog
             toggle.Unchecked += (_, _) => { exportLanguages.Remove(code); fields.Visibility = Visibility.Collapsed; UpdatePreview(); };
             page.Children.Add(toggle); page.Children.Add(fields);
             foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
-                var rows = project.SavedResults.Where(r => r.Kind == kind && r.Language == code && r.State == "saved").ToList();
+                var rows = project.SavedResults.Where(r => r.Kind == kind && r.Language == code && r.State == "saved" && (kind == "adAudio" ? r.HasContent : r.HasExportableText)).ToList();
                 if (rows.Count == 0) continue;
                 if (!resultSelections.TryGetValue(code, out var selected)) resultSelections[code] = selected = new();
                 var rid = selected.TryGetValue(kind, out var chosen) ? chosen : project.ActiveResultID(kind, code);

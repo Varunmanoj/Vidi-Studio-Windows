@@ -552,7 +552,6 @@ public sealed partial class MainWindow
         })
             AddInfo(OriginStatistics, origin.Item2, overview.Cues.Count(c => c.Origin == origin.Item1).ToString());
         OriginStatistics.Children.Add(new TextBlock { Text = "All six origin labels are counted. Manual choices persist; imported audio and legacy content are never guessed.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65 });
-        OverviewVoice.Text = "Speech engine: " + EngineTitle(Model.Settings.Get("ttsMode", "windows-core")) + "\nVoice: " + NarrationVoiceFormatting.VoiceDisplayName(Model.CurrentNarrationVoice());
         if (OverviewVoiceWarningBorder != null && OverviewVoiceWarningText != null)
         {
             if (voiceReport is { HasMixedSources: true } or { ImportedFiles.Count: > 0 })

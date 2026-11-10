@@ -1143,9 +1143,8 @@ public sealed partial class MainWindow
     {
         var originalSection = Section.SelectedIndex;
         var originalEditing = editMode;
-        var originalOrigins = segmentFilter.Origins.ToArray();
-        var originalAudio = segmentFilter.Audio;
-        var originalSort = segmentSort;
+        var originalFilters = segmentFilters.ToDictionary(pair => pair.Key, pair => pair.Value.Clone());
+        var originalSorts = segmentSorts.ToDictionary(pair => pair.Key, pair => pair.Value);
         var manifestPath = Path.Combine(Model.Project!.Folder, "project.json");
         var manifest = await File.ReadAllBytesAsync(manifestPath);
         try
@@ -1166,6 +1165,17 @@ public sealed partial class MainWindow
                         Segments.SelectionMode != (editing ? ListViewSelectionMode.Multiple : ListViewSelectionMode.None))
                         throw new InvalidOperationException("Sorting did not preserve rows and clear the editable selection: " + command);
                 }
+                segmentFilter.Origins.Add("origin-not-present-in-this-section");
+                SetSegmentSort("durationAscending");
+                if (ClearSegmentFilterButton.Visibility != Visibility.Visible || ClearSegmentSortButton.Visibility != Visibility.Visible ||
+                    !CanRunDesktopCommand("clear-segment-filter") || !CanRunDesktopCommand("clear-segment-sort"))
+                    throw new InvalidOperationException("Active filter/sort must expose toolbar and menu clear actions.");
+                await RunDesktopCommandAsync("clear-segment-sort");
+                if (ClearSegmentSortButton.Visibility != Visibility.Collapsed || !segmentFilter.IsActive)
+                    throw new InvalidOperationException("Clear Sort must retain the active filter.");
+                await RunDesktopCommandAsync("clear-segment-filter");
+                if (ClearSegmentFilterButton.Visibility != Visibility.Collapsed || segmentFilter.IsActive || Segments.Items.Count != allRows.Count)
+                    throw new InvalidOperationException("Clear Filter must restore rows and hide its toolbar action.");
                 foreach (var result in new[] { ContentDialogResult.Secondary, ContentDialogResult.Primary, ContentDialogResult.None })
                 {
                     segmentFilter.Clear();
@@ -1182,6 +1192,25 @@ public sealed partial class MainWindow
                         if (filterDialog is null) throw new InvalidOperationException("The segment filter dialog did not open.");
                         await dialogPresentationVerifier!.WaitUntilReadyAsync(filterDialog);
                         var panel = (StackPanel)((ScrollViewer)filterDialog.Content).Content;
+                        var controls = panel.Children.OfType<StackPanel>().Single(child => child.Children.OfType<ComboBox>().Any(combo => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(combo) == "segment-filter-type"));
+                        var mode = controls.Children.OfType<ComboBox>().Single();
+                        mode.SelectedIndex = 1;
+                        var details = controls.Children.OfType<StackPanel>().Single();
+                        var checks = (StackPanel)((ScrollViewer)details.Children[0]).Content;
+                        if (checks.Children.Count != allRows.Count) throw new InvalidOperationException("Filter checklist includes missing or wrong-result rows.");
+                        if (checks.Children.FirstOrDefault() is Border border && border.Child is CheckBox check)
+                        {
+                            check.IsChecked = true;
+                            if (border.Background == null) throw new InvalidOperationException("Checked filter row lacks system accent highlight.");
+                            check.IsChecked = false;
+                        }
+                        mode.SelectedIndex = 2;
+                        if (details.Children.OfType<StackPanel>().First().Children.OfType<StackPanel>().Single().Children.OfType<NumberBox>().Count() != 2)
+                            throw new InvalidOperationException("Segment ranges need separate Start and End controls.");
+                        mode.SelectedIndex = 0;
+                        var savedOnly = panel.Children.OfType<StackPanel>().First();
+                        if (savedOnly.Children.OfType<Button>().Any() || savedOnly.Children.OfType<ComboBox>().Any(combo => (combo.Header?.ToString() ?? "").Contains("Language")))
+                            throw new InvalidOperationException("Filter exposes copy or language controls.");
                         if (result == ContentDialogResult.Primary)
                         {
                             foreach (var box in panel.Children.OfType<CheckBox>()) box.IsChecked = false;
@@ -1216,10 +1245,10 @@ public sealed partial class MainWindow
         }
         finally
         {
-            segmentFilter.Clear();
-            foreach (var origin in originalOrigins) segmentFilter.Origins.Add(origin);
-            segmentFilter.Audio = originalAudio;
-            segmentSort = originalSort;
+            segmentFilters.Clear();
+            foreach (var pair in originalFilters) segmentFilters[pair.Key] = pair.Value;
+            segmentSorts.Clear();
+            foreach (var pair in originalSorts) segmentSorts[pair.Key] = pair.Value;
             Section.SelectedIndex = originalSection;
             if (editMode != originalEditing) EditMode_Click(this, new RoutedEventArgs());
             RenderSection();
@@ -1962,6 +1991,10 @@ public sealed partial class MainWindow
             texts[0].Text = "Unsaved validation smoke draft";
             texts[1].Text = "Preserve this Gemini hint";
             var end = timing.EndPicker.Value;
+            var errorRows = ((StackPanel)controls.Children.OfType<Border>().Single().Child)
+                .Children.OfType<StackPanel>().Last().Children.OfType<TextBlock>();
+            if (!errorRows.Any(row => row.Text.Contains($"audio description segment #{cue.SegmentNumber} ")))
+                throw new InvalidOperationException("Timing validation did not identify the description's visible segment number.");
             if (show.Visibility != Visibility.Visible || active.IsPrimaryButtonEnabled || show.ContextFlyout is not MenuFlyout menu ||
                 menu.Items.OfType<MenuFlyoutItem>().Single().Tag?.ToString() != "show-validation-issue-menu" ||
                 Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(show) != "show-validation-issue")

@@ -75,8 +75,8 @@ public sealed partial class MainWindow
                 LibraryLanguageMenu(), Command("projects-reset-filters"), Separator(),
                 ProjectLanguageMenu(), Separator(), SavedResultsMenu(), Separator(),
                 Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("toggle-thumbnail-images"),
-                Command("summary-zoom-in"), Command("summary-zoom-out"), Command("summary-zoom-reset"), Command("filter-segments"),
-                Submenu("Sort Segments", Command("sort-start"), Command("sort-duration-asc"), Command("sort-duration-desc"), Command("sort-origin")), Separator(),
+                Command("summary-zoom-in"), Command("summary-zoom-out"), Command("summary-zoom-reset"), Command("filter-segments"), Command("clear-segment-filter"),
+                Submenu("Sort Segments", Command("clear-segment-sort"), Command("sort-segments"), Separator(), Command("sort-start"), Command("sort-duration-asc"), Command("sort-duration-desc"), Command("sort-origin")), Separator(),
                 Command("show-projects"), Command("show-inspector"), Separator(),
                 Command("project-list"), Command("project-grid")),
             Menu("Playback",
@@ -354,8 +354,16 @@ public sealed partial class MainWindow
                 item.Visibility = desktopEditorVisible && Section.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
         UpdateSummaryZoomControls();
         var timedSection = desktopEditorVisible && Section.SelectedIndex is 0 or 2 or 4;
-        foreach (var item in desktopMenuItems.TryGetValue("filter-segments", out var filterItems) ? filterItems : new List<MenuFlyoutItem>())
+        foreach (var item in new[] { "filter-segments", "sort-segments" }.SelectMany(id => desktopMenuItems.TryGetValue(id, out var filterItems) ? filterItems : new List<MenuFlyoutItem>()))
             item.Visibility = timedSection ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var item in desktopMenuItems.TryGetValue("clear-segment-filter", out var clearFilterItems) ? clearFilterItems : new List<MenuFlyoutItem>())
+            item.Visibility = timedSection && segmentFilter.IsActive ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var item in desktopMenuItems.TryGetValue("clear-segment-sort", out var clearSortItems) ? clearSortItems : new List<MenuFlyoutItem>())
+            item.Visibility = timedSection && segmentSort != "start" ? Visibility.Visible : Visibility.Collapsed;
+        ClearSegmentFilterButton.Visibility = timedSection && segmentFilter.IsActive ? Visibility.Visible : Visibility.Collapsed;
+        ClearSegmentSortButton.Visibility = timedSection && segmentSort != "start" ? Visibility.Visible : Visibility.Collapsed;
+        ClearSegmentFilterButton.IsEnabled = CanRunDesktopCommand("clear-segment-filter");
+        ClearSegmentSortButton.IsEnabled = CanRunDesktopCommand("clear-segment-sort");
         foreach (var (name, group) in desktopMenuGroups)
         {
             group.IsEnabled = desktopEditorVisible && Model.Project != null && (Model.Idle || ((name is "Narration" or "Narration Audio") && Model.IsSynthesizingNarration));
@@ -530,7 +538,10 @@ public sealed partial class MainWindow
             case "follow": return timed && Segments.Items.Count > 0;
             case "caption-cycle": case "caption-ad-transcript": return timed && (p.HasTranscript || p.Cues.Count > 0);
             case "caption-transcript": return timed && p.HasTranscript;
+            case "clear-segment-filter": return Section.SelectedIndex is 0 or 2 or 4 && segmentFilter.IsActive;
+            case "clear-segment-sort": return Section.SelectedIndex is 0 or 2 or 4 && segmentSort != "start";
             case "filter-segments":
+            case "sort-segments":
             case "sort-start":
             case "sort-duration-asc":
             case "sort-duration-desc":
@@ -636,6 +647,8 @@ public sealed partial class MainWindow
             {
                 0 => "Filter Transcript…", 2 => "Filter Descriptions…", 4 => "Filter AD Transcript…", _ => "Filter Segments…"
             },
+            "clear-segment-filter" => "Clear Filter", "clear-segment-sort" => "Clear Sort",
+            "sort-segments" => "Sort Options…",
             "sort-start" => "Start Time",
             "sort-duration-asc" => "Duration — Shortest First",
             "sort-duration-desc" => "Duration — Longest First",
@@ -791,6 +804,9 @@ public sealed partial class MainWindow
             case "project-settings": if (ProjectManagementTarget() is { } settingsProject) await ShowSettingsSectionAsync(1, settingsProject); break;
             case "help": HelpSettings_Click(this, e); break;
             case "filter-segments": await ShowSegmentFilterAsync(); break;
+            case "sort-segments": await ShowSegmentSortAsync(); break;
+            case "clear-segment-filter": ClearSegmentFilter(); break;
+            case "clear-segment-sort": SetSegmentSort("start"); break;
             case "sort-start": SortStart_Click(this, e); break;
             case "sort-duration-asc": SortDurationAsc_Click(this, e); break;
             case "sort-duration-desc": SortDurationDesc_Click(this, e); break;

@@ -1629,7 +1629,7 @@ public sealed partial class MainWindow : Window
                 foreach (var other in overlaps)
                 {
                     var kind = other.IsDescription ? "audio description" : "transcript";
-                    errors.Add($"Overlaps {kind} {PreciseTimecode(other.Start)} to {PreciseTimecode(other.End)}: {SegmentExcerpt(other.Text)}");
+                    errors.Add($"Overlaps {kind} segment #{other.SegmentNumber} {PreciseTimecode(other.Start)} to {PreciseTimecode(other.End)}: {SegmentExcerpt(other.Text)}");
                 }
             }
             return errors;
@@ -1765,7 +1765,7 @@ public sealed partial class MainWindow : Window
                                 ?? Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(item);
                             peer?.RaiseNotificationEvent(Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationKind.Other,
                                 Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationProcessing.ImportantMostRecent,
-                                $"Timing validation issue: {issueTarget.Text}", "timing-validation");
+                                $"Timing validation issue: {issueTarget.SegmentNumberLabel}, {PreciseTimecode(issueTarget.Start)} to {PreciseTimecode(issueTarget.End)}: {issueTarget.Text}", "timing-validation");
                             await Task.WhenAny(Task.Delay(2000), returnRequested.Task);
                             item.ClearValue(Control.BackgroundProperty);
                             item.ClearValue(Control.BorderBrushProperty);

@@ -841,6 +841,10 @@
         {
           "id": "summary-instructions",
           "title": "The summary repeats instructions or discusses a blank transcript"
+        },
+        {
+          "id": "gemini-model-check",
+          "title": "Gemini key checks and empty model lists"
         }
       ]
     },

@@ -371,7 +371,13 @@ public sealed partial class MainWindow
     private void GallerySearch_Changed(object sender, TextChangedEventArgs e) { if (galleryReady) FilterGallery(); }
     private void FilterGallery()
     {
+        var selected = SelectedGalleryProject();
         Model.Reload(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", _ => "all" });
+        if (selected != null && Model.Projects.Contains(selected))
+        {
+            GalleryGrid.SelectedItem = selected;
+            GalleryList.SelectedItem = selected;
+        }
         if (GalleryGrid.SelectedItem is Models.StudioProject gridProject && !Model.Projects.Contains(gridProject)) GalleryGrid.SelectedItem = null;
         if (GalleryList.SelectedItem is Models.StudioProject listProject && !Model.Projects.Contains(listProject)) GalleryList.SelectedItem = null;
         UpdateDesktopMenuStates();

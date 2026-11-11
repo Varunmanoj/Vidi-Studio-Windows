@@ -472,8 +472,9 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Project language dropdowns and View menus must show only library content languages plus All Languages.");
             var galleryViewMenu = galleryMenus.Single(menu => menu.Title == "View");
             if (!galleryViewMenu.Items.OfType<MenuFlyoutSubItem>().Where(item => item.Visibility == Visibility.Visible)
-                .Select(item => item.Text).SequenceEqual(new[] { "Filter Projects by Source", "Filter Projects by Language" }))
-                throw new InvalidOperationException("All Projects View must show only library filter submenus.");
+                .Select(item => item.Text).SequenceEqual(new[] { "Filter Projects by Source", "Filter Projects by Language", "Sort Projects" }))
+                throw new InvalidOperationException("All Projects View must show library filter and sort submenus.");
+            await VerifyProjectSortingForSmokeTestAsync();
             if (desktopMenuItems["preview"].Any(item => item.Visibility == Visibility.Visible) ||
                 desktopMenuItems["show-inspector"].Any(item => item.Visibility == Visibility.Visible) ||
                 desktopMenuItems["language-results"].Any(item => item.Visibility == Visibility.Visible))
@@ -1035,9 +1036,25 @@ public sealed partial class MainWindow
         }
     }
 
+    private async Task VerifyProjectSortingForSmokeTestAsync()
+    {
+        foreach (var sort in new[] { "opened", "name", "duration", "type" })
+        {
+            await RunDesktopCommandAsync("projects-sort-" + sort);
+            if (Model.ProjectSort != sort || !Model.Projects.SequenceEqual(Models.ProjectListSort.Apply(Model.Projects, sort, Model.Settings.Data["projectLastOpened"] as System.Text.Json.Nodes.JsonObject)))
+                throw new InvalidOperationException("Project sort menu did not apply " + sort);
+            if (desktopMenuItems["projects-sort-" + sort].Any(item => item.Visibility != Visibility.Visible || !item.IsEnabled || item.Icon is not FontIcon { Glyph: "\uE73E" }))
+                throw new InvalidOperationException("Project sort choice is not checked and enabled: " + sort);
+        }
+        await RunDesktopCommandAsync("projects-sort-opened");
+        if (desktopMenuItems["website"].Any(item => item.Visibility != Visibility.Visible || !item.IsEnabled || item.Text != "VidiStudio Website"))
+            throw new InvalidOperationException("Help website command is missing.");
+    }
+
     private async Task VerifyGalleryAndSettingsLayoutForSmokeTestAsync(string report)
     {
         ShowGallery_Click(this, new RoutedEventArgs());
+        await VerifyProjectSortingForSmokeTestAsync();
         var originalTheme = Model.Settings.Get("theme", "system");
         var scale = Root.XamlRoot.RasterizationScale;
         if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter) presenter.Restore();
@@ -1060,6 +1077,11 @@ public sealed partial class MainWindow
         {
             await Task.Delay(150);
             if (settings.SelectedSectionForSmokeTest != 8) throw new InvalidOperationException("YouTube Accounts opened the wrong Settings page.");
+            var accountPanel = new Views.YouTubeAccountsPanel(settings);
+            if (accountPanel.Children.OfType<CheckBox>().Any()) throw new InvalidOperationException("YouTube Accounts must not require a disconnect checkbox.");
+            var disconnectConfirmation = Views.YouTubeAccountsPanel.CreateDisconnectConfirmation();
+            if (disconnectConfirmation.PrimaryButtonText != "Disconnect" || disconnectConfirmation.CloseButtonText != "Cancel" || disconnectConfirmation.DefaultButton != ContentDialogButton.Close)
+                throw new InvalidOperationException("Disconnect must use the same cancel-default confirmation as Mac.");
             settings.SelectSection(5);
             await RunDesktopCommandAsync("youtube-accounts");
             if (openSettings != settings || settings.SelectedSectionForSmokeTest != 8)

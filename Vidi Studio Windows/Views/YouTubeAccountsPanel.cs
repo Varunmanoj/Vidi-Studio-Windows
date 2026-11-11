@@ -17,7 +17,7 @@ public sealed class YouTubeAccountsPanel : StackPanel
     private readonly Button add = new() { Content = "Add Account" };
     private CancellationTokenSource? operation;
     public event EventHandler? AccountsChanged;
-    public YouTubeAccountsPanel()
+    public YouTubeAccountsPanel(Window owner)
     {
         Spacing = 12;
         Children.Add(new TextBlock { Text = "YouTube Accounts", FontSize = 20 }); Children.Add(accounts); Children.Add(profile);
@@ -25,7 +25,6 @@ public sealed class YouTubeAccountsPanel : StackPanel
         var cancel = new Button { Content = "Cancel Sign-in" }; Children.Add(cancel); cancel.Click += (_, _) => operation?.Cancel();
         var signOut = new Button { Content = "Sign Out" }; Children.Add(signOut);
         var disconnect = new Button { Content = "Disconnect Google Account…" }; Children.Add(disconnect);
-        var confirm = new CheckBox { Content = "Disconnect all VidiStudio connections for this Google account, including other computers" }; Children.Add(confirm);
         Children.Add(status);
         accounts.SelectionChanged += (_, _) => { if (accounts.SelectedItem is YouTubeAccount account) { YouTubeService.Shared.SelectedId = account.Id; ShowProfile(account); AccountsChanged?.Invoke(this, EventArgs.Empty); } };
         add.Click += async (_, _) => {
@@ -37,13 +36,26 @@ public sealed class YouTubeAccountsPanel : StackPanel
         };
         signOut.Click += (_, _) => { if (accounts.SelectedItem is YouTubeAccount account) { YouTubeService.Shared.SignOut(account.Id); Refresh(); } };
         disconnect.Click += async (_, _) => {
-            if (confirm.IsChecked != true) { status.Text = "Confirm disconnecting this Google account. Other VidiStudio connections may need sign-in again."; return; }
             if (accounts.SelectedItem is not YouTubeAccount account) return;
-            try { await YouTubeService.Shared.DisconnectAsync(account, CancellationToken.None); confirm.IsChecked = false; Refresh(); }
+            var confirmation = CreateDisconnectConfirmation();
+            if (await WindowedDialog.ShowAsync(confirmation, owner, width: 560, height: 300) != ContentDialogResult.Primary) return;
+            try { await YouTubeService.Shared.DisconnectAsync(account, CancellationToken.None); Refresh(); }
             catch (Exception ex) { status.Text = ex.Message; }
         };
         Unloaded += (_, _) => operation?.Cancel(); Refresh();
     }
+    internal static ContentDialog CreateDisconnectConfirmation() => new()
+    {
+        Title = "Disconnect this Google account?",
+        Content = new TextBlock
+        {
+            Text = "Disconnect this account across VidiStudio connections, including other computers? Local projects stay on this computer.",
+            TextWrapping = TextWrapping.Wrap
+        },
+        PrimaryButtonText = "Disconnect",
+        CloseButtonText = "Cancel",
+        DefaultButton = ContentDialogButton.Close
+    };
     public void Refresh()
     {
         accounts.ItemsSource = YouTubeService.Shared.Accounts.ToArray(); accounts.SelectedItem = YouTubeService.Shared.Selected;

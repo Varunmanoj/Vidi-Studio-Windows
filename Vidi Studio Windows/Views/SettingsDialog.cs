@@ -350,7 +350,7 @@ public sealed partial class SettingsDialog : Window
                     break;
                 case 6: BuildHelp(panel); break;
                 case 7: BuildAbout(panel); break;
-                case 8: panel.Children.Add(new YouTubeAccountsPanel()); break;
+                case 8: panel.Children.Add(new YouTubeAccountsPanel(this)); break;
             }
         };
         SelectSection(requestedSection);

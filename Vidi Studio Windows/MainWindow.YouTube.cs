@@ -77,7 +77,7 @@ public sealed partial class MainWindow
         if (youtubeBrowserRun != null) { youtubeBrowserRun("youtube-browser"); return; }
         var service = YouTubeService.Shared;
         var panel = new StackPanel { Spacing = 12, MinWidth = 680 };
-        var accounts = new YouTubeAccountsPanel(); var accountPanel = new Expander { Header = "YouTube Accounts", Content = accounts, HorizontalAlignment = HorizontalAlignment.Stretch }; panel.Children.Add(accountPanel);
+        var accounts = new YouTubeAccountsPanel(this); var accountPanel = new Expander { Header = "YouTube Accounts", Content = accounts, HorizontalAlignment = HorizontalAlignment.Stretch }; panel.Children.Add(accountPanel);
         var account = new ComboBox { Header = "Google account and YouTube channel", HorizontalAlignment = HorizontalAlignment.Stretch }; panel.Children.Add(account);
         var playlist = new ComboBox { Header = "Playlist", HorizontalAlignment = HorizontalAlignment.Stretch }; panel.Children.Add(playlist);
         var playlistInfo = new TextBlock { TextWrapping = TextWrapping.Wrap }; panel.Children.Add(playlistInfo);

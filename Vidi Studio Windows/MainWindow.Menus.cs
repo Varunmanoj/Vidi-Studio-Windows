@@ -76,7 +76,9 @@ public sealed partial class MainWindow
                 Command("segment-one-edit"), Command("segment-one-play"), Command("segment-one-skip"), Command("segment-one-synthesize"), Command("segment-one-rewrite"), Command("segment-one-import-audio"), Command("segment-one-delete-audio"), Command("segment-one-reanalyze"), Command("segment-delete-selected")),
             Menu("View",
                 Submenu("Filter Projects by Source", Command("projects-source-all"), Command("projects-source-local"), Command("projects-source-youtube")),
-                LibraryLanguageMenu(), Command("projects-reset-filters"), Separator(),
+                LibraryLanguageMenu(),
+                Submenu("Sort Projects", Command("projects-sort-opened"), Command("projects-sort-name"), Command("projects-sort-duration"), Command("projects-sort-type")),
+                Command("projects-reset-filters"), Separator(),
                 ProjectLanguageMenu(), Separator(), SavedResultsMenu(), Separator(),
                 Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("toggle-thumbnail-images"),
                 Command("summary-zoom-in"), Command("summary-zoom-out"), Command("summary-zoom-reset"), Command("filter-segments"), Command("clear-segment-filter"),
@@ -109,7 +111,7 @@ public sealed partial class MainWindow
                 Command("show-in-finder"), Command("open-configuration"),
                 Separator(), Command("rename-project"), Command("trash-project")),
             Menu("YouTube", Command("youtube-browser"), Command("youtube-accounts"), Separator(), Command("youtube-list"), Command("youtube-table"), Separator(), Command("youtube-open-editor"), Command("youtube-open-browser"), Separator(), Command("youtube-refresh-list"), Command("youtube-load-videos"), Command("youtube-load-playlists")),
-            Menu("Help", Command("help"), Command("about"))
+            Menu("Help", Command("help"), Command("website"), Command("about"))
         };
         galleryMenus.AddRange(Layout());
         editorMenus.AddRange(Layout());
@@ -383,9 +385,9 @@ public sealed partial class MainWindow
         {
             group.IsEnabled = desktopEditorVisible && Model.Project != null && (Model.Idle || ((name is "Narration" or "Narration Audio") && Model.IsSynthesizingNarration));
             group.Visibility = desktopEditorVisible
-                ? (name == "Filter Projects by Source" ? Visibility.Collapsed : Visibility.Visible)
-                : (name is "Filter Projects by Source" or "Analysis" ? Visibility.Visible : Visibility.Collapsed);
-            if (name == "Filter Projects by Source") group.IsEnabled = !desktopEditorVisible;
+                ? (name is "Filter Projects by Source" or "Sort Projects" ? Visibility.Collapsed : Visibility.Visible)
+                : (name is "Filter Projects by Source" or "Sort Projects" or "Analysis" ? Visibility.Visible : Visibility.Collapsed);
+            if (name is "Filter Projects by Source" or "Sort Projects") group.IsEnabled = !desktopEditorVisible;
             if (name == "Analysis" && !desktopEditorVisible) group.IsEnabled = SelectedGalleryProject() != null && Model.Idle;
             if (name == "Summary Reading") {
                 group.Visibility = desktopEditorVisible && Section.SelectedIndex == 1 && !summaryEditMode ? Visibility.Visible : Visibility.Collapsed;
@@ -444,7 +446,7 @@ public sealed partial class MainWindow
         if (desktopEditorVisible) return !id.StartsWith("projects-", StringComparison.Ordinal) && id != "open-selected-project" && EditorCommandVisible(id);
         return id is "new-project" or "open-project" or "youtube-browser" or "youtube-accounts" or "youtube-open-browser"
             or "export" or "delete-project" or "delete-content" or "remove-from-list" or "settings" or "project-settings"
-            or "close-window" or "help" or "about" or "project-list" or "project-grid" or "open-selected-project" or "open-gallery-window" or "generate-ad-cues"
+            or "close-window" or "help" or "website" or "about" or "project-list" or "project-grid" or "open-selected-project" or "open-gallery-window" or "generate-ad-cues"
             or "analyze" or "prepare-video" or "transcribe" or "generate-summary" or "show-in-finder" or "open-configuration"
             or "rename-project" or "trash-project" || id.StartsWith("projects-", StringComparison.Ordinal);
     }
@@ -626,6 +628,8 @@ public sealed partial class MainWindow
         if (!YouTubeMenusVisible && id.StartsWith("youtube-", StringComparison.Ordinal)) return false;
         if (id == "youtube-open-browser") return youtubeBrowserCanRun != null ? youtubeBrowserCanRun(id) : ProjectManagementTarget() is { } youtubeProject && YouTubeService.ProjectWatchURL(youtubeProject.YoutubeURL) != null;
         if (id.StartsWith("projects-source-", StringComparison.Ordinal)) return !desktopEditorVisible;
+        if (id.StartsWith("projects-sort-", StringComparison.Ordinal)) return !desktopEditorVisible;
+        if (id == "website") return true;
         if (id == "projects-reset-filters") return !desktopEditorVisible && (!string.IsNullOrEmpty(GallerySearch.Text) || GalleryFilter.SelectedIndex != 0 || Model.LanguageFilter != "all");
         if (!desktopEditorVisible && id is "project-list" or "project-grid") return true;
         if (!Model.Idle) return false;
@@ -744,11 +748,13 @@ public sealed partial class MainWindow
             "open-selected-project" => "Open Selected Project", "open-gallery-window" => "Open in New Window",
             "projects-source-all" => "All Projects", "projects-source-local" => "Local Video Projects", "projects-source-youtube" => "YouTube Projects",
             "projects-reset-filters" => "Reset Project Filters",
+            "projects-sort-opened" => "Last Opened", "projects-sort-name" => "Name (A–Z)",
+            "projects-sort-duration" => "Duration (Longest First)", "projects-sort-type" => "Type (Local, then YouTube)",
             "delete-project" => "Delete Project…", "delete-content" => "Choose What to Delete…",
             "remove-from-list" => "Remove from List",
             "new-project" => "New Project…", "open-project" => "Open Project Folder…", "export" => "Export…",
             "open-editor-window" => "Open Editor in New Window", "settings" => "Settings…", "close-window" => "Close Window",
-            "help" => "VidiStudio Help", "about" => "About VidiStudio",
+            "help" => "VidiStudio Help", "website" => "VidiStudio Website", "about" => "About VidiStudio",
             "preview" => PreviewPanel.Visibility == Visibility.Visible ? "Hide Preview" : "Show Preview",
             "toggle-timeline" => TimelinePanel.Visibility == Visibility.Visible ? "Hide Timeline" : "Show Timeline",
             "toggle-thumbnail-images" => ThumbnailImagesRow.Visibility == Visibility.Visible ? "Hide Thumbnail Images" : "Show Thumbnail Images",
@@ -836,6 +842,8 @@ public sealed partial class MainWindow
             "projects-source-all" => GalleryFilter.SelectedIndex == 0,
             "projects-source-local" => GalleryFilter.SelectedIndex == 1,
             "projects-source-youtube" => GalleryFilter.SelectedIndex == 2,
+            "projects-sort-opened" => Model.ProjectSort == "opened", "projects-sort-name" => Model.ProjectSort == "name",
+            "projects-sort-duration" => Model.ProjectSort == "duration", "projects-sort-type" => Model.ProjectSort == "type",
             "project-list" => desktopEditorVisible ? ProjectList.Visibility == Visibility.Visible : GalleryTable.Visibility == Visibility.Visible,
             "project-grid" => desktopEditorVisible ? ProjectGrid.Visibility == Visibility.Visible : GalleryGrid.Visibility == Visibility.Visible,
             "caption-ad-transcript" => Model.Settings.Get("captionDisplayMode") == "combined",
@@ -846,6 +854,8 @@ public sealed partial class MainWindow
         };
         return checkedItem ? new FontIcon { Glyph = "\uE73E" } : Views.MenuIcons.Create(id switch
         {
+            "website" => "Open in YouTube",
+            "Sort Projects" or "projects-sort-opened" or "projects-sort-name" or "projects-sort-duration" or "projects-sort-type" => "Sort segments",
             "stop" or "summary-stop" => "Stop summary",
             "preview" or "fullscreen" => "Show / hide preview", "toggle-timeline" => "Show / hide timeline",
             "toggle-thumbnail-images" => "Show / hide thumbnail images",
@@ -932,6 +942,10 @@ public sealed partial class MainWindow
             case "projects-source-all": GalleryFilter.SelectedIndex = 0; break;
             case "projects-source-local": GalleryFilter.SelectedIndex = 1; break;
             case "projects-source-youtube": GalleryFilter.SelectedIndex = 2; break;
+            case "projects-sort-opened": Model.ProjectSort = "opened"; FilterGallery(); break;
+            case "projects-sort-name": Model.ProjectSort = "name"; FilterGallery(); break;
+            case "projects-sort-duration": Model.ProjectSort = "duration"; FilterGallery(); break;
+            case "projects-sort-type": Model.ProjectSort = "type"; FilterGallery(); break;
             case "projects-reset-filters":
                 GallerySearch.Text = ""; GalleryFilter.SelectedIndex = 0;
                 GalleryLanguageFilter.SelectedIndex = 0; FilterGallery(); break;
@@ -966,6 +980,7 @@ public sealed partial class MainWindow
             case "settings": Settings_Click(this, e); break;
             case "project-settings": if (ProjectManagementTarget() is { } settingsProject) await ShowSettingsSectionAsync(1, settingsProject); break;
             case "help": HelpSettings_Click(this, e); break;
+            case "website": await Launcher.LaunchUriAsync(new Uri("https://vidistudio.varunmanojkumar.in/")); break;
             case "filter-segments": await ShowSegmentFilterAsync(); break;
             case "sort-segments": await ShowSegmentSortAsync(); break;
             case "clear-segment-filter": ClearSegmentFilter(); break;

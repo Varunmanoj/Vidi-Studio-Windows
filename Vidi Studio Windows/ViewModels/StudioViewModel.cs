@@ -173,6 +173,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     }
 
     public string LanguageFilter { get; set; } = "all";
+    public string ProjectSort { get; set; } = "opened";
     public IReadOnlyList<OutputLanguage> ProjectFilterLanguages { get; private set; } = Array.Empty<OutputLanguage>();
     public void Reload(string search = "", string source = "all")
     {
@@ -236,7 +237,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
                 p.Name.Contains(search, StringComparison.CurrentCultureIgnoreCase)
                 && (source == "all" || p.IsYouTube == (source == "youtube")) && p.MatchesLanguage(LanguageFilter))
             .ToList();
-        ApplyProjectList(desired);
+        ApplyProjectList(ProjectListSort.Apply(desired, ProjectSort, Settings.Data["projectLastOpened"] as System.Text.Json.Nodes.JsonObject).ToList());
         appliedSearch = search;
         appliedSource = source;
         if (languageOptionsChanged) Changed(nameof(ProjectFilterLanguages));
@@ -340,6 +341,13 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         if (externalFolders.Add(folder)) SaveExternalFolders();
         var loaded = StudioProject.TryLoad(folder);
         Project = loaded ?? StudioProject.DamagedPlaceholder(folder);
+        if (loaded != null)
+        {
+            var history = Settings.Data["projectLastOpened"] as System.Text.Json.Nodes.JsonObject ?? new();
+            history[folder] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
+            if (history.Parent == null) Settings.Data["projectLastOpened"] = history;
+            Settings.Save();
+        }
         Project.Integrity = ProjectIntegrityAuditor.Audit(Project.ToIntegrityManifest());
         if (Idle) Status = Project.Integrity.IsHealthy ? "Ready" : Project.Integrity.Headline;
         Reload();

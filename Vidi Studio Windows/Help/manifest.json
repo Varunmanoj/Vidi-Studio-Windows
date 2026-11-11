@@ -143,6 +143,10 @@
         {
           "id": "file-deletion-actions",
           "title": "Delete from the File menu and follow progress"
+        },
+        {
+          "id": "matching-context-menus",
+          "title": "Matching desktop context menus"
         }
       ]
     },

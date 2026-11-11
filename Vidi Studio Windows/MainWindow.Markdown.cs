@@ -137,6 +137,7 @@ public sealed partial class MainWindow
     {
         block.SelectionChanged += (_, _) => UpdateDesktopMenuStates();
         summaryLines.Add((block, plain));
+        AttachSummaryTextMenu(block, plain);
     }
 
     private static bool IsTableStart(string[] lines, int index)

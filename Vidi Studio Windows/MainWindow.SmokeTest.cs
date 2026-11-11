@@ -33,6 +33,14 @@ public sealed partial class MainWindow
                 await File.WriteAllTextAsync(report, "PASS: aligned gallery language/source/layout controls and nonoverlapping search/actions at wide, compact and narrow widths in light/dark; Settings sidebar order, stable page navigation, headings and bounded scrolling.");
                 return;
             }
+            if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY") == "1")
+            {
+                ShowEditor();
+                await Task.Delay(300);
+                await VerifyMatchingContextMenusForSmokeTestAsync(report);
+                await File.WriteAllTextAsync(report, "PASS: Mac/Windows context hierarchy, order, separators, dynamic titles, offline export, content deletion, developer/source filtering, clicked target guards, editor sidebar, row menus, summary reading menu and background scope.");
+                return;
+            }
             ShowEditor();
             VerifyProjectConfigurationDeveloperModeForSmokeTest();
             await VerifySegmentFiltersForSmokeTestAsync();
@@ -1571,6 +1579,85 @@ public sealed partial class MainWindow
         };
         return container;
     }
+    private async Task VerifyMatchingContextMenusForSmokeTestAsync(string report)
+    {
+        var project = Model.Project!;
+        var source = project.SourceType; var url = project.YoutubeURL;
+        var developer = Model.Settings.Data["developerMode"]?.DeepClone();
+        string[] Entries(System.Collections.Generic.IEnumerable<MenuFlyoutItemBase> entries) => entries.Select(item => item switch {
+            MenuFlyoutSeparator => "-", MenuFlyoutSubItem group => group.Text + "[" + string.Join(",", Entries(group.Items)) + "]",
+            MenuFlyoutItem action => action.Text, _ => "?" }).ToArray();
+        try {
+            foreach (var youtube in new[] { false, true }) foreach (var dev in new[] { false, true }) {
+                project.SourceType = youtube ? "youtube" : "local";
+                project.YoutubeURL = youtube ? "https://www.youtube.com/watch?v=dQw4w9WgXcQ" : null;
+                Model.Settings.Data["developerMode"] = dev;
+                desktopEditorVisible = false;
+                var menu = ProjectMenu(project);
+                var expected = new System.Collections.Generic.List<string> { "Open in New Window", "-", "Rename" };
+                if (youtube) expected.Add("Open in YouTube");
+                expected.AddRange(new[] { "Open Project Settings…", "Open in Project Folder" });
+                if (dev) expected.Add("Open Project Configuration");
+                expected.Add("Analysis[" + string.Join(",", new[] { DesktopCommandTitle("prepare-video", project), "-", "Analyze Video…", "-", DesktopCommandTitle("transcribe", project), DesktopCommandTitle("generate-summary", project), DesktopCommandTitle("generate-ad-cues", project) }) + "]");
+                expected.AddRange(new[] { "Export…", "Remove from List", "-", "Choose Content to Delete…", "Delete Project…" });
+                if (!Entries(menu.Items).SequenceEqual(expected)) throw new InvalidOperationException("Gallery context hierarchy differs: " + string.Join(" | ", Entries(menu.Items)));
+                if (!CanRunProjectContextCommand("export", project, false)) throw new InvalidOperationException("Offline export must not require Gemini access.");
+                foreach (var item in menu.Items.OfType<MenuFlyoutItem>()) if (item.Icon == null || item.Tag == null) throw new InvalidOperationException("Context action missing icon or ID.");
+                foreach (var (id, glyph) in new[] { ("delete-project", "\uE74D"), ("delete-content", "\uE75C") }) {
+                    var item = menu.Items.OfType<MenuFlyoutItem>().Single(item => item.Tag as string == id);
+                    if (item.Icon is not FontIcon icon || icon.Glyph != glyph) throw new InvalidOperationException("Incorrect project context delete glyph: " + id);
+                }
+                foreach (var (id, glyph) in new[] { ("delete-project", "\uE74D"), ("trash-project", "\uE74D"), ("delete-content", "\uE75C"),
+                    ("delete-transcript", "\uE74D"), ("delete-summary", "\uE74D"), ("delete-descriptions", "\uE74D"), ("delete-current", "\uE74D"),
+                    ("segment-delete-selected", "\uE74D"), ("segment-one-delete", "\uE74D"), ("delete-narration", "\uE74F"), ("segment-one-delete-audio", "\uE74F") })
+                    if (DesktopCommandIcon(id) is not FontIcon icon || icon.Glyph != glyph) throw new InvalidOperationException("Incorrect shared delete command glyph: " + id);
+
+                desktopEditorVisible = true;
+                if (CanRunProjectContextCommand("export", project, false)) throw new InvalidOperationException("Stale gallery popup may not run in an editor.");
+                var sidebar = ProjectMenu(project);
+                var sidebarExpected = new System.Collections.Generic.List<string> { "Open in This Window" };
+                if (youtube) sidebarExpected.Add("Open in YouTube");
+                sidebarExpected.AddRange(new[] { "Open in New Window", "Open Project Settings…", "-", "Remove from List", "Delete Project…" });
+                if (!Entries(sidebar.Items).SequenceEqual(sidebarExpected)) throw new InvalidOperationException("Editor project list context differs.");
+                if (sidebar.Items.OfType<MenuFlyoutItem>().Single(item => item.Tag as string == "trash-project").Icon is not FontIcon sidebarDelete || sidebarDelete.Glyph != "\uE74D")
+                    throw new InvalidOperationException("Editor project-list delete icon must be trash.");
+                foreach (var item in desktopMenuItems.Where(pair => pair.Key is "delete-project" or "delete-content" or "delete-current" or "delete-descriptions" or "delete-narration" or "segment-delete-selected" or "trash-project").SelectMany(pair => pair.Value)) {
+                    var expectedGlyph = item.Tag as string == "delete-content" ? "\uE75C" : item.Tag as string == "delete-narration" ? "\uE74F" : "\uE74D";
+                    if (item.Icon is not FontIcon icon || icon.Glyph != expectedGlyph) throw new InvalidOperationException("Editor menu deletion icon has fallen back: " + item.Tag);
+                }
+
+            }
+            project.SourceType = source; project.YoutubeURL = url;
+            Section.SelectedIndex = 1; summaryEditMode = false;
+            var reading = SummaryReadingMenu();
+            if (!Entries(reading.Items).SequenceEqual(new[] { "Read from Start", "Read from Selection", "Read Selected Text Only", "-", "Edit Summary…", "-", "Stop" })) throw new InvalidOperationException("Summary reading menu differs.");
+            foreach (var section in new[] { 0, 2, 4 }) {
+                Section.SelectedIndex = section;
+                foreach (var row in section == 0 ? project.Transcript : project.Cues) {
+                    var menu = SegmentMenu(row);
+                    if (menu.Items.OfType<MenuFlyoutItem>().Any(item => item.Icon == null)) throw new InvalidOperationException("Row menu lacks icon.");
+                    foreach (var item in menu.Items.OfType<MenuFlyoutItem>().Where(item => item.Tag as string is "segment-one-delete" or "segment-one-delete-audio")) {
+                        var expectedGlyph = item.Tag as string == "segment-one-delete-audio" ? "\uE74F" : "\uE74D";
+                        if (item.Icon is not FontIcon icon || icon.Glyph != expectedGlyph) throw new InvalidOperationException("Editor row delete icon is incorrect: " + item.Tag);
+                    }
+
+                    var more = SegmentMenu(row, moreActionsOnly: true).Items.OfType<MenuFlyoutItem>().Select(item => item.Tag as string);
+                    var expectedMore = row.IsDescription ? new[] { "segment-one-rewrite", "segment-one-synthesize", "segment-one-import-audio", "segment-one-delete-audio", "segment-one-delete" } : new[] { "segment-one-edit", "segment-one-reanalyze", "segment-one-delete" };
+                    if (!more.SequenceEqual(expectedMore.Where(id => RowCommandVisible(id, row.IsDescription)))) throw new InvalidOperationException("More Actions differs from Mac.");
+                }
+            }
+            Section.SelectedIndex = 3;
+            var background = (MenuFlyout)EditorWorkspace.ContextFlyout;
+            background.ShowAt(EditorWorkspace); await Task.Delay(150);
+            if (background.Items.OfType<MenuFlyoutItem>().Any(item => item.Tag as string == "copy-to" && item.Visibility == Visibility.Visible)) throw new InvalidOperationException("Overview context must omit Copy and Translate.");
+            background.Hide();
+            Section.SelectedIndex = 0;
+            var popup = ProjectMenu(project); popup.ShowAt(EditorWorkspace); await Task.Delay(200);
+            await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "matching-context-menu-editor.png")); popup.Hide();
+        }
+        finally { project.SourceType = source; project.YoutubeURL = url; Model.Settings.Data["developerMode"] = developer; }
+    }
+
     private void VerifyProjectConfigurationDeveloperModeForSmokeTest()
     {
         var saved = Model.Settings.Data["developerMode"]?.DeepClone();
@@ -1584,7 +1671,7 @@ public sealed partial class MainWindow
                 if (desktopMenuItems["open-configuration"].Any(item => item.Visibility != expected) ||
                     InspectorOpenConfigurationButton.Visibility != expected ||
                     CanRunDesktopCommand("open-configuration") != enabled ||
-                    ProjectMenu(Model.Project!).Items.OfType<MenuFlyoutItem>().Any(item => (string?)item.Tag == "open-configuration") != enabled)
+                    ProjectMenu(Model.Project!).Items.OfType<MenuFlyoutItem>().Any(item => (string?)item.Tag == "open-configuration"))
                     throw new InvalidOperationException("Project configuration must follow Developer mode in menus, context actions, inspector, and command guards.");
             }
         }

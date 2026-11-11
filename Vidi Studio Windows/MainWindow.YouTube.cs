@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -222,6 +223,24 @@ public sealed partial class MainWindow
             item.Click += (_, _) => { if (youtubeBrowserCanRun?.Invoke(id) == true) youtubeBrowserRun?.Invoke(id); };
             youtubeMenu.Items.Add(item);
         }
+        list.ContextRequested += (_, args) => {
+            var pointer = args.TryGetPosition(list, out var point);
+            var element = (pointer ? args.OriginalSource : FocusManager.GetFocusedElement(list.XamlRoot)) as FrameworkElement;
+            while (element != null && element.DataContext is not YouTubeVideo) element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element) as FrameworkElement;
+            if (element?.DataContext is YouTubeVideo clicked) list.SelectedItem = clicked;
+            if (list.SelectedItem is not YouTubeVideo target) return;
+            var menu = new MenuFlyout();
+            foreach (var id in new[] { "youtube-open-editor", "youtube-open-browser" }) {
+                var item = new MenuFlyoutItem { Text = DesktopCommandTitle(id), Icon = DesktopCommandIcon(id), Tag = id,
+                    IsEnabled = youtubeBrowserCanRun?.Invoke(id) == true };
+                item.Click += (_, _) => {
+                    if (ReferenceEquals(list.SelectedItem, target) && youtubeBrowserCanRun?.Invoke(id) == true) youtubeBrowserRun?.Invoke(id);
+                };
+                menu.Items.Add(item);
+            }
+            if (pointer) menu.ShowAt(list, point); else menu.ShowAt(element ?? list);
+            args.Handled = true;
+        };
         var openViaMenu = false;
         var originalRun = youtubeBrowserRun;
         youtubeBrowserRun = id => { if (id == "youtube-open-editor") openViaMenu = true; originalRun(id); };

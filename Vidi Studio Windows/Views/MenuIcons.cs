@@ -61,7 +61,14 @@ public static class MenuIcons
             "Edit selected" or "Edit segment" or "Rename" => "\uE70F",
             "Select all" => "\uE8B3",
             "Deselect all" => "\uE8E6",
-            "Delete selected" or "Delete segment" or "Delete damaged project…" or "Delete Project…" or "Move to Recycle Bin" => "\uE74D",
+            // Command IDs reach this shared factory from menus as well as context flyouts.
+            "delete-content" or "Choose Content to Delete…" or "Choose What to Delete…" => "\uE75C",
+            "delete-project" or "trash-project" or "delete-transcript" or "delete-summary" or "delete-descriptions"
+                or "delete-current" or "segment-delete-selected" or "segment-one-delete" => "\uE74D",
+            "delete-narration" or "segment-one-delete-audio" or "Delete All Narration Audio…" or "Delete Segment Audio…" => "\uE74F",
+            "Delete" or "Delete selected" or "Delete segment" or "Delete damaged project…" or "Delete Project…"
+                or "Delete Transcript…" or "Delete Summary…" or "Delete Descriptions…" or "Delete Segment…"
+                or "Delete Selected Segments…" or "Move Project to Recycle Bin…" or "Move to Recycle Bin" => "\uE74D",
             "Remove from List" => "\uE738",
             "Delete narration" => "\uE74F",
             "Undo" => "\uE7A7",

@@ -296,87 +296,126 @@ public sealed partial class MainWindow
     }
     private void ProjectContext_Requested(UIElement sender, ContextRequestedEventArgs e)
     {
-        if (!Model.Idle) return;
         var pointerRequest = e.TryGetPosition(sender, out var point);
         var element = (pointerRequest ? e.OriginalSource : FocusManager.GetFocusedElement(Root.XamlRoot)) as FrameworkElement;
         while (element != null && element.DataContext is not StudioProject) element = VisualTreeHelper.GetParent(element) as FrameworkElement;
-        var project = element?.DataContext as StudioProject ?? (sender as ListViewBase)?.SelectedItem as StudioProject;
-        if (project == null)
-        {
-            var emptyMenu = new MenuFlyout();
-            var newVideoItem = new MenuFlyoutItem
-            {
-                Text = "New project from video…",
-                Icon = Views.MenuIcons.Create("New project from video…"),
-                IsEnabled = Model.Idle
-            };
-            newVideoItem.Click += ImportVideo_Click;
-            emptyMenu.Items.Add(newVideoItem);
-
-            var newYouTubeItem = new MenuFlyoutItem
-            {
-                Text = "New project from YouTube…",
-                Icon = Views.MenuIcons.Create("New project from YouTube…"),
-                IsEnabled = Model.Idle
-            };
-            newYouTubeItem.Click += YouTube_Click;
-            emptyMenu.Items.Add(newYouTubeItem);
-
-            if (pointerRequest) emptyMenu.ShowAt((FrameworkElement)sender, point);
-            else emptyMenu.ShowAt((FrameworkElement)sender);
-            e.Handled = true;
-            return;
-        }
+        var project = element?.DataContext as StudioProject ?? (!pointerRequest ? (sender as ListViewBase)?.SelectedItem as StudioProject : null);
+        if (project == null) return;
         var menu = ProjectMenu(project);
         if (pointerRequest) menu.ShowAt((FrameworkElement)sender, point);
         else menu.ShowAt(element ?? (FrameworkElement)sender);
         e.Handled = true;
     }
+    private bool CanRunProjectContextCommand(string id, StudioProject project, bool editorBrowser)
+    {
+        if (!Model.Idle || windowClosed || validationShowcaseActive ||
+            editorBrowser != desktopEditorVisible || !Model.Projects.Any(p => p.Folder == project.Folder) ||
+            editorBrowser && HasUnsavedLanguageSummary) return false;
+        var usable = !project.IntegrityPlaceholder && project.Integrity?.ManifestUnreadable != true && project.Integrity?.FolderMissing != true;
+        if (id is "delete-project" or "trash-project" or "remove-from-list") return true;
+        if (id == "open-configuration") return Model.Settings.GetBool("developerMode") && File.Exists(Path.Combine(project.Folder, "project.json"));
+        if (id == "show-in-finder") return Directory.Exists(project.Folder);
+        if (id is "open-gallery-window" or "open-editor-window" or "open-project-here") return true;
+        if (!usable) return false;
+        if (OnlineRequirements.Services(id, project, Model.Settings).Any(service => ConnectivityService.Shared.Reason(service) != null)) return false;
+        return id switch {
+            "youtube-open-browser" => YouTubeService.ProjectWatchURL(project.YoutubeURL) != null,
+            "analyze" or "transcribe" or "generate-summary" => Model.CanUseAI,
+            "generate-ad-cues" => Model.CanUseAI && project.SavedResults.Any(r => r.Kind == "transcript" && r.State == "saved") && project.SavedResults.Any(r => r.Kind == "summary" && r.State == "saved"),
+            "delete-content" => project.SavedResults.Count > 0 || project.Exports.Count > 0 || project.Thumbnails.Count > 0 || project.Cues.Count > 0 || project.HasTranscript || project.HasSummary,
+            "prepare-video" => !project.IsYouTube || ConnectivityService.Shared.Available(OnlineService.YouTube),
+            _ => true
+        };
+    }
+
+    private async System.Threading.Tasks.Task RunProjectContextCommandAsync(string id, StudioProject project, bool editorBrowser)
+    {
+        // Recheck the captured target and prerequisites when a flyout outlives its context.
+        if (!CanRunProjectContextCommand(id, project, editorBrowser)) return;
+        switch (id) {
+        case "open-project-here": await SwitchProjectAsync(project); return;
+        case "open-gallery-window":
+        case "open-editor-window": App.OpenWindow(project.Folder); return;
+        case "rename-project": await RenameProjectAsync(project); return;
+        case "youtube-open-browser": OpenProjectInYouTube(project); return;
+        case "project-settings": await ShowSettingsSectionAsync(1, project); return;
+        case "show-in-finder": await RevealProjectAsync(project); return;
+        case "open-configuration": await OpenProjectConfigurationAsync(project); return;
+        case "remove-from-list": RemoveProjectFromList(project); return;
+        case "delete-project":
+        case "trash-project": await DeleteProjectAsync(project); return;
+        }
+        if (Model.Project is not { } current || !string.Equals(current.Folder, project.Folder, StringComparison.OrdinalIgnoreCase))
+            Model.Open(project.Folder);
+        if (!CanRunProjectContextCommand(id, project, editorBrowser)) return;
+        if (id == "delete-content") await ShowLanguageDeletionAsync();
+        else if (id == "export") Export_Click(this, new RoutedEventArgs());
+        else Command_Click(new Button { Tag = id }, new RoutedEventArgs());
+    }
+
     private MenuFlyout ProjectMenu(StudioProject project)
     {
         var menu = new MenuFlyout();
-        void Item(string label, Action<object, RoutedEventArgs> handler, bool enabled = true, string? commandId = null)
+        var editorBrowser = desktopEditorVisible;
+        MenuFlyoutItem Item(string id, string? title = null, IList<MenuFlyoutItemBase>? entries = null)
         {
-            var item = new MenuFlyoutItem { Text = label, Icon = Views.MenuIcons.Create(label), IsEnabled = Model.Idle && enabled };
-            if (commandId != null)
-            {
-                item.Tag = commandId;
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(item, commandId);
-                if (commandId == "remove-from-list") ToolTipService.SetToolTip(item, "Remove this entry from the list. The project files stay in their folder. Use Open Project to add it again.");
-            }
-            item.Click += (s, args) => { if (Model.Idle) handler(s, args); };
-            menu.Items.Add(item);
-        }
-        void LoadForEditorAction()
-        {
-            // Context actions must not navigate the window into the editor. Load the project only so
-            // commands that need it can run, and leave the current page (gallery or editor) in place.
-            if (Model.Project is not { } current || !string.Equals(current.Folder, project.Folder, StringComparison.OrdinalIgnoreCase))
-                Model.Open(project.Folder);
-        }
-        var activeApiKey = Model.CanUseAI;
-        var usable = !project.IntegrityPlaceholder && project.Integrity?.ManifestUnreadable != true && project.Integrity?.FolderMissing != true;
-        if (desktopEditorVisible)
-            Item("Open in This Window", async (_, _) =>
-            {
-                try { await SwitchProjectAsync(project); }
+            var label = title ?? DesktopCommandTitle(id, project);
+            var item = new MenuFlyoutItem { Text = label, Icon = DesktopCommandIcon(id), Tag = id,
+                IsEnabled = CanRunProjectContextCommand(id, project, editorBrowser) };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(item, id);
+            if (id == "remove-from-list") ToolTipService.SetToolTip(item, "Remove this entry from the list and keep its files");
+            item.Click += async (_, _) => {
+                try { await RunProjectContextCommandAsync(id, project, editorBrowser); }
+                catch (OperationCanceledException) { }
                 catch (Exception ex) { await ShowError(ex); }
-            }, commandId: "open-project-here");
-        Item("Open in New Window", (_, _) => App.OpenWindow(project.Folder), commandId: "open-editor-window");
-        Item("Export", (_, args) => { LoadForEditorAction(); Export_Click(this, args); }, activeApiKey && usable);
-        if (YouTubeService.ProjectWatchURL(project.YoutubeURL) != null) Item("Open in YouTube", (_, _) => OpenProjectInYouTube(project), commandId: "youtube-open-browser");
-        Item("Open Project Settings…", async (_, _) => await ShowSettingsSectionAsync(1, project), usable && Model.Idle, commandId: "project-settings");
-        Item("Open project folder", (_, _) => _ = RevealProjectAsync(project));
-        if (Model.Settings.GetBool("developerMode"))
-            Item("Open project configuration", (_, _) => _ = OpenProjectConfigurationAsync(project),
-                File.Exists(Path.Combine(project.Folder, "project.json")), commandId: "open-configuration");
-        foreach (var pair in new[] { ("Analyze video", "analyze"), ("Generate transcript", "transcribe"), ("Generate summary", "generate-summary"), ("Generate descriptions", "generate-ad-cues") })
-            Item(pair.Item1, (_, args) => { LoadForEditorAction(); Command_Click(new Button { Tag = pair.Item2 }, args); }, activeApiKey && usable);
-        Item("Refresh video details", (_, args) => { LoadForEditorAction(); Command_Click(new Button { Tag = "prepare-video" }, args); }, usable);
-        Item("Rename", (_, _) => _ = RenameProjectAsync(project), usable);
-        Item("Remove from List", (_, _) => RemoveProjectFromList(project), commandId: "remove-from-list");
-        menu.Items.Add(new MenuFlyoutSeparator());
-        Item(project.Integrity?.IsDamaged == true ? "Delete damaged project…" : "Move to Recycle Bin", (_, _) => _ = DeleteProjectAsync(project), commandId: "trash-project");
+            };
+            (entries ?? menu.Items).Add(item);
+            return item;
+        }
+        if (editorBrowser)
+        {
+            Item("open-project-here", "Open in This Window");
+            if (YouTubeService.ProjectWatchURL(project.YoutubeURL) != null) Item("youtube-open-browser");
+            Item("open-editor-window", "Open in New Window");
+            Item("project-settings");
+            menu.Items.Add(new MenuFlyoutSeparator());
+            Item("remove-from-list");
+            Item("trash-project", "Delete Project…");
+        }
+        else
+        {
+            Item("open-gallery-window");
+            menu.Items.Add(new MenuFlyoutSeparator());
+            Item("rename-project", "Rename");
+            if (YouTubeService.ProjectWatchURL(project.YoutubeURL) != null) Item("youtube-open-browser");
+            Item("project-settings");
+            Item("show-in-finder", "Open in Project Folder");
+            if (Model.Settings.GetBool("developerMode")) Item("open-configuration", "Open Project Configuration");
+            var analysis = new MenuFlyoutSubItem { Text = "Analysis", Tag = "Analysis", Icon = DesktopCommandIcon("Analysis"),
+                IsEnabled = Model.Idle && !project.IntegrityPlaceholder };
+            Item("prepare-video", entries: analysis.Items);
+            analysis.Items.Add(new MenuFlyoutSeparator());
+            Item("analyze", entries: analysis.Items);
+            analysis.Items.Add(new MenuFlyoutSeparator());
+            Item("transcribe", entries: analysis.Items);
+            Item("generate-summary", entries: analysis.Items);
+            Item("generate-ad-cues", entries: analysis.Items);
+            menu.Items.Add(analysis);
+            Item("export");
+            Item("remove-from-list");
+            menu.Items.Add(new MenuFlyoutSeparator());
+            Item("delete-content", "Choose Content to Delete…");
+            Item("delete-project");
+        }
+        menu.Opening += (_, _) => {
+            void Refresh(IEnumerable<MenuFlyoutItemBase> entries) {
+                foreach (var entry in entries) {
+                    if (entry is MenuFlyoutItem item && item.Tag is string id) item.IsEnabled = CanRunProjectContextCommand(id, project, editorBrowser);
+                    if (entry is MenuFlyoutSubItem group) { group.IsEnabled = Model.Idle && !project.IntegrityPlaceholder; Refresh(group.Items); }
+                }
+            }
+            Refresh(menu.Items);
+        };
         return menu;
     }
     private void RemoveListedProject_Click(object sender, RoutedEventArgs e)
@@ -433,15 +472,20 @@ public sealed partial class MainWindow
         }
     }
 
-    private MenuFlyout SegmentMenu(Segment? segment = null)
+    private MenuFlyout SegmentMenu(Segment? segment = null, bool moreActionsOnly = false)
     {
         var menu = new MenuFlyout();
         if (segment != null)
         {
-            foreach (var id in new[] { "segment-one-edit", "segment-one-play", "segment-one-skip", "segment-one-preview", "segment-one-preview-stop", "segment-one-synthesize", "segment-one-rewrite", "segment-one-import-audio", "segment-one-delete-audio", "segment-one-reanalyze", "segment-one-delete" })
+            var actions = moreActionsOnly
+                ? segment.IsDescription ? new[] { "segment-one-rewrite", "segment-one-synthesize", "segment-one-import-audio", "segment-one-delete-audio", "segment-one-delete" }
+                    : new[] { "segment-one-edit", "segment-one-reanalyze", "segment-one-delete" }
+                : new[] { "segment-one-edit", "segment-one-play", "segment-one-skip", "segment-one-preview", "segment-one-preview-stop", "segment-one-synthesize", "segment-one-rewrite", "segment-one-import-audio", "segment-one-delete-audio", "segment-one-reanalyze", "segment-one-delete" };
+            foreach (var id in actions)
             {
                 if (!RowCommandVisible(id, segment.IsDescription) || !SegmentBelongsToCurrentTab(segment) || id == "segment-one-preview-stop" && !ReferenceEquals(previewingSegment, segment)) continue;
-                if (id is "segment-one-play" or "segment-one-preview" or "segment-one-synthesize" or "segment-one-delete-audio" or "segment-one-reanalyze" || id == "segment-one-delete" && !segment.IsDescription)
+                if (moreActionsOnly ? id == "segment-one-delete-audio" || id == "segment-one-delete" && !segment.IsDescription
+                    : id is "segment-one-play" or "segment-one-preview" or "segment-one-synthesize" or "segment-one-delete-audio" or "segment-one-reanalyze" || id == "segment-one-delete" && !segment.IsDescription)
                     menu.Items.Add(new MenuFlyoutSeparator());
                 var item = new MenuFlyoutItem { Text = SegmentCommandTitle(id, segment), Icon = DesktopCommandIcon(id, segment),
                     IsEnabled = CanRunRowCommand(id, segment), Tag = id };
@@ -498,7 +542,7 @@ public sealed partial class MainWindow
         if (Section.SelectedIndex is 0 or 2 or 4 && !editMode) return;
         if (sender is FrameworkElement element)
         {
-            var menu = SegmentMenu(element.Tag as Segment);
+            var menu = SegmentMenu(element.Tag as Segment, moreActionsOnly: true);
             if (menu.Items.Count > 0) menu.ShowAt(element);
         }
     }
@@ -508,7 +552,7 @@ public sealed partial class MainWindow
         var pointerRequest = e.TryGetPosition(sender, out var point);
         var element = (pointerRequest ? e.OriginalSource : FocusManager.GetFocusedElement(Root.XamlRoot)) as FrameworkElement;
         while (element != null && element.DataContext is not Segment) element = VisualTreeHelper.GetParent(element) as FrameworkElement;
-        var segment = element?.DataContext as Segment ?? (sender as ListViewBase)?.SelectedItem as Segment;
+        var segment = element?.DataContext as Segment ?? (!pointerRequest ? (sender as ListViewBase)?.SelectedItem as Segment : null);
         if (segment == null) return;
         var menu = SegmentMenu(segment);
         if (pointerRequest) menu.ShowAt((FrameworkElement)sender, point);

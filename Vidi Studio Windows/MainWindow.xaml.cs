@@ -77,15 +77,19 @@ public sealed partial class MainWindow : Window
         InitializeInspectorSections();
         InitializeADAudioReadiness();
         var projectSettingsContext = new MenuFlyout();
-        var projectSettingsItem = new MenuFlyoutItem { Text = "Open Project Settings…", Tag = "project-settings" };
+        var projectSettingsItem = new MenuFlyoutItem { Text = "Open Project Settings…", Tag = "project-settings", Icon = DesktopCommandIcon("project-settings") };
         projectSettingsItem.Click += async (_, _) => await RunDesktopCommandAsync("project-settings");
         var copyToItem = new MenuFlyoutItem { Text = "Copy and Translate…", Tag = "copy-to", Icon = Views.MenuIcons.Create("Copy") };
         copyToItem.Click += async (_, _) => await RunDesktopCommandAsync("copy-to");
         projectSettingsContext.Items.Add(copyToItem);
-        projectSettingsContext.Opening += (_, _) => copyToItem.IsEnabled = CanRunDesktopCommand("copy-to");
+        projectSettingsContext.Opening += (_, _) => {
+            copyToItem.Visibility = desktopEditorVisible && EditorCommandVisible("copy-to") ? Visibility.Visible : Visibility.Collapsed;
+            copyToItem.IsEnabled = CanRunDesktopCommand("copy-to");
+        };
         projectSettingsContext.Items.Add(projectSettingsItem);
         projectSettingsContext.Opening += (_, _) => projectSettingsItem.IsEnabled = CanRunDesktopCommand("project-settings");
         EditorWorkspace.ContextFlyout = projectSettingsContext;
+        SummaryPlayButton.ContextFlyout = SummaryReadingMenu();
 
         InitializeSummaryOriginOptions();
         SummaryProvenance.SelectionChanged += (_, _) => UpdateLanguageControlStates();

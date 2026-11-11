@@ -739,10 +739,10 @@ public sealed partial class MainWindow
         return true;
     }
 
-    private string DesktopCommandTitle(string id)
+    private string DesktopCommandTitle(string id, Models.StudioProject? contextProject = null)
     {
         if (id.StartsWith("segment-one-", StringComparison.Ordinal)) return SegmentCommandTitle(id);
-        var p = ProjectManagementTarget();
+        var p = contextProject ?? ProjectManagementTarget();
         return id switch
         {
             "open-selected-project" => "Open Selected Project", "open-gallery-window" => "Open in New Window",

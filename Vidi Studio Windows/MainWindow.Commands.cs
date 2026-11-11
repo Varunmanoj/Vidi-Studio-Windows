@@ -471,7 +471,7 @@ public sealed partial class MainWindow
         {
             var sectionIndex = Section.SelectedIndex;
             var project = Model.Project;
-            foreach (var id in new[] { "copy-to" }.Concat(EditorActionIds(sectionIndex, editMode, summaryEditMode)))
+            foreach (var id in new[] { "copy-to" }.Concat(EditorActionIds(sectionIndex, editMode, summaryEditMode)).Where(id => id == "-" || EditorCommandVisible(id)))
             {
                 if (id == "-")
                 {

@@ -42,6 +42,8 @@ public sealed partial class MainWindow
                 await File.WriteAllTextAsync(report, "PASS: one hidden, content-fitted native window per dialog, no visible startup resize or nested animation; light/dark initial presentation and live light/dark/system themes; dynamic content growth, cancellation before presentation, delete gating, and Primary/Secondary/Cancel results.");
                 return;
             }
+            VerifyContextualMenusForSmokeTest();
+            Section.SelectedIndex = 2; UpdateDesktopMenuStates();
             if (Model.Project is not { } openedProject ||
                 Narration.IsOn != ProjectPlaybackPreferences.NarrationEnabled(Model.Settings, openedProject) ||
                 Follow.IsOn != ProjectPlaybackPreferences.FollowEnabled(Model.Settings, openedProject))
@@ -1930,6 +1932,78 @@ public sealed partial class MainWindow
                         throw new InvalidOperationException("Segment numbers must match the complete selected result before filtering or sorting.");
         } finally { Section.SelectedIndex = previousSection; UpdateADAudioReadiness(project); }
     }
+    private void VerifyContextualMenusForSmokeTest()
+    {
+        if (Model.Project is not { } project) throw new InvalidOperationException("Contextual menu smoke fixture requires a project.");
+        var originalSection = Section.SelectedIndex;
+        var originalSource = project.SourceType;
+        var originalEdit = editMode;
+        var originalSummaryEdit = summaryEditMode;
+        var originalUrl = project.YoutubeURL;
+        var scopes = new[] {
+            (Id: "transcribe", Tabs: new[] { 0 }), (Id: "generate-summary", Tabs: new[] { 1 }),
+            (Id: "generate-ad-cues", Tabs: new[] { 2 }), (Id: "import-transcript", Tabs: new[] { 0 }),
+            (Id: "import-summary", Tabs: new[] { 1 }), (Id: "import-descriptions", Tabs: new[] { 2 }),
+            (Id: "synthesize-tts", Tabs: new[] { 2, 3, 4 }), (Id: "review-narration-issues", Tabs: new[] { 2, 3, 4 }),
+            (Id: "narration", Tabs: new[] { 2, 4 }), (Id: "add", Tabs: new[] { 0, 2 }),
+            (Id: "undo", Tabs: new[] { 0, 2 }), (Id: "import-ad-audio", Tabs: new[] { 2, 4 }),
+            (Id: "summary-play", Tabs: new[] { 1 }), (Id: "caption-ad-transcript", Tabs: new[] { 2, 4 }),
+            (Id: "segment-select-all", Tabs: new[] { 0, 2, 4 }), (Id: "segment-delete-selected", Tabs: new[] { 0, 2, 4 })
+        };
+        try
+        {
+            foreach (var youtube in new[] { false, true })
+            {
+                project.SourceType = youtube ? "youtube" : "local";
+                project.YoutubeURL = youtube ? "https://www.youtube.com/watch?v=aqz-KE-bpKQ" : null;
+                for (var tab = 0; tab < 5; tab++)
+                {
+                    summaryEditMode = false;
+                    Section.SelectedIndex = tab;
+                    foreach (var editing in new[] { false, true })
+                    {
+                    editMode = editing; summaryEditMode = tab == 1 && editing;
+                    UpdateDesktopMenuStates();
+                    foreach (var (id, tabs) in scopes)
+                    {
+                        var editOnly = id is "undo" or "redo" or "reanalyze-selection" or "segment-select-all" or "segment-deselect-all" or "segment-edit-selected" or "segment-delete-selected";
+                        var summaryViewOnly = tab == 1 && (id.StartsWith("summary-", StringComparison.Ordinal) || id is "generate-summary" or "import-summary" or "delete-current");
+                        var visible = tabs.Contains(tab) && (!editOnly || editing) && (!summaryViewOnly || !editing);
+                        var item = desktopMenuItems[id].Last();
+                        if ((item.Visibility == Visibility.Visible) != visible || (!visible && CanRunDesktopCommand(id)))
+                            throw new InvalidOperationException($"Menu/accelerator escaped its tab: {id}, tab={tab}, YouTube={youtube}.");
+                    }
+                    foreach (var id in new[] { "youtube-details", "youtube-refresh", "youtube-captions", "import-original-audio" })
+                    {
+                        var visible = youtube && (id != "youtube-captions" || tab == 0);
+                        if ((desktopMenuItems[id].Last().Visibility == Visibility.Visible) != visible || (!visible && CanRunDesktopCommand(id)))
+                            throw new InvalidOperationException($"YouTube command escaped its source/tab: {id}.");
+                    }
+                    foreach (var (name, group) in desktopMenuGroups)
+                    {
+                        bool? visible = name switch {
+                            "Summary Reading" => tab == 1 && !editing, "Segments" => tab is 0 or 2 or 4,
+                            "Narration" or "Narration Audio" => tab is 2 or 3 or 4,
+                            "AD Segment Generation" => tab == 2, "YouTube" => youtube, _ => null
+                        };
+                        if (visible is { } expected && (group.Visibility == Visibility.Visible) != expected)
+                            throw new InvalidOperationException($"Unrelated submenu visible: {name}, tab={tab}.");
+                    }
+                    if ((editorMenus.Single(menu => menu.Title == "YouTube").Visibility == Visibility.Visible) != youtube)
+                        throw new InvalidOperationException("Top-level YouTube menu does not follow the source type.");
+                    }
+                }
+            }
+        }
+        finally
+        {
+            project.SourceType = originalSource; project.YoutubeURL = originalUrl;
+            summaryEditMode = false;
+            Section.SelectedIndex = originalSection;
+            editMode = originalEdit; summaryEditMode = originalSummaryEdit; UpdateDesktopMenuStates();
+        }
+    }
+
     private void VerifyProjectMenuEntriesForSmokeTest()
     {
         VerifyInspectorContentStatusForSmokeTest();

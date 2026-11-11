@@ -332,7 +332,7 @@ public sealed partial class MainWindow
                 item.IsEnabled = CanRunDesktopCommand(id);
                 item.Visibility = (libraryOnlyMenuItems.Contains(item) ? !desktopEditorVisible : LibraryCommandVisible(id)) ? Visibility.Visible : Visibility.Collapsed;
                 if (id == "open-configuration")
-                    item.Visibility = Model.Settings.GetBool("developerMode") ? Visibility.Visible : Visibility.Collapsed;
+                    item.Visibility = Model.Settings.GetBool("developerMode") && LibraryCommandVisible(id) ? Visibility.Visible : Visibility.Collapsed;
             }
         InspectorOpenConfigurationButton.Visibility = Model.Settings.GetBool("developerMode") ? Visibility.Visible : Visibility.Collapsed;
         InspectorOpenConfigurationButton.IsEnabled = CanRunDesktopCommand("open-configuration");
@@ -351,7 +351,7 @@ public sealed partial class MainWindow
         }
         foreach (var id in new[] { "summary-zoom-in", "summary-zoom-out", "summary-zoom-reset" })
             foreach (var item in desktopMenuItems.TryGetValue(id, out var zoomItems) ? zoomItems : new List<MenuFlyoutItem>())
-                item.Visibility = desktopEditorVisible && Section.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+                item.Visibility = desktopEditorVisible && Section.SelectedIndex == 1 && !summaryEditMode ? Visibility.Visible : Visibility.Collapsed;
         UpdateSummaryZoomControls();
         var timedSection = desktopEditorVisible && Section.SelectedIndex is 0 or 2 or 4;
         foreach (var item in new[] { "filter-segments", "sort-segments" }.SelectMany(id => desktopMenuItems.TryGetValue(id, out var filterItems) ? filterItems : new List<MenuFlyoutItem>()))
@@ -372,7 +372,14 @@ public sealed partial class MainWindow
                 : (name is "Filter Projects by Source" or "Analysis" ? Visibility.Visible : Visibility.Collapsed);
             if (name == "Filter Projects by Source") group.IsEnabled = !desktopEditorVisible;
             if (name == "Analysis" && !desktopEditorVisible) group.IsEnabled = SelectedGalleryProject() != null && Model.Idle;
-            if (name == "Summary Reading") group.IsEnabled &= Section.SelectedIndex == 1 && !summaryEditMode;
+            if (name == "Summary Reading") {
+                group.Visibility = desktopEditorVisible && Section.SelectedIndex == 1 && !summaryEditMode ? Visibility.Visible : Visibility.Collapsed;
+                group.IsEnabled &= !summaryEditMode;
+            }
+            if (name == "Segments") group.Visibility = timedSection ? Visibility.Visible : Visibility.Collapsed;
+            if (name == "YouTube") group.Visibility = desktopEditorVisible && Model.Project?.IsYouTube == true ? Visibility.Visible : Visibility.Collapsed;
+            if (name is "Narration" or "Narration Audio") group.Visibility = desktopEditorVisible && EditorCommandVisible("synthesize-tts") ? Visibility.Visible : Visibility.Collapsed;
+            if (name == "AD Segment Generation") group.Visibility = desktopEditorVisible && EditorCommandVisible("generate-ad-cues") ? Visibility.Visible : Visibility.Collapsed;
             if (name == "Sort Segments")
             {
                 group.Text = Section.SelectedIndex switch
@@ -390,6 +397,7 @@ public sealed partial class MainWindow
         }
         foreach (var menu in galleryMenus.Concat(editorMenus)) {
             menu.Visibility = !desktopEditorVisible && menu.Title is "Playback" or "Edit" ? Visibility.Collapsed : Visibility.Visible;
+            if (menu.Title == "YouTube" && !YouTubeMenusVisible) menu.Visibility = Visibility.Collapsed;
             if (!desktopEditorVisible) {
                 foreach (var group in menu.Items.OfType<MenuFlyoutSubItem>().Where(g => g.Tag as string is "project-language" or "saved-results"))
                     group.Visibility = Visibility.Collapsed;
@@ -412,7 +420,12 @@ public sealed partial class MainWindow
 
     private bool LibraryCommandVisible(string id)
     {
-        if (desktopEditorVisible) return !id.StartsWith("projects-", StringComparison.Ordinal) && id != "open-selected-project";
+        if (id.StartsWith("youtube-", StringComparison.Ordinal)) {
+            if (!YouTubeMenusVisible) return false;
+            if (id is "youtube-list" or "youtube-table" or "youtube-open-editor" or "youtube-refresh-list" or "youtube-load-videos" or "youtube-load-playlists") return youtubeBrowserCanRun != null;
+            if (id == "youtube-open-browser") return youtubeBrowserCanRun != null || ProjectManagementTarget()?.IsYouTube == true;
+        }
+        if (desktopEditorVisible) return !id.StartsWith("projects-", StringComparison.Ordinal) && id != "open-selected-project" && EditorCommandVisible(id);
         return id is "new-project" or "open-project" or "youtube-browser" or "youtube-accounts" or "youtube-open-browser"
             or "export" or "delete-project" or "delete-content" or "remove-from-list" or "settings" or "project-settings"
             or "close-window" or "help" or "about" or "project-list" or "project-grid" or "open-selected-project"
@@ -472,10 +485,47 @@ public sealed partial class MainWindow
         };
     }
 
+    // Same tab/source policy as EditorShortcutActions.isCommandVisible on Mac.
+    private bool EditorCommandVisible(string id)
+    {
+        if (!EditorCommandVisibleInMode(id)) return false;
+        if (id.StartsWith("summary-", StringComparison.Ordinal)) return Section.SelectedIndex == 1;
+        return id switch
+        {
+            "analyze" => false,
+            "transcribe" or "import-transcript" or "delete-transcript" => Section.SelectedIndex == 0,
+            "generate-summary" or "import-summary" or "delete-summary" => Section.SelectedIndex == 1,
+            "generate-ad-cues" or "import-descriptions" or "delete-descriptions" => Section.SelectedIndex == 2,
+            "synthesize-tts" or "synthesize-changed" or "review-narration-issues" or "review-narration-voices" or "delete-narration" => Section.SelectedIndex is 2 or 3 or 4,
+            "import-ad-audio" or "narration" or "caption-ad-transcript" => Section.SelectedIndex is 2 or 4,
+            "add" or "reanalyze-selection" or "undo" or "redo" => Section.SelectedIndex is 0 or 2,
+            "segment-select-all" or "segment-deselect-all" or "segment-edit-selected" or "segment-delete-selected" or "follow"
+                or "filter-segments" or "clear-segment-filter" or "sort-segments" or "clear-segment-sort" or "sort-start" or "sort-duration-asc" or "sort-duration-desc" or "sort-origin"
+                or "caption-cycle" or "caption-off" or "caption-transcript" => Section.SelectedIndex is 0 or 2 or 4,
+            "copy-to" or "segment-edit-mode" => Section.SelectedIndex is 0 or 1 or 2 or 4,
+            "delete-current" => Section.SelectedIndex is 0 or 1 or 2,
+            "youtube-captions" => Model.Project?.IsYouTube == true && Section.SelectedIndex == 0,
+            "youtube-details" or "youtube-refresh" or "import-original-audio" => Model.Project?.IsYouTube == true,
+            _ => true
+        };
+    }
+
+    private bool EditorCommandVisibleInMode(string id)
+    {
+        if (id is "segment-select-all" or "segment-deselect-all" or "segment-edit-selected" or "segment-delete-selected" or "reanalyze-selection" or "undo" or "redo") return editMode;
+        if (Section.SelectedIndex == 1 && summaryEditMode)
+            return !id.StartsWith("summary-", StringComparison.Ordinal) && id is not ("generate-summary" or "import-summary" or "delete-summary" or "delete-current");
+        return true;
+    }
+
+    private bool YouTubeMenusVisible => !desktopEditorVisible || Model.Project?.IsYouTube == true || youtubeBrowserCanRun != null;
+
     private bool CanRunDesktopCommand(string id)
     {
         if (validationShowcaseActive) return false;
         if (windowClosed) return false;
+        if (desktopEditorVisible && !EditorCommandVisible(id)) return false;
+        if (!YouTubeMenusVisible && id.StartsWith("youtube-", StringComparison.Ordinal)) return false;
         if (id == "youtube-open-browser") return youtubeBrowserCanRun != null ? youtubeBrowserCanRun(id) : ProjectManagementTarget() is { } youtubeProject && YouTubeService.ProjectWatchURL(youtubeProject.YoutubeURL) != null;
         if (id.StartsWith("projects-source-", StringComparison.Ordinal)) return !desktopEditorVisible;
         if (id == "projects-reset-filters") return !desktopEditorVisible && (!string.IsNullOrEmpty(GallerySearch.Text) || GalleryFilter.SelectedIndex != 0 || Model.LanguageFilter != "all");

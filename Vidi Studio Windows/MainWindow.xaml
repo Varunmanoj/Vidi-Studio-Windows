@@ -96,30 +96,40 @@
    </InfoBar>
   </StackPanel>
   <Grid x:Name="ProjectHeader" Grid.Row="3" Padding="20,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" MinHeight="54">
-   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="1.6*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-   <Grid Grid.ColumnSpan="2" HorizontalAlignment="Left" VerticalAlignment="Center" ColumnSpacing="8">
+   <Grid x:Name="GalleryToolbar" ColumnSpacing="12" SizeChanged="GalleryToolbar_SizeChanged">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <StackPanel x:Name="GalleryViewControls" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+     <ComboBox x:Name="GalleryLanguageFilter" MinWidth="160" MaxWidth="220" MinHeight="32" VerticalAlignment="Center" DisplayMemberPath="Title" SelectionChanged="LanguageFilter_Changed" AutomationProperties.Name="Project language filter" ToolTipService.ToolTip="Filter projects by language"/>
+     <ComboBox x:Name="GalleryFilter" MinWidth="136" MinHeight="32" VerticalAlignment="Center" SelectedIndex="0" SelectionChanged="GalleryFilter_Changed" AutomationProperties.Name="Project source" ToolTipService.ToolTip="Filter projects by source"><ComboBoxItem Content="All projects"/><ComboBoxItem Content="Local video"/><ComboBoxItem Content="YouTube"/></ComboBox>
+     <Button x:Name="GalleryLayoutButton" MinWidth="34" MinHeight="32" VerticalAlignment="Center" Content="&#xE8FD;" FontFamily="Segoe Fluent Icons" Click="GalleryLayout_Click" AutomationProperties.Name="Switch list and grid view" ToolTipService.ToolTip="Switch list and grid view"/>
+    </StackPanel>
+    <StackPanel x:Name="GalleryToolbarActions" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+     <Button Content="My YouTube Videos…" Click="YouTubeBrowser_Click"/>
+     <Button x:Name="GalleryImport" Content="New project" Style="{StaticResource AccentButtonStyle}" Click="NewProject_Click"/>
+    </StackPanel>
+    <Grid x:Name="GallerySearchHost" Grid.Column="2" HorizontalAlignment="Stretch" VerticalAlignment="Center" MaxWidth="520">
+     <TextBox x:Name="GallerySearch" MinHeight="32" PlaceholderText="Search projects" TextChanged="GallerySearch_Changed" AutomationProperties.Name="Search all projects" Padding="36,5,12,5" CornerRadius="18"/>
+     <SymbolIcon Symbol="Find" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="12,0,0,0" IsHitTestVisible="False"/>
+    </Grid>
+   </Grid>
+   <Grid x:Name="EditorProjectHeader" Visibility="Collapsed" ColumnSpacing="12">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+   <Grid HorizontalAlignment="Left" VerticalAlignment="Center" ColumnSpacing="8">
     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <TextBlock x:Name="ProjectTitle" Text="All Projects" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
     <Button x:Name="RenameProjectTitleButton" Grid.Column="1" Content="&#xE70F;" FontFamily="Segoe Fluent Icons" Click="RenameProjectTitle_Click" Visibility="Collapsed" ToolTipService.ToolTip="Rename this project" AutomationProperties.Name="Rename project" AutomationProperties.AutomationId="rename-project-title"/>
    </Grid>
-   <Grid x:Name="GallerySearchHost" Grid.Column="1" HorizontalAlignment="Stretch" MaxWidth="520" Margin="8,0">
-    <TextBox x:Name="GallerySearch" PlaceholderText="Search projects" TextChanged="GallerySearch_Changed" AutomationProperties.Name="Search all projects" Padding="36,5,12,5" CornerRadius="18"/>
-    <SymbolIcon Symbol="Find" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="12,0,0,0" IsHitTestVisible="False"/>
-   </Grid>
-   <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+   <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
     <Button Content="My YouTube Videos…" Click="YouTubeBrowser_Click"/>
-    <Button x:Name="GalleryImport" Content="New project" Style="{StaticResource AccentButtonStyle}" Click="NewProject_Click"/>
     <Button x:Name="TopInspectorToggle" Content="&#xE8A0;" FontFamily="Segoe Fluent Icons" Tag="show-inspector" Click="TopInspectorToggle_Click" Visibility="Collapsed" ToolTipService.ToolTip="Hide Inspector (Ctrl+Shift+B)" AutomationProperties.Name="Hide Inspector" AutomationProperties.AutomationId="show-inspector"/>
    </StackPanel>
+   </Grid>
   </Grid>
   <Grid x:Name="GalleryPanel" Grid.Row="4" Padding="28,24" RowSpacing="22">
    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-   <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+   <Grid>
     <StackPanel Spacing="4"><TextBlock Text="All Projects" Style="{ThemeResource TitleLargeTextBlockStyle}"/><TextBlock x:Name="ProjectCount" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
-    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-     <ComboBox x:Name="GalleryFilter" SelectedIndex="0" SelectionChanged="GalleryFilter_Changed" AutomationProperties.Name="Project source"><ComboBoxItem Content="All projects"/><ComboBoxItem Content="Local video"/><ComboBoxItem Content="YouTube"/></ComboBox><ComboBox x:Name="GalleryLanguageFilter" Header="Language filter" DisplayMemberPath="Title" SelectionChanged="LanguageFilter_Changed"/>
-     <Button Content="&#xE8FD;" FontFamily="Segoe Fluent Icons" Click="GalleryLayout_Click" AutomationProperties.Name="Switch list and grid view"/>
-    </StackPanel>
    </Grid>
    <Grid Grid.Row="1">
     <GridView x:Name="GalleryGrid" ItemsSource="{x:Bind Model.Projects}" ItemTemplate="{StaticResource ProjectCard}" IsItemClickEnabled="True" ItemClick="GalleryProject_Click" ContextRequested="ProjectContext_Requested" SelectionMode="Single" AutomationProperties.Name="All projects grid"/>

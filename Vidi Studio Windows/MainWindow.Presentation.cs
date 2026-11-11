@@ -287,6 +287,8 @@ public sealed partial class MainWindow
         UpdateMenuBar(false);
         App.NotifyOpenProjectsChanged();
         ProjectTitle.Text = "All Projects"; Title = "All Projects — Vidi Studio";
+        GalleryToolbar.Visibility = Visibility.Visible;
+        EditorProjectHeader.Visibility = Visibility.Collapsed;
         GallerySearchHost.Visibility = Visibility.Visible;
         GalleryImport.Visibility = Visibility.Visible;
         Model.Reload(); Model.RefreshProjectIntegrity(true); RefreshGalleryCount(); UpdateProjectIntegrityUi();
@@ -341,6 +343,8 @@ public sealed partial class MainWindow
         GalleryPanel.Visibility = Visibility.Collapsed; EditorWorkspace.Visibility = Visibility.Visible;
         UpdateMenuBar(true);
         App.NotifyOpenProjectsChanged();
+        GalleryToolbar.Visibility = Visibility.Collapsed;
+        EditorProjectHeader.Visibility = Visibility.Visible;
         GallerySearchHost.Visibility = Visibility.Collapsed;
         GalleryImport.Visibility = Visibility.Collapsed;
         ProjectTitle.Text = Model.Project?.Name ?? "All Projects";
@@ -348,6 +352,22 @@ public sealed partial class MainWindow
         UpdateEditorProjectButtons();
     }
     private void GalleryFilter_Changed(object sender, SelectionChangedEventArgs e) { if (galleryReady) FilterGallery(); }
+    private void GalleryToolbar_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (GalleryToolbarActions == null || GallerySearchHost == null) return;
+        var wide = e.NewSize.Width >= 900;
+        var narrow = e.NewSize.Width < 740;
+        Grid.SetRow(GalleryToolbarActions, narrow ? 1 : 0);
+        Grid.SetColumn(GalleryToolbarActions, narrow ? 0 : 1);
+        Grid.SetColumnSpan(GalleryToolbarActions, narrow ? 3 : 1);
+        GalleryToolbarActions.Margin = new Thickness(0, narrow ? 8 : 0, 0, 0);
+        Grid.SetColumnSpan(GalleryViewControls, narrow ? 3 : 1);
+        Grid.SetRow(GallerySearchHost, wide ? 0 : narrow ? 2 : 1);
+        Grid.SetColumn(GallerySearchHost, wide ? 2 : 0);
+        Grid.SetColumnSpan(GallerySearchHost, wide ? 1 : 3);
+        GallerySearchHost.MaxWidth = wide ? 520 : double.PositiveInfinity;
+        GallerySearchHost.Margin = new Thickness(0, wide ? 0 : 8, 0, 0);
+    }
     private void GallerySearch_Changed(object sender, TextChangedEventArgs e) { if (galleryReady) FilterGallery(); }
     private void FilterGallery()
     {

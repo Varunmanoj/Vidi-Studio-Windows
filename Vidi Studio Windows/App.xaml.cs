@@ -109,6 +109,7 @@ public partial class App : Application
             var environment = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json)!;
             foreach (var key in new[] { "VIDISTUDIO_UI_SMOKE_REPORT", "VIDISTUDIO_UI_SMOKE_PROJECT", "VIDISTUDIO_CONFIG" })
                 Environment.SetEnvironmentVariable(key, environment[key]);
+            Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY"));
             _ = OpenWindow();
             return;
         }

@@ -946,7 +946,7 @@ public sealed partial class MainWindow
             case "new-project": await ShowNewProjectDialogAsync(false); break;
             case "youtube-accounts":
                 if (youtubeBrowserRun != null) youtubeBrowserRun(id);
-                else await ShowDialogAsync(new ContentDialog { Title = "YouTube Accounts", Content = new Views.YouTubeAccountsPanel(), CloseButtonText = "Close" }, 800, 600);
+                else await ShowSettingsSectionAsync(8);
                 break;
             case "youtube-open-browser":
                 if (youtubeBrowserRun != null) youtubeBrowserRun(id); else if (ProjectManagementTarget() is { } youtubeProject) OpenProjectInYouTube(youtubeProject); break;

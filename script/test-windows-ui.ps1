@@ -1,4 +1,4 @@
-param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [switch]$SkipBuild, [switch]$FrozenEngine, [string]$AppDirectory, [switch]$RequirePackage, [int]$TimeoutSeconds = 180, [string]$SummaryFixture)
+param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [switch]$SkipBuild, [switch]$FrozenEngine, [string]$AppDirectory, [switch]$RequirePackage, [int]$TimeoutSeconds = 180, [string]$SummaryFixture, [switch]$GallerySettingsOnly)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $testRoot = Join-Path $projectRoot "build\ui-test-$Platform"
@@ -40,6 +40,7 @@ try {
     $env:VIDISTUDIO_CONFIG = $configFile
     $env:VIDISTUDIO_UI_SMOKE_PROJECT = $folder
     $env:VIDISTUDIO_UI_SMOKE_REPORT = $report
+    if ($GallerySettingsOnly) { $env:VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY = '1' }
     if ($RequirePackage) {
         Add-Type -TypeDefinition @"
 using System;
@@ -58,7 +59,9 @@ public static class VidiActivation {
 "@
         $installed = Get-AppxPackage -Name '7b6f5f53-8ba2-429e-a747-0e2393ce9cee'
         if (!$installed) { throw 'Register the development package first.' }
-        $payload = @{VIDISTUDIO_UI_SMOKE_REPORT=$report;VIDISTUDIO_UI_SMOKE_PROJECT=$folder;VIDISTUDIO_CONFIG=$configFile} | ConvertTo-Json -Compress
+        $payloadValues = @{VIDISTUDIO_UI_SMOKE_REPORT=$report;VIDISTUDIO_UI_SMOKE_PROJECT=$folder;VIDISTUDIO_CONFIG=$configFile}
+        if ($GallerySettingsOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY = '1' }
+        $payload = $payloadValues | ConvertTo-Json -Compress
         $launchArgs = '--vidi-smoke ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payload))
         $testProcessId = [VidiActivation]::Launch(($installed.PackageFamilyName + '!App'), $launchArgs)
         $app = Get-Process -Id $testProcessId
@@ -92,6 +95,7 @@ public static class VidiPackageIdentity {
     $env:VIDISTUDIO_CONFIG = $oldConfig
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_PROJECT -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_REPORT -ErrorAction SilentlyContinue
+    Remove-Item Env:VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY -ErrorAction SilentlyContinue
 }
 
 

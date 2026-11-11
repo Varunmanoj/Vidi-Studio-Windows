@@ -26,6 +26,7 @@ public sealed partial class SettingsDialog : Window
     private readonly Window owner;
     private readonly ScrollViewer sectionHost;
     private ListView? sectionList;
+    private int SelectedSection => (sectionList?.SelectedItem as ListViewItem)?.Tag is int section ? section : -1;
     private ListViewItem? developerPromptsItem;
     private StackPanel? currentSectionPanel;
     private int requestedSection;
@@ -105,8 +106,8 @@ public sealed partial class SettingsDialog : Window
                 throw new InvalidOperationException("Stop did not reset the sample controls.");
         }
     }
-    internal void NavigateForSmokeTest(int section) { if (sectionList != null) sectionList.SelectedIndex = section; }
-    internal int SelectedSectionForSmokeTest => sectionList?.SelectedIndex ?? -1;
+    internal void NavigateForSmokeTest(int section) => SelectSection(section);
+    internal int SelectedSectionForSmokeTest => SelectedSection;
     internal void VerifyDeveloperModeGateForSmokeTest()
     {
         NavigateForSmokeTest(0);
@@ -178,7 +179,7 @@ public sealed partial class SettingsDialog : Window
     private List<Voice> voices = new();
     public SettingsDialog(StudioViewModel model, Window window, int initialSection = 0, StudioProject? projectTarget = null)
     {
-        if (initialSection < 0 || initialSection > 7) throw new ArgumentOutOfRangeException(nameof(initialSection));
+        if (initialSection < 0 || initialSection > 8) throw new ArgumentOutOfRangeException(nameof(initialSection));
         requestedSection = initialSection;
         owner = window;
         menuOwner = window as MainWindow;
@@ -201,12 +202,14 @@ public sealed partial class SettingsDialog : Window
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(210) });
         layout.ColumnDefinitions.Add(new ColumnDefinition());
         layout.SizeChanged += (_, args) => layout.ColumnDefinitions[0].Width = new GridLength(Math.Clamp(args.NewSize.Width * .24, 160, 210));
-        var heading = new TextBlock { Text = "Settings", FontSize = 26, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 20) };
-        Grid.SetRow(heading, 1); Grid.SetColumnSpan(heading, 2); layout.Children.Add(heading);
+        var heading = new TextBlock { FontSize = 24, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 20) };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(heading, "settings-page-title");
+        Grid.SetRow(heading, 1); Grid.SetColumn(heading, 1); layout.Children.Add(heading);
         var sections = new ListView { SelectionMode = ListViewSelectionMode.Single };
         var labels = new[] { "Appearance", "Projects", "Narration", "Gemini API", "Developer prompts", "Storage", "Help", "About", "YouTube Accounts" };
         var glyphs = new[] { "\uE790", "\uE8F1", "\uE767", "\uE734", "\uE8F2", "\uE8B7", "\uE897", "\uE946", "\uE714" };
-        for (var i = 0; i < labels.Length; i++)
+        // Keep section IDs stable for menu/navigation callers while matching the Mac sidebar order.
+        foreach (var i in new[] { 0, 1, 2, 3, 8, 4, 5, 6, 7 })
         {
             var row = new Grid { ColumnSpacing = 12 };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
@@ -214,12 +217,13 @@ public sealed partial class SettingsDialog : Window
             row.Children.Add(new FontIcon { Glyph = glyphs[i], FontSize = 18, Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center });
             var label = new TextBlock { Text = labels[i], VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
             Grid.SetColumn(label, 1); row.Children.Add(label);
-            var item = new ListViewItem { Content = row, MinHeight = 44, Padding = new Thickness(12, 8, 12, 8), HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            var item = new ListViewItem { Tag = i, Content = row, MinHeight = 44, Padding = new Thickness(12, 8, 12, 8), HorizontalContentAlignment = HorizontalAlignment.Stretch };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, labels[i]);
             if (i == 4) developerPromptsItem = item;
             sections.Items.Add(item);
         }
-        Grid.SetRow(sections, 2);
+        sections.Margin = new Thickness(0, 12, 0, 0);
+        Grid.SetRow(sections, 1); Grid.SetRowSpan(sections, 2);
         sectionList = sections;
         UpdateDeveloperPromptsVisibility();
         var host = sectionHost = new ScrollViewer
@@ -279,9 +283,11 @@ public sealed partial class SettingsDialog : Window
         sections.SelectionChanged += (_, _) =>
         {
             // Developer prompts is hidden unless Developer mode is on in Appearance.
-            if (sections.SelectedIndex == 4 && !DeveloperModeEnabled)
+            var section = SelectedSection;
+            if (section < 0) return;
+            if (section == 4 && !DeveloperModeEnabled)
             {
-                sections.SelectedIndex = 0;
+                SelectSection(0);
                 return;
             }
             if (sampleState != SampleState.Stopped) StopSample(false);
@@ -292,7 +298,8 @@ public sealed partial class SettingsDialog : Window
             host.Content = panel;
             ConnectivityChanged(this, EventArgs.Empty);
             currentSectionPanel = panel;
-            switch (sections.SelectedIndex)
+            heading.Text = labels[section];
+            switch (section)
             {
                 case 0:
                     BuildAppearance(panel);
@@ -346,10 +353,10 @@ public sealed partial class SettingsDialog : Window
                 case 8: panel.Children.Add(new YouTubeAccountsPanel()); break;
             }
         };
-        sections.SelectedIndex = requestedSection;
+        SelectSection(requestedSection);
         // WinUI can restore a ListView's selection while activating a newly created window.
         // Reapply the requested destination after its visual tree is ready.
-        layout.Loaded += (_, _) => sections.SelectedIndex = requestedSection;
+        layout.Loaded += (_, _) => SelectSection(requestedSection);
         Closed += (_, _) =>
         {
             App.OpenProjectsChanged -= ReceiveOpenProjectsChanged;
@@ -370,7 +377,7 @@ public sealed partial class SettingsDialog : Window
     {
         if (developerPromptsItem != null)
             developerPromptsItem.Visibility = DeveloperModeEnabled ? Visibility.Visible : Visibility.Collapsed;
-        if (!DeveloperModeEnabled && sectionList?.SelectedIndex == 4) sectionList.SelectedIndex = 0;
+        if (!DeveloperModeEnabled && SelectedSection == 4) SelectSection(0);
         UpdateAdvancedControlsVisibility();
     }
     private void UpdateAdvancedControlsVisibility()
@@ -382,10 +389,11 @@ public sealed partial class SettingsDialog : Window
     public void SelectSection(int section)
     {
         if (section == 4 && !DeveloperModeEnabled) section = 0;
-        if (sectionList == null || section < 0 || section >= sectionList.Items.Count)
+        var item = sectionList?.Items.OfType<ListViewItem>().FirstOrDefault(item => item.Tag is int id && id == section);
+        if (item == null)
             throw new ArgumentOutOfRangeException(nameof(section));
         requestedSection = section;
-        sectionList.SelectedIndex = section;
+        sectionList!.SelectedItem = item;
     }
     public void Hide() { if (ApplyPreferences()) Close(); }
     private void ApplyWindowTheme(string theme)

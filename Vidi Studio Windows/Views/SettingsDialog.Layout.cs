@@ -56,11 +56,29 @@ public sealed partial class SettingsDialog
         return row;
     }
 #if DEBUG
+    internal void VerifySidebarNavigationForSmokeTest()
+    {
+        var expected = new[] { "Appearance", "Projects", "Narration", "Gemini API", "YouTube Accounts" }
+            .Concat(DeveloperModeEnabled ? new[] { "Developer prompts" } : Array.Empty<string>())
+            .Concat(new[] { "Storage", "Help", "About" });
+        var actual = sectionList!.Items.OfType<ListViewItem>().Where(item => item.Visibility == Visibility.Visible)
+            .Select(Microsoft.UI.Xaml.Automation.AutomationProperties.GetName);
+        if (!actual.SequenceEqual(expected)) throw new InvalidOperationException("Settings sidebar order differs from Mac.");
+        var original = SelectedSection;
+        var heading = layout.Children.OfType<TextBlock>().Single();
+        foreach (var (id, title) in new[] { (8, "YouTube Accounts"), (1, "Projects"), (5, "Storage"), (6, "Help"), (7, "About") })
+        {
+            SelectSection(id);
+            if (SelectedSection != id || heading.Text != title)
+                throw new InvalidOperationException("Settings navigation lost its stable page ID or page heading.");
+        }
+        SelectSection(original);
+    }
     internal async System.Threading.Tasks.Task VerifyLayoutForSmokeTestAsync()
     {
         var originalPosition = AppWindow.Position;
         var originalSize = AppWindow.Size;
-        var originalSection = sectionList!.SelectedIndex;
+        var originalSection = SelectedSection;
         var area = DisplayArea.GetFromWindowId(owner.AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         var current = AppWindow.Position;
         if (current.X < area.X || current.Y < area.Y || current.X + originalSize.Width > area.X + area.Width || current.Y + originalSize.Height > area.Y + area.Height)

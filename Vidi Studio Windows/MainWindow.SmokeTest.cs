@@ -27,6 +27,12 @@ public sealed partial class MainWindow
             var folder = Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT");
             if (folder == null) throw new InvalidOperationException("Smoke project is required.");
             Model.Open(folder);
+            if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY") == "1")
+            {
+                await VerifyGalleryAndSettingsLayoutForSmokeTestAsync(report);
+                await File.WriteAllTextAsync(report, "PASS: aligned gallery language/source/layout controls and nonoverlapping search/actions at wide, compact and narrow widths in light/dark; Settings sidebar order, stable page navigation, headings and bounded scrolling.");
+                return;
+            }
             ShowEditor();
             VerifyProjectConfigurationDeveloperModeForSmokeTest();
             await VerifySegmentFiltersForSmokeTestAsync();
@@ -487,10 +493,7 @@ public sealed partial class MainWindow
             GalleryGrid.SelectedItem = null;
             await VerifyRemoveFromListFileMenuForSmokeTestAsync();
             PreviewTheme("dark"); await Task.Delay(80);
-            var searchOrigin = GallerySearchHost.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point());
-            if (GallerySearchHost.Visibility != Visibility.Visible ||
-                Math.Abs(searchOrigin.X + GallerySearchHost.ActualWidth / 2 - Root.ActualWidth / 2) > 24)
-                throw new InvalidOperationException("All Projects search is not centered in the top header.");
+            VerifyGalleryToolbarBoundsForSmokeTest();
             if (GalleryPanel.ActualTheme != ElementTheme.Dark || GalleryGrid.ActualTheme != ElementTheme.Dark || GalleryTable.ActualTheme != ElementTheme.Dark)
                 throw new InvalidOperationException("All Projects did not update every view to dark appearance.");
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "gallery-dark.png"));
@@ -564,6 +567,7 @@ public sealed partial class MainWindow
             var settings = new Views.SettingsDialog(Model, this);
             var display = settings.ShowAsync();
             await Task.Delay(250);
+            settings.VerifySidebarNavigationForSmokeTest();
             settings.VerifyPiperSampleMenuForSmokeTest();
             await settings.VerifyLayoutForSmokeTestAsync();
             await settings.VerifyAutomaticSettingsForSmokeTestAsync();
@@ -1005,6 +1009,74 @@ public sealed partial class MainWindow
             Application.Current.Exit();
         }
     }
+    private void VerifyGalleryToolbarBoundsForSmokeTest()
+    {
+        if (GalleryToolbar.Visibility != Visibility.Visible || GallerySearchHost.Visibility != Visibility.Visible || GalleryLanguageFilter.Header != null)
+            throw new InvalidOperationException("Gallery controls must share a header-free toolbar.");
+        var controls = new FrameworkElement[] { GalleryLanguageFilter, GalleryFilter, GalleryLayoutButton };
+        var centers = controls.Select(control => control.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0, control.ActualHeight / 2)).Y).ToArray();
+        if (centers.Max() - centers.Min() > 1)
+            throw new InvalidOperationException("Gallery language/source/layout controls do not share a baseline.");
+        var elements = controls.Concat(new FrameworkElement[] { GalleryToolbarActions, GallerySearchHost }).ToArray();
+        var bounds = elements.Select(element =>
+        {
+            var point = element.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point());
+            return new Windows.Foundation.Rect(point.X, point.Y, element.ActualWidth, element.ActualHeight);
+        }).ToArray();
+        for (var i = 0; i < bounds.Length; i++)
+        {
+            var rect = bounds[i];
+            if (rect.Width <= 0 || rect.Height <= 0 || rect.Left < 0 || rect.Right > Root.ActualWidth + 1)
+                throw new InvalidOperationException("A gallery toolbar control is clipped outside its window.");
+            for (var j = i + 1; j < bounds.Length; j++)
+                if (Math.Min(rect.Right, bounds[j].Right) - Math.Max(rect.Left, bounds[j].Left) > 1 &&
+                    Math.Min(rect.Bottom, bounds[j].Bottom) - Math.Max(rect.Top, bounds[j].Top) > 1)
+                    throw new InvalidOperationException("Gallery toolbar controls overlap.");
+        }
+    }
+
+    private async Task VerifyGalleryAndSettingsLayoutForSmokeTestAsync(string report)
+    {
+        ShowGallery_Click(this, new RoutedEventArgs());
+        var originalTheme = Model.Settings.Get("theme", "system");
+        var scale = Root.XamlRoot.RasterizationScale;
+        if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter) presenter.Restore();
+        foreach (var theme in new[] { "light", "dark" })
+        {
+            PreviewTheme(theme);
+            foreach (var width in new[] { 1120, 880, 640 })
+            {
+                AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(width * scale), (int)(640 * scale)));
+                await Task.Delay(150);
+                Root.UpdateLayout();
+                VerifyGalleryToolbarBoundsForSmokeTest();
+                await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, $"gallery-toolbar-{theme}-{width}.png"));
+            }
+        }
+        var display = RunDesktopCommandAsync("youtube-accounts");
+        for (var attempt = 0; attempt < 100 && openSettings == null; attempt++) await Task.Delay(20);
+        var settings = openSettings ?? throw new InvalidOperationException("YouTube Accounts menu did not open the shared Settings window.");
+        try
+        {
+            await Task.Delay(150);
+            if (settings.SelectedSectionForSmokeTest != 8) throw new InvalidOperationException("YouTube Accounts opened the wrong Settings page.");
+            settings.SelectSection(5);
+            await RunDesktopCommandAsync("youtube-accounts");
+            if (openSettings != settings || settings.SelectedSectionForSmokeTest != 8)
+                throw new InvalidOperationException("YouTube Accounts did not reuse Settings or select its page.");
+            settings.VerifySidebarNavigationForSmokeTest();
+            await settings.VerifyLayoutForSmokeTestAsync();
+            foreach (var (id, title) in new[] { (8, "youtube"), (1, "projects"), (5, "storage") })
+            {
+                settings.SelectSection(id);
+                await Task.Delay(100);
+                await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, $"settings-layout-{title}.png"));
+            }
+            await settings.VerifyWindowThemeAsync();
+        }
+        finally { settings.Close(); await display; PreviewTheme(originalTheme); }
+    }
+
     private async Task VerifyExistingAssetEngineWorkflowForSmokeTestAsync(string originalFolder)
     {
         var testRoot = Path.Combine(Path.GetDirectoryName(originalFolder)!, "asset-workflow");

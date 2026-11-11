@@ -51,7 +51,7 @@ public sealed partial class MainWindow
             if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "Edit", "View", "Playback", "Project", "YouTube", "Help" }))
                 throw new InvalidOperationException("Editor menu set does not match the active page.");
             var copyMenu = editorMenus.Single(menu => menu.Title == "Edit");
-            if (!copyMenu.Items.OfType<MenuFlyoutItem>().Select(item => (string)item.Tag).SequenceEqual(new[] { "copy-to", "segment-edit-mode" }))
+            if (!copyMenu.Items.OfType<MenuFlyoutItem>().Where(item => item.Visibility == Visibility.Visible).Select(item => (string)item.Tag).SequenceEqual(new[] { "copy-to", "segment-edit-mode" }))
                 throw new InvalidOperationException("Edit must expose Copy and Translate followed by Edit/Done Editing.");
             var youtubeMenu = editorMenus.Single(menu => menu.Title == "YouTube");
             if (!youtubeMenu.Items.OfType<MenuFlyoutItem>().Select(item => (string)item.Tag).SequenceEqual(new[] {
@@ -451,10 +451,19 @@ public sealed partial class MainWindow
             if (!MainMenu.Items.Select(item => item.Title).SequenceEqual(new[] { "File", "Edit", "View", "Playback", "Project", "YouTube", "Help" }))
                 throw new InvalidOperationException("Gallery menu hierarchy drifted from the shared desktop layout.");
             GalleryGrid.SelectedItem = null; GalleryList.SelectedItem = null;
+            UpdateDesktopMenuStates();
+            var galleryEdit = galleryMenus.Single(menu => menu.Title == "Edit");
+            if (galleryEdit.Visibility != Visibility.Visible || galleryEdit.Items.OfType<MenuFlyoutItem>().Any(item => item.Visibility == Visibility.Visible && item.IsEnabled))
+                throw new InvalidOperationException("Gallery Edit must be present with selected-project commands disabled when nothing is selected.");
             if (CanRunDesktopCommand("delete-project") || CanRunDesktopCommand("delete-content") || CanRunDesktopCommand("export") || CanRunDesktopCommand("review-narration-issues") || CanRunDesktopCommand("review-narration-voices"))
                 throw new InvalidOperationException("Project-only menu commands remained enabled in the gallery.");
             GalleryGrid.SelectedItem = null;
             GalleryList.SelectedItem = null;
+            var expectedFilterLanguages = new[] { "all" }.Concat(Model.ProjectFilterLanguages.Select(language => language.Id)).ToList();
+            if (!(GalleryLanguageFilter.ItemsSource as System.Collections.Generic.IEnumerable<Models.OutputLanguage>)!.Select(language => language.Id).SequenceEqual(expectedFilterLanguages) ||
+                !(ProjectLanguageFilter.ItemsSource as System.Collections.Generic.IEnumerable<Models.OutputLanguage>)!.Select(language => language.Id).SequenceEqual(expectedFilterLanguages) ||
+                libraryLanguageMenus.Any(menu => !menu.Items.OfType<ToggleMenuFlyoutItem>().Select(item => item.Text).SequenceEqual(new[] { "All Languages" }.Concat(Model.ProjectFilterLanguages.Select(language => language.Title)))))
+                throw new InvalidOperationException("Project language dropdowns and View menus must show only library content languages plus All Languages.");
             var galleryViewMenu = galleryMenus.Single(menu => menu.Title == "View");
             if (!galleryViewMenu.Items.OfType<MenuFlyoutSubItem>().Where(item => item.Visibility == Visibility.Visible)
                 .Select(item => item.Text).SequenceEqual(new[] { "Filter Projects by Source", "Filter Projects by Language" }))
@@ -466,6 +475,13 @@ public sealed partial class MainWindow
             if (CanRunDesktopCommand("rename-project") || CanRunDesktopCommand("trash-project"))
                 throw new InvalidOperationException("Project management requires a gallery selection or an open editor.");
             GalleryGrid.SelectedItem = Model.Projects.First();
+            UpdateDesktopMenuStates();
+            if (!CanRunDesktopCommand("open-gallery-window") || galleryEdit.Items.OfType<MenuFlyoutItem>().Where(item => item.Visibility == Visibility.Visible).Any(item => item.Icon == null))
+                throw new InvalidOperationException("Gallery Edit must expose icon-bearing commands for the selected project.");
+            if (!galleryEdit.Items.OfType<MenuFlyoutItem>().Where(item => item.Visibility == Visibility.Visible).Select(item => item.Tag as string).SequenceEqual(new[] { "rename-project" }))
+                throw new InvalidOperationException("All Projects Edit must contain only Rename Project.");
+            if (!galleryMenus.Single(menu => menu.Title == "File").Items.OfType<MenuFlyoutItem>().Any(item => item.Tag as string == "open-gallery-window" && item.Visibility == Visibility.Visible))
+                throw new InvalidOperationException("Open in New Window belongs in All Projects File.");
             if (!CanRunDesktopCommand("rename-project") || !CanRunDesktopCommand("trash-project") || !CanRunDesktopCommand("project-settings") || !CanRunDesktopCommand("open-selected-project") || !CanRunDesktopCommand("export"))
                 throw new InvalidOperationException("Selected gallery projects must support Rename and Recycle Bin without opening an editor.");
             GalleryGrid.SelectedItem = null;
@@ -920,20 +936,20 @@ public sealed partial class MainWindow
             for (var attempt = 0; attempt < 30 && (video.PlaybackSession.PlaybackState != Windows.Media.Playback.MediaPlaybackState.Playing || narrationPlayer.Source == null); attempt++) await Task.Delay(100);
             if (video.PlaybackSession.PlaybackState != Windows.Media.Playback.MediaPlaybackState.Playing || narrationPlayer.Source == null) throw new InvalidOperationException("Native synchronized narration did not start during its cue.");
             UpdatePlaybackControls();
-            if (VideoPlayPauseButton.Content as string != "\uE769" || videoPlayMenuItem?.Text != "Play or Pause" ||
+            if (VideoPlayPauseButton.Content as string != "\uE769" || videoPlayMenuItem?.Text != "Pause Video" ||
                 videoPlayMenuItem?.Icon is not Microsoft.UI.Xaml.Controls.FontIcon { Glyph: "\uE769" })
                 throw new InvalidOperationException("The video transport did not switch from Play to Pause.");
             await Task.Delay(150);
             if (Math.Abs(narrationPlayer.PlaybackSession.Position.TotalSeconds - (Position - 2)) > .5) throw new InvalidOperationException("Narration position did not align with the video cue.");
             video.Pause(); await Task.Delay(250);
-            if (VideoPlayPauseButton.Content as string != "\uE768" || videoPlayMenuItem?.Text != "Play or Pause" ||
+            if (VideoPlayPauseButton.Content as string != "\uE768" || videoPlayMenuItem?.Text != "Play Video" ||
                 videoPlayMenuItem?.Icon is not Microsoft.UI.Xaml.Controls.FontIcon { Glyph: "\uE768" })
                 throw new InvalidOperationException("The video transport did not switch from Pause to Play.");
             if (narrationPlayer.PlaybackSession.PlaybackState == Windows.Media.Playback.MediaPlaybackState.Playing) throw new InvalidOperationException("Narration kept playing while video was paused.");
             PlayPause_Click(this, new RoutedEventArgs());
             for (var attempt = 0; attempt < 20 && video.PlaybackSession.PlaybackState != Windows.Media.Playback.MediaPlaybackState.Playing; attempt++) await Task.Delay(50);
             UpdatePlaybackControls();
-            if (VideoPlayPauseButton.Content as string != "\uE769" || videoPlayMenuItem?.Text != "Play or Pause" ||
+            if (VideoPlayPauseButton.Content as string != "\uE769" || videoPlayMenuItem?.Text != "Pause Video" ||
                 videoPlayMenuItem?.Icon is not Microsoft.UI.Xaml.Controls.FontIcon { Glyph: "\uE769" })
                 throw new InvalidOperationException("The video transport did not resume through its shared button.");
             Seek(6); video.Play(); await Task.Delay(250);
@@ -1904,10 +1920,34 @@ public sealed partial class MainWindow
                 Section.SelectedIndex = tab; editMode = false;
                 if (CanRunDesktopCommand("add") != (tab is 0 or 2)) throw new InvalidOperationException("View mode must allow adding segments in Transcript and Descriptions.");
                 var row = tab == 0 ? Model.Project?.Transcript.FirstOrDefault() : Model.Project?.Cues.FirstOrDefault();
-                if (row != null && !SegmentMenu(row).Items.OfType<MenuFlyoutItem>().First(item => item.Text == "Edit segment").IsEnabled) throw new InvalidOperationException("Context editing must be available in view mode.");
+                if (row != null && !SegmentMenu(row).Items.OfType<MenuFlyoutItem>().First(item => (string?)item.Tag == "segment-one-edit").IsEnabled) throw new InvalidOperationException("Context editing must be available in view mode.");
                 if (editMode || CanRunDesktopCommand("segment-edit-selected")) throw new InvalidOperationException("Single-segment context editing must leave bulk Edit mode off.");
                 editMode = true;
                 if (CanRunDesktopCommand("add") != (tab is 0 or 2)) throw new InvalidOperationException("Edit mode must keep Add scoped to Transcript and Descriptions.");
+                var singleActions = new[] { "segment-one-edit", "segment-one-play", "segment-one-skip", "segment-one-preview", "segment-one-preview-stop", "segment-one-synthesize", "segment-one-rewrite", "segment-one-import-audio", "segment-one-delete-audio", "segment-one-reanalyze" };
+                Segments.SelectedItems.Clear(); UpdateDesktopMenuStates();
+                if (singleActions.Any(CanRunDesktopCommand) || CanRunDesktopCommand("segment-delete-selected"))
+                    throw new InvalidOperationException("Empty selection must disable row actions and Delete Selected.");
+                var visibleRows = Segments.Items.OfType<Models.Segment>().ToArray();
+                foreach (var target in visibleRows.GroupBy(segment => segment.IsDescription).Select(group => group.First())) {
+                    Segments.SelectedItems.Clear(); Segments.SelectedItems.Add(target); UpdateDesktopMenuStates();
+                    var contextIDs = SegmentMenu(target).Items.OfType<MenuFlyoutItem>().Select(item => (string)item.Tag).ToArray();
+                    if (contextIDs.Any(id => !RowCommandVisible(id, target.IsDescription)) ||
+                        target.IsDescription && contextIDs.Contains("segment-one-reanalyze") ||
+                        !target.IsDescription && contextIDs.Any(id => id is "segment-one-rewrite" or "segment-one-synthesize" or "segment-one-import-audio"))
+                        throw new InvalidOperationException("Row context menus must match the target row kind and tab.");
+                    foreach (var action in singleActions) {
+                        if (CanRunDesktopCommand(action) != CanRunRowCommand(action, target))
+                            throw new InvalidOperationException("Edit and context actions must share availability for exactly one row.");
+                    }
+                    if (!CanRunDesktopCommand("segment-delete-selected")) throw new InvalidOperationException("One selected row must allow deletion.");
+                }
+                if (visibleRows.Length > 1) {
+                    Segments.SelectedItems.Clear(); Segments.SelectedItems.Add(visibleRows[0]); Segments.SelectedItems.Add(visibleRows[1]); UpdateDesktopMenuStates();
+                    if (singleActions.Any(CanRunDesktopCommand) || !CanRunDesktopCommand("segment-delete-selected"))
+                        throw new InvalidOperationException("Multiple selected rows must disable individual actions but allow Delete Selected.");
+                }
+                Segments.SelectedItems.Clear();
                 if (row != null)
                 {
                     if (SegmentMenu(row).Items.OfType<MenuFlyoutItem>().Any(item => item.Text == "Copy and Translate…"))

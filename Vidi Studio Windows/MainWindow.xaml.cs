@@ -111,6 +111,7 @@ public sealed partial class MainWindow : Window
         };
         Root.KeyboardAccelerators.Add(fullScreenEscape);
         video.PlaybackSession.PlaybackStateChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdatePlaybackControls);
+        video.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() => { videoPlaybackStarted = false; UpdatePlaybackControls(); });
         speech.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(ClearSegmentPreview);
         InitializePresentation();
         UpdateApiKeyUi();
@@ -192,6 +193,7 @@ public sealed partial class MainWindow : Window
     }
     private void UpdateStatusFooter(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(Model.ProjectFilterLanguages)) { RefreshLanguageFilters(); UpdateDesktopMenuStates(); }
         if (e.PropertyName is nameof(Model.Busy) or nameof(Model.Idle) or nameof(Model.IsAnalyzing)
             or nameof(Model.IsSynthesizingNarration) or nameof(Model.NarratingSegmentId)
             or nameof(Model.NarratingSegmentIndex) or nameof(Model.ActiveNarrationStatusText)
@@ -581,6 +583,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         if (loadedProject == p.Folder) return;
+        videoPlaybackStarted = false; segmentPreviewPaused = false;
         loadedProject = p.Folder; activeCue = null; previewingSegment = null; speech.Pause(); narrationPlayer.Pause(); originalAudioPlayer.Pause(); originalAudioPlayer.Source = null; originalAudioPath = null; originalAudioMode = false; video.Pause(); onDeviceNarrator.Stop(); readback.Stop();
         Player.Visibility = p.IsYouTube ? Visibility.Collapsed : Visibility.Visible;
         YouTubePlayer.Visibility = p.IsYouTube ? Visibility.Visible : Visibility.Collapsed;
@@ -700,6 +703,7 @@ public sealed partial class MainWindow : Window
                 {
                     if (!ReferenceEquals(Model.Project, polledProject)) return;
                     youtubePosition = doc.RootElement.GetProperty("time").GetDouble(); youtubePlaying = doc.RootElement.GetProperty("playing").GetBoolean();
+                    if (!youtubePlaying && youtubePosition >= polledProject.Duration - .05) videoPlaybackStarted = false;
                     await SyncOriginalAudioAsync(polledProject, doc.RootElement);
                     UpdatePlaybackControls();
                     if (doc.RootElement.TryGetProperty("duration", out var duration) && duration.TryGetDouble(out var seconds) && double.IsFinite(seconds) && seconds > 0) youtubeDuration = seconds;
@@ -927,12 +931,16 @@ public sealed partial class MainWindow : Window
     {
         if (windowClosed) return;
         var playing = IsVideoPlaying();
+        if (playing) videoPlaybackStarted = true;
+        VideoStopButton.Visibility = videoPlaybackStarted ? Visibility.Visible : Visibility.Collapsed;
+        VideoStopButton.IsEnabled = CanRunDesktopCommand("stop");
         VideoPlayPauseButton.IsEnabled = Model.Project != null && (playing || !Model.Project.IsYouTube || ConnectivityService.Shared.Available(OnlineService.YouTube));
         VideoPlayPauseButton.Content = playing ? "\uE769" : "\uE768";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(VideoPlayPauseButton, playing ? "Pause video" : "Play video");
         ToolTipService.SetToolTip(VideoPlayPauseButton, !playing && Model.Project?.IsYouTube == true ? ConnectivityService.Shared.Reason(OnlineService.YouTube) ?? "Play video" : playing ? "Pause video" : "Play video");
         UpdateDesktopPlaybackState();
     }
+    private async void VideoStop_Click(object sender, RoutedEventArgs e) => await RunDesktopCommandAsync("stop");
     private void Rewind_Click(object sender, RoutedEventArgs e) => Seek(Position - 5);
     private void Forward_Click(object sender, RoutedEventArgs e) => Seek(Position + 5);
     private async void Segment_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
@@ -1920,17 +1928,7 @@ public sealed partial class MainWindow : Window
         if (!Model.HasApiKey) { await ShowSettingsSectionAsync(3); return; }
         if (((sender as FrameworkElement)?.Tag as Segment ?? Segments.SelectedItem as Segment) is { IsDescription: true } c) await Model.RunAsync("rewrite-cue", new[] { "--segment", c.Id });
     }
-    private void PreviewNarration_Click(object sender, RoutedEventArgs e)
-    {
-        if (((sender as FrameworkElement)?.Tag as Segment ?? Segments.SelectedItem as Segment) is { Audio: { } audio } segment && Model.Project is { } p)
-        {
-            StopSegmentPreview();
-            previewingSegment = segment;
-            segment.IsPreviewing = true;
-            speech.Source = MediaSource.CreateFromUri(new Uri(p.Resolve(audio)));
-            speech.Play();
-        }
-    }
+    private void PreviewNarration_Click(object sender, RoutedEventArgs e) => SegmentPreview_Click(sender, e);
     private async void DeleteNarration_Click(object sender, RoutedEventArgs e)
     { if (((sender as FrameworkElement)?.Tag as Segment ?? Segments.SelectedItem as Segment) is { IsDescription: true } c && await Confirm("Delete narration", "Remove this segment's saved audio?", "Delete")) { StopSegmentPreview(); await Model.RunAsync("delete-segment-audio", new[] { "--segment", c.Id }); } }
     private async void Ocr_Click(object sender, RoutedEventArgs e)

@@ -25,6 +25,7 @@ public sealed partial class MainWindow
     private readonly HashSet<MenuFlyoutItem> libraryOnlyMenuItems = new();
     private bool desktopEditorVisible;
     private bool? desktopPlaybackWasPlaying;
+    private bool desktopPlaybackWasStarted;
     internal IEnumerable<(string Label, string Shortcut)> DesktopShortcutReference =>
         DesktopShortcuts.Select(entry => (DesktopCommandTitle(entry.Key), entry.Value.Text));
     /// <summary>Current window appearance, shared with companion windows such as Help.</summary>
@@ -67,9 +68,12 @@ public sealed partial class MainWindow
         MenuBarItem[] Layout() => new[]
         {
             Menu("File",
-                Command("new-project"), Command("open-project"), Command("youtube-browser"), Command("youtube-open-browser"), Separator(), Command("export"), Separator(),
+                Command("new-project"), Command("open-project"), Command("open-gallery-window", libraryOnly: true), Separator(), Command("youtube-browser"), Command("youtube-open-browser"), Separator(), Command("export"), Separator(),
                 Command("delete-project"), Command("delete-content"), Separator(), Command("remove-from-list"), Separator(), Command("open-editor-window"), Command("settings"), Command("project-settings"), Command("close-window")),
-            Menu("Edit", Command("copy-to"), Command("segment-edit-mode")),
+            Menu("Edit", Command("rename-project", libraryOnly: true),
+                Command("copy-to"), Command("segment-edit-mode"), Separator(),
+                Command("segment-select-all"), Command("segment-deselect-all"), Separator(),
+                Command("segment-one-edit"), Command("segment-one-play"), Command("segment-one-skip"), Command("segment-one-synthesize"), Command("segment-one-rewrite"), Command("segment-one-import-audio"), Command("segment-one-delete-audio"), Command("segment-one-reanalyze"), Command("segment-delete-selected")),
             Menu("View",
                 Submenu("Filter Projects by Source", Command("projects-source-all"), Command("projects-source-local"), Command("projects-source-youtube")),
                 LibraryLanguageMenu(), Command("projects-reset-filters"), Separator(),
@@ -79,7 +83,7 @@ public sealed partial class MainWindow
                 Submenu("Sort Segments", Command("clear-segment-sort"), Command("sort-segments"), Separator(), Command("sort-start"), Command("sort-duration-asc"), Command("sort-duration-desc"), Command("sort-origin")), Separator(),
                 Command("show-projects"), Command("show-inspector"), Separator(),
                 Command("project-list"), Command("project-grid")),
-            Menu("Playback",
+            Menu("Playback", Submenu("Segment Narration", Command("segment-one-preview"), Command("segment-one-preview-stop")), Separator(),
                 Command("preview"), Command("fullscreen"), Command("play"), Command("stop"),
                 Command("back"), Command("forward"), Command("narration"), Separator(),
                 Submenu("Transcript Overlay", Command("caption-cycle"), Separator(),
@@ -212,18 +216,20 @@ public sealed partial class MainWindow
 
     private void RefreshLibraryLanguageMenus()
     {
-        var state = desktopEditorVisible + "|" + Model.LanguageFilter;
+        RefreshLanguageFilters();
+        var state = desktopEditorVisible + "|" + Model.LanguageFilter + "|" + string.Join("|", Model.ProjectFilterLanguages.Select(language => language.Id + ":" + language.Title));
         if (state == libraryLanguageMenuState) return;
         libraryLanguageMenuState = state;
         foreach (var menu in libraryLanguageMenus)
         {
             menu.Visibility = desktopEditorVisible ? Visibility.Collapsed : Visibility.Visible;
             menu.Items.Clear();
-            foreach (var language in new[] { new Models.OutputLanguage("all", "All Languages") }.Concat(Models.OutputLanguage.Options))
+            foreach (var language in new[] { new Models.OutputLanguage("all", "All Languages") }.Concat(Model.ProjectFilterLanguages))
             {
                 var item = new ToggleMenuFlyoutItem { Text = language.Title, IsChecked = Model.LanguageFilter == language.Id };
                 item.Click += (_, _) => {
                     if (desktopEditorVisible) return;
+                    if (language.Id != "all" && !Model.ProjectFilterLanguages.Any(option => option.Id == language.Id)) return;
                     GalleryLanguageFilter.SelectedItem = (GalleryLanguageFilter.ItemsSource as IEnumerable<Models.OutputLanguage>)?.FirstOrDefault(v => v.Id == language.Id);
                     UpdateDesktopMenuStates();
                 };
@@ -312,10 +318,16 @@ public sealed partial class MainWindow
     private void UpdateDesktopPlaybackState()
     {
         var playing = IsVideoPlaying();
-        if (desktopPlaybackWasPlaying == playing) return;
+        if (desktopPlaybackWasPlaying == playing && desktopPlaybackWasStarted == videoPlaybackStarted) return;
         desktopPlaybackWasPlaying = playing;
-        if (desktopMenuItems.TryGetValue("play", out var items))
-            foreach (var item in items) item.Icon = DesktopCommandIcon("play");
+        desktopPlaybackWasStarted = videoPlaybackStarted;
+        UpdateDesktopMenuStates();
+    }
+
+    private static bool SameMenuIcon(IconElement? current, IconElement next)
+    {
+        return current is FontIcon previous && next is FontIcon candidate && previous.Glyph == candidate.Glyph &&
+            previous.FontFamily.Source == candidate.FontFamily.Source && previous.FontSize == candidate.FontSize;
     }
 
     private void UpdateDesktopMenuStates()
@@ -327,12 +339,15 @@ public sealed partial class MainWindow
         foreach (var (id, items) in desktopMenuItems)
             foreach (var item in items)
             {
-                item.Text = DesktopCommandTitle(id);
-                item.Icon = DesktopCommandIcon(id);
-                item.IsEnabled = CanRunDesktopCommand(id);
+                var title = DesktopCommandTitle(id);
+                if (item.Text != title) item.Text = title;
+                var nextIcon = DesktopCommandIcon(id);
+                if (!SameMenuIcon(item.Icon, nextIcon)) item.Icon = nextIcon;
+                var enabled = CanRunDesktopCommand(id);
+                if (item.IsEnabled != enabled) item.IsEnabled = enabled;
                 item.Visibility = (libraryOnlyMenuItems.Contains(item) ? !desktopEditorVisible : LibraryCommandVisible(id)) ? Visibility.Visible : Visibility.Collapsed;
-                if (id == "open-configuration")
-                    item.Visibility = Model.Settings.GetBool("developerMode") && LibraryCommandVisible(id) ? Visibility.Visible : Visibility.Collapsed;
+                if (libraryOnlyMenuItems.Contains(item) && !LibraryCommandVisible(id)) item.Visibility = Visibility.Collapsed;
+                if (id == "open-configuration" && !Model.Settings.GetBool("developerMode")) item.Visibility = Visibility.Collapsed;
             }
         InspectorOpenConfigurationButton.Visibility = Model.Settings.GetBool("developerMode") ? Visibility.Visible : Visibility.Collapsed;
         InspectorOpenConfigurationButton.IsEnabled = CanRunDesktopCommand("open-configuration");
@@ -376,6 +391,7 @@ public sealed partial class MainWindow
                 group.Visibility = desktopEditorVisible && Section.SelectedIndex == 1 && !summaryEditMode ? Visibility.Visible : Visibility.Collapsed;
                 group.IsEnabled &= !summaryEditMode;
             }
+            if (name == "Segment Narration") group.Visibility = desktopEditorVisible && EditorCommandVisible("segment-one-preview") ? Visibility.Visible : Visibility.Collapsed;
             if (name == "Segments") group.Visibility = timedSection ? Visibility.Visible : Visibility.Collapsed;
             if (name == "YouTube") group.Visibility = desktopEditorVisible && Model.Project?.IsYouTube == true ? Visibility.Visible : Visibility.Collapsed;
             if (name is "Narration" or "Narration Audio") group.Visibility = desktopEditorVisible && EditorCommandVisible("synthesize-tts") ? Visibility.Visible : Visibility.Collapsed;
@@ -396,7 +412,7 @@ public sealed partial class MainWindow
             }
         }
         foreach (var menu in galleryMenus.Concat(editorMenus)) {
-            menu.Visibility = !desktopEditorVisible && menu.Title is "Playback" or "Edit" ? Visibility.Collapsed : Visibility.Visible;
+            menu.Visibility = !desktopEditorVisible && menu.Title is "Playback" ? Visibility.Collapsed : Visibility.Visible;
             if (menu.Title == "YouTube" && !YouTubeMenusVisible) menu.Visibility = Visibility.Collapsed;
             if (!desktopEditorVisible) {
                 foreach (var group in menu.Items.OfType<MenuFlyoutSubItem>().Where(g => g.Tag as string is "project-language" or "saved-results"))
@@ -428,7 +444,7 @@ public sealed partial class MainWindow
         if (desktopEditorVisible) return !id.StartsWith("projects-", StringComparison.Ordinal) && id != "open-selected-project" && EditorCommandVisible(id);
         return id is "new-project" or "open-project" or "youtube-browser" or "youtube-accounts" or "youtube-open-browser"
             or "export" or "delete-project" or "delete-content" or "remove-from-list" or "settings" or "project-settings"
-            or "close-window" or "help" or "about" or "project-list" or "project-grid" or "open-selected-project"
+            or "close-window" or "help" or "about" or "project-list" or "project-grid" or "open-selected-project" or "open-gallery-window" or "generate-ad-cues"
             or "analyze" or "prepare-video" or "transcribe" or "generate-summary" or "show-in-finder" or "open-configuration"
             or "rename-project" or "trash-project" || id.StartsWith("projects-", StringComparison.Ordinal);
     }
@@ -489,6 +505,8 @@ public sealed partial class MainWindow
     private bool EditorCommandVisible(string id)
     {
         if (!EditorCommandVisibleInMode(id)) return false;
+        if (id == "stop") return videoPlaybackStarted;
+        if (id.StartsWith("segment-one-", StringComparison.Ordinal)) return editMode && RowCommandVisible(id, SingleSelectedSegment()?.IsDescription) && (id != "segment-one-preview-stop" || SingleSelectedSegment() is { } selected && ReferenceEquals(previewingSegment, selected));
         if (id.StartsWith("summary-", StringComparison.Ordinal)) return Section.SelectedIndex == 1;
         return id switch
         {
@@ -507,6 +525,69 @@ public sealed partial class MainWindow
             "youtube-captions" => Model.Project?.IsYouTube == true && Section.SelectedIndex == 0,
             "youtube-details" or "youtube-refresh" or "import-original-audio" => Model.Project?.IsYouTube == true,
             _ => true
+        };
+    }
+
+    private bool CanRunSingleSegmentCommand(string id)
+    {
+        return editMode && SingleSelectedSegment() is { } segment && CanRunRowCommand(id, segment);
+    }
+
+    private Models.Segment? SingleSelectedSegment()
+    {
+        return Segments.SelectedItems.Count == 1 && Segments.SelectedItems[0] is Models.Segment segment &&
+            Segments.Items.Contains(segment) && SegmentBelongsToCurrentTab(segment) ? segment : null;
+    }
+
+    private bool SegmentBelongsToCurrentTab(Models.Segment segment)
+    {
+        return Model.Project is { } p && Section.SelectedIndex is 0 or 2 or 4 &&
+            (Section.SelectedIndex == 4 || segment.IsDescription == (Section.SelectedIndex == 2)) &&
+            (segment.IsDescription ? p.Cues : p.Transcript).Any(row => row.Id == segment.Id);
+    }
+
+    private bool RowCommandVisible(string id, bool? description)
+    {
+        if (Section.SelectedIndex is not (0 or 2 or 4)) return false;
+        if (description.HasValue && Section.SelectedIndex != 4 && description.Value != (Section.SelectedIndex == 2)) return false;
+        var effectiveDescription = description ?? (Section.SelectedIndex == 4 ? (bool?)null : Section.SelectedIndex == 2);
+        return id switch {
+            "segment-one-edit" or "segment-one-play" or "segment-one-skip" or "segment-one-delete" => true,
+            "segment-one-preview" or "segment-one-preview-stop" or "segment-one-synthesize" or "segment-one-rewrite" or "segment-one-import-audio" or "segment-one-delete-audio" => effectiveDescription != false,
+            "segment-one-reanalyze" => effectiveDescription != true,
+            _ => false
+        };
+    }
+
+    private bool CanRunRowCommand(string id, Models.Segment segment)
+    {
+        if (!desktopEditorVisible || validationShowcaseActive || windowClosed || !Model.Idle || !Segments.Items.Contains(segment) ||
+            !SegmentBelongsToCurrentTab(segment) || !RowCommandVisible(id, segment.IsDescription)) return false;
+        return id switch {
+            "segment-one-play" or "segment-one-skip" => Model.Project?.IsYouTube != true || ConnectivityService.Shared.Available(OnlineService.YouTube),
+            "segment-one-reanalyze" or "segment-one-rewrite" => Model.CanUseAI,
+            "segment-one-synthesize" => Model.CurrentNarrationEngine() != "gemini" || Model.CanUseAI,
+            "segment-one-preview" => segment.AudioReady || ReferenceEquals(previewingSegment, segment),
+            "segment-one-preview-stop" => ReferenceEquals(previewingSegment, segment),
+            "segment-one-delete-audio" => segment.Audio != null,
+            _ => true
+        };
+    }
+
+    private string SegmentCommandTitle(string id, Models.Segment? segment = null)
+    {
+        segment ??= SingleSelectedSegment();
+        var description = segment?.IsDescription ?? (Section.SelectedIndex == 4 ? (bool?)null : Section.SelectedIndex == 2);
+        var title = description == true ? "Audio description" : description == false ? "Transcript" : "Segment";
+        return id switch {
+            "segment-one-edit" => $"Edit {title}{(title == "Segment" ? "" : " Segment")}…",
+            "segment-one-play" => $"Play from {title}", "segment-one-skip" => $"Skip to {title}",
+            "segment-one-preview" => segment != null && ReferenceEquals(previewingSegment, segment) ? (segmentPreviewPaused ? "Resume Narration" : "Pause Narration") : "Play Narration",
+            "segment-one-preview-stop" => "Stop Narration",
+            "segment-one-synthesize" => segment?.Audio != null ? "Regenerate Segment Narration" : "Synthesize This Segment",
+            "segment-one-rewrite" => "Rewrite to Fit", "segment-one-import-audio" => "Import Narration Audio…",
+            "segment-one-delete-audio" => "Delete Segment Audio…", "segment-one-reanalyze" => "Re-Analyze This Segment…",
+            "segment-one-delete" => "Delete Segment…", _ => id
         };
     }
 
@@ -550,7 +631,7 @@ public sealed partial class MainWindow
         if (!Model.Idle) return false;
         if (id == "project-settings") return ProjectManagementTarget() is { IntegrityPlaceholder: false } settingsProject && settingsProject.Integrity?.ManifestUnreadable != true && settingsProject.Integrity?.FolderMissing != true;
         if (OnlineRequirements.Services(id, ProjectManagementTarget(), Model.Settings).Any(service => ConnectivityService.Shared.Reason(service) != null)) return false;
-        if (!desktopEditorVisible && id is "open-selected-project" or "export" or "delete-project" or "delete-content" or "prepare-video" or "analyze" or "transcribe" or "generate-summary" or "generate-ad-cues")
+        if (!desktopEditorVisible && id is "open-selected-project" or "open-gallery-window" or "export" or "delete-project" or "delete-content" or "prepare-video" or "analyze" or "transcribe" or "generate-summary" or "generate-ad-cues")
         {
             if (SelectedGalleryProject() is not { } selected) return false;
             if (id == "delete-project") return true;
@@ -573,6 +654,7 @@ public sealed partial class MainWindow
         if (id == "youtube-browser") return Model.Idle;
         if (id is "youtube-details" or "youtube-refresh" or "youtube-captions") return desktopEditorVisible && Model.Idle && Model.Project?.IsYouTube == true;
         if (!desktopEditorVisible || Model.Project is not { } p) return false;
+        if (id.StartsWith("segment-one-", StringComparison.Ordinal)) return CanRunSingleSegmentCommand(id);
         if (p.IsYouTube && (id is "play" or "back" or "forward") && !ConnectivityService.Shared.Available(OnlineService.YouTube)) return id == "play" && IsVideoPlaying();
         if (Section.SelectedIndex == 3 && !p.OverviewMatchesEditingResult && id is "synthesize-tts" or "synthesize-changed" or "review-narration-issues" or "review-narration-voices") return false;
         var timed = Section.SelectedIndex is 0 or 2 or 4;
@@ -655,10 +737,11 @@ public sealed partial class MainWindow
 
     private string DesktopCommandTitle(string id)
     {
+        if (id.StartsWith("segment-one-", StringComparison.Ordinal)) return SegmentCommandTitle(id);
         var p = ProjectManagementTarget();
         return id switch
         {
-            "open-selected-project" => "Open Selected Project",
+            "open-selected-project" => "Open Selected Project", "open-gallery-window" => "Open in New Window",
             "projects-source-all" => "All Projects", "projects-source-local" => "Local Video Projects", "projects-source-youtube" => "YouTube Projects",
             "projects-reset-filters" => "Reset Project Filters",
             "delete-project" => "Delete Project…", "delete-content" => "Choose What to Delete…",
@@ -672,7 +755,7 @@ public sealed partial class MainWindow
             "show-projects" => ProjectSplitView.IsPaneOpen ? "Hide Project List" : "Show Project List",
             "show-inspector" => InspectorSplitView.IsPaneOpen ? "Hide Inspector" : "Show Inspector",
             "project-list" => "Project List View", "project-grid" => "Project Grid View",
-            "fullscreen" => fullScreenVideo ? "Exit Full-Screen Video" : "Full-Screen Video", "play" => "Play or Pause", "stop" => "Stop Video",
+            "fullscreen" => fullScreenVideo ? "Exit Full-Screen Video" : "Full-Screen Video", "play" => IsVideoPlaying() ? "Pause Video" : "Play Video", "stop" => "Stop Video",
             "back" => "Rewind 5 Seconds", "forward" => "Fast Forward 5 Seconds", "narration" => "Toggle Narration",
             "caption-cycle" => "Cycle Transcript Overlay", "caption-off" => "Turn Transcript Overlay Off",
             "caption-transcript" => "Show Transcript Overlay", "caption-ad-transcript" => "Show AD Transcript Overlay",
@@ -725,8 +808,20 @@ public sealed partial class MainWindow
         };
     }
 
-    private IconElement DesktopCommandIcon(string id)
+    private IconElement DesktopCommandIcon(string id, Models.Segment? row = null)
     {
+        if (id == "segment-one-preview") {
+            var segment = row ?? SingleSelectedSegment();
+            return new FontIcon { Glyph = segment != null && ReferenceEquals(previewingSegment, segment) && !segmentPreviewPaused ? "\uE769" : "\uE768" };
+        }
+        if (id == "segment-one-preview-stop") return new FontIcon { Glyph = "\uE71A" };
+        if (id.StartsWith("segment-one-", StringComparison.Ordinal)) return Views.MenuIcons.Create(id switch {
+            "segment-one-edit" => "Edit segment", "segment-one-play" => "Play from segment", "segment-one-skip" => "Skip to segment",
+            "segment-one-preview" => "Preview narration", "segment-one-preview-stop" => "Pause", "segment-one-synthesize" => "Synthesize this segment", "segment-one-rewrite" => "Rewrite description to fit",
+            "segment-one-import-audio" => "Import narration audio…", "segment-one-delete-audio" => "Delete narration", "segment-one-reanalyze" => "Re-Analyze this segment",
+            _ => "Delete segment"
+        });
+
         if (id == "play") return new FontIcon { Glyph = IsVideoPlaying() ? "\uE769" : "\uE768" };
         if (id == "fullscreen") return new FontIcon { Glyph = fullScreenVideo ? "\uE73F" : "\uE740" };
         if (id is "synthesize-tts" or "Narration" && Model.IsSynthesizingNarration)
@@ -766,7 +861,7 @@ public sealed partial class MainWindow
             "Transcript Overlay" => "Transcript overlay",
             "caption-cycle" or "caption-off" or "caption-transcript" or "caption-ad-transcript" => "Transcript overlay",
             "Filter Projects by Source" or "projects-source-all" or "projects-source-local" or "projects-source-youtube" or "projects-reset-filters" => "Filter segments",
-            "open-selected-project" => "Open editor in new window",
+            "open-selected-project" or "open-gallery-window" => "Open editor in new window",
             "new-project" or "add" => "New project", "open-project" or "show-in-finder" => "Open project folder",
             "Import" => "Import", "import-assets" => "Import existing assets", "import-transcript" => "Import transcript",
             "import-summary" => "Import summary", "import-descriptions" => "Import descriptions", "filter-segments" => "Filter segments",
@@ -832,6 +927,7 @@ public sealed partial class MainWindow
         var e = new RoutedEventArgs();
         switch (id)
         {
+            case "open-gallery-window":
             case "open-selected-project": if (SelectedGalleryProject() is { } openingProject) App.OpenWindow(openingProject.Folder); break;
             case "projects-source-all": GalleryFilter.SelectedIndex = 0; break;
             case "projects-source-local": GalleryFilter.SelectedIndex = 1; break;
@@ -909,6 +1005,19 @@ public sealed partial class MainWindow
             case "add": case "reanalyze-selection": await EditSegment(null); break;
             case "segment-select-all": SelectAll_Click(this, e); break;
             case "segment-deselect-all": Deselect_Click(this, e); break;
+            case "segment-one-edit":
+            case "segment-one-play":
+            case "segment-one-skip":
+            case "segment-one-preview":
+            case "segment-one-preview-stop":
+            case "segment-one-synthesize":
+            case "segment-one-rewrite":
+            case "segment-one-import-audio":
+            case "segment-one-delete-audio":
+            case "segment-one-reanalyze":
+            case "segment-one-delete":
+                if (SingleSelectedSegment() is { } segment) await RunSegmentRowCommandAsync(id, segment);
+                break;
             case "segment-edit-selected": Edit_Click(this, e); break;
             case "segment-delete-selected": DeleteSegments_Click(this, e); break;
             case "follow": Follow.IsOn = !Follow.IsOn; break;

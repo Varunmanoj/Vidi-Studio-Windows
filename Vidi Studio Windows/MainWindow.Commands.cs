@@ -397,71 +397,61 @@ public sealed partial class MainWindow
         }
         catch (Exception ex) { _ = ShowError(ex); }
     }
+    private async System.Threading.Tasks.Task RunSegmentRowCommandAsync(string id, Segment segment)
+    {
+        if (!CanRunRowCommand(id, segment)) return;
+        switch (id) {
+            case "segment-one-edit": await EditSegment(segment); break;
+            case "segment-one-play":
+                if (segment.IsDescription) Narration.IsOn = true;
+                Seek(segment.Start); StartVideoPlayback(); break;
+            case "segment-one-skip": StopProjectPlayback(); Seek(segment.Start); break;
+            case "segment-one-preview": SegmentPreview_Click(new Button { Tag = segment }, new RoutedEventArgs()); break;
+            case "segment-one-preview-stop": StopSegmentPreview(); break;
+            case "segment-one-synthesize": await SynthesizeNarrationWithConfirmationAsync(new[] { "--segment", segment.Id }); break;
+            case "segment-one-rewrite": await Model.RunAsync("rewrite-cue", new[] { "--segment", segment.Id }); break;
+            case "segment-one-import-audio": await ImportSegmentNarrationAsync(segment); break;
+            case "segment-one-delete-audio":
+                if (await Confirm("Delete narration", "Remove this segment's saved audio?", "Delete")) {
+                    if (!CanRunRowCommand(id, segment)) return;
+                    StopSegmentPreview(); await Model.RunAsync("delete-segment-audio", new[] { "--segment", segment.Id });
+                }
+                break;
+            case "segment-one-reanalyze":
+                var path = Path.Combine(Path.GetTempPath(), "vidistudio-reanalyze-" + Guid.NewGuid() + ".json");
+                try {
+                    File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(new { id = segment.Id, start = segment.Start, end = segment.End, text = segment.Text, hint = "" }));
+                    await Model.RunAsync("reanalyze-transcript-segment", new[] { "--input", path });
+                } finally { File.Delete(path); }
+                break;
+            case "segment-one-delete":
+                if (Model.Project is not { } p || !await Confirm("Delete segment", "This text and associated narration are permanently removed. Existing exports are invalidated.", "Delete")) return;
+                if (!CanRunRowCommand(id, segment) || Model.Project?.Id != p.Id) return;
+                speech.Source = null;
+                await Model.SaveSegmentsAsync(p.Transcript.Where(c => segment.IsDescription || c.Id != segment.Id), p.Cues.Where(c => !segment.IsDescription || c.Id != segment.Id));
+                break;
+        }
+    }
+
     private MenuFlyout SegmentMenu(Segment? segment = null)
     {
         var menu = new MenuFlyout();
-        void Item(string label, RoutedEventHandler action, bool available = true, bool requiresEdit = false)
-        {
-            var item = new MenuFlyoutItem { Text = label, Icon = Views.MenuIcons.Create(label), IsEnabled = Model.Idle && available && (!requiresEdit || editMode), Tag = segment };
-            item.Click += (_, args) =>
-            {
-                if (!Model.Idle || (requiresEdit && !editMode)) return;
-                if (segment != null)
-                {
-                    Segments.SelectedItems.Clear(); Segments.SelectedItem = segment;
-                }
-                action(item, args);
-            };
-            menu.Items.Add(item);
-        }
         if (segment != null)
         {
-            Item("Edit segment", async (_, _) => await EditSegment(segment));
-            Item("Play from segment", (_, _) =>
+            foreach (var id in new[] { "segment-one-edit", "segment-one-play", "segment-one-skip", "segment-one-preview", "segment-one-preview-stop", "segment-one-synthesize", "segment-one-rewrite", "segment-one-import-audio", "segment-one-delete-audio", "segment-one-reanalyze", "segment-one-delete" })
             {
-                if (segment.IsDescription) Narration.IsOn = true;
-                Seek(segment.Start);
-                StartVideoPlayback();
-            });
-            Item("Skip to segment", (_, _) =>
-            {
-                StopProjectPlayback();
-                Seek(segment.Start);
-            });
-            if (segment.IsDescription)
-            {
-                var canSynthesize = Model.CurrentNarrationEngine() != "gemini" || Model.CanUseAI;
-                var synthLabel = segment.IsNarrating
-                    ? $"Generating audio for AD segment {segment.AdNumber}…"
-                    : segment.IsQueuedForNarration
-                        ? $"Queued for audio generation (AD {segment.AdNumber})…"
-                        : (segment.Audio == null ? "Synthesize this segment" : "Regenerate segment narration");
-                Item("Preview narration", PreviewNarration_Click, segment.AudioReady);
-                Item(synthLabel, NarrateSelected_Click, canSynthesize);
-                if (Model.IsSynthesizingNarration && !segment.IsNarrating && Model.NarratingSegmentIndex is { } activeIdx)
-                    Item($"Currently generating AD segment {activeIdx}…", (_, _) => { }, false);
-                Item("Import narration audio…", async (_, _) => await ImportSegmentNarrationAsync(segment), Model.Idle);
-                Item("Rewrite description to fit", Rewrite_Click, Model.CanUseAI);
-                Item("Delete narration", DeleteNarration_Click, segment.Audio != null);
+                if (!RowCommandVisible(id, segment.IsDescription) || !SegmentBelongsToCurrentTab(segment) || id == "segment-one-preview-stop" && !ReferenceEquals(previewingSegment, segment)) continue;
+                if (id is "segment-one-play" or "segment-one-preview" or "segment-one-synthesize" or "segment-one-delete-audio" or "segment-one-reanalyze" || id == "segment-one-delete" && !segment.IsDescription)
+                    menu.Items.Add(new MenuFlyoutSeparator());
+                var item = new MenuFlyoutItem { Text = SegmentCommandTitle(id, segment), Icon = DesktopCommandIcon(id, segment),
+                    IsEnabled = CanRunRowCommand(id, segment), Tag = id };
+                item.Click += async (_, _) => {
+                    try { await RunSegmentRowCommandAsync(id, segment); }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex) { await ShowError(ex); }
+                };
+                menu.Items.Add(item);
             }
-            else
-            {
-                Item("Re-Analyze this segment", async (_, _) => {
-                    var path = Path.Combine(Path.GetTempPath(), "vidistudio-reanalyze-" + Guid.NewGuid() + ".json");
-                    try {
-                        File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(new { id = segment.Id, start = segment.Start, end = segment.End, text = segment.Text, hint = "" }));
-                        await Model.RunAsync("reanalyze-transcript-segment", new[] { "--input", path });
-                    } finally { File.Delete(path); }
-                }, Model.CanUseAI);
-            }
-            menu.Items.Add(new MenuFlyoutSeparator());
-            Item("Delete segment", async (_, _) =>
-            {
-                if (Model.Project is not { } p) return;
-                if (!await Confirm("Delete segment", "This text and associated narration are permanently removed. Existing exports are invalidated.", "Delete")) return;
-                speech.Source = null;
-                await Model.SaveSegmentsAsync(p.Transcript.Where(c => c.Id != segment.Id), p.Cues.Where(c => c.Id != segment.Id));
-            });
         }
         else
         {

@@ -75,7 +75,7 @@ public static class MenuIcons
             "Read summary from start" => "\uE8FC",
             "Read summary from selection" => "\uE933",
             "Read selected summary text" => "\uE90A",
-            "Pause video" or "Pause summary" => "\uE769",
+            "Pause" or "Pause video" or "Pause summary" => "\uE769",
             "Stop summary" => "\uE71A",
             "Previous summary sentence" => "\uE892",
             "Next summary sentence" => "\uE893",

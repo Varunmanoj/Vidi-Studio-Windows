@@ -76,6 +76,10 @@ public sealed record OutputLanguage(string Id, string Title)
 {
     public static IReadOnlyList<OutputLanguage> Options { get; } = Load();
     public static string Label(string code) => Options.FirstOrDefault(v => v.Id == code)?.Title ?? code;
+    public static IReadOnlyList<OutputLanguage> ProjectFilterOptions(IEnumerable<StudioProject> projects) => projects
+        .SelectMany(project => project.ProjectFilterLanguageCodes).Distinct()
+        .Select(code => new OutputLanguage(code, Label(code)))
+        .OrderBy(language => language.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
     private static IReadOnlyList<OutputLanguage> Load()
     {
         var result = new List<OutputLanguage> { new("auto", "Auto") };

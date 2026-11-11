@@ -291,8 +291,10 @@ public sealed partial class MainWindow
         GalleryImport.Visibility = Visibility.Visible;
         Model.Reload(); Model.RefreshProjectIntegrity(true); RefreshGalleryCount(); UpdateProjectIntegrityUi();
     }
+    private bool videoPlaybackStarted;
     private void StopProjectPlayback()
     {
+        videoPlaybackStarted = false;
         originalAudioPlayer.Pause();
         video.Pause(); speech.Pause(); narrationPlayer.Pause(); onDeviceNarrator.Stop(); readback.Stop();
         ClearSegmentPreview();
@@ -458,16 +460,32 @@ public sealed partial class MainWindow
         Seek(segment.Start);
         if (resume) StartVideoPlayback();
     }
+    private bool segmentPreviewPaused;
+
     private void SegmentPreview_Click(object sender, RoutedEventArgs e)
     {
-        if (((FrameworkElement)sender).Tag is not Segment segment || Model.Project is not { } p) return;
-        if (segment.IsPreviewing) { StopSegmentPreview(); return; }
+        if (((FrameworkElement)sender).Tag is not Segment segment || Model.Project is not { } p || !CanRunRowCommand("segment-one-preview", segment)) return;
+        if (ReferenceEquals(previewingSegment, segment)) { ToggleSegmentPreviewPause(segment); return; }
         if (!segment.AudioReady || segment.Audio == null) return;
         StopSegmentPreview();
         previewingSegment = segment;
         segment.IsPreviewing = true;
+        segmentPreviewPaused = false;
         speech.Source = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(p.Resolve(segment.Audio)));
         speech.Play();
+        UpdateDesktopMenuStates();
+    }
+    private void ToggleSegmentPreviewPause(Segment segment)
+    {
+        if (!CanRunRowCommand("segment-one-preview", segment) || !ReferenceEquals(previewingSegment, segment)) return;
+        if (segmentPreviewPaused) speech.Play(); else speech.Pause();
+        segmentPreviewPaused = !segmentPreviewPaused;
+        segment.PreviewPaused = segmentPreviewPaused;
+        UpdateDesktopMenuStates();
+    }
+    private void SegmentPreviewStop_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is Segment segment && CanRunRowCommand("segment-one-preview-stop", segment)) StopSegmentPreview();
     }
     private void StopSegmentPreview()
     {
@@ -479,7 +497,10 @@ public sealed partial class MainWindow
     {
         if (previewingSegment is not { } previous) return;
         previous.IsPreviewing = false;
+        previous.PreviewPaused = false;
         previewingSegment = null;
+        segmentPreviewPaused = false;
+        UpdateDesktopMenuStates();
     }
     private void UpdateSectionPresentation()
     {

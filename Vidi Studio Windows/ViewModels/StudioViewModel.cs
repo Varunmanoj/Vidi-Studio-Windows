@@ -173,6 +173,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     }
 
     public string LanguageFilter { get; set; } = "all";
+    public IReadOnlyList<OutputLanguage> ProjectFilterLanguages { get; private set; } = Array.Empty<OutputLanguage>();
     public void Reload(string search = "", string source = "all")
     {
         Settings.Reload();
@@ -227,6 +228,10 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             projectStamps[folder] = stamp;
             loaded.Add(project);
         }
+        var languageOptions = OutputLanguage.ProjectFilterOptions(loaded);
+        var languageOptionsChanged = !ProjectFilterLanguages.SequenceEqual(languageOptions);
+        ProjectFilterLanguages = languageOptions;
+        if (LanguageFilter != "all" && !languageOptions.Any(language => language.Id == LanguageFilter)) LanguageFilter = "all";
         var desired = loaded.Where(p =>
                 p.Name.Contains(search, StringComparison.CurrentCultureIgnoreCase)
                 && (source == "all" || p.IsYouTube == (source == "youtube")) && p.MatchesLanguage(LanguageFilter))
@@ -234,6 +239,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         ApplyProjectList(desired);
         appliedSearch = search;
         appliedSource = source;
+        if (languageOptionsChanged) Changed(nameof(ProjectFilterLanguages));
     }
 
     /// <summary>

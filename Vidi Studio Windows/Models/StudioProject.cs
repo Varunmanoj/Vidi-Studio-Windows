@@ -116,6 +116,13 @@ public sealed class Segment : INotifyPropertyChanged
         get => isEditing;
         set { if (isEditing == value) return; isEditing = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEditing))); }
     }
+    private bool previewPaused;
+    [JsonIgnore] public bool PreviewPaused {
+        get => previewPaused;
+        set { if (previewPaused == value) return; previewPaused = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PreviewGlyph)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PreviewLabel))); }
+    }
     private bool isPreviewing;
     [JsonIgnore]
     public bool IsPreviewing
@@ -134,8 +141,8 @@ public sealed class Segment : INotifyPropertyChanged
     [JsonIgnore] public string StartLabel => TimeSpan.FromSeconds(Start).ToString(Start >= 3600 ? @"hh\:mm\:ss" : @"mm\:ss");
     [JsonIgnore] public string EndLabel => TimeSpan.FromSeconds(End).ToString(End >= 3600 ? @"hh\:mm\:ss" : @"mm\:ss");
     [JsonIgnore] public string PlayLabel => $"Play video from {StartLabel}: {Text}";
-    [JsonIgnore] public string PreviewLabel => isPreviewing ? $"Stop narration at {StartLabel}: {Text}" : $"Preview narration at {StartLabel}: {Text}";
-    [JsonIgnore] public string PreviewGlyph => isPreviewing ? "\uE769" : "\uE767";
+    [JsonIgnore] public string PreviewLabel => $"{(isPreviewing ? (PreviewPaused ? "Resume" : "Pause") : "Play")} narration at {StartLabel}: {Text}";
+    [JsonIgnore] public string PreviewGlyph => isPreviewing && !PreviewPaused ? "\uE769" : "\uE768";
     [JsonIgnore] public string KindLabel => IsDescription ? "Audio description" : "Transcript";
     public string Origin { get; set; } = "unknown";
     public string? OriginSource { get; set; }
@@ -236,9 +243,9 @@ public sealed class StudioProject : INotifyPropertyChanged
             if (LanguageResults != null) return LanguageResults;
             var rows = new List<LanguageResult>();
             foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
-                var populated = kind switch { "transcript" => Transcript.Count > 0, "summary" => !string.IsNullOrWhiteSpace(Summary), "descriptions" => Cues.Count > 0, _ => ImportedAudioDescription != null };
+                var populated = kind switch { "transcript" => Transcript.Count > 0, "summary" => !string.IsNullOrWhiteSpace(Summary), "descriptions" => Cues.Count > 0 || ImportedADTranscript?.Segments.Count > 0, _ => ImportedAudioDescription != null };
                 if (populated) rows.Add(new LanguageResult { Id = Id + "-legacy-" + kind, Kind = kind,
-                    Payload = JsonSerializer.SerializeToElement(new { transcript = Transcript, summary = Summary, cues = Cues, importedAudioDescription = ImportedAudioDescription }, Json.Options) });
+                    Payload = JsonSerializer.SerializeToElement(new { transcript = Transcript, summary = Summary, cues = Cues, importedAudioDescription = ImportedAudioDescription, importedADTranscript = ImportedADTranscript }, Json.Options) });
             }
             return rows;
         }
@@ -281,7 +288,10 @@ public sealed class StudioProject : INotifyPropertyChanged
     }
     [JsonIgnore] public List<string> ExportLanguageCodes => Exports.SelectMany(LanguagesForExport).Distinct().OrderBy(code => code, StringComparer.Ordinal).ToList();
     public string LanguageGroupForExport(string path) { var codes = LanguagesForExport(path); return codes.Count > 1 ? "multilingual" : codes.FirstOrDefault() ?? "auto"; }
-    public bool MatchesLanguage(string code) => code == "all" || SavedResults.Any(r => r.Language == code);
+    [JsonIgnore] public IReadOnlyList<string> ProjectFilterLanguageCodes => SavedResults
+        .Where(r => r.State == "saved" && r.HasContent && !string.IsNullOrWhiteSpace(r.Language))
+        .Select(r => r.Language).Distinct().OrderBy(code => code, StringComparer.Ordinal).ToList();
+    public bool MatchesLanguage(string code) => code == "all" || ProjectFilterLanguageCodes.Contains(code);
     public event PropertyChangedEventHandler? PropertyChanged;
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";

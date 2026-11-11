@@ -74,17 +74,25 @@ public sealed partial class MainWindow
     private string exportResultFilter = "all";
     private string reviewLanguageFilter = "all";
     private string exportLanguageFilter = "all";
-    private void InitializeLanguageFilters() {
-        var options = new[] { new OutputLanguage("all", "All Languages") }.Concat(OutputLanguage.Options).ToList();
-        GalleryLanguageFilter.ItemsSource = options; ProjectLanguageFilter.ItemsSource = options;
-        GalleryLanguageFilter.SelectedIndex = 0; ProjectLanguageFilter.SelectedIndex = 0;
+    private bool updatingLanguageFilters;
+    private void InitializeLanguageFilters() => RefreshLanguageFilters();
+    private void RefreshLanguageFilters() {
+        var options = new[] { new OutputLanguage("all", "All Languages") }.Concat(Model.ProjectFilterLanguages).ToList();
+        updatingLanguageFilters = true;
+        try {
+            foreach (var picker in new[] { GalleryLanguageFilter, ProjectLanguageFilter }) {
+                if (picker.ItemsSource is not IEnumerable<OutputLanguage> current || !current.SequenceEqual(options)) picker.ItemsSource = options;
+                var selected = (picker.ItemsSource as IEnumerable<OutputLanguage>)?.FirstOrDefault(v => v.Id == Model.LanguageFilter);
+                if (!Equals(picker.SelectedItem, selected)) picker.SelectedItem = selected;
+            }
+        } finally { updatingLanguageFilters = false; }
     }
     private void LanguageFilter_Changed(object sender, SelectionChangedEventArgs e) {
-        if (!ready || sender is not ComboBox picker || picker.SelectedItem is not OutputLanguage value) return;
+        if (!ready || updatingLanguageFilters || sender is not ComboBox picker || picker.SelectedItem is not OutputLanguage value) return;
+        if (value.Id != "all" && !Model.ProjectFilterLanguages.Any(language => language.Id == value.Id)) return;
         if (Model.LanguageFilter == value.Id) return;
         Model.LanguageFilter = value.Id;
-        GalleryLanguageFilter.SelectedItem = (GalleryLanguageFilter.ItemsSource as IEnumerable<OutputLanguage>)?.FirstOrDefault(v => v.Id == value.Id);
-        ProjectLanguageFilter.SelectedItem = (ProjectLanguageFilter.ItemsSource as IEnumerable<OutputLanguage>)?.FirstOrDefault(v => v.Id == value.Id);
+        RefreshLanguageFilters();
         if (ReferenceEquals(sender, GalleryLanguageFilter)) FilterGallery(); else Filter();
     }
     private ComboBox LanguagePicker(string title, string selected, bool all = false)

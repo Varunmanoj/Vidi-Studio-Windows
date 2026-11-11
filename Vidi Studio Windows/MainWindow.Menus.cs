@@ -510,6 +510,23 @@ public sealed partial class MainWindow
         };
     }
 
+    private string CurrentSectionCopyTitle => Section.SelectedIndex switch
+    {
+        0 => "Copy and Translate Transcript…", 1 => "Copy and Translate Summary…",
+        2 or 3 => "Copy and Translate Descriptions…", 4 => "Copy and Translate AD Transcript…",
+        _ => "Copy and Translate…"
+    };
+
+    private string[] CopyDefaultKinds(bool currentSectionOnly)
+    {
+        if (!currentSectionOnly) return new[] { "transcript", "summary", "descriptions" };
+        return Section.SelectedIndex switch
+        {
+            0 => new[] { "transcript" }, 1 => new[] { "summary" }, 2 or 3 => new[] { "descriptions" },
+            4 => new[] { "transcript", "descriptions" }, _ => Array.Empty<string>()
+        };
+    }
+
     private bool EditorCommandVisibleInMode(string id)
     {
         if (id is "segment-select-all" or "segment-deselect-all" or "segment-edit-selected" or "segment-delete-selected" or "reanalyze-selection" or "undo" or "redo") return editMode;
@@ -664,7 +681,7 @@ public sealed partial class MainWindow
             "summary-previous-sentence" => "Previous Summary Sentence", "summary-next-sentence" => "Next Summary Sentence",
             "summary-previous-paragraph" => "Previous Summary Paragraph", "summary-next-paragraph" => "Next Summary Paragraph",
             "summary-from-start" => "Read Summary from Start", "summary-from-selection" => "Read Summary from Selection", "summary-read-selection" => "Read Selected Summary Text",
-            "copy-to" => "Copy to…",
+            "copy-to" => "Copy and Translate…",
             "language-results" => "Language and Saved Results…",
             "transcript" => "Show Transcript", "summary" => "Show Summary", "descriptions" => "Show Descriptions",
             "ad-overview" => "Show AD Overview", "ad-transcript" => "Show AD Transcript",
@@ -804,7 +821,7 @@ public sealed partial class MainWindow
         await ShowLanguageDeletionAsync(component);
     }
 
-    private async Task RunDesktopCommandAsync(string id)
+    private async Task RunDesktopCommandAsync(string id, bool copyCurrentSectionOnly = false)
     {
         if (!CanRunDesktopCommand(id)) return;
         if (!desktopEditorVisible && id is "export" or "delete-content" or "prepare-video" or "analyze" or "transcribe" or "generate-summary" or "generate-ad-cues")
@@ -825,7 +842,7 @@ public sealed partial class MainWindow
             case "copy-to":
                 var selected = Segments.SelectedItems.OfType<Models.Segment>().ToArray();
                 var segmentIDs = selected.GroupBy(s => s.IsDescription ? "descriptions" : "transcript").ToDictionary(g => g.Key, g => g.Select(s => s.Id).ToArray());
-                await ShowCopyToAsync(segmentIDs: Section.SelectedIndex is 0 or 2 or 4 ? segmentIDs : null);
+                await ShowCopyToAsync(initialKinds: CopyDefaultKinds(copyCurrentSectionOnly), segmentIDs: Section.SelectedIndex is 0 or 2 or 4 ? segmentIDs : null);
                 break;
             case "language-results":
                 await ShowLanguageResultsDialogAsync();

@@ -52,7 +52,7 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Editor menu set does not match the active page.");
             var copyMenu = editorMenus.Single(menu => menu.Title == "Edit");
             if (!copyMenu.Items.OfType<MenuFlyoutItem>().Select(item => (string)item.Tag).SequenceEqual(new[] { "copy-to", "segment-edit-mode" }))
-                throw new InvalidOperationException("Edit must expose Copy to followed by Edit/Done Editing.");
+                throw new InvalidOperationException("Edit must expose Copy and Translate followed by Edit/Done Editing.");
             var youtubeMenu = editorMenus.Single(menu => menu.Title == "YouTube");
             if (!youtubeMenu.Items.OfType<MenuFlyoutItem>().Select(item => (string)item.Tag).SequenceEqual(new[] {
                 "youtube-browser", "youtube-accounts", "youtube-list", "youtube-table", "youtube-open-editor",
@@ -1882,6 +1882,9 @@ public sealed partial class MainWindow
             foreach (var (tab, kind) in new[] { (0, "transcript"), (1, "summary"), (2, "descriptions") }) {
                 Section.SelectedIndex = tab; editMode = false;
                 var panel = BuildLanguageResultsPanel(project);
+                var copyButtons = panel.Children.OfType<Button>().Where(button => button.Content?.ToString()?.StartsWith("Copy and Translate", StringComparison.Ordinal) == true).ToArray();
+                if (copyButtons.Length != 1 || copyButtons[0].Content?.ToString() != CurrentSectionCopyTitle || !CopyDefaultKinds(true).SequenceEqual(new[] { kind }) || !CopyDefaultKinds(false).SequenceEqual(new[] { "transcript", "summary", "descriptions" }))
+                    throw new InvalidOperationException("The inspector must offer one named current-section Copy and Translate action, while Edit defaults to all sections.");
                 var headers = panel.Children.OfType<ComboBox>().Select(c => c.Header?.ToString()).ToArray();
                 foreach (var other in new[] { "transcript", "summary", "descriptions" }.Where(k => k != kind))
                     if (headers.Contains(Models.LanguageResult.KindTitle(other) + " Generation Language")) throw new InvalidOperationException("Inspector leaked language controls from another tab.");
@@ -1905,6 +1908,13 @@ public sealed partial class MainWindow
                 if (editMode || CanRunDesktopCommand("segment-edit-selected")) throw new InvalidOperationException("Single-segment context editing must leave bulk Edit mode off.");
                 editMode = true;
                 if (CanRunDesktopCommand("add") != (tab is 0 or 2)) throw new InvalidOperationException("Edit mode must keep Add scoped to Transcript and Descriptions.");
+                if (row != null)
+                {
+                    if (SegmentMenu(row).Items.OfType<MenuFlyoutItem>().Any(item => item.Text == "Copy and Translate…"))
+                        throw new InvalidOperationException("Individual row context and More Actions menus must omit Copy and Translate.");
+                    if (!editorMenus.Single(menu => menu.Title == "Edit").Items.OfType<MenuFlyoutItem>().Any(item => (string?)item.Tag == "copy-to"))
+                        throw new InvalidOperationException("Edit must retain Copy and Translate.");
+                }
             }
         } finally { editMode = previousEdit; Section.SelectedIndex = previousSection; RefreshLanguagePanel(); }
     }

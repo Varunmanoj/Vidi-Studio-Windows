@@ -416,10 +416,6 @@ public sealed partial class MainWindow
         }
         if (segment != null)
         {
-            Item("Copy to…", async (_, _) => {
-                var kind = segment.IsDescription ? "descriptions" : "transcript";
-                await ShowCopyToAsync(new[] { kind }, new Dictionary<string, string[]> { [kind] = new[] { segment.Id } });
-            }, CanCopyLanguageResults);
             Item("Edit segment", async (_, _) => await EditSegment(segment));
             Item("Play from segment", (_, _) =>
             {

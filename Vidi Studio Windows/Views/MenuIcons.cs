@@ -33,7 +33,7 @@ public static class MenuIcons
             "Open project configuration" => "\uE943",
             "Open editor in new window" or "Open in New Window" => "\uE8A7",
             "Open in This Window" => "\uE8A7",
-            "Copy" or "Copy to…" => "\uE8C8",
+            "Copy" or "Copy and Translate…" => "\uE8C8",
             "Export" => "\uE74E",
             "Settings" or "Open Project Settings…" => "\uE713",
             "Close window" => "\uE8BB",

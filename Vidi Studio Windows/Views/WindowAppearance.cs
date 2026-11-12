@@ -380,6 +380,7 @@ internal static class WindowedDialog
         // separate smoke popup that dims this entire companion window (including its caption).
         // That popup is outside the dialog's visual tree, so clearing template rectangles could
         // not reliably remove it. Keep WinUI's native buttons, focus cycle, and async result.
+        dialog.Loaded += (_, _) => ScreenReaderHeading.MarkDialogTitle(dialog);
         root.Children.Add(dialog);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetIsDialog(dialog, true);
         // Extend the app surface into the caption so the window has the same material as the app

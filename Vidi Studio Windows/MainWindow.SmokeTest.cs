@@ -30,7 +30,7 @@ public sealed partial class MainWindow
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY") == "1")
             {
                 await VerifyGalleryAndSettingsLayoutForSmokeTestAsync(report);
-                await File.WriteAllTextAsync(report, "PASS: aligned gallery language/source/layout controls and nonoverlapping search/actions at wide, compact and narrow widths in light/dark; Settings sidebar order, stable page navigation, headings and bounded scrolling.");
+                await File.WriteAllTextAsync(report, "PASS: spoken gallery/timeline durations; named inspector heading/actions/toggles and Start/End boundaries in all three segment tabs; aligned gallery controls and centered search at wide, compact and narrow widths in light/dark; Settings stable navigation, headings and bounded scrolling.");
                 return;
             }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY") == "1")
@@ -546,7 +546,7 @@ public sealed partial class MainWindow
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "gallery.png"));
             GalleryLayout_Click(this, new RoutedEventArgs());
             if (GalleryTable.Visibility != Visibility.Visible || GalleryList.Items.Count != 1 ||
-                Model.Projects[0].DurationLabel != "00:00:08.000" || Model.Projects[0].AdSegmentLabel != "1")
+                Model.Projects[0].DurationLabel != "8s" || Model.Projects[0].AdSegmentLabel != "1")
                 throw new InvalidOperationException("All Projects table did not display the project metadata columns.");
             PreviewTheme("dark"); await Task.Delay(80);
             if (GalleryList.ActualTheme != ElementTheme.Dark) throw new InvalidOperationException("All Projects table did not change to dark appearance.");
@@ -1059,6 +1059,15 @@ public sealed partial class MainWindow
         var centers = controls.Select(control => control.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0, control.ActualHeight / 2)).Y).ToArray();
         if (centers.Max() - centers.Min() > 1)
             throw new InvalidOperationException("Gallery language/source/layout controls do not share a baseline.");
+        if (GalleryImport.Content is not SymbolIcon { Symbol: Symbol.Add } || GalleryOpenProject.Content is not FontIcon { Glyph: "\uE8B7" } ||
+            Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(GalleryImport) != "New Project" ||
+            Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(GalleryOpenProject) != "Open Project Folder")
+            throw new InvalidOperationException("Gallery creation/folder actions need native icons and accessible names.");
+        var searchCenter = GallerySearchHost.TransformToVisual(GalleryToolbar).TransformPoint(new Windows.Foundation.Point(GallerySearchHost.ActualWidth / 2, 0));
+        var searchBottom = GallerySearchHost.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0, GallerySearchHost.ActualHeight)).Y;
+        if (Math.Abs(searchCenter.X - GalleryToolbar.ActualWidth / 2) > 1 ||
+            searchBottom > controls.Min(control => control.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point()).Y))
+            throw new InvalidOperationException("Gallery search must stay centered above the controls.");
         var elements = controls.Concat(new FrameworkElement[] { GalleryToolbarActions, GallerySearchHost }).ToArray();
         var bounds = elements.Select(element =>
         {
@@ -1094,6 +1103,7 @@ public sealed partial class MainWindow
 
     private async Task VerifyGalleryAndSettingsLayoutForSmokeTestAsync(string report)
     {
+        await VerifyAccessibleMediaForSmokeTestAsync();
         ShowGallery_Click(this, new RoutedEventArgs());
         await VerifyProjectSortingForSmokeTestAsync();
         var originalTheme = Model.Settings.Get("theme", "system");

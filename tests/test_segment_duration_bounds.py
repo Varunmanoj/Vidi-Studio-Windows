@@ -24,7 +24,7 @@ class SegmentDurationBoundsTests(unittest.TestCase):
         mac = root if (root / 'VidiStudio').exists() else root.parent / 'VidiStudio Mac'
         source = (mac / 'VidiStudio/ContentView.swift').read_text()
         model = (mac / 'VidiStudio/StudioModel.swift').read_text()
-        parts = [declaration(source, marker) for marker in ['private struct TimecodeInput', 'private func preciseSegmentTimecode', 'private func segmentExcerpt', 'private func segmentValidationErrors']]
+        parts = [declaration(source, marker) for marker in ['struct TimecodeInput', 'private func preciseSegmentTimecode', 'private func segmentExcerpt', 'private func segmentValidationTargets', 'private func segmentValidationErrors']]
         harness = '''import SwiftUI
 struct Segment { var start: Double; var end: Double; var text = "Text" }
 struct TranscriptRow: Identifiable { var id = "row"; var segment: Segment; var isDescription: Bool }
@@ -59,13 +59,13 @@ extension TimecodeInput {
         }
         var local = StudioProject()
         local.duration = 713.955
-        precondition(ProjectVideoInformation(project: local).duration == "00:11:53.955")
+        precondition(ProjectVideoInformation(project: local).duration == "11m 53s 955ms")
         local.isYouTubeURLProject = true
-        precondition(ProjectVideoInformation(project: local).duration == "00:11:53.955")
+        precondition(ProjectVideoInformation(project: local).duration == "11m 53s 955ms")
         local.duration = 714
-        precondition(ProjectVideoInformation(project: local).duration == "00:11:54.000")
+        precondition(ProjectVideoInformation(project: local).duration == "11m 54s")
         precondition(NarrationTimeFormat.timestamp(59.9996) == "00:01:00.000")
-        precondition(NarrationTimeFormat.timestamp(90061.123) == "25:01:01.123")
+        precondition(NarrationTimeFormat.timestamp(90061.123) == "1d 01:01:01.123")
         print("PASS: transcript/AD timing bounds, corrected input and millisecond video durations")
     }
 }

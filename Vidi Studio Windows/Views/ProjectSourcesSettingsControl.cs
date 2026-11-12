@@ -59,12 +59,12 @@ public sealed class ProjectSourcesSettingsControl : UserControl
         status.Text = actionRunning ? "Opening this project's editor…" : scoped.Status;
     }
     private static TextBlock Text(string value) => new() { Text = value, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
-    private static void Row(StackPanel panel, string label, string value)
+    private static void Row(StackPanel panel, string label, string value, string? spokenValue = null)
     {
         var row = new Grid { ColumnSpacing = 14 };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) }); row.ColumnDefinitions.Add(new ColumnDefinition());
         var name = Text(label); name.Opacity = .7; row.Children.Add(name);
-        var content = Text(string.IsNullOrWhiteSpace(value) ? "Not available" : value); Grid.SetColumn(content, 1); row.Children.Add(content); panel.Children.Add(row);
+        var content = Text(string.IsNullOrWhiteSpace(value) ? "Not available" : value); if (spokenValue != null) AutomationProperties.SetName(content, label + ": " + spokenValue); Grid.SetColumn(content, 1); row.Children.Add(content); panel.Children.Add(row);
     }
     private Button Action(string title, string command)
     {
@@ -99,20 +99,20 @@ public sealed class ProjectSourcesSettingsControl : UserControl
                 () => { scoped.Project = StudioProject.TryLoad(folder); Rebuild(); }));
             var details = new StackPanel { Spacing = 8 };
             Row(details, "Name", project.Name); Row(details, "Type", project.IsYouTube ? "YouTube video" : "Local video");
-            Row(details, "Duration", NarrationTimeFormat.Timestamp(project.Duration)); Row(details, "Folder", project.Folder);
+            Row(details, "Duration", NarrationTimeFormat.ProjectDuration(project.Duration), NarrationTimeFormat.SpokenProjectDuration(project.Duration)); Row(details, "Folder", project.Folder);
             Row(details, "Source", project.IsYouTube ? project.YoutubeURL ?? "" : project.Source);
             Row(details, "Resolution", project.Width > 0 && project.Height > 0 ? project.Width + " × " + project.Height : "Not available");
             Row(details, "Audio", project.HasAudio ? "Present" : "Not available");
-            body.Children.Add(new Expander { Header = "Project and media details", Content = details, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+            body.Children.Add(ScreenReaderHeading.Mark(new Expander { Header = "Project and media details", Content = details, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch }));
             var sources = new StackPanel { Spacing = 8 };
             Row(sources, "Transcript", project.Transcript.Count == 0 ? "Not available" : project.TranscriptAudioSource?.Label ?? "Source not recorded");
             Row(sources, "Summary", string.IsNullOrWhiteSpace(project.Summary) ? "Not available" : project.SummaryOriginLabel + (project.SummaryOriginSource is { Length: > 0 } source ? " · " + source : ""));
             Row(sources, "AD transcript", project.ImportedADTranscript?.SourceName ?? (project.Cues.Count == 0 ? "Not available" : "Project descriptions"));
             Row(sources, "AD audio", project.ImportedAudioDescription?.SourceName ?? (project.HasNarrationAudio ? "Generated narration" : "Not available"));
             if (!project.IsYouTube) Row(sources, "Playback and export audio", "Original audio in the project video");
-            body.Children.Add(new Expander { Header = "Content sources", Content = sources, IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+            body.Children.Add(ScreenReaderHeading.Mark(new Expander { Header = "Content sources", Content = sources, IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch }));
             if (project.IsYouTube) {
-                body.Children.Add(new Expander { Header = "Audio sources", Content = new AudioSourceControls(owner, scoped, showHeading: false, chooseAudio: () => RunAction("import-original-audio"), reviewAudio: () => RunAction("review-audio-timing")), IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+                body.Children.Add(ScreenReaderHeading.Mark(new Expander { Header = "Audio sources", Content = new AudioSourceControls(owner, scoped, showHeading: false, chooseAudio: () => RunAction("import-original-audio"), reviewAudio: () => RunAction("review-audio-timing")), IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch }));
                 Actions(body, ("YouTube Details & Captions…", "youtube-captions"), ("Open in YouTube", "youtube-open-browser"));
             }
             var imports = new StackPanel { Spacing = 8 };
@@ -120,7 +120,7 @@ public sealed class ProjectSourcesSettingsControl : UserControl
             if (project.IsYouTube) {
                 imports.Children.Add(Action("Import Original Audio…", "import-original-audio"));
             }
-            body.Children.Add(new Expander { Header = "Import into this project", Content = imports, IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+            body.Children.Add(ScreenReaderHeading.Mark(new Expander { Header = "Import into this project", Content = imports, IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch }));
             Actions(body, ("Export…", "export"), ("Open in Editor", "open-editor"), ("Open Project Folder", "show-folder"), ("Rename…", "rename-project"));
         } finally { rebuilding = false; UpdateProgress(); }
     }

@@ -41,6 +41,6 @@ internal sealed class SegmentTimingEditor : StackPanel
         var seconds = Math.Max(0, EndPicker.Value - StartPicker.Value);
         var duration = seconds.ToString("F3", CultureInfo.CurrentCulture) + " seconds";
         DurationLabel.Text = "Duration " + duration;
-        AutomationProperties.SetName(DurationLabel, "Segment duration: " + duration);
+        AutomationProperties.SetName(DurationLabel, "Segment duration: " + Vidi_Studio_Windows.Models.NarrationTimeFormat.SpokenDuration(seconds));
     }
 }

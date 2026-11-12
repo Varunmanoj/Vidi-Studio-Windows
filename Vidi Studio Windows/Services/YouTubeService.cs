@@ -29,7 +29,9 @@ public sealed record YouTubeVideo(JsonObject Data)
     public string Url => "https://www.youtube.com/watch?v=" + Id;
     public string Published => Data["publishedAt"]?.GetValue<string>() ?? "";
     public string Channel => Data["channelTitle"]?.ToString() ?? "";
-    public string DurationLabel => Models.NarrationTimeFormat.Timestamp(Duration);
+    public string DurationAnnouncement => "Duration: " + Models.NarrationTimeFormat.SpokenProjectDuration(Duration);
+    public string ListSubtitleAnnouncement => Visibility + ", " + DurationAnnouncement + ", " + Channel;
+    public string DurationLabel => Models.NarrationTimeFormat.ProjectDuration(Duration);
     public string PublishedLabel => DateTimeOffset.TryParse(Published, out var date) ? date.LocalDateTime.ToString("d") : Published;
     public string ViewsLabel => Data["viewCount"]?.ToString() ?? "Unavailable";
     public string LikesLabel => Data["likeCount"]?.ToString() ?? "Unavailable";
@@ -37,7 +39,7 @@ public sealed record YouTubeVideo(JsonObject Data)
     public string CaptionsLabel => Data["captionsAvailable"]?.GetValue<bool>() == true ? "Available" : "Not reported";
     public string ListSubtitle => Visibility + " · " + DurationLabel + " · " + Channel;
     public string StatisticsLabel => "Published: " + PublishedLabel + " · Views: " + ViewsLabel + " · Likes: " + LikesLabel + " · Comments: " + CommentsLabel;
-    public string TableAccessibleLabel => "Title: " + Title + ", Channel: " + Channel + ", Visibility: " + Visibility + ", Duration: " + DurationLabel + ", Published: " + PublishedLabel + ", Views: " + ViewsLabel + ", Likes: " + LikesLabel + ", Comments: " + CommentsLabel + ", Captions: " + CaptionsLabel;
+    public string TableAccessibleLabel => "Title: " + Title + ", Channel: " + Channel + ", Visibility: " + Visibility + ", " + DurationAnnouncement + ", Published: " + PublishedLabel + ", Views: " + ViewsLabel + ", Likes: " + LikesLabel + ", Comments: " + CommentsLabel + ", Captions: " + CaptionsLabel;
     public string Thumbnail => Data["thumbnailURL"]?.GetValue<string>() ?? "";
     public override string ToString() => Title + " · " + Visibility + " · " + DurationLabel + " · " + Data["channelTitle"];
     public void RequireAvailable()

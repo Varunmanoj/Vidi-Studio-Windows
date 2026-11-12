@@ -253,6 +253,10 @@
         {
           "id": "export-language-groups",
           "title": "Created Exports by language"
+        },
+        {
+          "id": "screen-reader-headings",
+          "title": "Screen-reader headings and media durations"
         }
       ]
     },

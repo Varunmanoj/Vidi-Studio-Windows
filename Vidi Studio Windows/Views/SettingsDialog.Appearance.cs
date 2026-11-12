@@ -83,7 +83,7 @@ public sealed partial class SettingsDialog
     {
         summaryHighlightToggles.Clear();
         appearanceColorButtons.Clear();
-        panel.Children.Add(new TextBlock { Text = "Appearance and playback", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) });
+        panel.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Appearance and playback", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) }));
         var card = new StackPanel { Spacing = 16 };
         panel.Children.Add(new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(16), Background = new SolidColorBrush(Color.FromArgb(15, 128, 128, 128)), Child = card });
         Grid Row(string title, FrameworkElement control) => AddSettingsRow(card, title, control);
@@ -154,7 +154,7 @@ public sealed partial class SettingsDialog
             picker.ColorChanged += (_, args) => { draft[key] = $"#{args.NewColor.R:X2}{args.NewColor.G:X2}{args.NewColor.B:X2}"; swatch.Background = new SolidColorBrush(args.NewColor); Preview(); };
             button.Flyout = new Flyout { Content = picker }; Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, label); Row(label, button);
         }
-        card.Children.Add(new TextBlock { Text = "Caption appearance", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) });
+        card.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Caption appearance", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) }));
         Slider("Text size", "captionFontSize", 24, 12, 48, 1, false);
         ColorRow("Dialogue text color", "captionTextColor", "#FFFFFF");
         ColorRow("Dialogue background color", "captionBackgroundColor", "#000000");
@@ -164,7 +164,7 @@ public sealed partial class SettingsDialog
         Choice("Position", "captionPosition", new[] { "bottom", "top" }, new[] { "Bottom", "Top" });
         var sample = new StackPanel { Spacing = 12, VerticalAlignment = VerticalAlignment.Center }; sample.Children.Add(dialogueBox); sample.Children.Add(descriptionBox);
         card.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb(255, 34, 71, 125)), CornerRadius = new CornerRadius(8), Padding = new Thickness(16), Child = sample });
-        card.Children.Add(new TextBlock { Text = "Summary readback highlighting", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) });
+        card.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Summary readback highlighting", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) }));
         void HighlightChoice(string label, string key)
         {
             var toggle = new ToggleSwitch { IsOn = SettingsStore.GetString(draft[key], "true") != "false", OnContent = "", OffContent = "", MinWidth = 0 };
@@ -200,7 +200,7 @@ public sealed partial class SettingsDialog
         card.Children.Add(restoreHighlights);
         Preview();
         var advanced = new StackPanel { Spacing = 12 };
-        advanced.Children.Add(new TextBlock { Text = "Advanced", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        advanced.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Advanced", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }));
         var developerMode = new ToggleSwitch
         {
             IsOn = SettingsStore.GetBool(draft["developerMode"]),

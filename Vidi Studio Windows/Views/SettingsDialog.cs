@@ -268,6 +268,7 @@ public sealed partial class SettingsDialog : Window
         layout.ColumnDefinitions.Add(new ColumnDefinition());
         layout.SizeChanged += (_, args) => layout.ColumnDefinitions[0].Width = new GridLength(Math.Clamp(args.NewSize.Width * .24, 160, 210));
         var heading = new TextBlock { FontSize = 24, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 20) };
+        ScreenReaderHeading.Mark(heading, Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level1);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(heading, "settings-page-title");
         Grid.SetRow(heading, 1); Grid.SetColumn(heading, 1); layout.Children.Add(heading);
         var sections = new ListView { SelectionMode = ListViewSelectionMode.Single };
@@ -393,7 +394,7 @@ public sealed partial class SettingsDialog : Window
                 case 5:
                     AddText(panel, "Project library", "libraryPath");
                     storageAdvancedControls.Children.Clear();
-                    storageAdvancedControls.Children.Add(new TextBlock { Text = "Advanced", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+                    storageAdvancedControls.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Advanced", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }));
                     AddText(storageAdvancedControls, "Python executable", "pythonPath", "python.exe");
                     AddExecutablePicker(storageAdvancedControls, "FFmpeg executable", "ffmpegPath");
                     AddExecutablePicker(storageAdvancedControls, "FFprobe executable", "ffprobePath");
@@ -539,7 +540,7 @@ public sealed partial class SettingsDialog : Window
     }
     private static StackPanel AddNarrationGroup(StackPanel host, string title)
     {
-        var heading = new TextBlock { Text = title, FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4) };
+        var heading = ScreenReaderHeading.Mark(new TextBlock { Text = title, FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4) });
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetHeadingLevel(heading, Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2);
         host.Children.Add(heading);
         var rows = new StackPanel { Spacing = 12 };

@@ -246,6 +246,7 @@ public sealed partial class MainWindow : Window
             InspectorSynthesizeNarrationLabel.Text = synthesizing
                 ? (Model.NarratingSegmentIndex is { } idx ? $"Synthesizing AD {idx}…" : "Synthesizing…")
                 : Model.Project?.AllADAudioTitle ?? "Generate All AD Audio";
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(InspectorSynthesizeNarrationButton, InspectorSynthesizeNarrationLabel.Text);
         }
         if (OverviewNarrationProgressPanel != null)
         {
@@ -475,6 +476,18 @@ public sealed partial class MainWindow : Window
             await ShowError(ex);
         }
     }
+    private void SegmentContainer_Changing(ListViewBase sender, ContainerContentChangingEventArgs args)
+    {
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(args.ItemContainer,
+            !args.InRecycleQueue && args.Item is Segment segment ? segment.SegmentAnnouncement : "");
+    }
+
+    private void ProjectContainer_Changing(ListViewBase sender, ContainerContentChangingEventArgs args)
+    {
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(args.ItemContainer,
+            !args.InRecycleQueue && args.Item is StudioProject project ? project.ProjectAnnouncement : "");
+    }
+
     private async Task<string?> PickFolder()
     {
         var picker = new FolderPicker(); picker.FileTypeFilter.Add("*");
@@ -571,7 +584,9 @@ public sealed partial class MainWindow : Window
             ProjectTitle.Text = p.Name;
             Title = p.Name + " — Vidi Studio";
         }
-        ProjectInformation.Text = $"{(p.IsYouTube ? "YouTube" : "Local video")}\n{p.Width} × {p.Height}\n{NarrationTimeFormat.Timestamp(p.Duration)}\n{p.Folder}";
+        ProjectInformation.Text = $"{(p.IsYouTube ? "YouTube" : "Local video")}\n{p.Width} × {p.Height}\n{NarrationTimeFormat.ProjectDuration(p.Duration)}\n{p.Folder}";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ProjectInformation,
+            $"{(p.IsYouTube ? "YouTube" : "Local video")}, {p.Width} by {p.Height}, {p.DurationAnnouncement}, {p.Folder}");
         Playhead.Maximum = Math.Max(1, p.Duration);
         UpdateTimelineCursor();
         UpdatePlaybackControls();
@@ -720,10 +735,12 @@ public sealed partial class MainWindow : Window
         }
         if (windowClosed || !ReferenceEquals(Model.Project, polledProject)) return;
         if (!playheadDragging) { updatingPosition = true; Playhead.Value = Position; updatingPosition = false; }
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(Playhead,
+            $"{NarrationTimeFormat.SpokenTime(Position)} of {NarrationTimeFormat.SpokenProjectDuration(Model.Project.Duration)}");
         UpdateTimelineCursor();
         readback.TickWordProgress();
         TimeLabel.Text = $"{NarrationTimeFormat.Timestamp(Position)} / {NarrationTimeFormat.Timestamp(Model.Project.Duration)}";
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(TimeLabel, $"Current time {NarrationTimeFormat.Timestamp(Position)}, duration {NarrationTimeFormat.Timestamp(Model.Project.Duration)}");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(TimeLabel, $"Current time {NarrationTimeFormat.SpokenTime(Position)}, duration {NarrationTimeFormat.SpokenProjectDuration(Model.Project.Duration)}");
         var playing = Model.Project.IsYouTube ? youtubePlaying : video.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
         if (playing && !wasPlaying) readback.Stop();
         wasPlaying = playing;
@@ -2321,6 +2338,7 @@ public sealed partial class MainWindow : Window
         OverviewGenerateAllAudioButton.Content = project?.AllADAudioTitle ?? "Generate All AD Audio";
         OverviewGenerateChangedAudioButton.Content = "Generate Missing or Changed AD Audio";
         InspectorSynthesizeNarrationLabel.Text = Model.IsSynthesizingNarration ? Model.ActiveNarrationStatusText : project?.AllADAudioTitle ?? "Generate All AD Audio";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(InspectorSynthesizeNarrationButton, InspectorSynthesizeNarrationLabel.Text);
         foreach (var button in new[] { OverviewGenerateAllAudioButton, InspectorSynthesizeNarrationButton })
         {
             button.IsEnabled = CanRunDesktopCommand("synthesize-tts");

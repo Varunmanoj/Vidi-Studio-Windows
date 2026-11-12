@@ -355,18 +355,15 @@ public sealed partial class MainWindow
     private void GalleryToolbar_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (GalleryToolbarActions == null || GallerySearchHost == null) return;
-        var wide = e.NewSize.Width >= 900;
         var narrow = e.NewSize.Width < 740;
-        Grid.SetRow(GalleryToolbarActions, narrow ? 1 : 0);
+        Grid.SetRow(GalleryToolbarActions, narrow ? 2 : 1);
         Grid.SetColumn(GalleryToolbarActions, narrow ? 0 : 1);
         Grid.SetColumnSpan(GalleryToolbarActions, narrow ? 3 : 1);
         GalleryToolbarActions.Margin = new Thickness(0, narrow ? 8 : 0, 0, 0);
+        Grid.SetRow(GalleryViewControls, 1);
         Grid.SetColumnSpan(GalleryViewControls, narrow ? 3 : 1);
-        Grid.SetRow(GallerySearchHost, wide ? 0 : narrow ? 2 : 1);
-        Grid.SetColumn(GallerySearchHost, wide ? 2 : 0);
-        Grid.SetColumnSpan(GallerySearchHost, wide ? 1 : 3);
-        GallerySearchHost.MaxWidth = wide ? 520 : double.PositiveInfinity;
-        GallerySearchHost.Margin = new Thickness(0, wide ? 0 : 8, 0, 0);
+        GallerySearchHost.Width = Math.Min(520, Math.Max(0, e.NewSize.Width));
+        GallerySearchHost.HorizontalAlignment = HorizontalAlignment.Center;
     }
     private void GallerySearch_Changed(object sender, TextChangedEventArgs e) { if (galleryReady) FilterGallery(); }
     private void FilterGallery()
@@ -549,6 +546,7 @@ public sealed partial class MainWindow
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(GenerateCurrent, generateLabel);
         InspectorGenerate.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
         UpdateEditorActionVisibility();
+        EditorSectionHeading.Text = index switch { 0 => "Transcript", 1 => "Summary", 2 => "Descriptions", 3 => "AD Overview", _ => "AD Transcript" };
         InspectorSectionTitle.Text = index == 2 ? "AD Segment Generation" : name;
         UpdateSegmentMoreVisibility();
         ContextActions.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
@@ -637,12 +635,13 @@ public sealed partial class MainWindow
         "piper" => "Piper Voices",
         _ => "Windows OneCore",
     };
-    private static void AddInfo(StackPanel panel, string label, string value)
+    private static void AddInfo(StackPanel panel, string label, string value, string? spokenValue = null)
     {
         var row = new Grid { ColumnSpacing = 10 };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.6, GridUnitType.Star) });
         row.Children.Add(new TextBlock { Text = label, FontSize = 12, TextWrapping = TextWrapping.Wrap, Opacity = .7 });
         var text = new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
+        if (spokenValue != null) Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(text, label + ": " + spokenValue);
         ToolTipService.SetToolTip(text, value); Grid.SetColumn(text, 1); row.Children.Add(text); panel.Children.Add(row);
     }
     private async void UpdateInspector(StudioProject p)
@@ -654,7 +653,7 @@ public sealed partial class MainWindow
         AddInfo(ProjectDetails, "Name", p.Name); AddInfo(ProjectDetails, "Type", p.IsYouTube ? "YouTube" : "Local Video");
         AddInfo(ProjectDetails, "Folder", p.Folder);
         AddInfo(VideoDetails, "Source", p.IsYouTube ? p.YoutubeURL ?? "" : Path.GetFileName(p.Source));
-        AddInfo(VideoDetails, "Duration", NarrationTimeFormat.Timestamp(p.Duration));
+        AddInfo(VideoDetails, "Duration", NarrationTimeFormat.ProjectDuration(p.Duration), NarrationTimeFormat.SpokenProjectDuration(p.Duration));
         AddInfo(VideoDetails, "Resolution", p.IsYouTube && p.Width <= 0 ? "Not available from YouTube" : $"{p.Width} × {p.Height}");
         if (p.IsYouTube) PopulateYouTubeInspector(p);
         try

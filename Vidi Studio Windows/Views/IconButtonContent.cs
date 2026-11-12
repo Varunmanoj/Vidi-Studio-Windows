@@ -13,9 +13,12 @@ internal static class IconButtonContent
     internal static void Set(Button button, string text, Symbol symbol)
     {
         var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        content.Children.Add(new SymbolIcon(symbol) { VerticalAlignment = VerticalAlignment.Center });
+        var icon = new SymbolIcon(symbol) { VerticalAlignment = VerticalAlignment.Center };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(icon, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+        content.Children.Add(icon);
         content.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center });
         button.Content = content;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, text);
     }
 
     /// <summary>Colors a destructive action red and restores the normal label color otherwise.</summary>

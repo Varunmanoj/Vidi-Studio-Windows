@@ -30,7 +30,8 @@ public sealed class Segment : INotifyPropertyChanged
     public string Text { get; set; } = "";
     /// <summary>Optional diarization label shared with the engine and macOS; omitted when unset.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Speaker { get; set; }
-    [JsonIgnore] public string DurationLabel => Math.Max(0, End - Start).ToString("0.00", CultureInfo.InvariantCulture) + "s";
+    [JsonIgnore] public string DurationAnnouncement => "Duration: " + NarrationTimeFormat.SpokenDuration(Math.Max(0, End - Start));
+    [JsonIgnore] public string DurationLabel => NarrationTimeFormat.MediaDuration(Math.Max(0, End - Start));
     public string? Audio { get; set; }
     public string? AudioText { get; set; }
     public string? AudioSettings { get; set; }
@@ -70,7 +71,11 @@ public sealed class Segment : INotifyPropertyChanged
         ? null
         : NarrationVoiceFormatting.CombinedLabel(ResolvedAudioVoice ?? "System default", ResolvedAudioEngine ?? "windows-core");
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
-    [JsonIgnore] public string Timing => $"{TimeSpan.FromSeconds(Start):hh\\:mm\\:ss\\.fff} – {TimeSpan.FromSeconds(End):hh\\:mm\\:ss\\.fff}";
+    [JsonIgnore] public string StartAnnouncement => "Start time: " + NarrationTimeFormat.SpokenTime(Start);
+    [JsonIgnore] public string EndAnnouncement => "End time: " + NarrationTimeFormat.SpokenTime(End);
+    [JsonIgnore] public string TimingAnnouncement => StartAnnouncement + ", " + EndAnnouncement;
+    [JsonIgnore] public string SegmentAnnouncement => $"{SegmentNumberLabel}, {TimingAnnouncement}, {DurationAnnouncement}, {Text}";
+    [JsonIgnore] public string Timing => $"{NarrationTimeFormat.Timestamp(Start)} – {NarrationTimeFormat.Timestamp(End)}";
     [JsonIgnore] public bool IsDescription { get; set; }
     [JsonIgnore] public bool ShowKind { get; set; }
     [JsonIgnore] public int AdNumber { get; set; }
@@ -138,10 +143,10 @@ public sealed class Segment : INotifyPropertyChanged
         }
     }
     [JsonIgnore] public string ProjectFolder { get; set; } = "";
-    [JsonIgnore] public string StartLabel => TimeSpan.FromSeconds(Start).ToString(Start >= 3600 ? @"hh\:mm\:ss" : @"mm\:ss");
-    [JsonIgnore] public string EndLabel => TimeSpan.FromSeconds(End).ToString(End >= 3600 ? @"hh\:mm\:ss" : @"mm\:ss");
-    [JsonIgnore] public string PlayLabel => $"Play video from {StartLabel}: {Text}";
-    [JsonIgnore] public string PreviewLabel => $"{(isPreviewing ? (PreviewPaused ? "Resume" : "Pause") : "Play")} narration at {StartLabel}: {Text}";
+    [JsonIgnore] public string StartLabel => Start >= 3600 ? NarrationTimeFormat.Timestamp(Start) : TimeSpan.FromSeconds(Start).ToString(@"mm\:ss");
+    [JsonIgnore] public string EndLabel => End >= 3600 ? NarrationTimeFormat.Timestamp(End) : TimeSpan.FromSeconds(End).ToString(@"mm\:ss");
+    [JsonIgnore] public string PlayLabel => $"Play video. {TimingAnnouncement}. {Text}";
+    [JsonIgnore] public string PreviewLabel => $"{(isPreviewing ? (PreviewPaused ? "Resume" : "Pause") : "Play")} narration. {TimingAnnouncement}. {Text}";
     [JsonIgnore] public string PreviewGlyph => isPreviewing && !PreviewPaused ? "\uE769" : "\uE768";
     [JsonIgnore] public string KindLabel => IsDescription ? "Audio description" : "Transcript";
     public string Origin { get; set; } = "unknown";
@@ -353,7 +358,10 @@ public sealed class StudioProject : INotifyPropertyChanged
         get { try { var path = Thumbnails.FirstOrDefault(); return path != null && File.Exists(Resolve(path)) ? new Uri(Resolve(path)) : null; } catch { return null; } }
     }
     [JsonIgnore] public string ProjectSubtitle => $"{DurationLabel} · {Cues.Count} descriptions";
-    [JsonIgnore] public string DurationLabel => NarrationTimeFormat.Timestamp(Duration);
+    [JsonIgnore] public string DurationLabel => NarrationTimeFormat.ProjectDuration(Duration);
+    [JsonIgnore] public string DurationAnnouncement => "Duration: " + NarrationTimeFormat.SpokenProjectDuration(Duration);
+    [JsonIgnore] public string ProjectSubtitleAnnouncement => $"{DurationAnnouncement}, {Cues.Count} descriptions";
+    [JsonIgnore] public string ProjectAnnouncement => $"{Name}, {ProjectSubtitleAnnouncement}, {TranscriptStatus}, {SummaryStatus}, {NarrationStatus}, {ExportsStatus}";
     [JsonIgnore] public string AdSegmentLabel => Cues.Count.ToString();
     // Match Swift's displayed-character count, including whitespace and punctuation.
     [JsonIgnore] public int DescriptionCharacterCount => Cues.Sum(c => new StringInfo(c.Text).LengthInTextElements);

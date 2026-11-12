@@ -103,7 +103,8 @@ public sealed partial class SettingsDialog
         foreach (var (id, title) in new[] { (8, "YouTube Accounts"), (1, "Projects"), (5, "Storage"), (6, "Help"), (7, "About") })
         {
             SelectSection(id);
-            if (SelectedSection != id || heading.Text != title)
+            if (SelectedSection != id || heading.Text != title ||
+                Microsoft.UI.Xaml.Automation.AutomationProperties.GetHeadingLevel(heading) != Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level1)
                 throw new InvalidOperationException("Settings navigation lost its stable page ID or page heading.");
         }
         SelectSection(original);

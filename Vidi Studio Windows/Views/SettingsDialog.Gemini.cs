@@ -149,7 +149,7 @@ public sealed partial class SettingsDialog
         apiStatusCard.Child = null;
         planPillBadge.Child = null;
 
-        panel.Children.Add(new TextBlock { Text = "Gemini API", FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) });
+        panel.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Gemini API", FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) }));
 
         BuildOutputLanguages(panel);
 
@@ -292,7 +292,7 @@ public sealed partial class SettingsDialog
 
         // Account Plan group matching Mac
         var accountPlanGroup = new StackPanel { Spacing = 8, Margin = new Thickness(0, 16, 0, 0) };
-        accountPlanGroup.Children.Add(new TextBlock { Text = "Account Plan", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 14 });
+        accountPlanGroup.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Account Plan", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 14 }));
 
         var planCard = new Border
         {
@@ -671,7 +671,7 @@ public sealed partial class SettingsDialog
 
     private static StackPanel AddGeminiGroup(StackPanel panel, string title)
     {
-        panel.Children.Add(new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 14, Margin = new Thickness(0, 16, 0, 8) });
+        panel.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 14, Margin = new Thickness(0, 16, 0, 8) }));
         var rows = new StackPanel { Spacing = 10 };
         panel.Children.Add(new Border
         {

@@ -680,6 +680,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             command is "export-youtube-original-audio" or "export-youtube-described-audio" or "combine-imported-audio";
         YouTubeAudioExportRecovery? audioRecovery = null;
         string? connectionFailure = null;
+        var exportSucceeded = false;
+        var hasExportOutput = false;
         IsExporting = command.StartsWith("export-", StringComparison.Ordinal) && Project != null;
         ContentTransferCommand = command is "copy-results" or "translate-results" ? command : null;
         ContentTransferProgress = null;
@@ -846,6 +848,10 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             if (command is "check-api-key" or "list-models" || IsAICommand(command)) ClearAiIssue();
             var exportSummary = result.LastOrDefault(e => e.Data.TryGetProperty("exportSummary", out _));
             Status = exportSummary?.Message ?? "Complete";
+            hasExportOutput = result.Any(e => e.Data.TryGetProperty("export", out var path) &&
+                path.ValueKind == System.Text.Json.JsonValueKind.String && !string.IsNullOrWhiteSpace(path.GetString()));
+            exportSucceeded = !result.Any(e => e.Data.TryGetProperty("error", out var error) &&
+                error.ValueKind == System.Text.Json.JsonValueKind.True);
             return result;
         }
         catch (ConnectivityException ex) { Status = ex.Message; connectionFailure = ex.Message; }
@@ -864,7 +870,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             if (Project != null && File.Exists(Path.Combine(Project.Folder, "project.json")))
             {
                 try { Project = StudioProject.Load(Project.Folder); ProjectReloaded?.Invoke(this, EventArgs.Empty); }
-                catch (Exception ex) { Engine.Log(ex.ToString()); Status = "Could not reload the project. Reopen its folder to retry."; }
+                catch (Exception ex) { exportSucceeded = false; Engine.Log(ex.ToString()); Status = "Could not reload the project. Reopen its folder to retry."; }
             }
             if (exportSession != null) ExportSessions.Remove(exportSession);
             IsSynthesizingNarration = false; NarratingSegmentId = null; NarratingSegmentIndex = null; NarratingTotalCount = 0; narratingQueueIds.Clear();
@@ -872,7 +878,10 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             Changed(nameof(IsSynthesizingNarration)); Changed(nameof(NarratingSegmentId)); Changed(nameof(NarratingSegmentIndex)); Changed(nameof(ActiveNarrationStatusText));
             ContentTransferCommand = null; ContentTransferProgress = null;
             ProcessingSection = null; VideoPreparation = null; processingPlan.Clear();
+            var wasCancelled = operation.IsCancellationRequested;
             operation.Dispose(); operation = null; IsExporting = false; Busy = false;
+            ExportCompletionSound.Complete(command, Settings.GetBool("soundAfterExport", true),
+                exportSucceeded, wasCancelled, hasExportOutput);
         }
         if (connectionFailure != null) await NotifyConnectivityAsync(connectionFailure);
         if (audioRecovery != null && YouTubeAudioRecoveryRequested is { } recover)

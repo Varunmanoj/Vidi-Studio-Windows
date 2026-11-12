@@ -31,7 +31,7 @@ with zipfile.ZipFile(args.package) as package:
     assert machine(app.attrib["Executable"]) == expected, "Wrong UI architecture"
     assert machine("speech/VidiStudio.SpeechHost.exe") == expected, "Wrong speech helper architecture"
     assert machine("VidiStudio.ShellExtension.dll") == expected, "Wrong shell extension architecture"
-    for file in ["speech/VidiStudio.SpeechHost.runtimeconfig.json", "engine/vidistudio_engine.py", "engine/windows_speech.py", "engine/mov_accessibility.py", "engine/youtube_audio.py", "engine/ai-defaults.json", "Assets/youtube.html", "Assets/piper-voices.json", "piper/piper.exe", "piper/onnxruntime.dll", "piper/espeak-ng-data/en_dict"]:
+    for file in ["speech/VidiStudio.SpeechHost.runtimeconfig.json", "engine/vidistudio_engine.py", "engine/windows_speech.py", "engine/mov_accessibility.py", "engine/youtube_audio.py", "engine/ai-defaults.json", "Assets/youtube.html", "Assets/piper-voices.json", "Assets/Sounds/descend.wav", "Assets/Sounds/Boink3.wav", "Assets/Sounds/ascend.wav", "Assets/Sounds/Buzzer1.wav", "piper/piper.exe", "piper/onnxruntime.dll", "piper/espeak-ng-data/en_dict"]:
         read(file)
     modern_ns = {
         "com": "http://schemas.microsoft.com/appx/manifest/com/windows10",

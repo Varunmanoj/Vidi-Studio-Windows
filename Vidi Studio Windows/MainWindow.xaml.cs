@@ -152,7 +152,7 @@ public sealed partial class MainWindow : Window
             Model.YouTubeAudioRecoveryRequested -= RecoverYouTubeAudioExportAsync;
             Model.ConnectivityNotification -= ShowConnectivityNoticeAsync;
             Model.Cancel(); timer.Stop(); integrityTimer.Stop();
-            foreach (var cleanup in new Action[] { video.Dispose, speech.Dispose, narrationPlayer.Dispose, originalAudioPlayer.Dispose, onDeviceNarrator.Dispose, readback.Dispose,
+            foreach (var cleanup in new Action[] { video.Dispose, speech.Dispose, narrationPlayer.Dispose, originalAudioPlayer.Dispose, indicationPlayer.Dispose, onDeviceNarrator.Dispose, readback.Dispose,
                 () => { if (YouTubePlayer.CoreWebView2 != null) YouTubePlayer.Close(); } })
             {
                 try { cleanup(); } catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
@@ -588,6 +588,7 @@ public sealed partial class MainWindow : Window
         }
         if (loadedProject == p.Folder) return;
         videoPlaybackStarted = false; segmentPreviewPaused = false;
+        StopIndicationSound(true);
         loadedProject = p.Folder; activeCue = null; previewingSegment = null; speech.Pause(); narrationPlayer.Pause(); originalAudioPlayer.Pause(); originalAudioPlayer.Source = null; originalAudioPath = null; originalAudioMode = false; video.Pause(); onDeviceNarrator.Stop(); readback.Stop();
         Player.Visibility = p.IsYouTube ? Visibility.Collapsed : Visibility.Visible;
         YouTubePlayer.Visibility = p.IsYouTube ? Visibility.Visible : Visibility.Collapsed;
@@ -732,6 +733,7 @@ public sealed partial class MainWindow : Window
         var cue = Model.Project.Cues.FirstOrDefault(c => c.Start <= Position && Position < c.End);
         UpdateCaptions();
         UpdateAvailability();
+        UpdateIndicationSound(cue, playing);
         if (!playing || !Narration.IsOn || cue == null) { narrationPlayer.Pause(); if (activeCue != null) onDeviceNarrator.Stop(); activeCue = null; }
         else if (activeCue != cue.Id)
         {

@@ -50,6 +50,67 @@ public sealed partial class SettingsDialog : Window
             throw new InvalidOperationException("The Settings window surface is opaque, so the system material cannot show through.");
         ApplyWindowTheme(original);
     }
+    internal async Task VerifyExportSoundForSmokeTestAsync()
+    {
+        NavigateForSmokeTest(2);
+        await Task.Delay(150);
+        var sound = exportSoundControl ?? throw new InvalidOperationException("Missing export sound control.");
+        sound.StartBringIntoView();
+        await Task.Delay(150);
+        var menu = sound.ContextFlyout as MenuFlyout ?? throw new InvalidOperationException("Missing export sound context menu.");
+        var item = menu.Items.OfType<ToggleMenuFlyoutItem>().Single(choice => choice.Tag as string == "export-completion-sound-menu");
+        var original = sound.IsOn;
+        if (original != SettingsStore.GetBool(draft["soundAfterExport"], true)) throw new InvalidOperationException("Export sound default differs.");
+        menu.ShowAt(sound);
+        await Task.Delay(100);
+        if (item.IsChecked != original) throw new InvalidOperationException("Export sound menu check differs.");
+        menu.Hide();
+        var peer = new Microsoft.UI.Xaml.Automation.Peers.ToggleMenuFlyoutItemAutomationPeer(item);
+        var provider = (Microsoft.UI.Xaml.Automation.Provider.IToggleProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Toggle);
+        provider.Toggle();
+        // Toggle via automation invokes the same Click handler as menu activation.
+        if (sound.IsOn != item.IsChecked || SettingsStore.GetBool(draft["soundAfterExport"], true) != item.IsChecked)
+            throw new InvalidOperationException("Export sound menu did not update the shared setting.");
+        sound.IsOn = !original;
+        if (SettingsStore.GetBool(draft["soundAfterExport"], true) == original) throw new InvalidOperationException("Export sound control did not update setting.");
+        sound.IsOn = original;
+        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "Assets", "Sounds", "descend.wav")))
+            throw new InvalidOperationException("Export completion WAV was not packaged.");
+    }
+    internal async Task VerifySoundPreviewsForSmokeTestAsync()
+    {
+        NavigateForSmokeTest(2);
+        if (soundPreviewControls.Count != 4) throw new InvalidOperationException("Expected four sound preview buttons.");
+        foreach (var (resource, controls) in soundPreviewControls)
+        {
+            void ClickButton()
+            {
+                var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(controls.Button);
+                ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+            }
+            var original = SettingsStore.GetBool(draft["soundAfterExport"], true);
+            draft["soundAfterExport"] = false;
+            ClickButton();
+            if (!soundPreview.IsPlaying(resource) || controls.Button.Content is not SymbolIcon { Symbol: Symbol.Pause } || !controls.Menu.Text.StartsWith("Pause sound:"))
+                throw new InvalidOperationException("Preview did not become Pause: " + resource);
+            ClickButton();
+            if (soundPreview.Playing || controls.Button.Content is not SymbolIcon { Symbol: Symbol.Play })
+                throw new InvalidOperationException("Preview did not pause: " + resource);
+            await Task.Delay(200);
+            if (soundPreview.Resource != resource || soundPreview.Playing) throw new InvalidOperationException("Paused preview lost its position.");
+            var menuPeer = new Microsoft.UI.Xaml.Automation.Peers.MenuFlyoutItemAutomationPeer(controls.Menu);
+            ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)menuPeer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+            if (!soundPreview.IsPlaying(resource)) throw new InvalidOperationException("Menu did not resume preview.");
+            for (var attempt = 0; attempt < 150 && soundPreview.Resource != null; attempt++) await Task.Delay(20);
+            if (soundPreview.Resource != null || controls.Button.Content is not SymbolIcon { Symbol: Symbol.Play } || !controls.Menu.Text.StartsWith("Play sound:"))
+                throw new InvalidOperationException("Finished preview did not reset to Play: " + resource);
+            if (SettingsStore.GetBool(draft["soundAfterExport"], true)) throw new InvalidOperationException("Preview changed the toggle.");
+            draft["soundAfterExport"] = original;
+        }
+        soundPreview.Toggle("descend");
+        NavigateForSmokeTest(0);
+        if (soundPreview.Resource != null) throw new InvalidOperationException("Leaving Narration did not stop its preview.");
+    }
     internal async Task VerifyProviderSwitchingAsync()
     {
         NavigateForSmokeTest(2);
@@ -67,7 +128,7 @@ public sealed partial class SettingsDialog : Window
         mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "piper");
         await RefreshVoices();
         if (piperControls.Visibility != Visibility.Visible || sapiHost.Visibility != Visibility.Collapsed
-            || localSpeechControls.Visibility != Visibility.Visible || summaryControls.Visibility != Visibility.Visible)
+            || localSpeechControls.Visibility != Visibility.Visible)
             throw new InvalidOperationException("Piper Voices must show the voice download controls and local speech settings.");
         mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "gemini");
         await RefreshVoices();
@@ -149,6 +210,8 @@ public sealed partial class SettingsDialog : Window
     private readonly StudioViewModel model;
     private readonly JsonObject draft;
     private readonly MediaPlayer samplePlayer = new();
+    private readonly SettingsSoundPreview soundPreview;
+    private readonly Dictionary<string, (Button Button, MenuFlyoutItem Menu, string Label)> soundPreviewControls = new();
     private void ConnectivityChanged(object? sender, EventArgs e)
     {
         if (checkPlanButton != null) {
@@ -180,6 +243,8 @@ public sealed partial class SettingsDialog : Window
     public SettingsDialog(StudioViewModel model, Window window, int initialSection = 0, StudioProject? projectTarget = null)
     {
         if (initialSection < 0 || initialSection > 8) throw new ArgumentOutOfRangeException(nameof(initialSection));
+        soundPreview = new(action => DispatcherQueue.TryEnqueue(() => action()));
+        soundPreview.Changed += UpdateSoundPreviewControls;
         requestedSection = initialSection;
         owner = window;
         menuOwner = window as MainWindow;
@@ -290,7 +355,12 @@ public sealed partial class SettingsDialog : Window
                 SelectSection(0);
                 return;
             }
+            soundPreview.Stop();
             if (sampleState != SampleState.Stopped) StopSample(false);
+            // Release retained Narration controls while their nested rows are still
+            // attached; after removing the page WinUI may no longer expose Parent.
+            foreach (var control in new FrameworkElement[] { mode, voice, sapiHost, localSpeechControls, piperControls })
+                DetachFromVisualParent(control);
             if (host.Content is Panel oldPanel) oldPanel.Children.Clear();
             host.Content = null;
             var panel = new StackPanel { Spacing = 12, Padding = new Thickness(0, 0, 16, 12) };
@@ -365,7 +435,7 @@ public sealed partial class SettingsDialog : Window
             model.PropertyChanged -= ReceiveModelProjectChange;
             autoApplyTimer.Stop();
             checkDebounceTimer?.Stop();
-            closed = true; voiceRequest++; lifetime.Cancel(); voiceCancellation?.Cancel(); sampleCancellation?.Cancel(); samplePlayer.Dispose();
+            closed = true; voiceRequest++; lifetime.Cancel(); voiceCancellation?.Cancel(); sampleCancellation?.Cancel(); samplePlayer.Dispose(); soundPreview.Dispose();
             foreach (var file in temporaryFiles) { try { File.Delete(file); } catch (IOException) { } }
             completion.TrySetResult(true);
         };
@@ -442,9 +512,9 @@ public sealed partial class SettingsDialog : Window
     private ComboBox? narrationPlaybackChoice;
     private void AddPlaybackChoice(StackPanel panel)
     {
-        var options = new[] { new PlaybackOption("generated", "Play saved narration audio"),
-            new PlaybackOption("ondevice", "Speak with an on-device voice") };
-        var field = new ComboBox { Header = "Narration during video playback", ItemsSource = options,
+        var options = new[] { new PlaybackOption("generated", "Play synthesized narration"),
+            new PlaybackOption("ondevice", "Preview segment text with the selected voice") };
+        var field = new ComboBox { MinWidth = 0, MaxWidth = 360, ItemsSource = options,
             SelectedItem = options.FirstOrDefault(option => option.Id == SettingsStore.GetString(draft["narrationPlayback"], "generated")) ?? options[0] };
         narrationPlaybackChoice = field;
         field.SelectionChanged += (_, _) =>
@@ -452,9 +522,8 @@ public sealed partial class SettingsDialog : Window
             if (field.SelectedItem is not PlaybackOption option) return;
             StopSample();
             draft["narrationPlayback"] = option.Id;
-            UpdateNarrationEngineOptions();
         };
-        panel.Children.Add(field);
+        AddSettingsRow(panel, "Narration during playback", field, stretchControl: true);
     }
     private void AddChoice(StackPanel panel, string label, string key, string[] values)
     {
@@ -462,22 +531,37 @@ public sealed partial class SettingsDialog : Window
         field.SelectionChanged += (_, _) => { if (field.SelectedItem is string selected) draft[key] = selected; };
         panel.Children.Add(field);
     }
+    private readonly Dictionary<string, Slider> speechSliders = new();
+    private void RestoreSpeechDefaults()
+    {
+        foreach (var key in new[] { "systemSpeechRate", "systemSpeechPitch", "systemSpeechVolume" })
+        { draft[key] = 1.0; if (speechSliders.TryGetValue(key, out var slider)) slider.Value = 1.0; }
+    }
+    private static StackPanel AddNarrationGroup(StackPanel host, string title)
+    {
+        var heading = new TextBlock { Text = title, FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4) };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetHeadingLevel(heading, Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2);
+        host.Children.Add(heading);
+        var rows = new StackPanel { Spacing = 12 };
+        host.Children.Add(new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(16),
+            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"], Child = rows });
+        return rows;
+    }
     private void AddSpeechSlider(StackPanel panel, string label, string key, double fallback, double minimum, double maximum)
     {
-        var row = new Grid { ColumnSpacing = 12 };
-        row.ColumnDefinitions.Add(new ColumnDefinition());
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        row.Children.Add(new TextBlock { Text = label });
+        var group = new Grid { ColumnSpacing = 12, Width = 280 };
+        group.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        group.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var value = new TextBlock { Text = $"{SettingsStore.GetDouble(draft[key], fallback):P0}", MinWidth = 52,
-            HorizontalAlignment = HorizontalAlignment.Right };
-        Grid.SetColumn(value, 1); row.Children.Add(value); panel.Children.Add(row);
-        var slider = new Slider { Minimum = minimum, Maximum = maximum,
+            VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
+        var slider = new Slider { Minimum = minimum, Maximum = maximum, MinWidth = 0,
             Value = Math.Clamp(SettingsStore.GetDouble(draft[key], fallback), minimum, maximum),
-            StepFrequency = .05, SmallChange = .05, LargeChange = .25,
-            HorizontalAlignment = HorizontalAlignment.Stretch };
+            StepFrequency = .05, SmallChange = .05, LargeChange = .25, HorizontalAlignment = HorizontalAlignment.Stretch };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(slider, label);
         slider.ValueChanged += (_, _) => { draft[key] = slider.Value; value.Text = $"{slider.Value:P0}"; };
-        panel.Children.Add(slider);
+        speechSliders[key] = slider;
+        group.Children.Add(slider); Grid.SetColumn(value, 1); group.Children.Add(value);
+        AddSettingsRow(panel, label, group);
     }
     private bool narrationBuilt;
     private void UpdateNarrationEngineOptions()
@@ -485,26 +569,70 @@ public sealed partial class SettingsDialog : Window
         var provider = SettingsStore.GetString(draft["ttsMode"], "windows-core");
         var options = new List<SpeechEngineOption> { new("windows-core", "Windows OneCore"), new("sapi5", "Windows SAPI 5"),
             new("piper", "Piper Voices"), new("gemini", "Gemini Voices") };
-        mode.ItemsSource = options;
-        mode.SelectedItem = options.FirstOrDefault(option => option.Id == provider) ?? options[0];
+        if (mode.ItemsSource is not IEnumerable<SpeechEngineOption> existing)
+        {
+            mode.ItemsSource = options;
+            mode.SelectedItem = options.FirstOrDefault(option => option.Id == provider) ?? options[0];
+        }
+        else
+        {
+            var selection = existing.FirstOrDefault(option => option.Id == provider);
+            if (!ReferenceEquals(mode.SelectedItem, selection)) mode.SelectedItem = selection;
+        }
     }
+    private ToggleSwitch AddSoundPreference(StackPanel panel, string label, string key, string resource, string id, string menuId)
+    {
+        var toggle = new ToggleSwitch { IsOn = SettingsStore.GetBool(draft[key], true), OnContent = "", OffContent = "", MinWidth = 0, VerticalAlignment = VerticalAlignment.Center };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(toggle, label);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, id);
+        ConfigureCompactToggle(toggle);
+        toggle.Toggled += (_, _) => draft[key] = toggle.IsOn;
+        var menu = new MenuFlyout();
+        var choice = new ToggleMenuFlyoutItem { Text = label, Tag = menuId };
+        var previewItem = new MenuFlyoutItem { Tag = id + "-preview-menu" };
+        previewItem.Click += (_, _) => ToggleSoundPreview(resource);
+        menu.Opening += (_, _) => { choice.IsChecked = toggle.IsOn; UpdateSoundPreviewControls(); };
+        choice.Click += (_, _) => toggle.IsOn = choice.IsChecked;
+        menu.Items.Add(choice); menu.Items.Add(previewItem);
+        toggle.ContextFlyout = menu;
+        var preview = new Button { Width = 36, Height = 36, VerticalAlignment = VerticalAlignment.Center };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(preview, id + "-preview");
+        preview.Click += (_, _) => ToggleSoundPreview(resource);
+        var previewMenu = new MenuFlyout();
+        var matchingPreviewItem = new MenuFlyoutItem { Tag = id + "-preview-button-menu" };
+        matchingPreviewItem.Click += (_, _) => ToggleSoundPreview(resource);
+        previewMenu.Items.Add(matchingPreviewItem);
+        previewMenu.Opening += (_, _) => { matchingPreviewItem.Text = PreviewSoundTitle(resource, label); };
+        preview.ContextFlyout = previewMenu;
+        soundPreviewControls[resource] = (preview, previewItem, label);
+        var row = new Grid { ColumnSpacing = 12 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.Children.Add(new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
+        Grid.SetColumn(toggle, 1); row.Children.Add(toggle); Grid.SetColumn(preview, 2); row.Children.Add(preview);
+        panel.Children.Add(row); UpdateSoundPreviewControls();
+        return toggle;
+    }
+    private string PreviewSoundTitle(string resource, string label) => (soundPreview.IsPlaying(resource) ? "Pause" : "Play") + " sound: " + label;
+    private void ToggleSoundPreview(string resource) { StopSample(false); soundPreview.Toggle(resource); }
+    private void UpdateSoundPreviewControls()
+    {
+        foreach (var (resource, controls) in soundPreviewControls)
+        {
+            var title = PreviewSoundTitle(resource, controls.Label);
+            controls.Button.Content = new SymbolIcon(soundPreview.IsPlaying(resource) ? Symbol.Pause : Symbol.Play);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(controls.Button, title);
+            ToolTipService.SetToolTip(controls.Button, title);
+            controls.Menu.Text = title;
+        }
+    }
+    private ToggleSwitch? exportSoundControl;
     private void BuildNarration(StackPanel panel)
     {
         foreach (var element in new FrameworkElement[] { mode, voice, sapiHost, localSpeechControls }) if (element.Parent is Panel parent) parent.Children.Remove(element);
         localSpeechControls.Children.Clear();
         BuildVoiceEngineControls();
-        var timingSound = new CheckBox { Content = "Sound when timing validation fails",
-            IsChecked = SettingsStore.GetBool(draft["soundWhenTimingInvalid"], true) };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(timingSound, "timing-validation-sound");
-        timingSound.Checked += (_, _) => draft["soundWhenTimingInvalid"] = true;
-        timingSound.Unchecked += (_, _) => draft["soundWhenTimingInvalid"] = false;
-        var timingSoundMenu = new MenuFlyout();
-        var timingSoundItem = new ToggleMenuFlyoutItem { Text = "Sound when timing validation fails", Tag = "timing-validation-sound-menu" };
-        timingSoundMenu.Opening += (_, _) => timingSoundItem.IsChecked = timingSound.IsChecked == true;
-        timingSoundItem.Click += (_, _) => timingSound.IsChecked = timingSoundItem.IsChecked;
-        timingSoundMenu.Items.Add(timingSoundItem);
-        timingSound.ContextFlyout = timingSoundMenu;
-        panel.Children.Add(timingSound);
         UpdateNarrationEngineOptions();
         var initialProvider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
         if (initialProvider is "windows-core" or "sapi5" && draft[VoiceKey(initialProvider)] == null)
@@ -540,14 +668,33 @@ public sealed partial class SettingsDialog : Window
                 UpdateSampleControls();
             };
         }
-        panel.Children.Add(mode); panel.Children.Add(piperControls);
-        panel.Children.Add(voice); panel.Children.Add(sapiHost);
-        AddPlaybackChoice(panel);
-        var refresh = new Button { Content = "Refresh voices" }; refresh.Click += async (_, _) => await RefreshVoices(); localSpeechControls.Children.Add(refresh);
-        AddSpeechSlider(localSpeechControls, "Speech rate", "systemSpeechRate", 1, .5, 2);
-        AddSpeechSlider(localSpeechControls, "Speech pitch", "systemSpeechPitch", 1, .5, 2);
-        AddSpeechSlider(localSpeechControls, "Speech volume", "systemSpeechVolume", 1, 0, 1);
+        var narrationGroup = AddNarrationGroup(panel, "Narration");
+        mode.Header = null;
+        mode.MinWidth = 0; mode.MaxWidth = 360;
+        AddSettingsRow(narrationGroup, "Speech engine", mode, stretchControl: true);
+        AddPlaybackChoice(narrationGroup);
+        AddSoundPreference(narrationGroup, "Sound when narration is off", "soundWhenNarrationOff", "Boink3", "narration-off-sound", "narration-off-sound-menu");
+        AddSoundPreference(narrationGroup, "Sound when synthesized audio is unavailable", "soundWhenNarrationMissing", "ascend", "narration-missing-sound", "narration-missing-sound-menu");
+        exportSoundControl = AddSoundPreference(narrationGroup, "Play sound after export", "soundAfterExport", "descend", "export-completion-sound", "export-completion-sound-menu");
+        AddSoundPreference(narrationGroup, "Sound when timing validation fails", "soundWhenTimingInvalid", "Buzzer1", "timing-validation-sound", "timing-validation-sound-menu");
+        var speechGroup = AddNarrationGroup(localSpeechControls, "Voice controls");
+        speechSliders.Clear();
+        AddSpeechSlider(speechGroup, "Speech rate", "systemSpeechRate", 1, .5, 2);
+        AddSpeechSlider(speechGroup, "Pitch", "systemSpeechPitch", 1, .5, 2);
+        AddSpeechSlider(speechGroup, "Speech volume", "systemSpeechVolume", 1, 0, 1);
+        var restoreSpeech = new Button();
+        IconButtonContent.Set(restoreSpeech, "Restore Defaults", Symbol.Refresh);
+        restoreSpeech.Click += (_, _) => RestoreSpeechDefaults();
+        var restoreMenu = new MenuFlyout();
+        var restoreItem = new MenuFlyoutItem { Text = "Restore Defaults", Tag = "restore-speech-defaults-menu" };
+        restoreItem.Click += (_, _) => RestoreSpeechDefaults();
+        restoreMenu.Items.Add(restoreItem); restoreSpeech.ContextFlyout = restoreMenu;
+        speechGroup.Children.Add(restoreSpeech);
         panel.Children.Add(localSpeechControls);
+        var voiceGroup = AddNarrationGroup(panel, "Voices");
+        voiceGroup.Children.Add(piperControls);
+        voiceGroup.Children.Add(voice); voiceGroup.Children.Add(sapiHost);
+        var refresh = new Button { Content = "Refresh Voices" }; refresh.Click += async (_, _) => await RefreshVoices(); voiceGroup.Children.Add(refresh);
         var sample = new TextBox { Header = "Voice sample", Text = "Welcome to Vidi Studio. Create accessible video with clear audio descriptions.", MaxLength = 500, TextWrapping = TextWrapping.Wrap };
         panel.Children.Add(sample);
         var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -564,7 +711,6 @@ public sealed partial class SettingsDialog : Window
         controls.Children.Add(sampleStopButton);
         UpdateSampleControls();
         panel.Children.Add(controls);
-        panel.Children.Add(summaryControls);
         _ = RefreshVoices();
     }
     private bool HasDraftApiKey => !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"])) &&
@@ -717,6 +863,7 @@ public sealed partial class SettingsDialog : Window
     }
     private async Task Preview(string text)
     {
+        soundPreview.Stop();
         if ((mode.SelectedItem as SpeechEngineOption)?.Id == "gemini" && !ConnectivityService.Shared.Available(OnlineService.Gemini)) {
             status.Text = ConnectivityService.Shared.Reason(OnlineService.Gemini); return;
         }

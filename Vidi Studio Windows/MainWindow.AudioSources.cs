@@ -64,7 +64,7 @@ public sealed partial class MainWindow
             originalAudioPlayer.PlaybackSession.Position = TimeSpan.FromSeconds(target);
         if (state.TryGetProperty("rate", out var rate)) originalAudioPlayer.PlaybackSession.PlaybackRate = rate.GetDouble();
         var volume = state.TryGetProperty("volume", out var level) ? level.GetDouble() / 100 : 1;
-        var duck = Narration.IsOn && (narrationPlayer.PlaybackSession.PlaybackState == MediaPlaybackState.Playing || onDeviceNarrator.IsPlaying);
+        var duck = (Narration.IsOn && (narrationPlayer.PlaybackSession.PlaybackState == MediaPlaybackState.Playing || onDeviceNarrator.IsPlaying)) || indicationPlayer.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
         originalAudioPlayer.Volume = volume * (duck ? .2 : 1);
         if (youtubePlaying && youtubePosition < asset.Duration) originalAudioPlayer.Play();
         else originalAudioPlayer.Pause();

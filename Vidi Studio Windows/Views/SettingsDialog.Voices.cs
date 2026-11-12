@@ -34,12 +34,11 @@ public sealed partial class SettingsDialog
     private readonly StackPanel piperControls = new() { Spacing = 10 };
     private readonly TextBlock piperStatus = new() { TextWrapping = TextWrapping.Wrap, Opacity = .75 };
     private Button? deletePiperVoices;
-    private readonly StackPanel summaryControls = new() { Spacing = 8 };
 
     private void BuildVoiceEngineControls()
     {
-        foreach (var element in new FrameworkElement[] { piperControls, summaryControls }) if (element.Parent is Panel parent) parent.Children.Remove(element);
-        piperControls.Children.Clear(); summaryControls.Children.Clear();
+        foreach (var element in new FrameworkElement[] { piperControls }) if (element.Parent is Panel parent) parent.Children.Remove(element);
+        piperControls.Children.Clear();
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         var manage = new Button { MinWidth = 200 };
@@ -69,9 +68,6 @@ public sealed partial class SettingsDialog
         piperControls.Children.Add(buttons);
         piperControls.Children.Add(piperStatus);
 
-        var heading = new TextBlock { Text = "Summary read-aloud", FontSize = 17, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 0) };
-        AutomationProperties.SetHeadingLevel(heading, Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2);
-        summaryControls.Children.Add(heading);
         UpdatePiperStatus();
     }
 

@@ -111,6 +111,7 @@ public partial class App : Application
                 Environment.SetEnvironmentVariable(key, environment[key]);
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY"));
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_JUMP_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_JUMP_ONLY"));
+            Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY"));
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY"));
             _ = OpenWindow();
             return;

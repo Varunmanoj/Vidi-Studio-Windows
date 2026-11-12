@@ -25,6 +25,40 @@ public sealed partial class SettingsDialog
         AppWindow.MoveAndResize(new RectInt32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
     }
 
+    private static FrameworkElement? SettingsSwitchTrack(DependencyObject element)
+    {
+        if (element is FrameworkElement { Name: "OuterBorder" } track) return track;
+        for (var index = 0; index < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(element); index++)
+            if (SettingsSwitchTrack(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(element, index)) is { } found) return found;
+        return null;
+    }
+
+    private static void ConfigureCompactToggle(ToggleSwitch toggle)
+    {
+        // The native template reserves a 12-DIP column for On/Off text even
+        // when empty. Remove only that spacer, keeping the native track,
+        // animations, focus visuals, hit target and automation peer.
+        void RemoveEmptyContentGap()
+        {
+            if (SettingsSwitchTrack(toggle)?.Parent is Grid grid && grid.ColumnDefinitions.Count == 3)
+            {
+                grid.ColumnDefinitions[1].MinWidth = 0;
+                grid.ColumnDefinitions[1].MaxWidth = 0;
+                grid.ColumnDefinitions[1].Width = new GridLength(0);
+            }
+        }
+        toggle.Loaded += (_, _) => RemoveEmptyContentGap();
+        toggle.ActualThemeChanged += (_, _) => RemoveEmptyContentGap();
+    }
+
+    private static Border CompactSettingsControl(FrameworkElement control)
+    {
+        if (control is ToggleSwitch toggle) ConfigureCompactToggle(toggle);
+        control.HorizontalAlignment = HorizontalAlignment.Center;
+        control.VerticalAlignment = VerticalAlignment.Center;
+        return new Border { Width = 54, Child = control };
+    }
+
     private static Grid AddSettingsRow(StackPanel panel, string label, FrameworkElement control, bool stretchControl = false)
     {
         var row = new Grid { ColumnSpacing = 16, RowSpacing = 0, MinHeight = 36 };
@@ -44,13 +78,13 @@ public sealed partial class SettingsDialog
         {
             var stacked = args.NewSize.Width < 480;
             row.RowSpacing = stacked ? 8 : 0;
-            control.Width = stacked ? double.NaN : preferredWidth;
+            control.Width = stacked && stretchControl ? double.NaN : preferredWidth;
             Grid.SetColumnSpan(title, stacked ? 2 : 1);
             Grid.SetRow(control, stacked ? 1 : 0);
             Grid.SetColumn(control, stacked ? 0 : 1);
             Grid.SetColumnSpan(control, stacked ? 2 : 1);
             control.MaxWidth = Math.Max(0, stacked ? args.NewSize.Width : (args.NewSize.Width - 16) / 2);
-            control.HorizontalAlignment = stacked || stretchControl ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
+            control.HorizontalAlignment = stretchControl ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
         };
         panel.Children.Add(row);
         return row;

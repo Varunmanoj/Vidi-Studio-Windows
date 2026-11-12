@@ -42,6 +42,31 @@ public sealed partial class MainWindow
                 return;
             }
             ShowEditor();
+            if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY") == "1")
+            {
+                var soundSettings = new Views.SettingsDialog(Model, this, 2);
+                var soundDisplay = soundSettings.ShowAsync();
+                try { await Task.Delay(200); await soundSettings.VerifyExportSoundForSmokeTestAsync(); await soundSettings.VerifySoundPreviewsForSmokeTestAsync(); }
+                finally { soundSettings.Close(); await soundDisplay; }
+                var initial = ExportCompletionSound.PlayCountForSmokeTest;
+                Model.Settings.Set("soundAfterExport", true);
+                var soundResult = await Model.RunAsync("export-subtitles", new[] { "--content", "transcript", "--format", "txt", "--replace-existing" });
+                if (!soundResult.Any(e => e.Data.TryGetProperty("export", out _)) || ExportCompletionSound.PlayCountForSmokeTest != initial + 1)
+                    throw new InvalidOperationException($"Successful export cue mismatch: {Model.Status}; events={soundResult.Count}; plays={ExportCompletionSound.PlayCountForSmokeTest - initial}.");
+                Model.Settings.Set("soundAfterExport", false);
+                await Model.RunAsync("export-subtitles", new[] { "--content", "transcript", "--format", "txt", "--replace-existing" });
+                if (ExportCompletionSound.PlayCountForSmokeTest != initial + 1) throw new InvalidOperationException("Disabled cue played.");
+                Model.Settings.Set("soundAfterExport", true);
+                await Model.RunAsync("export-not-a-real-command");
+                if (ExportCompletionSound.PlayCountForSmokeTest != initial + 1) throw new InvalidOperationException("Failed export played a completion cue.");
+                var cancelled = Model.RunAsync("export-subtitles", new[] { "--content", "transcript", "--format", "txt", "--replace-existing" });
+                Model.Cancel();
+                await cancelled;
+                if (ExportCompletionSound.PlayCountForSmokeTest != initial + 1) throw new InvalidOperationException("Cancelled export played a completion cue.");
+                Model.Settings.Save();
+                await File.WriteAllTextAsync(report, "PASS: bundled export WAV, default-on control/checked context menu/shared setting; successful real text export dispatches one cue; disabled, failed and cancelled exports remain silent.");
+                return;
+            }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_JUMP_ONLY") == "1")
             {
                 await VerifyJumpToTimeForSmokeTestAsync();
@@ -612,6 +637,8 @@ public sealed partial class MainWindow
             }
             finally { Services.ExportSession.Active.Remove(previewSession); PreviewTheme(originalTheme); }
             await settings.VerifyWindowThemeAsync();
+            await settings.VerifyExportSoundForSmokeTestAsync();
+            await settings.VerifySummaryHighlightAppearanceForSmokeTestAsync();
             settings.VerifyGeminiModelFiltering();
             await Task.Delay(100);
             await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-gemini.png"));
@@ -1109,6 +1136,8 @@ public sealed partial class MainWindow
                 await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, $"settings-layout-{title}.png"));
             }
             await settings.VerifyWindowThemeAsync();
+            await settings.VerifyExportSoundForSmokeTestAsync();
+            await settings.VerifySummaryHighlightAppearanceForSmokeTestAsync();
         }
         finally { settings.Close(); await display; PreviewTheme(originalTheme); }
     }

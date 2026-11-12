@@ -435,6 +435,10 @@
       "title": "Export video, Web Playback, narration, and text",
       "sections": [
         {
+          "id": "export-completion-sound",
+          "title": "Export completion sound"
+        },
+        {
           "id": "follow-an-export-in-progress",
           "title": "Follow an export in progress"
         },
@@ -637,6 +641,10 @@
         {
           "id": "projects",
           "title": "Projects"
+        },
+        {
+          "id": "summary-highlighting",
+          "title": "Summary readback highlighting"
         },
         {
           "id": "narration",
@@ -845,6 +853,10 @@
         {
           "id": "gemini-model-check",
           "title": "Gemini key checks and empty model lists"
+        },
+        {
+          "id": "no-export-completion-sound",
+          "title": "No export completion sound"
         }
       ]
     },

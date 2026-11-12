@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using System;
+using System.Linq;
 using Vidi_Studio_Windows.Services;
 using Windows.UI;
 
@@ -11,8 +12,77 @@ namespace Vidi_Studio_Windows.Views;
 
 public sealed partial class SettingsDialog
 {
+    private readonly System.Collections.Generic.Dictionary<string, ToggleSwitch> summaryHighlightToggles = new();
+    private readonly System.Collections.Generic.Dictionary<string, Button> appearanceColorButtons = new();
+#if DEBUG
+    internal async System.Threading.Tasks.Task VerifySummaryHighlightAppearanceForSmokeTestAsync()
+    {
+        SelectSection(0); await System.Threading.Tasks.Task.Delay(150);
+        foreach (var key in new[] { "summarySentenceHighlight", "summaryWordHighlight" })
+        {
+            if (!summaryHighlightToggles.TryGetValue(key, out var toggle)) throw new InvalidOperationException("Appearance is missing " + key);
+            if (string.IsNullOrWhiteSpace(Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(toggle)))
+                throw new InvalidOperationException("Highlight switch has no accessible name.");
+            var colorKey = key + "Color";
+            var color = appearanceColorButtons[colorKey];
+            var track = SettingsSwitchTrack(toggle) ?? throw new InvalidOperationException("Native switch track missing.");
+            var switchCenter = track.TransformToVisual(currentSectionPanel).TransformPoint(new Windows.Foundation.Point(track.ActualWidth / 2, 0)).X;
+            var colorCenter = color.TransformToVisual(currentSectionPanel).TransformPoint(new Windows.Foundation.Point(color.ActualWidth / 2, 0)).X;
+            if (Math.Abs(switchCenter - colorCenter) > 1 || toggle.ActualWidth > 54)
+                throw new InvalidOperationException("Highlight switch and color swatch are not aligned.");
+            var original = toggle.IsOn;
+            toggle.IsOn = !original;
+            if (SettingsStore.GetBool(draft[key], true) == original) throw new InvalidOperationException("Highlight toggle did not update its setting.");
+            toggle.StartBringIntoView(); await System.Threading.Tasks.Task.Delay(100);
+            var menu = (MenuFlyout)toggle.ContextFlyout;
+            menu.ShowAt(toggle); await System.Threading.Tasks.Task.Delay(100);
+            var item = (ToggleMenuFlyoutItem)menu.Items[0];
+            if (item.IsChecked != toggle.IsOn) throw new InvalidOperationException("Highlight menu check differs.");
+            menu.Hide();
+            var peer = new Microsoft.UI.Xaml.Automation.Peers.ToggleMenuFlyoutItemAutomationPeer(item);
+            ((Microsoft.UI.Xaml.Automation.Provider.IToggleProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Toggle)).Toggle();
+            if (toggle.IsOn != original || SettingsStore.GetBool(draft[key], true) != original) throw new InvalidOperationException("Highlight menu did not restore the same shared value.");
+        }
+        SelectSection(2); await System.Threading.Tasks.Task.Delay(150);
+        if (currentSectionPanel is not null && ContainsSummaryControls(currentSectionPanel)) throw new InvalidOperationException("Narration still contains Summary highlighting.");
+        if (narrationPlaybackChoice is null || exportSoundControl is null) throw new InvalidOperationException("Narration controls missing.");
+        var playbackChoice = narrationPlaybackChoice;
+        var selected = playbackChoice.SelectedItem;
+        var engineSelection = mode.SelectedItem;
+        var controls = new FrameworkElement[] { mode, playbackChoice, exportSoundControl, localSpeechControls };
+        Windows.Foundation.Rect[] Bounds() => controls.Select(control =>
+        {
+            var point = control.TransformToVisual(currentSectionPanel).TransformPoint(new Windows.Foundation.Point());
+            return new Windows.Foundation.Rect(point.X, point.Y, control.ActualWidth, control.ActualHeight);
+        }).ToArray();
+        layout.UpdateLayout();
+        var before = Bounds();
+        try
+        {
+            foreach (var option in (System.Collections.Generic.IEnumerable<PlaybackOption>)playbackChoice.ItemsSource)
+            {
+                playbackChoice.SelectedItem = option;
+                await System.Threading.Tasks.Task.Delay(100); layout.UpdateLayout();
+                var after = Bounds();
+                if (!ReferenceEquals(engineSelection, mode.SelectedItem) || before.Where((rect, index) =>
+                    Math.Abs(rect.X - after[index].X) > 1 || Math.Abs(rect.Y - after[index].Y) > 1 ||
+                    Math.Abs(rect.Width - after[index].Width) > 1 || Math.Abs(rect.Height - after[index].Height) > 1).Any())
+                    throw new InvalidOperationException("Narration playback selection shifts the Settings layout.");
+            }
+        }
+        finally { playbackChoice.SelectedItem = selected; }
+        static bool ContainsSummaryControls(DependencyObject node)
+        {
+            if (node is FrameworkElement element && Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(element).StartsWith("summary-", StringComparison.Ordinal)) return true;
+            for (var i=0;i<VisualTreeHelper.GetChildrenCount(node);i++) if (ContainsSummaryControls(VisualTreeHelper.GetChild(node,i))) return true;
+            return false;
+        }
+    }
+#endif
     private void BuildAppearance(StackPanel panel)
     {
+        summaryHighlightToggles.Clear();
+        appearanceColorButtons.Clear();
         panel.Children.Add(new TextBlock { Text = "Appearance and playback", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) });
         var card = new StackPanel { Spacing = 16 };
         panel.Children.Add(new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(16), Background = new SolidColorBrush(Color.FromArgb(15, 128, 128, 128)), Child = card });
@@ -78,7 +148,8 @@ public sealed partial class SettingsDialog
         void ColorRow(string label, string key, string fallback)
         {
             var swatch = new Border { Width = 40, Height = 16, CornerRadius = new CornerRadius(8), Background = new SolidColorBrush(ReadColor(key, fallback)) };
-            var button = new Button { Content = swatch, Padding = new Thickness(5), MinWidth = 54 };
+            var button = new Button { Content = swatch, Padding = new Thickness(5), Width = 54 };
+            appearanceColorButtons[key] = button;
             var picker = new ColorPicker { Color = ReadColor(key, fallback), IsAlphaEnabled = false, IsMoreButtonVisible = false, IsColorSliderVisible = true };
             picker.ColorChanged += (_, args) => { draft[key] = $"#{args.NewColor.R:X2}{args.NewColor.G:X2}{args.NewColor.B:X2}"; swatch.Background = new SolidColorBrush(args.NewColor); Preview(); };
             button.Flyout = new Flyout { Content = picker }; Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, label); Row(label, button);
@@ -96,27 +167,49 @@ public sealed partial class SettingsDialog
         card.Children.Add(new TextBlock { Text = "Summary readback highlighting", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) });
         void HighlightChoice(string label, string key)
         {
-            var toggle = new ToggleSwitch { IsOn = SettingsStore.GetString(draft[key], "true") != "false", OnContent = "On", OffContent = "Off" };
+            var toggle = new ToggleSwitch { IsOn = SettingsStore.GetString(draft[key], "true") != "false", OnContent = "", OffContent = "", MinWidth = 0 };
             toggle.Toggled += (_, _) => { draft[key] = toggle.IsOn ? "true" : "false"; Preview(); };
-            Row(label, toggle);
+            var id = key == "summarySentenceHighlight" ? "summary-sentence-highlight" : "summary-word-highlight";
+            summaryHighlightToggles[key] = toggle;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, id);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(toggle, label);
+            var menu = new MenuFlyout();
+            var choice = new ToggleMenuFlyoutItem { Text = label, Tag = id + "-menu" };
+            menu.Opening += (_, _) => choice.IsChecked = toggle.IsOn;
+            choice.Click += (_, _) => toggle.IsOn = choice.IsChecked;
+            menu.Items.Add(choice); toggle.ContextFlyout = menu;
+            Row(label, CompactSettingsControl(toggle));
         }
         HighlightChoice("Highlight the spoken sentence", "summarySentenceHighlight");
         ColorRow("Sentence highlight color", "summarySentenceHighlightColor", "#A9D6FF");
         HighlightChoice("Highlight the spoken word", "summaryWordHighlight");
         ColorRow("Word highlight color", "summaryWordHighlightColor", "#FFD54A");
         card.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb(24, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Child = summaryPreview });
+        var restoreHighlights = new Button { Content = "Restore Highlight Defaults" };
+        void RestoreHighlights()
+        {
+            draft["summarySentenceHighlightColor"] = "#A9D6FF"; draft["summaryWordHighlightColor"] = "#FFD54A";
+            draft["summarySentenceHighlight"] = true; draft["summaryWordHighlight"] = true;
+            panel.Children.Clear(); BuildAppearance(panel);
+        }
+        restoreHighlights.Click += (_, _) => RestoreHighlights();
+        var restoreHighlightMenu = new MenuFlyout();
+        var restoreHighlightItem = new MenuFlyoutItem { Text = "Restore Highlight Defaults", Tag = "restore-summary-highlight-defaults-menu" };
+        restoreHighlightItem.Click += (_, _) => RestoreHighlights();
+        restoreHighlightMenu.Items.Add(restoreHighlightItem); restoreHighlights.ContextFlyout = restoreHighlightMenu;
+        card.Children.Add(restoreHighlights);
         Preview();
         var advanced = new StackPanel { Spacing = 12 };
         advanced.Children.Add(new TextBlock { Text = "Advanced", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         var developerMode = new ToggleSwitch
         {
             IsOn = SettingsStore.GetBool(draft["developerMode"]),
-            OnContent = "On",
-            OffContent = "Off",
+            OnContent = "",
+            OffContent = "",
             MinWidth = 0
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(developerMode, "Developer mode");
-        AddSettingsRow(advanced, "Developer mode", developerMode);
+        AddSettingsRow(advanced, "Developer mode", CompactSettingsControl(developerMode));
         developerMode.Toggled += (_, _) =>
         {
             draft["developerMode"] = developerMode.IsOn;

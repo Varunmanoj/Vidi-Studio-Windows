@@ -1,4 +1,4 @@
-param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [switch]$SkipBuild, [switch]$FrozenEngine, [string]$AppDirectory, [switch]$RequirePackage, [int]$TimeoutSeconds = 180, [string]$SummaryFixture, [switch]$GallerySettingsOnly, [switch]$ContextMenusOnly)
+param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [switch]$SkipBuild, [switch]$FrozenEngine, [string]$AppDirectory, [switch]$RequirePackage, [int]$TimeoutSeconds = 180, [string]$SummaryFixture, [switch]$GallerySettingsOnly, [switch]$ContextMenusOnly, [switch]$JumpOnly)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $testRoot = Join-Path $projectRoot "build\ui-test-$Platform"
@@ -41,6 +41,7 @@ try {
     $env:VIDISTUDIO_UI_SMOKE_PROJECT = $folder
     $env:VIDISTUDIO_UI_SMOKE_REPORT = $report
     if ($GallerySettingsOnly) { $env:VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY = '1' }
+    if ($JumpOnly) { $env:VIDISTUDIO_UI_SMOKE_JUMP_ONLY = '1' }
     if ($ContextMenusOnly) { $env:VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY = '1' }
     if ($RequirePackage) {
         Add-Type -TypeDefinition @"
@@ -62,6 +63,7 @@ public static class VidiActivation {
         if (!$installed) { throw 'Register the development package first.' }
         $payloadValues = @{VIDISTUDIO_UI_SMOKE_REPORT=$report;VIDISTUDIO_UI_SMOKE_PROJECT=$folder;VIDISTUDIO_CONFIG=$configFile}
         if ($GallerySettingsOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY = '1' }
+        if ($JumpOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_JUMP_ONLY = '1' }
         if ($ContextMenusOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY = '1' }
         $payload = $payloadValues | ConvertTo-Json -Compress
         $launchArgs = '--vidi-smoke ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payload))
@@ -98,6 +100,7 @@ public static class VidiPackageIdentity {
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_PROJECT -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_REPORT -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY -ErrorAction SilentlyContinue
+    Remove-Item Env:VIDISTUDIO_UI_SMOKE_JUMP_ONLY -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY -ErrorAction SilentlyContinue
 }
 

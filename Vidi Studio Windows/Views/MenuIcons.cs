@@ -27,6 +27,7 @@ public static class MenuIcons
             "Import narration audio…" => "\uE8D6",
             "Sort segments" => "\uE8CB",
             "Open project folder" => "\uE8B7",
+            "Jump to Time…" => "\uE917",
             "Sort by start time" => "\uE917",
             "Shortest duration first" or "Longest duration first" => "\uE916",
             "Sort by origin" => "\uE8EC",

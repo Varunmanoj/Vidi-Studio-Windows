@@ -42,6 +42,12 @@ public sealed partial class MainWindow
                 return;
             }
             ShowEditor();
+            if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_JUMP_ONLY") == "1")
+            {
+                await VerifyJumpToTimeForSmokeTestAsync();
+                await File.WriteAllTextAsync(report, "PASS: Playback Jump to Time menu/shortcut, invalid time gating, stopped and paused seeking, continuing active playback, cancellation and unchanged project data.");
+                return;
+            }
             VerifyProjectConfigurationDeveloperModeForSmokeTest();
             await VerifySegmentFiltersForSmokeTestAsync();
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_FILTERS_ONLY") == "1")
@@ -2163,6 +2169,69 @@ public sealed partial class MainWindow
                         throw new InvalidOperationException("Segment numbers must match the complete selected result before filtering or sorting.");
         } finally { Section.SelectedIndex = previousSection; UpdateADAudioReadiness(project); }
     }
+    private async Task VerifyJumpToTimeForSmokeTestAsync()
+    {
+        var path = Path.Combine(Model.Project!.Folder, "project.json");
+        var before = await File.ReadAllBytesAsync(path);
+        Section.SelectedIndex = 0;
+        StopProjectPlayback();
+        await SeekAsync(0);
+        await Task.Delay(500);
+        UpdateDesktopMenuStates();
+        var item = desktopMenuItems["jump-to-time"].Last();
+        if (!item.IsEnabled || item.Text != "Jump to Time…" || item.KeyboardAcceleratorTextOverride != "Ctrl+Shift+J")
+            throw new InvalidOperationException("Jump to Time menu/shortcut is missing.");
+        async Task DialogJump(string value, bool cancel = false)
+        {
+            var opened = new TaskCompletionSource<ContentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+            void Capture(ContentDialog dialog, Window window)
+            { if (dialog.Title?.ToString() == "Jump to Time") opened.TrySetResult(dialog); }
+            Views.WindowedDialog.ReadyToShow += Capture;
+            ContentDialog? active = null;
+            Task? running = null;
+            try
+            {
+                running = RunDesktopCommandAsync("jump-to-time");
+                active = await opened.Task.WaitAsync(TimeSpan.FromSeconds(15));
+                await Task.Delay(200);
+                var content = (StackPanel)active.Content;
+                var field = content.Children.OfType<TextBox>().Single();
+                field.Text = "-1";
+                await Task.Delay(80);
+                if (active.IsPrimaryButtonEnabled) throw new InvalidOperationException("Negative time accepted.");
+                field.Text = "99:00";
+                await Task.Delay(80);
+                if (active.IsPrimaryButtonEnabled) throw new InvalidOperationException("Out-of-range time accepted.");
+                field.Text = value;
+                await Task.Delay(80);
+                if (!active.IsPrimaryButtonEnabled || content.ContextFlyout is not MenuFlyout menu || menu.Items.Count != 2)
+                    throw new InvalidOperationException("Valid time or dialog menu rejected.");
+                var button = FindButton(active, cancel ? "Cancel" : "Jump") ?? throw new InvalidOperationException("Missing dialog button.");
+                var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(button);
+                ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+                await running.WaitAsync(TimeSpan.FromSeconds(15));
+            }
+            finally { active?.Hide(); Views.WindowedDialog.ReadyToShow -= Capture; }
+        }
+        await DialogJump("00:00:02.500");
+        await Task.Delay(400);
+        if (IsVideoPlaying() || Math.Abs(Position - 2.5) > .2) throw new InvalidOperationException("Stopped jump started playback or missed time.");
+        await DialogJump("4");
+        await Task.Delay(300);
+        if (IsVideoPlaying() || Math.Abs(Position - 4) > .2) throw new InvalidOperationException("Paused jump failed.");
+        await DialogJump("1", true);
+        if (IsVideoPlaying() || Math.Abs(Position - 4) > .2) throw new InvalidOperationException("Cancel moved paused video.");
+        StartVideoPlayback();
+        await Task.Delay(350);
+        await DialogJump("1");
+        await Task.Delay(400);
+        if (!IsVideoPlaying() || Position < 1 || Position > 3) throw new InvalidOperationException("Playing jump did not continue from target.");
+        await DialogJump("0", true);
+        if (!IsVideoPlaying()) throw new InvalidOperationException("Cancel paused active playback.");
+        StopProjectPlayback();
+        if (!before.SequenceEqual(await File.ReadAllBytesAsync(path))) throw new InvalidOperationException("Jump rewrote project data.");
+    }
+
     private void VerifyContextualMenusForSmokeTest()
     {
         if (Model.Project is not { } project) throw new InvalidOperationException("Contextual menu smoke fixture requires a project.");

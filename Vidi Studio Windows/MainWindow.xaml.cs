@@ -759,7 +759,8 @@ public sealed partial class MainWindow : Window
             finally { youtubeMetadataUpdating = false; }
         }
     }
-    private async void Seek(double value)
+    private async void Seek(double value) => await SeekAsync(value);
+    private async Task SeekAsync(double value)
     {
         if (windowClosed || Model.Project == null) return;
         value = Math.Clamp(value, 0, Model.Project.Duration); activeCue = null; narrationPlayer.Pause(); onDeviceNarrator.Stop();

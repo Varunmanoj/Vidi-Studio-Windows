@@ -87,7 +87,7 @@ public sealed partial class MainWindow
                 Command("project-list"), Command("project-grid")),
             Menu("Playback", Submenu("Segment Narration", Command("segment-one-preview"), Command("segment-one-preview-stop")), Separator(),
                 Command("preview"), Command("fullscreen"), Command("play"), Command("stop"),
-                Command("back"), Command("forward"), Command("narration"), Separator(),
+                Command("back"), Command("forward"), Command("jump-to-time"), Command("narration"), Separator(),
                 Submenu("Transcript Overlay", Command("caption-cycle"), Separator(),
                     Command("caption-off"), Command("caption-transcript"), Command("caption-ad-transcript")), Separator(),
                 Submenu("Summary Reading", Command("summary-play"), Command("summary-pause"), Command("summary-stop"), Separator(),
@@ -161,6 +161,7 @@ public sealed partial class MainWindow
         ["stop"] = ((VirtualKey)190, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+Period"),
         ["back"] = (VirtualKey.Left, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+Left"),
         ["forward"] = (VirtualKey.Right, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+Right"),
+        ["jump-to-time"] = (VirtualKey.J, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+J"),
         ["narration"] = (VirtualKey.D, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+D"),
         ["caption-cycle"] = (VirtualKey.C, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+C"),
         ["caption-off"] = (VirtualKey.Number0, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+0"),
@@ -659,7 +660,7 @@ public sealed partial class MainWindow
         if (id is "youtube-details" or "youtube-refresh" or "youtube-captions") return desktopEditorVisible && Model.Idle && Model.Project?.IsYouTube == true;
         if (!desktopEditorVisible || Model.Project is not { } p) return false;
         if (id.StartsWith("segment-one-", StringComparison.Ordinal)) return CanRunSingleSegmentCommand(id);
-        if (p.IsYouTube && (id is "play" or "back" or "forward") && !ConnectivityService.Shared.Available(OnlineService.YouTube)) return id == "play" && IsVideoPlaying();
+        if (p.IsYouTube && (id is "play" or "back" or "forward" or "jump-to-time") && !ConnectivityService.Shared.Available(OnlineService.YouTube)) return id == "play" && IsVideoPlaying();
         if (Section.SelectedIndex == 3 && !p.OverviewMatchesEditingResult && id is "synthesize-tts" or "synthesize-changed" or "review-narration-issues" or "review-narration-voices") return false;
         var timed = Section.SelectedIndex is 0 or 2 or 4;
         var hasTranscript = p.HasTranscript || ExtraFlag(p, "transcriptGenerated");
@@ -668,6 +669,7 @@ public sealed partial class MainWindow
         var tts = Model.Settings.Get("ttsMode", "windows-core") != "gemini" || ai;
         switch (id)
         {
+            case "jump-to-time": return double.IsFinite(p.Duration) && p.Duration > 0;
             case "delete-project": return !HasUnsavedLanguageSummary;
             case "delete-content": return !HasUnsavedLanguageSummary && !p.IntegrityPlaceholder;
             case "rename-project": return !p.IntegrityPlaceholder && p.Integrity?.ManifestUnreadable != true && p.Integrity?.FolderMissing != true;
@@ -762,7 +764,7 @@ public sealed partial class MainWindow
             "show-inspector" => InspectorSplitView.IsPaneOpen ? "Hide Inspector" : "Show Inspector",
             "project-list" => "Project List View", "project-grid" => "Project Grid View",
             "fullscreen" => fullScreenVideo ? "Exit Full-Screen Video" : "Full-Screen Video", "play" => IsVideoPlaying() ? "Pause Video" : "Play Video", "stop" => "Stop Video",
-            "back" => "Rewind 5 Seconds", "forward" => "Fast Forward 5 Seconds", "narration" => "Toggle Narration",
+            "jump-to-time" => "Jump to Time…", "back" => "Rewind 5 Seconds", "forward" => "Fast Forward 5 Seconds", "narration" => "Toggle Narration",
             "caption-cycle" => "Cycle Transcript Overlay", "caption-off" => "Turn Transcript Overlay Off",
             "caption-transcript" => "Show Transcript Overlay", "caption-ad-transcript" => "Show AD Transcript Overlay",
             "summary-zoom-in" => "Zoom In", "summary-zoom-out" => "Zoom Out", "summary-zoom-reset" => "Actual Size (100%)",
@@ -884,6 +886,7 @@ public sealed partial class MainWindow
             "rename-project" => "Rename", "trash-project" => "Move to Recycle Bin",
             "open-editor-window" => "Open editor in new window", "export" => "Export", "settings" or "project-settings" => "Settings",
             "close-window" => "Close window", "help" => "Help and keyboard shortcuts", "about" => "About Vidi Studio",
+            "jump-to-time" => "Jump to Time…",
             "back" => "Rewind five seconds", "forward" => "Forward five seconds", "follow" => "Follow active segment",
             "summary-play" => "Play summary", "summary-from-start" => "Read summary from start",
             "summary-from-selection" => "Read summary from selection", "summary-read-selection" => "Read selected summary text",
@@ -1004,6 +1007,7 @@ public sealed partial class MainWindow
             case "stop": StopProjectPlayback(); Seek(0); break;
             case "back": Rewind_Click(this, e); break;
             case "forward": Forward_Click(this, e); break;
+            case "jump-to-time": await ShowJumpToTimeAsync(); break;
             case "narration": Narration.IsOn = !Narration.IsOn; break;
             case "caption-cycle":
                 var modes = new[] { "off", "transcript", "combined" };

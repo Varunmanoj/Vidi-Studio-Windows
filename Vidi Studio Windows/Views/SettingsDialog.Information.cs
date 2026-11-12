@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Vidi_Studio_Windows.Services;
@@ -63,6 +64,11 @@ public sealed partial class SettingsDialog
         }
         catch { version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "Unknown"; }
         AddInformationRow(panel, "App version", version);
+        panel.Children.Add(new TextBlock { Text = "Keyboard shortcuts", FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 18, 0, 0) });
+        if (menuOwner != null)
+            foreach (var (label, shortcut) in menuOwner.DesktopShortcutReference.Where(entry => entry.Label == "Jump to Time…"))
+                AddInformationRow(panel, label, shortcut);
+
         panel.Children.Add(new TextBlock { Text = "Media tools", FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 18, 0, 0) });
         panel.Children.Add(new TextBlock { Text = "Vidi Studio uses the FFmpeg and FFprobe executables installed on this computer or set under Storage.", TextWrapping = TextWrapping.Wrap });
         var ffmpegDetails = new TextBlock { Text = "Checking installed FFmpeg…", TextWrapping = TextWrapping.Wrap, Opacity = .7 };

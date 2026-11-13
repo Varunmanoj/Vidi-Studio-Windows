@@ -59,12 +59,6 @@ public sealed partial class MainWindow
                 descriptionTiming = timing;
                 if (timing != null) timingFiles.Add(timing);
             }
-            var replace = selection.ReplaceExisting ? new[] { "--replace-existing" } : Array.Empty<string>();
-            var replacements = new List<string>();
-            if (selection.TranscriptPath != null && project.Transcript.Count > 0) replacements.Add("Transcript");
-            if (selection.SummaryPath != null && !string.IsNullOrWhiteSpace(project.Summary)) replacements.Add("Summary");
-            if (selection.ADTranscriptPath != null && (project.Cues.Count > 0 || project.ImportedADTranscript != null)) replacements.Add("AD transcript");
-            if (selection.ADAudioPath != null && project.ImportedAudioDescription != null) replacements.Add("AD audio");
             async Task RunImport(string command, IEnumerable<string> arguments)
             {
                 if (await Model.RunAsync(command, arguments.Concat(new[] { "--language", selection.Language ?? project.SelectedLanguage })) is not { Count: > 0 })
@@ -78,22 +72,20 @@ public sealed partial class MainWindow
                 var arguments = new List<string> { "--input", transcript };
                 if (selection.CaptionProvenancePath is { } provenance) arguments.AddRange(new[] { "--caption-provenance", provenance });
                 if (transcriptTiming != null) arguments.AddRange(new[] { "--timing-input", transcriptTiming });
-                arguments.AddRange(replace);
                 await RunImport("import-transcript", arguments);
             }
             if (selection.ADTranscriptPath is { } adTranscript)
             {
                 var arguments = new List<string> { "--input", adTranscript, "--ad-transcript-mode", selection.ADTranscriptMode };
                 if (descriptionTiming != null) arguments.AddRange(new[] { "--timing-input", descriptionTiming });
-                arguments.AddRange(replace);
                 await RunImport("import-ad-transcript", arguments);
             }
             if (selection.SummaryPath is { } summary)
-                await RunImport("import-summary", new[] { "--input", summary }.Concat(replace));
+                await RunImport("import-summary", new[] { "--input", summary });
             if (selection.ADAudioPath is { } audio)
-                await RunImport("import-ad-audio", new[] { "--input", audio, "--audio-mode", selection.ADAudioMode }.Concat(replace));
+                await RunImport("import-ad-audio", new[] { "--input", audio, "--audio-mode", selection.ADAudioMode });
             if (combine && selection.ADAudioPath != null)
-                await RunImport("combine-imported-audio", (project.IsYouTube ? new[] { "--audio-only", "--media-format", "wav" } : new[] { "--audio-presentation", "selectable", "--captions", "none", "--media-format", "mov" }).Concat(replace));
+                await RunImport("combine-imported-audio", (project.IsYouTube ? new[] { "--audio-only", "--media-format", "wav" } : new[] { "--audio-presentation", "selectable", "--captions", "none", "--media-format", "mov" }));
             await ShowImportReportAsync();
         }
         catch (OperationCanceledException) { Model.ReportStatus("Import cancelled. Completed imports remain in the project."); }

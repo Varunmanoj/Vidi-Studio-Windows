@@ -252,8 +252,7 @@ public sealed class ImportAssetsPicker : UserControl
 public sealed class ImportAssetsDialog : ContentDialog
 {
     private readonly ImportAssetsPicker picker;
-    private readonly CheckBox replace = new() { Content = "Replace existing assets after validation" };
-    public ImportAssetSelection Selection => picker.Selection with { ReplaceExisting = replace.IsChecked == true };
+    public ImportAssetSelection Selection => picker.Selection;
     public bool CombineRequested { get; private set; }
 
     public ImportAssetsDialog(Window owner, StudioProject project, ImportScope scope = ImportScope.All)
@@ -269,8 +268,6 @@ public sealed class ImportAssetsDialog : ContentDialog
         picker.SelectionChanged += (_, _) => UpdateState();
         var panel = new StackPanel { Spacing = 14, Width = 640 };
         panel.Children.Add(picker);
-        ToolTipService.SetToolTip(replace, "Replace existing assets only after the import passes validation");
-        panel.Children.Add(replace);
         Content = new ScrollViewer { Content = panel, MaxHeight = 600, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         PrimaryButtonClick += (_, args) => args.Cancel = !picker.CanImport;
         SecondaryButtonClick += (_, args) => { args.Cancel = !picker.CanImport; CombineRequested = !args.Cancel; };

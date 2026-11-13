@@ -105,6 +105,9 @@ public sealed partial class MainWindow
                     if (opened is not Views.ImportAssetsDialog || opened.Title as string != "Import Existing Assets")
                         throw new InvalidOperationException("Toolbar and menu must open the same all-assets import workflow.");
                     var dialog = opened;
+                    if (dialog.Content is not ScrollViewer { Content: StackPanel importPanel } ||
+                        importPanel.Children.OfType<CheckBox>().Any(box => box.Content as string == "Replace existing assets after validation"))
+                        throw new InvalidOperationException("Import must use saved-result review without an upfront replacement checkbox.");
                     await dialogPresentationVerifier!.WaitUntilReadyAsync(dialog);
                     await Task.Delay(100);
                     var cancel = FindButton(dialog, "Cancel") ?? throw new InvalidOperationException("Import cancellation unavailable.");

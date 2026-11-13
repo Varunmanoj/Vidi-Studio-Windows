@@ -347,8 +347,7 @@ public sealed partial class MainWindow
         EditorProjectHeader.Visibility = Visibility.Visible;
         GallerySearchHost.Visibility = Visibility.Collapsed;
         GalleryImport.Visibility = Visibility.Collapsed;
-        ProjectTitle.Text = Model.Project?.Name ?? "All Projects";
-        Title = (Model.Project?.Name ?? "Project") + " — Vidi Studio";
+        UpdateEditorWindowTitle();
         UpdateEditorProjectButtons();
     }
     private void GalleryFilter_Changed(object sender, SelectionChangedEventArgs e) { if (galleryReady) FilterGallery(); }
@@ -525,10 +524,22 @@ public sealed partial class MainWindow
         segmentPreviewPaused = false;
         UpdateDesktopMenuStates();
     }
+    private string EditorSectionTitle => Section.SelectedIndex switch
+    {
+        1 => "Summary", 2 => "Descriptions", 3 => "AD Overview", 4 => "AD Transcript", _ => "Transcript"
+    };
+    private void UpdateEditorWindowTitle()
+    {
+        if (!desktopEditorVisible || Model.Project is not { } project) return;
+        ProjectTitle.Text = project.Name + " — " + EditorSectionTitle;
+        Title = ProjectTitle.Text + " — Vidi Studio";
+    }
+
     private void UpdateSectionPresentation()
     {
         if (Model.Project is not { } p) return;
         var index = Section.SelectedIndex;
+        UpdateEditorWindowTitle();
         foreach (var segment in p.Transcript.Concat(p.Cues)) segment.ShowKind = index == 4;
         // Reset the source so row templates see the combined-view labels.
         var name = index switch { 0 => "Transcript", 1 => "Summary", 2 => "Audio Descriptions", 3 => "Narration", 4 => "AD Transcript", _ => "AD Transcript" };
@@ -546,7 +557,7 @@ public sealed partial class MainWindow
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(GenerateCurrent, generateLabel);
         InspectorGenerate.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
         UpdateEditorActionVisibility();
-        EditorSectionHeading.Text = index switch { 0 => "Transcript", 1 => "Summary", 2 => "Descriptions", 3 => "AD Overview", _ => "AD Transcript" };
+        EditorSectionHeading.Text = EditorSectionTitle;
         InspectorSectionTitle.Text = index == 2 ? "AD Segment Generation" : name;
         UpdateSegmentMoreVisibility();
         ContextActions.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;

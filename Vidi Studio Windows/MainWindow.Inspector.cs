@@ -116,7 +116,7 @@ public sealed partial class MainWindow
             var index = container.Children.IndexOf(section);
             FrameworkElement? heading = section.Children.FirstOrDefault() as FrameworkElement;
             var textHeading = heading as TextBlock;
-            string fallback = section == AudioSourcePanel ? "Audio sources" : "Inspector section";
+            string fallback = section == LanguageResultsPanel ? "Language and Saved Results" : section == AudioSourcePanel ? "Audio sources" : "Inspector section";
             string Title() => textHeading?.Text ?? (heading as Grid)?.Children.OfType<TextBlock>().FirstOrDefault()?.Text ?? fallback;
             var expander = new Expander { HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
             // Preserve the named/dynamic header and the project integrity action.
@@ -125,6 +125,12 @@ public sealed partial class MainWindow
             container.Children.RemoveAt(index);
             expander.Content = section;
             expander.SetBinding(UIElement.VisibilityProperty, new Binding { Source = section, Path = new PropertyPath("Visibility"), Mode = BindingMode.OneWay });
+            void UpdateAccessibleHeader()
+            {
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(expander, Title());
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(expander, "inspector-section-" + (section.Name.Length > 0 ? section.Name : Title()));
+            }
+            UpdateAccessibleHeader();
             bool restoring = false;
             void Restore()
             {
@@ -140,7 +146,7 @@ public sealed partial class MainWindow
             Restore();
             expander.Expanding += (_, _) => Save(true);
             expander.Collapsed += (_, _) => Save(false);
-            if (textHeading != null) textHeading.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) => Restore());
+            if (textHeading != null) textHeading.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) => { UpdateAccessibleHeader(); Restore(); });
             container.Children.Insert(index, expander);
         }
     }

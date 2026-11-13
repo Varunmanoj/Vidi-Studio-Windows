@@ -79,6 +79,7 @@ public sealed partial class MainWindow
                 LibraryLanguageMenu(),
                 Submenu("Sort Projects", Command("projects-sort-opened"), Command("projects-sort-name"), Command("projects-sort-duration"), Command("projects-sort-type")),
                 Command("projects-reset-filters"), Separator(),
+                Submenu("Editor Sections", Command("transcript"), Command("summary"), Command("descriptions"), Command("ad-overview"), Command("ad-transcript")), Separator(),
                 ProjectLanguageMenu(), Separator(), SavedResultsMenu(), Separator(),
                 Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("toggle-thumbnail-images"),
                 Command("summary-zoom-in"), Command("summary-zoom-out"), Command("summary-zoom-reset"), Command("filter-segments"), Command("clear-segment-filter"),

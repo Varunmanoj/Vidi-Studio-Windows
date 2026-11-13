@@ -11,6 +11,73 @@ namespace Vidi_Studio_Windows;
 public sealed partial class MainWindow
 {
 #if DEBUG
+    private async Task VerifyInspectorDisclosureForSmokeTestAsync()
+    {
+        ShowEditor(); await Task.Delay(200); Root.UpdateLayout();
+        if (InspectorScrollViewer.Content is not StackPanel sections) throw new InvalidOperationException("Inspector sections missing.");
+        var groups = sections.Children.OfType<Expander>().ToArray();
+        foreach (var group in groups.Where(group => group.Visibility == Visibility.Visible))
+        {
+            var peer = FrameworkElementAutomationPeer.CreatePeerForElement(group) ?? throw new InvalidOperationException("Expander peer missing.");
+            var name = peer.GetName();
+            if (string.IsNullOrWhiteSpace(name) || name == "Inspector section") throw new InvalidOperationException("Inspector disclosure has no section name.");
+            if (peer.GetPattern(PatternInterface.ExpandCollapse) is not Microsoft.UI.Xaml.Automation.Provider.IExpandCollapseProvider provider)
+                throw new InvalidOperationException("Inspector disclosure has no native expand/collapse pattern: " + name);
+            var expanded = group.IsExpanded;
+            try
+            {
+                provider.Collapse(); await Task.Delay(75);
+                if (group.IsExpanded || provider.ExpandCollapseState != ExpandCollapseState.Collapsed || peer.GetName() != name)
+                    throw new InvalidOperationException("Collapsed disclosure state/name mismatch: " + name);
+                provider.Expand(); await Task.Delay(75);
+                if (!group.IsExpanded || provider.ExpandCollapseState != ExpandCollapseState.Expanded || peer.GetName() != name)
+                    throw new InvalidOperationException("Expanded disclosure state/name mismatch: " + name);
+            }
+            finally { group.IsExpanded = expanded; }
+        }
+        await VerifyEditorSectionMenusAndTitlesForSmokeTestAsync();
+        VerifyLanguageInspectorForSmokeTest();
+        var project = Model.Project ?? throw new InvalidOperationException("Inspector fixture missing.");
+        foreach (var editing in new[] { false, true })
+        {
+            var settingsPanel = BuildLanguageResultsPanel(project, settingsContext: true, editingSettings: editing);
+            if (settingsPanel.Children.OfType<Button>().Any(button => button.Content as string == "Keep All Sections in Sync") != editing)
+                throw new InvalidOperationException("Project Settings sync action must appear only while editing.");
+        }
+        ShowGallery_Click(this, new RoutedEventArgs());
+    }
+
+    private async Task VerifyEditorSectionMenusAndTitlesForSmokeTestAsync()
+    {
+        var ids = new[] { "transcript", "summary", "descriptions", "ad-overview", "ad-transcript" };
+        var titles = new[] { "Transcript", "Summary", "Descriptions", "AD Overview", "AD Transcript" };
+        foreach (var menuName in new[] { "View", "Project" })
+        {
+            var menu = editorMenus.Single(menu => menu.Title == menuName).Items.OfType<MenuFlyoutSubItem>().Single(group => group.Text == "Editor Sections");
+            if (!menu.Items.OfType<MenuFlyoutItem>().Select(item => item.Tag as string).SequenceEqual(ids))
+                throw new InvalidOperationException("Editor Sections menu copy drifted: " + menuName);
+        }
+        var previous = Section.SelectedIndex;
+        var project = Model.Project ?? throw new InvalidOperationException("Window title fixture missing.");
+        try
+        {
+            for (var index = 0; index < ids.Length; index++)
+            {
+                await RunDesktopCommandAsync(ids[index]); await Task.Delay(100); Root.UpdateLayout();
+                var expected = project.Name + " — " + titles[index];
+                if (Section.SelectedIndex != index || ProjectTitle.Text != expected || Title != expected + " — Vidi Studio")
+                    throw new InvalidOperationException("Editor window title did not follow the selected section: " + ids[index]);
+                if (index <= 2 && InspectorScrollViewer.Content is StackPanel sections)
+                {
+                    var group = sections.Children.OfType<Expander>().Single(group => ReferenceEquals(group.Header, InspectorSectionTitle));
+                    if (FrameworkElementAutomationPeer.CreatePeerForElement(group)?.GetName() != InspectorSectionTitle.Text)
+                        throw new InvalidOperationException("Dynamic inspector disclosure name is stale.");
+                }
+            }
+        }
+        finally { Section.SelectedIndex = previous; RenderSection(); RefreshLanguagePanel(); }
+    }
+
     private async Task VerifyAccessibleMediaForSmokeTestAsync()
     {
         var project = Model.Project ?? throw new InvalidOperationException("Accessibility fixture missing.");

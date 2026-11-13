@@ -581,8 +581,7 @@ public sealed partial class MainWindow : Window
         UpdateProjectIntegrityUi();
         if (EditorWorkspace.Visibility == Visibility.Visible)
         {
-            ProjectTitle.Text = p.Name;
-            Title = p.Name + " — Vidi Studio";
+            UpdateEditorWindowTitle();
         }
         ProjectInformation.Text = $"{(p.IsYouTube ? "YouTube" : "Local video")}\n{p.Width} × {p.Height}\n{NarrationTimeFormat.ProjectDuration(p.Duration)}\n{p.Folder}";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ProjectInformation,

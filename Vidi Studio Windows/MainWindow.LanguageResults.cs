@@ -146,8 +146,10 @@ public sealed partial class MainWindow
         };
         if (!editing && project.AvailableViewingLanguages.Count == 0) language.IsEnabled = false;
         panel.Children.Add(language);
-        var synchronize = new Button { Content = "Keep All Sections in Sync", IsEnabled = !Model.Busy };
-        synchronize.Click += async (_, _) => { StopSegmentPreview(); narrationPlayer.Pause(); readback.Stop(); await Run("sync-section-languages"); }; Register(synchronize, true); panel.Children.Add(synchronize);
+        if (editing) {
+            var synchronize = new Button { Content = "Keep All Sections in Sync", IsEnabled = !Model.Busy };
+            synchronize.Click += async (_, _) => { StopSegmentPreview(); narrationPlayer.Pause(); readback.Stop(); await Run("sync-section-languages"); }; Register(synchronize, true); panel.Children.Add(synchronize);
+        }
         foreach (var kind in kinds) {
             var sectionOptions = new[] { new OutputLanguage("project", "Follow Project Language") }.Concat(OutputLanguage.Options).ToList();
             var selectedLanguage = project.SectionLanguages.TryGetValue(kind, out var custom) ? custom : "project";

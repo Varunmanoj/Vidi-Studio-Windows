@@ -30,7 +30,7 @@ public sealed partial class MainWindow
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY") == "1")
             {
                 await VerifyGalleryAndSettingsLayoutForSmokeTestAsync(report);
-                await File.WriteAllTextAsync(report, "PASS: spoken gallery/timeline durations; named inspector heading/actions/toggles and Start/End boundaries in all three segment tabs; aligned gallery controls and centered search at wide, compact and narrow widths in light/dark; Settings stable navigation, headings and bounded scrolling.");
+                await File.WriteAllTextAsync(report, "PASS: native inspector disclosure names and expanded/collapsed states; sync action only in edit mode; spoken gallery/timeline durations; named inspector heading/actions/toggles and Start/End boundaries in all three segment tabs; aligned gallery controls and centered search at wide, compact and narrow widths in light/dark; Settings stable navigation, headings and bounded scrolling.");
                 return;
             }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY") == "1")
@@ -1104,6 +1104,7 @@ public sealed partial class MainWindow
     private async Task VerifyGalleryAndSettingsLayoutForSmokeTestAsync(string report)
     {
         await VerifyAccessibleMediaForSmokeTestAsync();
+        await VerifyInspectorDisclosureForSmokeTestAsync();
         ShowGallery_Click(this, new RoutedEventArgs());
         await VerifyProjectSortingForSmokeTestAsync();
         var originalTheme = Model.Settings.Get("theme", "system");
@@ -2124,6 +2125,8 @@ public sealed partial class MainWindow
             foreach (var (tab, kind) in new[] { (0, "transcript"), (1, "summary"), (2, "descriptions") }) {
                 Section.SelectedIndex = tab; editMode = false;
                 var panel = BuildLanguageResultsPanel(project);
+                if (panel.Children.OfType<Button>().Any(button => button.Content as string == "Keep All Sections in Sync"))
+                    throw new InvalidOperationException("Sync action must be absent from inspector view mode.");
                 var copyButtons = panel.Children.OfType<Button>().Where(button => button.Content?.ToString()?.StartsWith("Copy and Translate", StringComparison.Ordinal) == true).ToArray();
                 if (copyButtons.Length != 1 || copyButtons[0].Content?.ToString() != CurrentSectionCopyTitle || !CopyDefaultKinds(true).SequenceEqual(new[] { kind }) || !CopyDefaultKinds(false).SequenceEqual(new[] { "transcript", "summary", "descriptions" }))
                     throw new InvalidOperationException("The inspector must offer one named current-section Copy and Translate action, while Edit defaults to all sections.");
@@ -2132,7 +2135,9 @@ public sealed partial class MainWindow
                     if (headers.Contains(Models.LanguageResult.KindTitle(other) + " Generation Language")) throw new InvalidOperationException("Inspector leaked language controls from another tab.");
                 if (languageControls.Any(pair => pair.requiresEdit && pair.control.IsEnabled)) throw new InvalidOperationException("Language mutation controls must be disabled in view mode.");
                 if (tab == 1) summaryEditMode = true; else editMode = true;
-                BuildLanguageResultsPanel(project);
+                var editingPanel = BuildLanguageResultsPanel(project);
+                if (!editingPanel.Children.OfType<Button>().Any(button => button.Content as string == "Keep All Sections in Sync"))
+                    throw new InvalidOperationException("Sync action must appear in inspector edit mode.");
                 if (!HasUnsavedLanguageSummary && languageControls.Any(pair => pair.requiresEdit && !pair.control.IsEnabled)) throw new InvalidOperationException("Language controls must be available in Edit mode, including empty sections.");
                 summaryEditMode = false;
             }

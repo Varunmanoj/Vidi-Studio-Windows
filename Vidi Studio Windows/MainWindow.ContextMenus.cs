@@ -9,9 +9,12 @@ namespace Vidi_Studio_Windows;
 
 public sealed partial class MainWindow
 {
+    private void ContextMenuAccess_Opening(object sender, object args) => Views.MenuAccessKeys.Prepare(sender, args);
+    private void ContextMenuAccess_Opened(object sender, object args) => Views.MenuAccessKeys.Display(sender, args);
+
     private MenuFlyout SummaryReadingMenu()
     {
-        var menu = new MenuFlyout();
+        var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         foreach (var (id, title) in new[] { ("summary-from-start", "Read from Start"),
             ("summary-from-selection", "Read from Selection"), ("summary-read-selection", "Read Selected Text Only"),
             ("segment-edit-mode", "Edit Summary…"), ("summary-stop", "Stop") })
@@ -54,7 +57,7 @@ public sealed partial class MainWindow
             var selected = block.SelectedText;
             var indexInSummary = summaryLines.TakeWhile(row => row.Block != block).Sum(row => row.Text.Length + 1) + anchor;
             var text = string.Join("\n", summaryLines.Select(row => row.Text));
-            var menu = new MenuFlyout();
+            var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
             void Item(string id, string title, bool enabled, Action action) {
                 var item = new MenuFlyoutItem { Text = title, Tag = id, Icon = DesktopCommandIcon(id), IsEnabled = enabled };
                 item.Click += (_, _) => {

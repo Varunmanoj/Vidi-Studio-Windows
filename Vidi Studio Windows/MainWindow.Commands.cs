@@ -370,7 +370,7 @@ public sealed partial class MainWindow
 
     private MenuFlyout ProjectMenu(StudioProject project)
     {
-        var menu = new MenuFlyout();
+        var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         var editorBrowser = desktopEditorVisible;
         MenuFlyoutItem Item(string id, string? title = null, IList<MenuFlyoutItemBase>? entries = null)
         {
@@ -489,7 +489,7 @@ public sealed partial class MainWindow
 
     private MenuFlyout SegmentMenu(Segment? segment = null, bool moreActionsOnly = false)
     {
-        var menu = new MenuFlyout();
+        var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         if (segment != null)
         {
             var actions = moreActionsOnly

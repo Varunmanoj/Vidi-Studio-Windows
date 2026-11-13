@@ -180,13 +180,13 @@ public sealed partial class ExportDialog
     private static void AttachExportMenus(FrameworkElement element)
     {
         if (element is CheckBox toggle) {
-            var menu = new MenuFlyout();
+            var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
             var item = new ToggleMenuFlyoutItem { Text = toggle.Content?.ToString() ?? "Select", IsChecked = toggle.IsChecked == true, IsEnabled = toggle.IsEnabled };
             item.Click += (_, _) => toggle.IsChecked = item.IsChecked;
             menu.Opening += (_, _) => item.IsChecked = toggle.IsChecked == true;
             menu.Items.Add(item); toggle.ContextFlyout = menu;
         } else if (element is ComboBox picker) {
-            var menu = new MenuFlyout();
+            var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
             for (var i = 0; i < picker.Items.Count; i++) {
                 var index = i;
                 var value = picker.Items[i];

@@ -123,11 +123,13 @@ public sealed partial class MainWindow
             if (heading is TextBlock or Grid) { section.Children.Remove(heading); expander.Header = heading; }
             else expander.Header = fallback;
             container.Children.RemoveAt(index);
-            expander.Content = section;
+            var controls = new Views.AccessibilityGroup { Child = section };
+            expander.Content = controls;
             expander.SetBinding(UIElement.VisibilityProperty, new Binding { Source = section, Path = new PropertyPath("Visibility"), Mode = BindingMode.OneWay });
             void UpdateAccessibleHeader()
             {
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(expander, Title());
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(controls, Title() + " controls");
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(expander, "inspector-section-" + (section.Name.Length > 0 ? section.Name : Title()));
             }
             UpdateAccessibleHeader();
@@ -135,11 +137,18 @@ public sealed partial class MainWindow
             void Restore()
             {
                 restoring = true;
-                try { expander.IsExpanded = Model.Settings.GetBool("inspectorSection." + Title() + ".expanded", true); }
+                try
+                {
+                    expander.IsExpanded = Model.Settings.GetBool("inspectorSection." + Title() + ".expanded", true);
+                    controls.Visibility = expander.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+                }
                 finally { restoring = false; }
             }
             void Save(bool expanded)
             {
+                // WinUI clips collapsed Expander content; explicitly hide the group
+                // as well so UIA cannot navigate into visually collapsed controls.
+                controls.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
                 if (restoring) return;
                 Model.Settings.Set("inspectorSection." + Title() + ".expanded", expanded); Model.Settings.Save();
             }

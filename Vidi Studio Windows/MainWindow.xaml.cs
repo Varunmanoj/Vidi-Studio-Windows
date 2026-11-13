@@ -78,7 +78,7 @@ public sealed partial class MainWindow : Window
         InitializeLanguageFilters();
         InitializeInspectorSections();
         InitializeADAudioReadiness();
-        var projectSettingsContext = new MenuFlyout();
+        var projectSettingsContext = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         var projectSettingsItem = new MenuFlyoutItem { Text = "Open Project Settings…", Tag = "project-settings", Icon = DesktopCommandIcon("project-settings") };
         projectSettingsItem.Click += async (_, _) => await RunDesktopCommandAsync("project-settings");
         var copyToItem = new MenuFlyoutItem { Text = "Copy and Translate…", Tag = "copy-to", Icon = Views.MenuIcons.Create("Copy") };
@@ -1696,7 +1696,7 @@ public sealed partial class MainWindow : Window
             else { showcaseRequested = true; dialog.Hide(); }
         }
         showIssue.Click += (_, _) => ShowValidationIssue();
-        var issueMenu = new MenuFlyout();
+        var issueMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         var issueMenuItem = new MenuFlyoutItem { Tag = "show-validation-issue-menu" };
         issueMenuItem.Click += (_, _) => ShowValidationIssue();
         issueMenu.Items.Add(issueMenuItem);
@@ -1767,7 +1767,7 @@ public sealed partial class MainWindow : Window
                     VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(16) };
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(returnToEdit, "validation-return-to-edit");
                 returnToEdit.Click += (_, _) => returnRequested.TrySetResult(true);
-                var returnMenu = new MenuFlyout();
+                var returnMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
                 var returnItem = new MenuFlyoutItem { Text = "Return to Edit" };
                 returnItem.Click += (_, _) => returnRequested.TrySetResult(true);
                 returnMenu.Items.Add(returnItem);

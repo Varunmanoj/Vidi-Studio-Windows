@@ -558,6 +558,8 @@ public sealed partial class MainWindow
         InspectorGenerate.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
         UpdateEditorActionVisibility();
         EditorSectionHeading.Text = EditorSectionTitle;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditorControlsGroup, EditorSectionTitle + " controls");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(Segments, EditorSectionTitle + " segments");
         InspectorSectionTitle.Text = index == 2 ? "AD Segment Generation" : name;
         UpdateSegmentMoreVisibility();
         ContextActions.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
@@ -728,7 +730,7 @@ public sealed partial class MainWindow
         languageFilter.SelectionChanged += (_, _) => {
             if (languageFilter.SelectedItem is OutputLanguage choice) { exportLanguageFilter = choice.Id; exportResultFilter = "all"; PopulateExportGroups(target, project); }
         };
-        var languageMenu = new MenuFlyout();
+        var languageMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         foreach (var choice in languageChoices) {
             var item = new ToggleMenuFlyoutItem { Text = choice.Title, IsChecked = choice.Id == exportLanguageFilter, IsEnabled = languageFilter.IsEnabled };
             item.Click += (_, _) => languageFilter.SelectedItem = choice;

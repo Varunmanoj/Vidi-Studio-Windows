@@ -138,8 +138,64 @@ public sealed partial class MainWindow
         Segments.SelectionChanged += (_, _) => { UpdateDesktopMenuStates(); UpdateBulkActionState(); };
         Narration.Toggled += (_, _) => UpdateDesktopMenuStates();
         Follow.Toggled += (_, _) => UpdateDesktopMenuStates();
+        InitializeMenuAccessKeys();
         UpdateMenuBar(false);
     }
+
+    private Control? menuReturnFocus;
+    private bool altOnlyPress;
+    private bool menuAccessWasActive;
+
+    private void InitializeMenuAccessKeys()
+    {
+        var f10 = new Microsoft.UI.Xaml.Input.KeyboardAccelerator { Key = VirtualKey.F10 };
+        f10.Invoked += (_, args) => { ToggleMenuAccess(); args.Handled = true; };
+        Root.KeyboardAccelerators.Add(f10);
+        Root.AddHandler(UIElement.KeyDownEvent, new Microsoft.UI.Xaml.Input.KeyEventHandler((_, args) =>
+        {
+            if (args.Key == VirtualKey.Menu)
+            {
+                if (!args.KeyStatus.WasKeyDown) { altOnlyPress = true; menuAccessWasActive = Microsoft.UI.Xaml.Input.AccessKeyManager.IsDisplayModeEnabled; }
+            }
+            else
+            {
+                altOnlyPress = false;
+                if (args.Key == VirtualKey.Escape && Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(Root.XamlRoot) is MenuBarItem)
+                { LeaveMenuAccess(); args.Handled = true; }
+            }
+        }), true);
+        Root.AddHandler(UIElement.KeyUpEvent, new Microsoft.UI.Xaml.Input.KeyEventHandler((_, args) =>
+        {
+            if (args.Key != VirtualKey.Menu || !altOnlyPress) return;
+            altOnlyPress = false;
+            if (menuAccessWasActive) LeaveMenuAccess(); else EnterMenuAccess();
+        }), true);
+    }
+
+    private void ToggleMenuAccess()
+    {
+        if (Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(Root.XamlRoot) is MenuBarItem) LeaveMenuAccess();
+        else EnterMenuAccess();
+    }
+
+    private void EnterMenuAccess()
+    {
+        if (MainMenu.Visibility != Visibility.Visible || MainMenu.Items.FirstOrDefault(item => item.IsEnabled && item.Visibility == Visibility.Visible) is not { } first) return;
+        var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(Root.XamlRoot) as Control;
+        if (focused is not MenuBarItem) menuReturnFocus = focused;
+        UpdateDesktopMenuStates();
+        first.Focus(FocusState.Keyboard);
+        Microsoft.UI.Xaml.Input.AccessKeyManager.EnterDisplayMode(Root.XamlRoot);
+    }
+
+    private void LeaveMenuAccess()
+    {
+        Microsoft.UI.Xaml.Input.AccessKeyManager.ExitDisplayMode();
+        if (menuReturnFocus is { IsLoaded: true, IsEnabled: true, Visibility: Visibility.Visible } previous) previous.Focus(FocusState.Keyboard);
+        menuReturnFocus = null;
+    }
+
+    private static void AssignMenuAccessKeys(IEnumerable<MenuFlyoutItemBase> entries) => Views.MenuAccessKeys.Assign(entries);
 
     // Command -> Ctrl; Option -> Alt. Mac's extra Control modifier and the
     // Windows-reserved Ctrl+Alt+Delete need the documented native substitutions.
@@ -313,7 +369,12 @@ public sealed partial class MainWindow
     {
         desktopEditorVisible = editor;
         MainMenu.Items.Clear();
-        foreach (var menu in editor ? editorMenus : galleryMenus) MainMenu.Items.Add(menu);
+        foreach (var menu in editor ? editorMenus : galleryMenus)
+        {
+            menu.AccessKey = menu.Title switch { "File" => "F", "Edit" => "E", "View" => "V", "Playback" => "L", "Project" => "P", "YouTube" => "Y", "Help" => "H", _ => "" };
+            AssignMenuAccessKeys(menu.Items);
+            MainMenu.Items.Add(menu);
+        }
         UpdateDesktopMenuStates();
     }
 
@@ -425,6 +486,7 @@ public sealed partial class MainWindow
                     group.Visibility = Visibility.Visible;
             }
             NormalizeMenuSeparators(menu.Items);
+            AssignMenuAccessKeys(menu.Items);
         }
         // Mac inserts the overlay separator only on timed sections. Hide its
         // Windows counterpart with the submenu rather than leaving two dividers.

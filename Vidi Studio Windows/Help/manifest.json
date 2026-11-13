@@ -255,6 +255,10 @@
           "title": "Created Exports by language"
         },
         {
+          "id": "windows-menu-access",
+          "title": "Windows menu access keys"
+        },
+        {
           "id": "screen-reader-headings",
           "title": "Screen-reader headings and media durations"
         }

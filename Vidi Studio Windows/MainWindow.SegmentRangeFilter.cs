@@ -13,7 +13,7 @@ public sealed partial class MainWindow
 {
     private static void FilterActionMenu(Button button, string title, Action action)
     {
-        var menu = new MenuFlyout(); var item = new MenuFlyoutItem { Text = title };
+        var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create(); var item = new MenuFlyoutItem { Text = title };
         item.Click += (_, _) => action(); menu.Items.Add(item); button.ContextFlyout = menu;
     }
     private StackPanel BuildSegmentRangeFilterControls(List<Segment> rows, SegmentRangeFilter draft, double duration, Action changed)
@@ -24,7 +24,7 @@ public sealed partial class MainWindow
         var mode = new ComboBox { Header = "Filter type", ItemsSource = titles, SelectedIndex = Math.Max(0, Array.IndexOf(modes, draft.Mode)), HorizontalAlignment = HorizontalAlignment.Stretch };
         AutomationProperties.SetAutomationId(mode, "segment-filter-type");
         var details = new StackPanel { Spacing = 12 };
-        var modeMenu = new MenuFlyout();
+        var modeMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         foreach (var index in Enumerable.Range(0, modes.Length))
         {
             var item = new ToggleMenuFlyoutItem { Text = titles[index], Tag = "filter-mode-" + modes[index] };
@@ -60,7 +60,7 @@ public sealed partial class MainWindow
                         changed();
                     }
                     check.Checked += (_, _) => Update(); check.Unchecked += (_, _) => Update();
-                    var menu = new MenuFlyout();
+                    var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
                     var item = new ToggleMenuFlyoutItem { Text = label, Tag = "filter-segment-number-menu" };
                     item.Click += (_, _) => check.IsChecked = item.IsChecked;
                     menu.Opening += (_, _) => item.IsChecked = check.IsChecked == true;
@@ -111,7 +111,7 @@ public sealed partial class MainWindow
                 add.Click += (_, _) => AddTimeRange(); FilterActionMenu(add, "Add Time Range", AddTimeRange); details.Children.Add(add);
                 var matching = new ComboBox { Header = "Time matching", ItemsSource = new[] { "Overlaps a time range", "Fully inside a time range" }, SelectedIndex = draft.Contained ? 1 : 0 };
                 matching.SelectionChanged += (_, _) => { draft.Contained = matching.SelectedIndex == 1; changed(); };
-                var menu = new MenuFlyout();
+                var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
                 foreach (var contained in new[] { false, true })
                 {
                     var item = new ToggleMenuFlyoutItem { Text = contained ? "Fully inside a time range" : "Overlaps a time range" };

@@ -229,7 +229,7 @@ public sealed partial class MainWindow
             while (element != null && element.DataContext is not YouTubeVideo) element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element) as FrameworkElement;
             if (element?.DataContext is YouTubeVideo clicked) list.SelectedItem = clicked;
             if (list.SelectedItem is not YouTubeVideo target) return;
-            var menu = new MenuFlyout();
+            var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
             foreach (var id in new[] { "youtube-open-editor", "youtube-open-browser" }) {
                 var item = new MenuFlyoutItem { Text = DesktopCommandTitle(id), Icon = DesktopCommandIcon(id), Tag = id,
                     IsEnabled = youtubeBrowserCanRun?.Invoke(id) == true };

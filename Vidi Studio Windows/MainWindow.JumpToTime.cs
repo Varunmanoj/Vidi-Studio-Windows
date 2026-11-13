@@ -20,7 +20,7 @@ public sealed partial class MainWindow
         content.Children.Add(input); content.Children.Add(error);
         var dialog = new ContentDialog { Title = "Jump to Time", Content = content,
             PrimaryButtonText = "Jump", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
-        var menu = new MenuFlyout();
+        var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         var jump = new MenuFlyoutItem { Text = "Jump" };
         var cancel = new MenuFlyoutItem { Text = "Cancel" };
         // The dialog buttons and its context menu use the same validated submit path.

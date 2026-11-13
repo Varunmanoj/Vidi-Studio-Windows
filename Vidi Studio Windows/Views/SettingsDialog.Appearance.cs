@@ -85,7 +85,7 @@ public sealed partial class SettingsDialog
         appearanceColorButtons.Clear();
         panel.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Appearance and playback", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) }));
         var card = new StackPanel { Spacing = 16 };
-        panel.Children.Add(new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(16), Background = new SolidColorBrush(Color.FromArgb(15, 128, 128, 128)), Child = card });
+        panel.Children.Add(new AccessibilityGroup("Appearance and playback settings") { CornerRadius = new CornerRadius(8), Padding = new Thickness(16), Background = new SolidColorBrush(Color.FromArgb(15, 128, 128, 128)), Child = card });
         Grid Row(string title, FrameworkElement control) => AddSettingsRow(card, title, control);
         void Choice(string label, string key, string[] ids, string[] labels)
         {
@@ -173,7 +173,7 @@ public sealed partial class SettingsDialog
             summaryHighlightToggles[key] = toggle;
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, id);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(toggle, label);
-            var menu = new MenuFlyout();
+            var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
             var choice = new ToggleMenuFlyoutItem { Text = label, Tag = id + "-menu" };
             menu.Opening += (_, _) => choice.IsChecked = toggle.IsOn;
             choice.Click += (_, _) => toggle.IsOn = choice.IsChecked;
@@ -193,7 +193,7 @@ public sealed partial class SettingsDialog
             panel.Children.Clear(); BuildAppearance(panel);
         }
         restoreHighlights.Click += (_, _) => RestoreHighlights();
-        var restoreHighlightMenu = new MenuFlyout();
+        var restoreHighlightMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         var restoreHighlightItem = new MenuFlyoutItem { Text = "Restore Highlight Defaults", Tag = "restore-summary-highlight-defaults-menu" };
         restoreHighlightItem.Click += (_, _) => RestoreHighlights();
         restoreHighlightMenu.Items.Add(restoreHighlightItem); restoreHighlights.ContextFlyout = restoreHighlightMenu;
@@ -215,7 +215,7 @@ public sealed partial class SettingsDialog
             draft["developerMode"] = developerMode.IsOn;
             UpdateDeveloperPromptsVisibility();
         };
-        panel.Children.Add(new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(16), Background = new SolidColorBrush(Color.FromArgb(15, 128, 128, 128)), Child = advanced });
+        panel.Children.Add(new AccessibilityGroup("Advanced appearance settings") { CornerRadius = new CornerRadius(8), Padding = new Thickness(16), Background = new SolidColorBrush(Color.FromArgb(15, 128, 128, 128)), Child = advanced });
         var restore = new Button { Content = "Restore caption defaults" };
         restore.Click += (_, _) =>
         {

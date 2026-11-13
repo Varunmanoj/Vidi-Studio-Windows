@@ -11,6 +11,55 @@ namespace Vidi_Studio_Windows;
 public sealed partial class MainWindow
 {
 #if DEBUG
+    private async Task VerifyMenuAccessForSmokeTestAsync(string report)
+    {
+        var largeMenu = Enumerable.Range(0, 100).Select(index => index % 2 == 0
+            ? (MenuFlyoutItemBase)new MenuFlyoutItem { Text = "Result " + index }
+            : new ToggleMenuFlyoutItem { Text = "Language " + index }).ToArray();
+        Views.MenuAccessKeys.Assign(largeMenu);
+        if (largeMenu.Any(item => string.IsNullOrWhiteSpace(item.AccessKey)) || largeMenu.Select(item => item.AccessKey).Distinct().Count() != largeMenu.Length ||
+            largeMenu.Any(item => largeMenu.Any(other => !ReferenceEquals(item, other) && other.AccessKey.StartsWith(item.AccessKey, StringComparison.Ordinal))))
+            throw new InvalidOperationException("Large dynamic menus have duplicate access-key sequences.");
+        foreach (var editor in new[] { false, true })
+        {
+            if (editor) ShowEditor(); else ShowGallery_Click(this, new RoutedEventArgs());
+            await Task.Delay(150);
+            var menus = MainMenu.Items.Where(item => item.Visibility == Visibility.Visible).ToArray();
+            if (menus.Any(item => string.IsNullOrEmpty(item.AccessKey)) || menus.Select(item => item.AccessKey).Distinct().Count() != menus.Length)
+                throw new InvalidOperationException("Menu bar access keys must be present and unique.");
+            void VerifyKeys(System.Collections.Generic.IEnumerable<MenuFlyoutItemBase> entries)
+            {
+                var items = entries.Where(item => item is MenuFlyoutItem or MenuFlyoutSubItem).ToArray();
+                if (items.Any(item => string.IsNullOrWhiteSpace(item.AccessKey)) || items.Select(item => item.AccessKey).Distinct().Count() != items.Length)
+                    throw new InvalidOperationException("Submenu access keys must be present and unique within their scope.");
+                foreach (var sub in items.OfType<MenuFlyoutSubItem>()) VerifyKeys(sub.Items);
+            }
+            foreach (var menu in menus) VerifyKeys(menu.Items);
+            EnterMenuAccess(); await Task.Delay(100);
+            if (!Microsoft.UI.Xaml.Input.AccessKeyManager.IsDisplayModeEnabled ||
+                Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(Root.XamlRoot) is not MenuBarItem)
+                throw new InvalidOperationException("Menu access must move focus and display native key-tip boxes.");
+            await CaptureSmokeImage(Root, System.IO.Path.Combine(System.IO.Path.GetDirectoryName(report)!, editor ? "menu-access-editor.png" : "menu-access-gallery.png"));
+            LeaveMenuAccess();
+            if (Microsoft.UI.Xaml.Input.AccessKeyManager.IsDisplayModeEnabled) throw new InvalidOperationException("Menu exit left key tips visible.");
+            var project = Model.Project ?? throw new InvalidOperationException("Context menu fixture missing.");
+            var contexts = editor
+                ? new[] { SegmentMenu(project.Transcript.First()), (MenuFlyout)EditorWorkspace.ContextFlyout, SummaryReadingMenu() }
+                : new[] { ProjectMenu(project) };
+            foreach (var context in contexts)
+            {
+                context.ShowAt(Root); await Task.Delay(150);
+                VerifyKeys(context.Items);
+                if (!Microsoft.UI.Xaml.Input.AccessKeyManager.IsDisplayModeEnabled)
+                    throw new InvalidOperationException("Context menu did not display native access-key tips.");
+                foreach (var item in context.Items.OfType<MenuFlyoutItem>().Where(item => item.Visibility == Visibility.Visible))
+                    if (string.IsNullOrWhiteSpace(FrameworkElementAutomationPeer.CreatePeerForElement(item)?.GetAccessKey()))
+                        throw new InvalidOperationException("Context action does not expose its access key to UIA: " + item.Text);
+                context.Hide(); Microsoft.UI.Xaml.Input.AccessKeyManager.ExitDisplayMode();
+            }
+        }
+    }
+
     private async Task VerifyInspectorDisclosureForSmokeTestAsync()
     {
         ShowEditor(); await Task.Delay(200); Root.UpdateLayout();
@@ -23,6 +72,10 @@ public sealed partial class MainWindow
             if (string.IsNullOrWhiteSpace(name) || name == "Inspector section") throw new InvalidOperationException("Inspector disclosure has no section name.");
             if (peer.GetPattern(PatternInterface.ExpandCollapse) is not Microsoft.UI.Xaml.Automation.Provider.IExpandCollapseProvider provider)
                 throw new InvalidOperationException("Inspector disclosure has no native expand/collapse pattern: " + name);
+            if (group.Content is not Views.AccessibilityGroup contentGroup ||
+                FrameworkElementAutomationPeer.CreatePeerForElement(contentGroup) is not { } contentPeer ||
+                contentPeer.GetAutomationControlType() != AutomationControlType.Group || contentPeer.GetName() != name + " controls")
+                throw new InvalidOperationException("Inspector content must be a named UIA group: " + name);
             var expanded = group.IsExpanded;
             try
             {
@@ -32,6 +85,11 @@ public sealed partial class MainWindow
                 provider.Expand(); await Task.Delay(75);
                 if (!group.IsExpanded || provider.ExpandCollapseState != ExpandCollapseState.Expanded || peer.GetName() != name)
                     throw new InvalidOperationException("Expanded disclosure state/name mismatch: " + name);
+                if (contentPeer.GetChildren() is not { Count: > 0 })
+                    throw new InvalidOperationException("Expanded group lost its accessible children: " + name);
+                provider.Collapse(); await Task.Delay(75);
+                if (!contentPeer.IsOffscreen())
+                    throw new InvalidOperationException("Collapsed inspector controls remain exposed on screen: " + name);
             }
             finally { group.IsExpanded = expanded; }
         }
@@ -69,6 +127,10 @@ public sealed partial class MainWindow
                     for (var index = 0; index < 5; index++)
                     {
                         Section.SelectedIndex = index; UpdateSectionPresentation(); await Task.Delay(100); Root.UpdateLayout();
+                        var controlsPeer = FrameworkElementAutomationPeer.CreatePeerForElement(EditorControlsGroup);
+                        if (controlsPeer?.GetAutomationControlType() != AutomationControlType.Group || controlsPeer.GetName() != EditorSectionTitle + " controls" ||
+                            controlsPeer.GetChildren() is not { Count: > 0 } || AutomationProperties.GetName(Segments) != EditorSectionTitle + " segments")
+                            throw new InvalidOperationException("Editor controls and segment list lost their named accessibility groups.");
                         var heading = EditorSectionHeading.TransformToVisual(EditorSectionToolbar).TransformPoint(new Windows.Foundation.Point(EditorSectionHeading.ActualWidth / 2, EditorSectionHeading.ActualHeight));
                         var controls = EditorSectionControlsScroll.TransformToVisual(EditorSectionToolbar).TransformPoint(new Windows.Foundation.Point());
                         var actions = EditorSectionActions.TransformToVisual(EditorSectionToolbar).TransformPoint(new Windows.Foundation.Point());
@@ -110,6 +172,10 @@ public sealed partial class MainWindow
                         throw new InvalidOperationException("Import must use saved-result review without an upfront replacement checkbox.");
                     await dialogPresentationVerifier!.WaitUntilReadyAsync(dialog);
                     await Task.Delay(100);
+                    // Verify startup before deliberately revealing the file-dependent controls.
+                    if (fromButton) await VerifyDialogThemesForSmokeTestAsync(dialog, report, "import-assets-grouped-empty");
+                    else dialogPresentationVerifier.Verify(dialog);
+                    await ((Views.ImportAssetsDialog)dialog).VerifyGroupedLayoutForSmokeTestAsync();
                     var cancel = FindButton(dialog, "Cancel") ?? throw new InvalidOperationException("Import cancellation unavailable.");
                     var cancelPeer = FrameworkElementAutomationPeer.CreatePeerForElement(cancel)!;
                     ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)cancelPeer.GetPattern(PatternInterface.Invoke)).Invoke();

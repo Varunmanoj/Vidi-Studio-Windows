@@ -108,7 +108,7 @@ public sealed partial class SettingsDialog
     }
     private void ConfigurePiperSampleMenu(TextBox sample)
     {
-        piperSampleMenu = new MenuFlyout();
+        piperSampleMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         piperPlaySampleMenuItem = new MenuFlyoutItem { Text = "Play Sample", Tag = "piper-settings-play-sample" };
         piperStopSampleMenuItem = new MenuFlyoutItem { Text = "Stop Sample", Tag = "piper-settings-stop-sample" };
         AutomationProperties.SetAutomationId(piperPlaySampleMenuItem, "piper-settings-play-sample");

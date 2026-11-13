@@ -109,7 +109,7 @@ public sealed partial class MainWindow
     private void BulkOrigin_Click(object sender, RoutedEventArgs e)
     {
         if (Model.Busy || Segments.SelectedItems.Count == 0 || sender is not FrameworkElement anchor) return;
-        var menu = new MenuFlyout();
+        var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         foreach (var (id, label) in BulkOrigins)
         {
             var item = new MenuFlyoutItem { Text = label, Tag = id };

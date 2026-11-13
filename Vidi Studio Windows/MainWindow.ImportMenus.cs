@@ -10,7 +10,7 @@ public sealed partial class MainWindow
     private void AddOrImport_Click(object sender, RoutedEventArgs e)
     {
         if (Model.Busy || sender is not FrameworkElement anchor) return;
-        var menu = new MenuFlyout();
+        var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         void Item(string label, Func<Task> action, bool enabled = true)
         {
             var item = new MenuFlyoutItem { Text = label, IsEnabled = enabled };

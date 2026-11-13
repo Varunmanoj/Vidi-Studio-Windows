@@ -544,7 +544,7 @@ public sealed partial class SettingsDialog : Window
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetHeadingLevel(heading, Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2);
         host.Children.Add(heading);
         var rows = new StackPanel { Spacing = 12 };
-        host.Children.Add(new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(16),
+        host.Children.Add(new AccessibilityGroup(title + " settings") { CornerRadius = new CornerRadius(8), Padding = new Thickness(16),
             Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"], Child = rows });
         return rows;
     }
@@ -588,7 +588,7 @@ public sealed partial class SettingsDialog : Window
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, id);
         ConfigureCompactToggle(toggle);
         toggle.Toggled += (_, _) => draft[key] = toggle.IsOn;
-        var menu = new MenuFlyout();
+        var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         var choice = new ToggleMenuFlyoutItem { Text = label, Tag = menuId };
         var previewItem = new MenuFlyoutItem { Tag = id + "-preview-menu" };
         previewItem.Click += (_, _) => ToggleSoundPreview(resource);
@@ -599,7 +599,7 @@ public sealed partial class SettingsDialog : Window
         var preview = new Button { Width = 36, Height = 36, VerticalAlignment = VerticalAlignment.Center };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(preview, id + "-preview");
         preview.Click += (_, _) => ToggleSoundPreview(resource);
-        var previewMenu = new MenuFlyout();
+        var previewMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         var matchingPreviewItem = new MenuFlyoutItem { Tag = id + "-preview-button-menu" };
         matchingPreviewItem.Click += (_, _) => ToggleSoundPreview(resource);
         previewMenu.Items.Add(matchingPreviewItem);
@@ -686,7 +686,7 @@ public sealed partial class SettingsDialog : Window
         var restoreSpeech = new Button();
         IconButtonContent.Set(restoreSpeech, "Restore Defaults", Symbol.Refresh);
         restoreSpeech.Click += (_, _) => RestoreSpeechDefaults();
-        var restoreMenu = new MenuFlyout();
+        var restoreMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         var restoreItem = new MenuFlyoutItem { Text = "Restore Defaults", Tag = "restore-speech-defaults-menu" };
         restoreItem.Click += (_, _) => RestoreSpeechDefaults();
         restoreMenu.Items.Add(restoreItem); restoreSpeech.ContextFlyout = restoreMenu;

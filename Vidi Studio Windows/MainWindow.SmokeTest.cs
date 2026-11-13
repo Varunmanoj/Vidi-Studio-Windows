@@ -459,8 +459,8 @@ public sealed partial class MainWindow
             Section.SelectedIndex = 2;
             TogglePreview_Click(this, new RoutedEventArgs());
             var inspectorGroups = ((StackPanel)InspectorScrollViewer.Content).Children.OfType<Expander>().ToArray();
-            var generationGroup = inspectorGroups.SingleOrDefault(group => ReferenceEquals(group.Content, ContextActions));
-            var narrationGroup = inspectorGroups.SingleOrDefault(group => ReferenceEquals(group.Content, NarrationActions));
+            var generationGroup = inspectorGroups.SingleOrDefault(group => group.Content is Views.AccessibilityGroup { Child: var child } && ReferenceEquals(child, ContextActions));
+            var narrationGroup = inspectorGroups.SingleOrDefault(group => group.Content is Views.AccessibilityGroup { Child: var child } && ReferenceEquals(child, NarrationActions));
             if (InspectorSectionTitle.Text != "AD Segment Generation" ||
                 ContextActions.Visibility != Visibility.Visible || NarrationActions.Visibility != Visibility.Visible ||
                 generationGroup == null || narrationGroup == null || ReferenceEquals(generationGroup, narrationGroup) ||
@@ -1104,6 +1104,7 @@ public sealed partial class MainWindow
     private async Task VerifyGalleryAndSettingsLayoutForSmokeTestAsync(string report)
     {
         await VerifyAccessibleMediaForSmokeTestAsync();
+        await VerifyMenuAccessForSmokeTestAsync(report);
         await VerifyInspectorDisclosureForSmokeTestAsync();
         await VerifyEditorSectionToolbarForSmokeTestAsync(report);
         ShowGallery_Click(this, new RoutedEventArgs());

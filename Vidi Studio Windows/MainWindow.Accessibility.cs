@@ -48,6 +48,83 @@ public sealed partial class MainWindow
         ShowGallery_Click(this, new RoutedEventArgs());
     }
 
+    private async Task VerifyEditorSectionToolbarForSmokeTestAsync(string report)
+    {
+        ShowEditor(); await Task.Delay(150);
+        var originalSize = AppWindow.Size;
+        var originalTheme = App.ActiveTheme ?? Model.Settings.Get("theme", "system");
+        var originalSection = Section.SelectedIndex;
+        var originalProjects = ProjectSplitView.IsPaneOpen;
+        var originalInspector = InspectorSplitView.IsPaneOpen;
+        try
+        {
+            ProjectSplitView.IsPaneOpen = false; InspectorSplitView.IsPaneOpen = true;
+            var scale = Root.XamlRoot.RasterizationScale;
+            foreach (var theme in new[] { "light", "dark" })
+            {
+                PreviewTheme(theme);
+                foreach (var width in new[] { 1120, 880 })
+                {
+                    AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(width * scale), (int)(760 * scale)));
+                    for (var index = 0; index < 5; index++)
+                    {
+                        Section.SelectedIndex = index; UpdateSectionPresentation(); await Task.Delay(100); Root.UpdateLayout();
+                        var heading = EditorSectionHeading.TransformToVisual(EditorSectionToolbar).TransformPoint(new Windows.Foundation.Point(EditorSectionHeading.ActualWidth / 2, EditorSectionHeading.ActualHeight));
+                        var controls = EditorSectionControlsScroll.TransformToVisual(EditorSectionToolbar).TransformPoint(new Windows.Foundation.Point());
+                        var actions = EditorSectionActions.TransformToVisual(EditorSectionToolbar).TransformPoint(new Windows.Foundation.Point());
+                        var importPoint = EditorImportAssetsButton.TransformToVisual(EditorSectionControlsScroll).TransformPoint(new Windows.Foundation.Point());
+                        var pickerPoint = Section.TransformToVisual(EditorSectionControlsScroll).TransformPoint(new Windows.Foundation.Point());
+                        var peer = FrameworkElementAutomationPeer.CreatePeerForElement(EditorImportAssetsButton);
+                        if (Math.Abs(heading.X - EditorSectionToolbar.ActualWidth / 2) > 1 || heading.Y > controls.Y || heading.Y > actions.Y ||
+                            controls.X + EditorSectionControlsScroll.ActualWidth > actions.X + 1 ||
+                            EditorSectionControlsScroll.ActualWidth <= 0 || importPoint.X + EditorImportAssetsButton.ActualWidth > pickerPoint.X ||
+                            EditorSectionHeading.Text != EditorSectionTitle || AutomationProperties.GetHeadingLevel(EditorSectionHeading) != AutomationHeadingLevel.Level2 ||
+                            peer?.GetName() != "Import Existing Assets" || EditorImportAssetsButton.IsEnabled != CanRunDesktopCommand("import-assets") ||
+                            peer.GetPattern(PatternInterface.Invoke) is not Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)
+                            throw new InvalidOperationException("Editor heading/import toolbar alignment or accessibility mismatch: " + theme + "/" + width + "/" + EditorSectionTitle);
+                        if (index == 0) await CaptureSmokeImage(EditorSectionToolbar, System.IO.Path.Combine(System.IO.Path.GetDirectoryName(report)!, $"editor-section-toolbar-{theme}-{width}.png"));
+                    }
+                }
+            }
+            ContentDialog? opened = null;
+            void Observe(ContentDialog dialog, Window window) { opened = dialog; }
+            Views.WindowedDialog.Preparing += Observe;
+            try
+            {
+                foreach (var fromButton in new[] { true, false })
+                {
+                    opened = null;
+                    Task? command = null;
+                    if (fromButton)
+                    {
+                        var peer = FrameworkElementAutomationPeer.CreatePeerForElement(EditorImportAssetsButton)!;
+                        ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
+                    }
+                    else command = RunDesktopCommandAsync("import-assets");
+                    for (var attempt = 0; attempt < 100 && opened == null; attempt++) await Task.Delay(20);
+                    if (opened is not Views.ImportAssetsDialog || opened.Title as string != "Import Existing Assets")
+                        throw new InvalidOperationException("Toolbar and menu must open the same all-assets import workflow.");
+                    var dialog = opened;
+                    await dialogPresentationVerifier!.WaitUntilReadyAsync(dialog);
+                    await Task.Delay(100);
+                    var cancel = FindButton(dialog, "Cancel") ?? throw new InvalidOperationException("Import cancellation unavailable.");
+                    var cancelPeer = FrameworkElementAutomationPeer.CreatePeerForElement(cancel)!;
+                    ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)cancelPeer.GetPattern(PatternInterface.Invoke)).Invoke();
+                    if (command != null) await command;
+                    await Task.Delay(100);
+                }
+            }
+            finally { Views.WindowedDialog.Preparing -= Observe; }
+        }
+        finally
+        {
+            Section.SelectedIndex = originalSection; UpdateSectionPresentation();
+            ProjectSplitView.IsPaneOpen = originalProjects; InspectorSplitView.IsPaneOpen = originalInspector;
+            AppWindow.Resize(originalSize); PreviewTheme(originalTheme);
+        }
+        ShowGallery_Click(this, new RoutedEventArgs());
+    }
+
     private async Task VerifyPanelVisibilityTogglesForSmokeTestAsync()
     {
         foreach (var projects in new[] { true, false })

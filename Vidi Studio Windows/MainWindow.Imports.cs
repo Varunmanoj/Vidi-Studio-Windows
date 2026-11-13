@@ -14,7 +14,12 @@ namespace Vidi_Studio_Windows;
 
 public sealed partial class MainWindow
 {
-    private async void ImportAssets_Click(object sender, RoutedEventArgs e) => await ImportExistingAssetsAsync();
+    private async void ImportAssets_Click(object sender, RoutedEventArgs e)
+    {
+        try { await RunDesktopCommandAsync("import-assets"); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { await ShowError(ex); }
+    }
 
     internal async Task ImportExistingAssetsAsync(Models.ImportScope scope = Models.ImportScope.All)
     {

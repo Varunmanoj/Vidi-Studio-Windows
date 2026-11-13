@@ -360,6 +360,7 @@ public sealed partial class MainWindow
             RenameProjectTitleButton.Visibility = desktopEditorVisible ? Visibility.Visible : Visibility.Collapsed;
             RenameProjectTitleButton.IsEnabled = CanRunDesktopCommand("rename-project");
         }
+        if (EditorImportAssetsButton != null) EditorImportAssetsButton.IsEnabled = CanRunDesktopCommand("import-assets");
         if (TopInspectorToggle != null)
         {
             TopInspectorToggle.Visibility = desktopEditorVisible ? Visibility.Visible : Visibility.Collapsed;

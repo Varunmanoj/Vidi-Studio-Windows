@@ -1105,6 +1105,7 @@ public sealed partial class MainWindow
     {
         await VerifyAccessibleMediaForSmokeTestAsync();
         await VerifyInspectorDisclosureForSmokeTestAsync();
+        await VerifyEditorSectionToolbarForSmokeTestAsync(report);
         ShowGallery_Click(this, new RoutedEventArgs());
         await VerifyProjectSortingForSmokeTestAsync();
         var originalTheme = Model.Settings.Get("theme", "system");

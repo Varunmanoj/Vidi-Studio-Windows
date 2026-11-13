@@ -73,8 +73,8 @@ public sealed class Segment : INotifyPropertyChanged
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
     [JsonIgnore] public string StartAnnouncement => "Start time: " + NarrationTimeFormat.SpokenTime(Start);
     [JsonIgnore] public string EndAnnouncement => "End time: " + NarrationTimeFormat.SpokenTime(End);
-    [JsonIgnore] public string TimingAnnouncement => StartAnnouncement + ", " + EndAnnouncement;
-    [JsonIgnore] public string SegmentAnnouncement => $"{SegmentNumberLabel}, {TimingAnnouncement}, {DurationAnnouncement}, {Text}";
+    [JsonIgnore] public string TimingAnnouncement => StartAnnouncement + ", " + EndAnnouncement + ", " + DurationAnnouncement;
+    [JsonIgnore] public string SegmentAnnouncement => $"{SegmentNumberLabel}, {TimingAnnouncement}, {Text}";
     [JsonIgnore] public string Timing => $"{NarrationTimeFormat.Timestamp(Start)} – {NarrationTimeFormat.Timestamp(End)}";
     [JsonIgnore] public bool IsDescription { get; set; }
     [JsonIgnore] public bool ShowKind { get; set; }

@@ -364,9 +364,7 @@ public sealed partial class MainWindow
         {
             TopInspectorToggle.Visibility = desktopEditorVisible ? Visibility.Visible : Visibility.Collapsed;
             TopInspectorToggle.IsEnabled = CanRunDesktopCommand("show-inspector");
-            var label = DesktopCommandTitle("show-inspector");
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(TopInspectorToggle, label);
-            ToolTipService.SetToolTip(TopInspectorToggle, label + " (" + DesktopShortcuts["show-inspector"].Text + ")");
+            SyncPanelVisibilityToggles();
         }
         foreach (var id in new[] { "summary-zoom-in", "summary-zoom-out", "summary-zoom-reset" })
             foreach (var item in desktopMenuItems.TryGetValue(id, out var zoomItems) ? zoomItems : new List<MenuFlyoutItem>())

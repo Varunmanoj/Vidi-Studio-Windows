@@ -35,6 +35,7 @@ public sealed partial class MainWindow
             }
             finally { group.IsExpanded = expanded; }
         }
+        await VerifyPanelVisibilityTogglesForSmokeTestAsync();
         await VerifyEditorSectionMenusAndTitlesForSmokeTestAsync();
         VerifyLanguageInspectorForSmokeTest();
         var project = Model.Project ?? throw new InvalidOperationException("Inspector fixture missing.");
@@ -45,6 +46,39 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Project Settings sync action must appear only while editing.");
         }
         ShowGallery_Click(this, new RoutedEventArgs());
+    }
+
+    private async Task VerifyPanelVisibilityTogglesForSmokeTestAsync()
+    {
+        foreach (var projects in new[] { true, false })
+        {
+            var pane = projects ? ProjectSplitView : InspectorSplitView;
+            var button = projects ? EditorProjectListButton : TopInspectorToggle;
+            var command = projects ? "show-projects" : "show-inspector";
+            var original = pane.IsPaneOpen;
+            var peer = FrameworkElementAutomationPeer.CreatePeerForElement(button) ?? throw new InvalidOperationException("Panel toggle peer missing.");
+            if (peer.GetPattern(PatternInterface.Toggle) is not Microsoft.UI.Xaml.Automation.Provider.IToggleProvider provider)
+                throw new InvalidOperationException("Panel visibility control has no native Toggle pattern: " + command);
+            void Verify(bool shown)
+            {
+                var title = projects ? "Project list" : "Inspector";
+                if (pane.IsPaneOpen != shown || button.IsChecked != shown || provider.ToggleState != (shown ? ToggleState.On : ToggleState.Off) ||
+                    !peer.GetName().Equals((shown ? "Hide " : "Show ") + title, StringComparison.OrdinalIgnoreCase) ||
+                    peer.GetItemStatus() != title + (shown ? " shown" : " hidden"))
+                    throw new InvalidOperationException("Panel toggle name/state is stale: " + command);
+            }
+            try
+            {
+                pane.IsPaneOpen = false; await Task.Delay(200); Verify(false);
+                button.Focus(FocusState.Programmatic);
+                provider.Toggle(); await Task.Delay(250); Verify(true);
+                provider.Toggle(); await Task.Delay(250); Verify(false);
+                await RunDesktopCommandAsync(command); await Task.Delay(250); Verify(true);
+                await RunDesktopCommandAsync(command); await Task.Delay(250); Verify(false);
+                pane.IsPaneOpen = true; await Task.Delay(200); Verify(true);
+            }
+            finally { pane.IsPaneOpen = original; }
+        }
     }
 
     private async Task VerifyEditorSectionMenusAndTitlesForSmokeTestAsync()
@@ -127,7 +161,10 @@ public sealed partial class MainWindow
                 {
                     Segments.ScrollIntoView(row); await Task.Delay(100); Root.UpdateLayout();
                     if (Segments.ContainerFromItem(row) is not FrameworkElement container || PeerName(container) != row.SegmentAnnouncement ||
-                        !PeerName(container).Contains("Start time: ") || !PeerName(container).Contains("End time: "))
+                        !PeerName(container).Contains("Start time: ") || !PeerName(container).Contains("End time: ") ||
+                        !PeerName(container).Contains(row.DurationAnnouncement) ||
+                        PeerName(container).IndexOf(row.DurationAnnouncement, StringComparison.Ordinal) >= PeerName(container).LastIndexOf(row.Text, StringComparison.Ordinal) ||
+                        !row.PlayLabel.Contains(row.TimingAnnouncement) || !row.PreviewLabel.Contains(row.TimingAnnouncement))
                         throw new InvalidOperationException("Segment row does not announce both named time boundaries.");
                 }
                 foreach (var button in new Button[] { InspectorGenerate, InspectorRewriteButton, InspectorSynthesizeNarrationButton,

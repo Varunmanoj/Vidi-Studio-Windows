@@ -146,10 +146,7 @@ public sealed partial class MainWindow
         var selected = SelectedBrowserProject();
         if (EditorRemoveProjectButton != null) EditorRemoveProjectButton.IsEnabled = Model.Idle && selected != null;
         if (EditorDeleteProjectButton != null) EditorDeleteProjectButton.IsEnabled = Model.Idle && selected != null;
-        var visible = ProjectSplitView.IsPaneOpen;
-        var listLabel = visible ? "Hide project list" : "Show project list";
-        ToolTipService.SetToolTip(EditorProjectListButton, listLabel);
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditorProjectListButton, listLabel);
+        SyncPanelVisibilityToggles();
         EditorProjectListIcon.Glyph = "\uE8F1";
     }
     private void ToggleInspector_Click(object sender, RoutedEventArgs e)
@@ -158,11 +155,29 @@ public sealed partial class MainWindow
         UpdateEditorActionVisibility();
         UpdateDesktopMenuStates();
     }
-    private async void TopInspectorToggle_Click(object sender, RoutedEventArgs e)
+    private void SyncPanelVisibilityToggles()
     {
-        try { await RunDesktopCommandAsync("show-inspector"); }
+        if (EditorProjectListButton == null || TopInspectorToggle == null || ProjectSplitView == null || InspectorSplitView == null) return;
+        EditorProjectListButton.IsChecked = ProjectSplitView.IsPaneOpen;
+        TopInspectorToggle.IsChecked = InspectorSplitView.IsPaneOpen;
+        var projectLabel = ProjectSplitView.IsPaneOpen ? "Hide project list" : "Show project list";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditorProjectListButton, projectLabel);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(EditorProjectListButton, ProjectSplitView.IsPaneOpen ? "Project list shown" : "Project list hidden");
+        ToolTipService.SetToolTip(EditorProjectListButton, projectLabel);
+        var inspectorLabel = DesktopCommandTitle("show-inspector");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(TopInspectorToggle, inspectorLabel);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(TopInspectorToggle, InspectorSplitView.IsPaneOpen ? "Inspector shown" : "Inspector hidden");
+        ToolTipService.SetToolTip(TopInspectorToggle, inspectorLabel + " (" + DesktopShortcuts["show-inspector"].Text + ")");
+    }
+    private async void PanelVisibilityToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Microsoft.UI.Xaml.Controls.Primitives.ToggleButton button || ProjectSplitView == null || InspectorSplitView == null) return;
+        var projects = ReferenceEquals(button, EditorProjectListButton);
+        if ((button.IsChecked == true) == (projects ? ProjectSplitView.IsPaneOpen : InspectorSplitView.IsPaneOpen)) return;
+        try { await RunDesktopCommandAsync(projects ? "show-projects" : "show-inspector"); }
         catch (OperationCanceledException) { }
         catch (Exception ex) { await ShowError(ex); }
+        finally { SyncPanelVisibilityToggles(); }
     }
     private void RightInspectorPane_Closing(SplitView sender, SplitViewPaneClosingEventArgs args)
     {

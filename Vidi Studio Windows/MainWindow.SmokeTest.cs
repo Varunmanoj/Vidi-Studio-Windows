@@ -2048,8 +2048,8 @@ public sealed partial class MainWindow
                     Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(TopInspectorToggle) != "Hide Inspector")
                     throw new InvalidOperationException("The editor header is missing its labeled native inspector button.");
                 await CaptureSmokeImage(ProjectHeader, Path.Combine(Path.GetDirectoryName(report)!, $"inspector-header-{theme}.png"));
-                var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(TopInspectorToggle);
-                ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+                var peer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(TopInspectorToggle)!;
+                ((Microsoft.UI.Xaml.Automation.Provider.IToggleProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Toggle)).Toggle();
                 await Task.Delay(160);
                 if (InspectorSplitView.IsPaneOpen || TopInspectorToggle.Visibility != Visibility.Visible ||
                     Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(TopInspectorToggle) != "Show Inspector" ||

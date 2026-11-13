@@ -123,7 +123,7 @@
    </Grid>
    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
     <Button Content="My YouTube Videos…" Click="YouTubeBrowser_Click"/>
-    <Button x:Name="TopInspectorToggle" Content="&#xE8A0;" FontFamily="Segoe Fluent Icons" Tag="show-inspector" Click="TopInspectorToggle_Click" Visibility="Collapsed" ToolTipService.ToolTip="Hide Inspector (Ctrl+Shift+B)" AutomationProperties.Name="Hide Inspector" AutomationProperties.AutomationId="show-inspector"/>
+    <ToggleButton x:Name="TopInspectorToggle" Content="&#xE8A0;" FontFamily="Segoe Fluent Icons" Tag="show-inspector" Checked="PanelVisibilityToggle_Changed" Unchecked="PanelVisibilityToggle_Changed" Visibility="Collapsed" ToolTipService.ToolTip="Hide Inspector (Ctrl+Shift+B)" AutomationProperties.Name="Hide Inspector" AutomationProperties.AutomationId="show-inspector"/>
    </StackPanel>
    </Grid>
   </Grid>
@@ -422,7 +422,7 @@
      <Grid Grid.Row="1" Padding="10,4" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
       <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
        <Button x:Name="EditorProjectLayoutButton" Style="{StaticResource CompactButton}" Padding="8,4" Click="ToggleGrid_Click" ToolTipService.ToolTip="Switch project list view" AutomationProperties.Name="Switch project list view"><FontIcon x:Name="EditorProjectLayoutIcon" FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE80A;"/></Button>
-       <Button x:Name="EditorProjectListButton" Style="{StaticResource CompactButton}" Padding="8,4" Click="ToggleLibrary_Click" ToolTipService.ToolTip="Show or hide project list" AutomationProperties.Name="Show or hide project list"><FontIcon x:Name="EditorProjectListIcon" FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE8F1;"/></Button>
+       <ToggleButton x:Name="EditorProjectListButton" Padding="8,4" Checked="PanelVisibilityToggle_Changed" Unchecked="PanelVisibilityToggle_Changed" ToolTipService.ToolTip="Show or hide project list" AutomationProperties.Name="Show or hide project list" AutomationProperties.AutomationId="show-projects"><FontIcon x:Name="EditorProjectListIcon" FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE8F1;"/></ToggleButton>
       </StackPanel>
      </Grid>
      </Grid>

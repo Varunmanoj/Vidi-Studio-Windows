@@ -73,6 +73,8 @@ public sealed partial class MainWindow : Window
         onDeviceNarrator = new OnDeviceNarrator(Model.Settings, Model.Engine);
         onDeviceNarrator.Failed += message => Model.ReportStatus(message);
         InitializeComponent();
+        ProjectSplitView.RegisterPropertyChangedCallback(SplitView.IsPaneOpenProperty, (_, _) => SyncPanelVisibilityToggles());
+        InspectorSplitView.RegisterPropertyChangedCallback(SplitView.IsPaneOpenProperty, (_, _) => SyncPanelVisibilityToggles());
         InitializeLanguageFilters();
         InitializeInspectorSections();
         InitializeADAudioReadiness();

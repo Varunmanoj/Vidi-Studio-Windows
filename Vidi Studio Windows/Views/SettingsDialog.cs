@@ -442,7 +442,11 @@ public sealed partial class SettingsDialog : Window
         };
         StartAutoApply();
     }
-    public Task<bool> ShowAsync() { PositionOverOwner(); Activate(); return completion.Task; }
+    public Task<bool> ShowAsync()
+    {
+        if (!App.HasMainWindows) { Hide(); return completion.Task; }
+        PositionOverOwner(); Activate(); return completion.Task;
+    }
     private bool DeveloperModeEnabled => SettingsStore.GetBool(draft["developerMode"], model.Settings.GetBool("developerMode"));
     private void UpdateDeveloperPromptsVisibility()
     {

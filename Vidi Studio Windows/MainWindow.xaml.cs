@@ -137,6 +137,7 @@ public sealed partial class MainWindow : Window
         integrityTimer.Start();
         ConnectivityService.Shared.Changed += ConnectivityChanged;
         Activated += (_, args) => {
+            searchAnnouncementWindowActive = args.WindowActivationState != WindowActivationState.Deactivated;
             ConnectivityService.Shared.Active = args.WindowActivationState != WindowActivationState.Deactivated;
             if (ConnectivityService.Shared.Active) ConnectivityService.Shared.Check();
             if (ready) RefreshProjectIntegrity();
@@ -643,6 +644,7 @@ public sealed partial class MainWindow : Window
         RenderSection();
         RefreshLanguagePanel();
         UpdateSectionOverlay(Model.IsAnalyzing);
+        QueueSearchResultAnnouncement();
     }
     private void RenderTimelineThumbnails(StudioProject project)
     {

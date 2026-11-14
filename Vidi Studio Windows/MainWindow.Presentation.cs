@@ -273,6 +273,7 @@ public sealed partial class MainWindow
             ProjectCount.Text = $"{galleryCount} projects";
             GalleryEmpty.Visibility = galleryCount == 0 ? Visibility.Visible : Visibility.Collapsed;
         }
+        if (!desktopEditorVisible) QueueSearchResultAnnouncement();
         UpdateApiKeyUi();
     }
     private async void ShowGallery_Click(object sender, RoutedEventArgs e)
@@ -364,7 +365,7 @@ public sealed partial class MainWindow
         GallerySearchHost.Width = Math.Min(520, Math.Max(0, e.NewSize.Width));
         GallerySearchHost.HorizontalAlignment = HorizontalAlignment.Center;
     }
-    private void GallerySearch_Changed(object sender, TextChangedEventArgs e) { if (galleryReady) { FilterGallery(); UpdateSearchControls(); UpdateDesktopMenuStates(); } }
+    private void GallerySearch_Changed(object sender, TextChangedEventArgs e) { if (galleryReady) { FilterGallery(); UpdateSearchControls(); UpdateDesktopMenuStates(); QueueSearchResultAnnouncement(); } }
     private void FilterGallery()
     {
         var selected = SelectedGalleryProject();

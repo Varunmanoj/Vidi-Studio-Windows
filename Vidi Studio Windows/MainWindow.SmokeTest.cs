@@ -18,6 +18,7 @@ public sealed partial class MainWindow
 {
     private static int smokeTestClaimed;
     private DialogPresentationVerifier? dialogPresentationVerifier;
+    private Window? settingsLifetimeTestHost;
     private async Task RunSmokeTestAsync(string report)
     {
         using var presentation = new DialogPresentationVerifier();
@@ -32,13 +33,14 @@ public sealed partial class MainWindow
                 ShowEditor();
                 await Task.Delay(300);
                 await VerifyProjectSearchForSmokeTestAsync();
-                await File.WriteAllTextAsync(report, "PASS: native editor/all-project search focus, live typing and immediate segment restoration after manual/icon/menu clearing; all saved versions and drafts; four prefixes and tab isolation; complete matching summary sentences; read-only results; selected version unchanged while typing; old-result opening; draft Review Later and Keep Both; all-occurrence highlights in four tabs; Appearance toggle/color/context menus and live saved preferences; all-highlight default restoration from the button and menu below search settings; narrow layout.");
+                await File.WriteAllTextAsync(report, "PASS: native editor/all-project search focus, live typing and immediate segment restoration after manual/icon/menu clearing; all saved versions and drafts; four prefix labels navigate before a colon or query, with tab isolation and scoped results; complete matching summary sentences; read-only results; selected version unchanged while typing; old-result opening; draft Review Later and Keep Both; all-occurrence highlights in four tabs; Appearance toggle/color/context menus, live sample preview with both matches and readable contrast, immediate preview updates, and live saved preferences; all-highlight default restoration from the button and menu below search settings; narrow layout; native spoken search counts, coalesced typing, zero matches and gallery clearing.");
                 return;
             }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY") == "1")
             {
                 await VerifyGalleryAndSettingsLayoutForSmokeTestAsync(report);
-                await File.WriteAllTextAsync(report, "PASS: native inspector disclosure names and expanded/collapsed states; sync action only in edit mode; spoken gallery/timeline durations; named inspector heading/actions/toggles and Start/End boundaries in all three segment tabs; aligned gallery controls and centered search at wide, compact and narrow widths in light/dark; Settings stable navigation, headings and bounded scrolling.");
+                await VerifySettingsWindowLifetimeForSmokeTestAsync();
+                await File.WriteAllTextAsync(report, "PASS: native inspector disclosure names and expanded/collapsed states; sync action only in edit mode; spoken gallery/timeline durations; named inspector heading/actions/toggles and Start/End boundaries in all three segment tabs; aligned gallery controls and centered search at wide, compact and narrow widths in light/dark; Settings stable navigation, headings and bounded scrolling; Settings stays open with another main window, closes after the final main window and saves pending preferences.");
                 return;
             }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY") == "1")
@@ -1054,11 +1056,35 @@ public sealed partial class MainWindow
             App.HelpWindowForSmokeTest?.Close();
             openSettings?.Hide();
             // The final window can abort the Close call while dispatcher shutdown completes.
-            try { Close(); }
+            try { if (!windowClosed) Close(); }
+            catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == unchecked((int)0x80004004)) { }
+            try { settingsLifetimeTestHost?.Close(); }
             catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == unchecked((int)0x80004004)) { }
             Application.Current.Exit();
         }
     }
+    private async Task VerifySettingsWindowLifetimeForSmokeTestAsync()
+    {
+        // An auxiliary test host keeps the dispatcher alive to inspect the final close.
+        settingsLifetimeTestHost = new Window { Content = new TextBlock { Text = "Settings lifetime verification" } };
+        settingsLifetimeTestHost.Activate();
+        var other = App.OpenWindow();
+        var settings = new Views.SettingsDialog(Model, this);
+        var closed = false;
+        settings.Closed += (_, _) => closed = true;
+        var display = settings.ShowAsync();
+        await Task.Delay(200);
+        CloseWindowDeferred();
+        await Task.Delay(200);
+        if (closed || !App.HasMainWindows) throw new InvalidOperationException("Settings closed while another main window remained open.");
+        settings.StageFinalSettingsEditForSmokeTest();
+        other.CloseWindowDeferred();
+        if (await Task.WhenAny(display, Task.Delay(3000)) != display || !closed || App.HasMainWindows)
+            throw new InvalidOperationException("Settings remained open after the final main window closed.");
+        Model.Settings.Reload();
+        if (Model.Settings.Get("captionFontSize") != "33") throw new InvalidOperationException("Final Settings edits were not saved before automatic closure.");
+    }
+
     private void VerifyGalleryToolbarBoundsForSmokeTest()
     {
         if (GalleryToolbar.Visibility != Visibility.Visible || GallerySearchHost.Visibility != Visibility.Visible || GalleryLanguageFilter.Header != null)

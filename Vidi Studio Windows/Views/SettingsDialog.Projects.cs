@@ -100,6 +100,7 @@ public sealed partial class SettingsDialog
     private void ReceiveOpenProjectsChanged() {
         if (closed) return;
         DispatcherQueue.TryEnqueue(() => {
+            if (!closed && !App.HasMainWindows) { Hide(); return; }
             if (closed || sectionList?.SelectedIndex != 1 || currentSectionPanel is not { } panel) return;
             if (projectChoiceSignature != ProjectChoiceSignature()) { panel.Children.Clear(); BuildProjects(panel); }
         });

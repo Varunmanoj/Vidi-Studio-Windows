@@ -16,6 +16,7 @@ namespace Vidi_Studio_Windows;
 public partial class App : Application
 {
     private static readonly List<MainWindow> Windows = new();
+    internal static bool HasMainWindows => Windows.Count > 0;
     private static Views.HelpWindow? helpWindow;
     private static AppInstance? mainInstance;
     internal static event Action<string>? ThemeChanged;

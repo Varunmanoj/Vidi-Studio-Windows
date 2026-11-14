@@ -22,6 +22,53 @@ public sealed partial class MainWindow
     private IReadOnlyList<ProjectSearchGroup> searchGroups = Array.Empty<ProjectSearchGroup>();
     private readonly List<TextBlock> searchHighlightBlocks = new();
     internal const string DefaultSearchHighlightColor = "#FFD60A";
+    private readonly DispatcherTimer searchAnnouncementTimer = new() { Interval = TimeSpan.FromMilliseconds(350) };
+    private bool searchAnnouncementInitialized;
+    private bool searchAnnouncementWindowActive;
+    private bool pendingSearchIsEditor;
+    private string? previousSearchQuery;
+    private string previousSearchStatus = "";
+    private string pendingSearchStatus = "";
+#if DEBUG
+    private string lastSpokenSearchStatus = "";
+    private int searchAnnouncementCount;
+#endif
+
+    private void QueueSearchResultAnnouncement()
+    {
+        if (!ready || windowClosed) return;
+        var query = desktopEditorVisible ? EditorSearch.Text : GallerySearch.Text;
+        var status = desktopEditorVisible
+            ? SearchResultStatus.Editor(ProjectSearchQuery.Parse(query), SearchSection, searchGroups.Sum(group => group.Hits.Count))
+            : SearchResultStatus.Gallery(query, Model.Projects.Count);
+        if (query == previousSearchQuery && status == previousSearchStatus) return;
+        var previous = previousSearchQuery;
+        previousSearchQuery = query; previousSearchStatus = status;
+        searchAnnouncementTimer.Stop();
+        if (query.Length == 0 && string.IsNullOrEmpty(previous)) return;
+        pendingSearchStatus = status; pendingSearchIsEditor = desktopEditorVisible;
+        if (!searchAnnouncementInitialized)
+        {
+            searchAnnouncementInitialized = true;
+            Closed += (_, _) => searchAnnouncementTimer.Stop();
+            searchAnnouncementTimer.Tick += (_, _) =>
+            {
+                searchAnnouncementTimer.Stop();
+                if (windowClosed || !searchAnnouncementWindowActive || pendingSearchIsEditor != desktopEditorVisible) return;
+                FrameworkElement source = desktopEditorVisible ? EditorSearch : GallerySearch;
+                var peer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.FromElement(source)
+                    ?? Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(source);
+                if (peer == null) return;
+                peer.RaiseNotificationEvent(Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationKind.Other,
+                    Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationProcessing.MostRecent, pendingSearchStatus, "search-results");
+#if DEBUG
+                lastSpokenSearchStatus = pendingSearchStatus;
+                searchAnnouncementCount++;
+#endif
+            };
+        }
+        searchAnnouncementTimer.Start();
+    }
     private static readonly string[] SearchSections = { "transcript", "summary", "descriptions", "ad-overview", "ad-transcript" };
     private string SearchSection => SearchSections[Math.Clamp(Section?.SelectedIndex ?? 0, 0, 4)];
     private bool IsImportedCombinedTranscript => Section?.SelectedIndex == 4 && Model.Project?.ImportedADTranscript is { Mode: "combined", Segments.Count: > 0 };
@@ -67,6 +114,7 @@ public sealed partial class MainWindow
         RenderSection();
         UpdateSearchControls();
         UpdateDesktopMenuStates();
+        QueueSearchResultAnnouncement();
     }
     private void HideNormalSearchContent()
     {
@@ -111,22 +159,27 @@ public sealed partial class MainWindow
         }
         ProjectSearchResults.Visibility = Visibility.Visible;
         RefreshSearchHighlights();
+        QueueSearchResultAnnouncement();
     }
 
     private void RefreshSearchHighlights()
     {
         var query = ProjectSearchQuery.Parse(EditorSearch.Text);
-        var color = SummaryColor(Model.Settings.Get("searchHighlightColor", DefaultSearchHighlightColor), DefaultSearchHighlightColor);
+        var enabled = IsProjectSearching && Model.Settings.GetBool("searchHighlightEnabled", true);
+        var color = Model.Settings.Get("searchHighlightColor", DefaultSearchHighlightColor);
+        foreach (var text in searchHighlightBlocks) ApplySearchHighlight(text, query, enabled, color);
+    }
+
+    internal static void ApplySearchHighlight(TextBlock text, ProjectSearchQuery query, bool enabled, string hex)
+    {
+        text.TextHighlighters.Clear();
+        if (!enabled) return;
+        var color = SummaryColor(hex, DefaultSearchHighlightColor);
         static double Linear(byte value) { var channel = value / 255d; return channel <= .04045 ? channel / 12.92 : Math.Pow((channel + .055) / 1.055, 2.4); }
         var luminance = .2126 * Linear(color.R) + .7152 * Linear(color.G) + .0722 * Linear(color.B);
-        foreach (var text in searchHighlightBlocks)
-        {
-            text.TextHighlighters.Clear();
-            if (!IsProjectSearching || !Model.Settings.GetBool("searchHighlightEnabled", true)) continue;
-            var highlight = new TextHighlighter { Background = new SolidColorBrush(color), Foreground = new SolidColorBrush(luminance > .179 ? Microsoft.UI.Colors.Black : Microsoft.UI.Colors.White) };
-            foreach (var range in query.MatchingRanges(text.Text)) highlight.Ranges.Add(new TextRange { StartIndex = range.Start, Length = range.Length });
-            if (highlight.Ranges.Count > 0) text.TextHighlighters.Add(highlight);
-        }
+        var highlight = new TextHighlighter { Background = new SolidColorBrush(color), Foreground = new SolidColorBrush(luminance > .179 ? Microsoft.UI.Colors.Black : Microsoft.UI.Colors.White) };
+        foreach (var range in query.MatchingRanges(text.Text)) highlight.Ranges.Add(new TextRange { StartIndex = range.Start, Length = range.Length });
+        if (highlight.Ranges.Count > 0) text.TextHighlighters.Add(highlight);
     }
     private void RenderImportedCombinedTranscript()
     {

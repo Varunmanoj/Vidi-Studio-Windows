@@ -31,6 +31,20 @@ public sealed partial class MainWindow
         Check(Section.SelectedIndex == 0 && IsProjectSearching && ProjectSearchResults.Visibility == Visibility.Visible, $"Ordinary search: section={Section.SelectedIndex}, searching={IsProjectSearching}, view={ProjectSearchResults.Visibility}, text={EditorSearch.Text}, ready={ready}, project={searchProjectID}.");
         Check(searchGroups.SelectMany(g => g.Hits).Count() == 2 && searchGroups.Any(g => g.Result.State == "draft"), "Older and draft transcript matches are missing.");
         Check(Segments.Visibility == Visibility.Collapsed && EditToolbar.Visibility == Visibility.Collapsed && !CanRunDesktopCommand("segment-edit-mode"), "Search must be read-only.");
+        foreach (var (prefix, index) in new[] { ("SuM", 1), ("des", 2), ("AdT", 4), ("Tr", 0) })
+        {
+            EditorSearch.Text = "";
+            Section.SelectedIndex = index == 0 ? 1 : 0;
+            for (var length = 1; length <= prefix.Length; length++)
+            {
+                EditorSearch.Text = prefix[..length]; await Task.Delay(100);
+                if (length == prefix.Length)
+                    Check(Section.SelectedIndex == index && !IsProjectSearching && ProjectSearchResults.Visibility == Visibility.Collapsed,
+                        "Prefix letters must navigate before a colon or search term: " + prefix);
+            }
+            EditorSearch.Text += ":"; await Task.Delay(100);
+            Check(Section.SelectedIndex == index && !IsProjectSearching, "Prefix colon must not require a search term.");
+        }
         foreach (var (prefix, index, count) in new[] { ("SUM : Beacon", 1, 2), ("des:beacon", 2, 2), ("AdT: Beacon", 4, 4), ("Tr: Beacon", 0, 2) })
         {
             EditorSearch.Text = prefix; await Task.Delay(100);
@@ -61,6 +75,13 @@ public sealed partial class MainWindow
             });
         }
         finally { settings.Close(); await settingsDisplay; }
+        Activate(); await Task.Delay(100);
+        var announcements = searchAnnouncementCount;
+        EditorSearch.Text = "abs"; EditorSearch.Text = "absent search phrase";
+        await Task.Delay(550);
+        Check(searchAnnouncementCount == announcements + 1 && lastSpokenSearchStatus == "No search results in Transcript.", "Search count announcements must coalesce and include zero results.");
+        EditorSearch.Text = "Tr: Beacon"; await Task.Delay(550);
+        Check(lastSpokenSearchStatus == "2 search results in Transcript.", "Editor count announcement is incorrect.");
         Check(File.ReadAllText(path) == before && Model.Project!.ActiveResultID("transcript") == "selected", "Typing search changed saved selections or project data.");
         EditorSearch.Text = "Tr:"; await Task.Delay(100);
         Check(!IsProjectSearching && Section.SelectedIndex == 0, "Prefix alone must navigate without filtering.");
@@ -103,9 +124,11 @@ public sealed partial class MainWindow
         ShowGallery_Click(this, new RoutedEventArgs()); await Task.Delay(150);
         await RunDesktopCommandAsync("focus-search"); await Task.Delay(100);
         Check(ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), GallerySearch), "All Projects menu did not focus search.");
-        GallerySearch.Text = "absent search text"; await Task.Delay(100);
+        GallerySearch.Text = "absent search text"; await Task.Delay(550);
+        Check(lastSpokenSearchStatus == "No projects found.", "All Projects did not announce its search count.");
         Check(CanRunDesktopCommand("clear-search") && GalleryClearSearch.Visibility == Visibility.Visible, "Gallery clear state missing.");
-        Invoke(GalleryClearSearch); await Task.Delay(100);
+        Invoke(GalleryClearSearch); await Task.Delay(550);
+        Check(lastSpokenSearchStatus == SearchResultStatus.Gallery("", Model.Projects.Count), "Clearing gallery search did not announce the restored count.");
         Check(GallerySearch.Text == "" && ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), GallerySearch), "Gallery clear icon failed.");
         ShowEditor(); await Task.Delay(150);
         AppWindow.Resize(new Windows.Graphics.SizeInt32(900, 740)); await Task.Delay(150);

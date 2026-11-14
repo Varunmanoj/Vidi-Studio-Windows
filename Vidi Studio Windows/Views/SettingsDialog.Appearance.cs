@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using System;
 using System.Linq;
+using Vidi_Studio_Windows.Models;
 using Vidi_Studio_Windows.Services;
 using Windows.UI;
 
@@ -15,11 +16,35 @@ public sealed partial class SettingsDialog
     private readonly System.Collections.Generic.Dictionary<string, ToggleSwitch> summaryHighlightToggles = new();
     private readonly System.Collections.Generic.Dictionary<string, Button> appearanceColorButtons = new();
     private ToggleSwitch? searchHighlightToggle;
+    private TextBlock? searchHighlightPreview;
     private Button? restoreHighlightDefaultsButton;
 #if DEBUG
     internal async System.Threading.Tasks.Task VerifySearchHighlightAppearanceForSmokeTestAsync(Action<bool, string> verifyResults)
     {
         var before = draft.DeepClone().AsObject();
+        void CheckPreview(bool enabled, string hex)
+        {
+            var preview = searchHighlightPreview ?? throw new InvalidOperationException("Search highlight preview is missing.");
+            if (preview.Text != "A person enters the room. The person opens the door." ||
+                Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(preview) != "Search highlight preview")
+                throw new InvalidOperationException("Search preview text or accessible name changed.");
+            if (!enabled)
+            {
+                if (preview.TextHighlighters.Count != 0) throw new InvalidOperationException("Disabled search preview still highlights matches.");
+                return;
+            }
+            var highlight = preview.TextHighlighters.Single();
+            var expected = Convert.ToUInt32(hex.TrimStart('#'), 16);
+            var background = ((SolidColorBrush)highlight.Background).Color;
+            if (background != Color.FromArgb(255, (byte)(expected >> 16), (byte)(expected >> 8), (byte)expected) ||
+                !highlight.Ranges.Select(range => (range.StartIndex, range.Length)).SequenceEqual(new[] { (2, 6), (30, 6) }))
+                throw new InvalidOperationException("Search preview did not update both matches to the chosen color.");
+            var foreground = ((SolidColorBrush)highlight.Foreground).Color;
+            if ((hex == "#102040" && foreground != Microsoft.UI.Colors.White) ||
+                (hex == MainWindow.DefaultSearchHighlightColor && foreground != Microsoft.UI.Colors.Black))
+                throw new InvalidOperationException("Search preview text contrast is incorrect.");
+        }
+        void VerifyHighlights(bool enabled, string hex) { verifyResults(enabled, hex); CheckPreview(enabled, hex); }
         try
         {
             SelectSection(0); await System.Threading.Tasks.Task.Delay(150);
@@ -29,8 +54,9 @@ public sealed partial class SettingsDialog
                 Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(color) != "Search highlight color")
                 throw new InvalidOperationException("Search highlighting controls lack accessible names.");
             toggle.IsOn = false;
+            CheckPreview(false, MainWindow.DefaultSearchHighlightColor);
             await System.Threading.Tasks.Task.Delay(650);
-            verifyResults(false, model.Settings.Get("searchHighlightColor", MainWindow.DefaultSearchHighlightColor));
+            VerifyHighlights(false, model.Settings.Get("searchHighlightColor", MainWindow.DefaultSearchHighlightColor));
             toggle.StartBringIntoView(); await System.Threading.Tasks.Task.Delay(100);
             var menu = (MenuFlyout)toggle.ContextFlyout;
             menu.ShowAt(toggle); await System.Threading.Tasks.Task.Delay(100);
@@ -40,7 +66,7 @@ public sealed partial class SettingsDialog
             var peer = new Microsoft.UI.Xaml.Automation.Peers.ToggleMenuFlyoutItemAutomationPeer(choice);
             ((Microsoft.UI.Xaml.Automation.Provider.IToggleProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Toggle)).Toggle();
             await System.Threading.Tasks.Task.Delay(650);
-            verifyResults(true, model.Settings.Get("searchHighlightColor", MainWindow.DefaultSearchHighlightColor));
+            VerifyHighlights(true, model.Settings.Get("searchHighlightColor", MainWindow.DefaultSearchHighlightColor));
             color.StartBringIntoView(); await System.Threading.Tasks.Task.Delay(100);
             var colorMenu = (MenuFlyout)color.ContextFlyout;
             var colorChoice = (MenuFlyoutItem)colorMenu.Items[0];
@@ -50,12 +76,13 @@ public sealed partial class SettingsDialog
             var picker = (ColorPicker)((Flyout)color.Flyout).Content;
             if (picker.XamlRoot == null) throw new InvalidOperationException("Search color menu did not open its picker.");
             picker.Color = Color.FromArgb(255, 16, 32, 64);
+            CheckPreview(true, "#102040");
             await System.Threading.Tasks.Task.Delay(650);
-            verifyResults(true, "#102040");
+            VerifyHighlights(true, "#102040");
             toggle.IsOn = false; await System.Threading.Tasks.Task.Delay(650);
-            verifyResults(false, "#102040");
+            VerifyHighlights(false, "#102040");
             toggle.IsOn = true; await System.Threading.Tasks.Task.Delay(650);
-            verifyResults(true, "#102040");
+            VerifyHighlights(true, "#102040");
             color.Flyout.Hide();
             void DirtyHighlights()
             {
@@ -70,14 +97,16 @@ public sealed partial class SettingsDialog
                     if (!model.Settings.GetBool(key)) throw new InvalidOperationException("Restore omitted " + key);
                 foreach (var (key, expected) in new[] { ("summarySentenceHighlightColor", "#A9D6FF"), ("summaryWordHighlightColor", "#FFD54A"), ("searchHighlightColor", MainWindow.DefaultSearchHighlightColor) })
                     if (model.Settings.Get(key) != expected) throw new InvalidOperationException("Restore omitted " + key);
-                verifyResults(true, MainWindow.DefaultSearchHighlightColor);
+                VerifyHighlights(true, MainWindow.DefaultSearchHighlightColor);
             }
             DirtyHighlights(); await System.Threading.Tasks.Task.Delay(650);
             var restore = restoreHighlightDefaultsButton!;
             restore.StartBringIntoView(); await System.Threading.Tasks.Task.Delay(100);
             if (restore.TransformToVisual(currentSectionPanel).TransformPoint(new Windows.Foundation.Point()).Y <=
+                searchHighlightPreview!.TransformToVisual(currentSectionPanel).TransformPoint(new Windows.Foundation.Point()).Y ||
+                searchHighlightPreview.TransformToVisual(currentSectionPanel).TransformPoint(new Windows.Foundation.Point()).Y <=
                 appearanceColorButtons["searchHighlightColor"].TransformToVisual(currentSectionPanel).TransformPoint(new Windows.Foundation.Point()).Y)
-                throw new InvalidOperationException("Restore must be below Search highlight color.");
+                throw new InvalidOperationException("Search preview must be below its color control and above Restore Highlight Defaults.");
             var restorePeer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(restore);
             ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)restorePeer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
             await System.Threading.Tasks.Task.Delay(650); CheckDefaults();
@@ -186,6 +215,10 @@ public sealed partial class SettingsDialog
         var dialogueBox = new Border { Child = dialogue, CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 6, 10, 6), HorizontalAlignment = HorizontalAlignment.Center };
         var descriptionBox = new Border { Child = description, CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 6, 10, 6), HorizontalAlignment = HorizontalAlignment.Center };
         var summaryPreview = new TextBlock { Text = "A person enters the room and opens the door.", TextWrapping = TextWrapping.Wrap, FontSize = 16 };
+        var searchPreview = new TextBlock { Text = "A person enters the room. The person opens the door.", TextWrapping = TextWrapping.Wrap, FontSize = 16 };
+        searchHighlightPreview = searchPreview;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(searchPreview, "Search highlight preview");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(searchPreview, "search-highlight-preview");
         Color ReadColor(string key, string fallback)
         {
             var value = SettingsStore.GetString(draft[key], fallback).TrimStart('#');
@@ -212,6 +245,9 @@ public sealed partial class SettingsDialog
             }
             if (SettingsStore.GetString(draft["summarySentenceHighlight"], "true") != "false") Highlight(0, summaryPreview.Text.Length, "summarySentenceHighlightColor", "#A9D6FF");
             if (SettingsStore.GetString(draft["summaryWordHighlight"], "true") != "false") Highlight(2, 6, "summaryWordHighlightColor", "#FFD54A");
+            MainWindow.ApplySearchHighlight(searchPreview, ProjectSearchQuery.Parse("person"),
+                SettingsStore.GetBool(draft["searchHighlightEnabled"], true),
+                SettingsStore.GetString(draft["searchHighlightColor"], MainWindow.DefaultSearchHighlightColor));
         }
         void Slider(string label, string key, double fallback, double low, double high, double step, bool percent)
         {
@@ -268,7 +304,7 @@ public sealed partial class SettingsDialog
         card.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Search highlighting", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) }));
         var searchHighlight = new ToggleSwitch { IsOn = SettingsStore.GetBool(draft["searchHighlightEnabled"], true), OnContent = "", OffContent = "", MinWidth = 0 };
         searchHighlightToggle = searchHighlight;
-        searchHighlight.Toggled += (_, _) => draft["searchHighlightEnabled"] = searchHighlight.IsOn;
+        searchHighlight.Toggled += (_, _) => { draft["searchHighlightEnabled"] = searchHighlight.IsOn; Preview(); };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(searchHighlight, "search-highlight");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(searchHighlight, "Highlight search matches");
         var searchHighlightMenu = MenuAccessKeys.Create();
@@ -284,6 +320,7 @@ public sealed partial class SettingsDialog
         var searchColorChoice = new MenuFlyoutItem { Text = "Search Highlight Color…", Tag = "search-highlight-color-menu" };
         searchColorChoice.Click += (_, _) => searchColor.Flyout.ShowAt(searchColor);
         searchColorMenu.Items.Add(searchColorChoice); searchColor.ContextFlyout = searchColorMenu;
+        card.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb(24, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Child = searchPreview });
         var restoreHighlights = new Button { Content = "Restore Highlight Defaults" };
         restoreHighlightDefaultsButton = restoreHighlights;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(restoreHighlights, "restore-highlight-defaults");

@@ -364,7 +364,7 @@ public sealed partial class MainWindow
         GallerySearchHost.Width = Math.Min(520, Math.Max(0, e.NewSize.Width));
         GallerySearchHost.HorizontalAlignment = HorizontalAlignment.Center;
     }
-    private void GallerySearch_Changed(object sender, TextChangedEventArgs e) { if (galleryReady) FilterGallery(); }
+    private void GallerySearch_Changed(object sender, TextChangedEventArgs e) { if (galleryReady) { FilterGallery(); UpdateSearchControls(); UpdateDesktopMenuStates(); } }
     private void FilterGallery()
     {
         var selected = SelectedGalleryProject();

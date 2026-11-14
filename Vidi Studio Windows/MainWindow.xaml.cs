@@ -73,6 +73,7 @@ public sealed partial class MainWindow : Window
         onDeviceNarrator = new OnDeviceNarrator(Model.Settings, Model.Engine);
         onDeviceNarrator.Failed += message => Model.ReportStatus(message);
         InitializeComponent();
+        EditorSearch.TextChanging += (_, _) => UpdateEditorSearch();
         ProjectSplitView.RegisterPropertyChangedCallback(SplitView.IsPaneOpenProperty, (_, _) => SyncPanelVisibilityToggles());
         InspectorSplitView.RegisterPropertyChangedCallback(SplitView.IsPaneOpenProperty, (_, _) => SyncPanelVisibilityToggles());
         InitializeLanguageFilters();
@@ -192,7 +193,7 @@ public sealed partial class MainWindow : Window
         var shortcut = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
         shortcut.Invoked += (_, e) =>
         {
-            if (!Model.Idle || canExecute?.Invoke() == false) { e.Handled = false; return; }
+            if ((!Model.Idle && !(key == VirtualKey.F && modifiers == VirtualKeyModifiers.Control)) || canExecute?.Invoke() == false) { e.Handled = false; return; }
             handler(this, new RoutedEventArgs()); e.Handled = true;
         };
         Root.KeyboardAccelerators.Add(shortcut);
@@ -273,6 +274,7 @@ public sealed partial class MainWindow : Window
     private void UpdateSectionOverlay(bool analyzing)
     {
         if (!ready || SectionProcessingRing == null || SectionProcessingOverlay == null) return;
+        if (IsProjectSearching) { SectionProcessingOverlay.Visibility = Visibility.Collapsed; SectionProcessingRing.IsActive = false; return; }
         var state = analyzing ? CurrentSectionState() : SectionProcessingState.Idle;
         if (SectionSelectorRing != null) {
             SectionSelectorRing.IsActive = state != SectionProcessingState.Idle;
@@ -632,6 +634,7 @@ public sealed partial class MainWindow : Window
     private async void Section_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!ready) return;
+        searchRevealedKey = null;
         if (summaryEditMode && Section.SelectedIndex != 1 && Model.Project != null)
         {
             if (!await SaveSummaryChangesAsync()) { Section.SelectedIndex = 1; return; }
@@ -670,6 +673,12 @@ public sealed partial class MainWindow : Window
     {
         if (Model.Project is not { } p) return;
         UpdateSectionPresentation();
+        RefreshSearchIndex(p);
+        ProjectSearchResults.Visibility = Visibility.Collapsed;
+        searchHighlightBlocks.Clear();
+        EditorSectionActions.Visibility = Visibility.Visible;
+        if (IsProjectSearching) { RenderProjectSearch(); return; }
+        if (IsImportedCombinedTranscript) { RenderImportedCombinedTranscript(); return; }
         Segments.Visibility = Section.SelectedIndex is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
         SummaryView.Visibility = Section.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
         Overview.Visibility = Visibility.Collapsed;
@@ -682,7 +691,7 @@ public sealed partial class MainWindow : Window
         };
         rows = ApplySegmentSort(rows);
         Segments.ItemsSource = segmentFilter.IsActive && Section.SelectedIndex is 0 or 2 or 4
-            ? rows.Where(segment => segmentFilter.Matches(segment, HasSegmentAudio(p, segment)) || ValidationKey(segment) == validationHighlightKey).ToList()
+            ? rows.Where(segment => segmentFilter.Matches(segment, HasSegmentAudio(p, segment)) || ValidationKey(segment) == validationHighlightKey || ValidationKey(segment) == searchRevealedKey).ToList()
             : rows;
         RefreshEditingRows();
         UpdateEmptySectionActions();
@@ -2090,6 +2099,7 @@ public sealed partial class MainWindow : Window
         UpdateApiKeyUi();
         UpdateCaptions();
         UpdateSectionPresentation();
+        if (changed.Contains("searchHighlightEnabled") || changed.Contains("searchHighlightColor")) RefreshSearchHighlights();
     }
 
     private async Task ShowSettingsSectionAsync(int section, StudioProject? project = null)

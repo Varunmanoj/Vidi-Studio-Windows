@@ -70,7 +70,7 @@ public sealed partial class MainWindow
             Menu("File",
                 Command("new-project"), Command("open-project"), Command("open-gallery-window", libraryOnly: true), Separator(), Command("youtube-browser"), Command("youtube-open-browser"), Separator(), Command("export"), Separator(),
                 Command("delete-project"), Command("delete-content"), Separator(), Command("remove-from-list"), Separator(), Command("open-editor-window"), Command("settings"), Command("project-settings"), Command("close-window")),
-            Menu("Edit", Command("rename-project", libraryOnly: true),
+            Menu("Edit", Command("focus-search"), Command("clear-search"), Command("open-search-result"), Separator(), Command("rename-project", libraryOnly: true),
                 Command("copy-to"), Command("segment-edit-mode"), Separator(),
                 Command("segment-select-all"), Command("segment-deselect-all"), Separator(),
                 Command("segment-one-edit"), Command("segment-one-play"), Command("segment-one-skip"), Command("segment-one-synthesize"), Command("segment-one-rewrite"), Command("segment-one-import-audio"), Command("segment-one-delete-audio"), Command("segment-one-reanalyze"), Command("segment-delete-selected")),
@@ -236,6 +236,7 @@ public sealed partial class MainWindow
         ["segment-deselect-all"] = (VirtualKey.U, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+U"),
         ["segment-edit-selected"] = (VirtualKey.Enter, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+Enter"),
         ["segment-delete-selected"] = (VirtualKey.Delete, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+Delete"),
+        ["focus-search"] = (VirtualKey.F, VirtualKeyModifiers.Control, "Ctrl+F"),
         ["follow"] = (VirtualKey.F, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+F"),
         ["delete-narration"] = (VirtualKey.Back, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+Backspace"),
         ["summary-zoom-in"] = ((VirtualKey)187, VirtualKeyModifiers.Control, "Ctrl+="),
@@ -404,7 +405,7 @@ public sealed partial class MainWindow
         foreach (var (id, items) in desktopMenuItems)
             foreach (var item in items)
             {
-                var title = DesktopCommandTitle(id);
+                var title = id == "focus-search" && !desktopEditorVisible ? "Search Projects…" : DesktopCommandTitle(id);
                 if (item.Text != title) item.Text = title;
                 var nextIcon = DesktopCommandIcon(id);
                 if (!SameMenuIcon(item.Icon, nextIcon)) item.Icon = nextIcon;
@@ -506,6 +507,7 @@ public sealed partial class MainWindow
             if (id is "youtube-list" or "youtube-table" or "youtube-open-editor" or "youtube-refresh-list" or "youtube-load-videos" or "youtube-load-playlists") return youtubeBrowserCanRun != null;
             if (id == "youtube-open-browser") return youtubeBrowserCanRun != null || ProjectManagementTarget()?.IsYouTube == true;
         }
+        if (id is "focus-search" or "clear-search") return true;
         if (desktopEditorVisible) return !id.StartsWith("projects-", StringComparison.Ordinal) && id != "open-selected-project" && EditorCommandVisible(id);
         return id is "new-project" or "open-project" or "youtube-browser" or "youtube-accounts" or "youtube-open-browser"
             or "export" or "delete-project" or "delete-content" or "remove-from-list" or "settings" or "project-settings"
@@ -569,6 +571,7 @@ public sealed partial class MainWindow
     // Same tab/source policy as EditorShortcutActions.isCommandVisible on Mac.
     private bool EditorCommandVisible(string id)
     {
+        if (id == "open-search-result") return IsProjectSearching;
         if (!EditorCommandVisibleInMode(id)) return false;
         if (id == "stop") return videoPlaybackStarted;
         if (id.StartsWith("segment-one-", StringComparison.Ordinal)) return editMode && RowCommandVisible(id, SingleSelectedSegment()?.IsDescription) && (id != "segment-one-preview-stop" || SingleSelectedSegment() is { } selected && ReferenceEquals(previewingSegment, selected));
@@ -675,6 +678,7 @@ public sealed partial class MainWindow
 
     private bool EditorCommandVisibleInMode(string id)
     {
+        if ((IsProjectSearching || IsImportedCombinedTranscript) && (id.StartsWith("segment-", StringComparison.Ordinal) || id.StartsWith("summary-", StringComparison.Ordinal) || id is "filter-segments" or "sort-segments" or "clear-segment-filter" or "clear-segment-sort" or "sort-start" or "sort-duration-asc" or "sort-duration-desc" or "sort-origin" or "add" or "undo" or "redo" or "reanalyze-selection")) return false;
         if (id is "segment-select-all" or "segment-deselect-all" or "segment-edit-selected" or "segment-delete-selected" or "reanalyze-selection" or "undo" or "redo") return editMode;
         if (Section.SelectedIndex == 1 && summaryEditMode)
             return !id.StartsWith("summary-", StringComparison.Ordinal) && id is not ("generate-summary" or "import-summary" or "delete-summary" or "delete-current");
@@ -687,6 +691,9 @@ public sealed partial class MainWindow
     {
         if (validationShowcaseActive) return false;
         if (windowClosed) return false;
+        if (id == "focus-search") return !searchOpening && (desktopEditorVisible ? EditorSearch.Visibility == Visibility.Visible && Model.Project != null : GallerySearchHost.Visibility == Visibility.Visible);
+        if (id == "clear-search") return !searchOpening && !string.IsNullOrEmpty(desktopEditorVisible ? EditorSearch.Text : GallerySearch.Text);
+        if (id == "open-search-result") return IsProjectSearching && Model.Idle && !HasUnsavedLanguageSummary && !searchOpening && SelectedSearchHit != null;
         if (desktopEditorVisible && !EditorCommandVisible(id)) return false;
         if (!YouTubeMenusVisible && id.StartsWith("youtube-", StringComparison.Ordinal)) return false;
         if (id == "youtube-open-browser") return youtubeBrowserCanRun != null ? youtubeBrowserCanRun(id) : ProjectManagementTarget() is { } youtubeProject && YouTubeService.ProjectWatchURL(youtubeProject.YoutubeURL) != null;
@@ -834,6 +841,9 @@ public sealed partial class MainWindow
             "summary-previous-sentence" => "Previous Summary Sentence", "summary-next-sentence" => "Next Summary Sentence",
             "summary-previous-paragraph" => "Previous Summary Paragraph", "summary-next-paragraph" => "Next Summary Paragraph",
             "summary-from-start" => "Read Summary from Start", "summary-from-selection" => "Read Summary from Selection", "summary-read-selection" => "Read Selected Summary Text",
+            "focus-search" => "Search Project…",
+            "clear-search" => "Clear Search",
+            "open-search-result" => SelectedSearchHit is { } hit && Model.Project?.SavedResults.FirstOrDefault(r => r.Id == hit.ResultID)?.State == "draft" ? "Review Draft…" : "Open Result",
             "copy-to" => "Copy and Translate…",
             "language-results" => "Language and Saved Results…",
             "transcript" => "Show Transcript", "summary" => "Show Summary", "descriptions" => "Show Descriptions",
@@ -922,6 +932,7 @@ public sealed partial class MainWindow
             "Sort Projects" or "projects-sort-opened" or "projects-sort-name" or "projects-sort-duration" or "projects-sort-type" => "Sort segments",
             "stop" or "summary-stop" => "Stop summary",
             "preview" or "fullscreen" => "Show / hide preview", "toggle-timeline" => "Show / hide timeline",
+            "focus-search" => "Search", "clear-search" => "Clear Search", "open-search-result" => "Open Result",
             "toggle-thumbnail-images" => "Show / hide thumbnail images",
             "show-projects" => "Show / hide projects", "show-inspector" => "Show / hide inspector",
             "project-list" => "Project list", "project-grid" => "List / Grid projects",
@@ -994,6 +1005,9 @@ public sealed partial class MainWindow
     private async Task RunDesktopCommandAsync(string id, bool copyCurrentSectionOnly = false)
     {
         if (!CanRunDesktopCommand(id)) return;
+        if (id == "focus-search") { FocusSearch(); return; }
+        if (id == "clear-search") { ClearSearch(); return; }
+        if (id == "open-search-result") { if (SelectedSearchHit is { } hit) await OpenSearchHitAsync(hit); return; }
         if (!desktopEditorVisible && id is "export" or "delete-content" or "prepare-video" or "analyze" or "transcribe" or "generate-summary" or "generate-ad-cues")
         {
             if (SelectedGalleryProject() is not { } selected) return;
@@ -1004,6 +1018,9 @@ public sealed partial class MainWindow
         {
             case "open-gallery-window":
             case "open-selected-project": if (SelectedGalleryProject() is { } openingProject) App.OpenWindow(openingProject.Folder); break;
+            case "focus-search": FocusSearch(); break;
+            case "clear-search": ClearSearch(); break;
+            case "open-search-result": if (SelectedSearchHit is { } searchHit) await OpenSearchHitAsync(searchHit); break;
             case "projects-source-all": GalleryFilter.SelectedIndex = 0; break;
             case "projects-source-local": GalleryFilter.SelectedIndex = 1; break;
             case "projects-source-youtube": GalleryFilter.SelectedIndex = 2; break;

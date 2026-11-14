@@ -26,6 +26,7 @@ public static class MenuIcons
             "Import original audio" or "Import AD audio" => "\uE767",
             "Import narration audio…" => "\uE8D6",
             "Sort segments" => "\uE8CB",
+            "Search" => "\uE721", "Clear Search" => "\uE711", "Open Result" => "\uE8A7",
             "Open project folder" => "\uE8B7",
             "Jump to Time…" => "\uE917",
             "Sort by start time" => "\uE917",

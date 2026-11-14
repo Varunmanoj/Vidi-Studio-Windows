@@ -1,4 +1,4 @@
-param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [switch]$SkipBuild, [switch]$FrozenEngine, [string]$AppDirectory, [switch]$RequirePackage, [int]$TimeoutSeconds = 180, [string]$SummaryFixture, [switch]$GallerySettingsOnly, [switch]$ContextMenusOnly, [switch]$JumpOnly, [switch]$ExportSoundOnly)
+param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [switch]$SkipBuild, [switch]$FrozenEngine, [string]$AppDirectory, [switch]$RequirePackage, [int]$TimeoutSeconds = 180, [string]$SummaryFixture, [switch]$GallerySettingsOnly, [switch]$ContextMenusOnly, [switch]$JumpOnly, [switch]$ExportSoundOnly, [switch]$ProjectSearchOnly)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $testRoot = Join-Path $projectRoot "build\ui-test-$Platform"
@@ -17,6 +17,23 @@ $project = @{
     schemaVersion=2; id='windows-ui-smoke'; name='Windows UI smoke fixture'; source='source.mp4'; duration=8; width=320; height=180; hasAudio=$true
     createdAt=0; updatedAt=0; thumbnails=@('thumbnail.jpg'); transcript=@(@{id='t1';start=0;end=1;text='Hello.'}); cues=@(@{id='a1';start=2;end=5;text='A blue screen appears.';origin='ai'})
     summary="# Smoke test`n`n- Native **Windows** summary.`n- Multilingual: नमस्ते"; exports=@(); status='Ready'
+}
+if ($ProjectSearchOnly) {
+    function SearchResult($id,$kind,$text,$state='saved') {
+        $payload = if($kind -eq 'summary'){@{summary=$text}}elseif($kind -eq 'transcript'){@{transcript=@(@{id='same';start=0;end=1;text=$text})}}else{@{cues=@(@{id='same';start=2;end=4;text=$text;origin='manual'})}}
+        return @{id=$id;kind=$kind;language='en';state=$state;version=1;createdAt=1;updatedAt=1;origin='manual';payload=$payload}
+    }
+    $project.selectedLanguage='en'
+    $project.activeResultIDs=@{en=@{transcript='selected';summary='sum';descriptions='des'}}
+    $project.languageResults=@(
+        (SearchResult 'selected' 'transcript' 'Unrelated selected dialogue.'),
+        (SearchResult 'old' 'transcript' 'Beacon older BEACON dialogue.'),
+        (SearchResult 'draft' 'transcript' 'Beacon draft dialogue.' 'draft'),
+        (SearchResult 'sum' 'summary' 'Beacon arrives. This sentence stays hidden.'),
+        (SearchResult 'sum-draft' 'summary' 'Hidden first. Beacon draft sentence!' 'draft'),
+        (SearchResult 'des' 'descriptions' 'Beacon description.'),
+        (SearchResult 'des-draft' 'descriptions' 'Beacon draft description.' 'draft')
+    )
 }
 if ($SummaryFixture) { $project.summary = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $SummaryFixture).Path)) }
 [System.IO.File]::WriteAllText((Join-Path $folder 'project.json'), ($project | ConvertTo-Json -Depth 8), [System.Text.UTF8Encoding]::new($false))
@@ -40,6 +57,7 @@ try {
     $env:VIDISTUDIO_CONFIG = $configFile
     $env:VIDISTUDIO_UI_SMOKE_PROJECT = $folder
     $env:VIDISTUDIO_UI_SMOKE_REPORT = $report
+    if ($ProjectSearchOnly) { $env:VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY = '1' }
     if ($GallerySettingsOnly) { $env:VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY = '1' }
     if ($ExportSoundOnly) { $env:VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY = '1' }
     if ($JumpOnly) { $env:VIDISTUDIO_UI_SMOKE_JUMP_ONLY = '1' }
@@ -63,6 +81,7 @@ public static class VidiActivation {
         $installed = Get-AppxPackage -Name '7b6f5f53-8ba2-429e-a747-0e2393ce9cee'
         if (!$installed) { throw 'Register the development package first.' }
         $payloadValues = @{VIDISTUDIO_UI_SMOKE_REPORT=$report;VIDISTUDIO_UI_SMOKE_PROJECT=$folder;VIDISTUDIO_CONFIG=$configFile}
+        if ($ProjectSearchOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY = '1' }
         if ($GallerySettingsOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY = '1' }
         if ($ExportSoundOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY = '1' }
         if ($JumpOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_JUMP_ONLY = '1' }
@@ -104,6 +123,7 @@ public static class VidiPackageIdentity {
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_JUMP_ONLY -ErrorAction SilentlyContinue
+    Remove-Item Env:VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY -ErrorAction SilentlyContinue
 }
 

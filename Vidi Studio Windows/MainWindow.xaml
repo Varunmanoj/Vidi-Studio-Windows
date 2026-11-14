@@ -110,12 +110,19 @@
      <Button x:Name="GalleryOpenProject" Width="36" Height="36" Padding="6" Click="OpenProject_Click" AutomationProperties.Name="Open Project Folder" ToolTipService.ToolTip="Open Project Folder"><FontIcon Glyph="&#xE8B7;" FontFamily="Segoe Fluent Icons"/></Button>
     </StackPanel>
     <Grid x:Name="GallerySearchHost" Grid.Row="0" Grid.ColumnSpan="3" HorizontalAlignment="Center" VerticalAlignment="Center" Width="520" MaxWidth="520" Margin="0,0,0,12">
-     <TextBox x:Name="GallerySearch" MinHeight="32" PlaceholderText="Search projects" TextChanged="GallerySearch_Changed" AutomationProperties.Name="Search all projects" Padding="36,5,12,5" CornerRadius="18"/>
+     <TextBox x:Name="GallerySearch" MinHeight="32" PlaceholderText="Search projects" TextChanged="GallerySearch_Changed" AutomationProperties.Name="Search all projects" Padding="36,5,42,5" CornerRadius="18"/>
      <SymbolIcon Symbol="Find" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="12,0,0,0" IsHitTestVisible="False"/>
+     <Button x:Name="GalleryClearSearch" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0" Content="&#xE711;" FontFamily="Segoe Fluent Icons" Padding="5" Visibility="Collapsed" Tag="clear-search" Click="SearchCommand_Click" AutomationProperties.Name="Clear Search" AutomationProperties.AutomationId="gallery-clear-search" ToolTipService.ToolTip="Clear Search"/>
     </Grid>
    </Grid>
    <Grid x:Name="EditorProjectHeader" Visibility="Collapsed" ColumnSpacing="12">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <Grid Grid.Row="1" Grid.ColumnSpan="2" MaxWidth="520" HorizontalAlignment="Stretch" Margin="0,8,0,0">
+     <TextBox x:Name="EditorSearch" MinHeight="32" PlaceholderText="Search project" AutomationProperties.Name="Search project text" AutomationProperties.AutomationId="editor-search" Padding="36,5,42,5" CornerRadius="18"/>
+     <SymbolIcon Symbol="Find" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="12,0,0,0" IsHitTestVisible="False"/>
+     <Button x:Name="EditorClearSearch" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0" Content="&#xE711;" FontFamily="Segoe Fluent Icons" Padding="5" Visibility="Collapsed" Tag="clear-search" Click="SearchCommand_Click" AutomationProperties.Name="Clear Search" AutomationProperties.AutomationId="editor-clear-search" ToolTipService.ToolTip="Clear Search"/>
+    </Grid>
    <Grid HorizontalAlignment="Left" VerticalAlignment="Center" ColumnSpacing="8">
     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <TextBlock AutomationProperties.HeadingLevel="Level1" x:Name="ProjectTitle" Text="All Projects" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -277,6 +284,11 @@
       <StackPanel x:Name="EditorSectionActions" Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8"><Button x:Name="ClearSegmentFilterButton" Content="&#xE711;" FontFamily="Segoe Fluent Icons" Tag="clear-segment-filter" Click="ClearSegmentView_Click" Visibility="Collapsed" ToolTipService.ToolTip="Clear Filter" AutomationProperties.Name="Clear Filter"/><Button x:Name="ClearSegmentSortButton" Content="&#xE7A7;" FontFamily="Segoe Fluent Icons" Tag="clear-segment-sort" Click="ClearSegmentView_Click" Visibility="Collapsed" ToolTipService.ToolTip="Clear Sort: restore Start Time order" AutomationProperties.Name="Clear Sort"/><Button x:Name="GenerateCurrent" Content="&#xE90A;" FontFamily="Segoe Fluent Icons" Click="GenerateCurrent_Click" ToolTipService.ToolTip="Generate content for this section" AutomationProperties.Name="Generate content for this section"/><Button x:Name="EditorAddButton" Content="&#xE710;" FontFamily="Segoe Fluent Icons" Click="AddOrImport_Click" ToolTipService.ToolTip="Add manually or import content for this section" AutomationProperties.Name="Add or import content"/><Button x:Name="EditModeButton" Content="&#xE70F;" Style="{StaticResource AccentButtonStyle}" FontFamily="Segoe Fluent Icons" Click="EditMode_Click" ToolTipService.ToolTip="Edit this section" AutomationProperties.Name="Edit this section"/><Button x:Name="EditorMoreButton" Content="&#xE712;" FontFamily="Segoe Fluent Icons" Click="SegmentMore_Click" Visibility="Collapsed" AutomationProperties.Name="More editor options" ToolTipService.ToolTip="More editor options"/></StackPanel>
      </Grid></views:AccessibilityGroup>
      <Grid Grid.Row="4" Padding="14,0">
+      <Grid x:Name="ProjectSearchResults" Visibility="Collapsed" Canvas.ZIndex="5" RowSpacing="8" AutomationProperties.Name="Project search results" AutomationProperties.AutomationId="project-search-results">
+       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+       <TextBlock x:Name="ProjectSearchCount" Margin="0,8" Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="project-search-count"/>
+       <ListView x:Name="SearchMatches" Grid.Row="1" SelectionMode="Single" SelectionChanged="SearchMatches_SelectionChanged" DoubleTapped="SearchMatches_DoubleTapped" KeyDown="SearchMatches_KeyDown" AutomationProperties.Name="Project search matches"/>
+      </Grid>
       <StackPanel x:Name="EmptySectionActions" Canvas.ZIndex="1" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="520">
        <TextBlock AutomationProperties.HeadingLevel="Level2" x:Name="EmptySectionTitle" Style="{ThemeResource SubtitleTextBlockStyle}" TextAlignment="Center"/>
        <TextBlock Text="Generate content or import an existing file to begin." TextWrapping="Wrap" TextAlignment="Center"/>

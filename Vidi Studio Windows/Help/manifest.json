@@ -159,6 +159,10 @@
           "title": "Total AD characters"
         },
         {
+          "id": "project-search",
+          "title": "Search project text"
+        },
+        {
           "id": "play-and-seek",
           "title": "Play and seek"
         },
@@ -647,6 +651,10 @@
           "title": "Appearance"
         },
         {
+          "id": "search-highlighting",
+          "title": "Search highlighting"
+        },
+        {
           "id": "projects",
           "title": "Projects"
         },
@@ -735,6 +743,10 @@
         {
           "id": "read-the-summary-from-the-keyboard",
           "title": "Read the Summary from the keyboard"
+        },
+        {
+          "id": "search-from-the-keyboard",
+          "title": "Search from the keyboard"
         },
         {
           "id": "navigate-without-a-mouse",

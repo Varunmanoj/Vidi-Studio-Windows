@@ -27,6 +27,14 @@ public sealed partial class MainWindow
             var folder = Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT");
             if (folder == null) throw new InvalidOperationException("Smoke project is required.");
             Model.Open(folder);
+            if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY") == "1")
+            {
+                ShowEditor();
+                await Task.Delay(300);
+                await VerifyProjectSearchForSmokeTestAsync();
+                await File.WriteAllTextAsync(report, "PASS: native editor/all-project search focus, live typing and immediate segment restoration after manual/icon/menu clearing; all saved versions and drafts; four prefixes and tab isolation; complete matching summary sentences; read-only results; selected version unchanged while typing; old-result opening; draft Review Later and Keep Both; all-occurrence highlights in four tabs; Appearance toggle/color/context menus and live saved preferences; all-highlight default restoration from the button and menu below search settings; narrow layout.");
+                return;
+            }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY") == "1")
             {
                 await VerifyGalleryAndSettingsLayoutForSmokeTestAsync(report);
@@ -524,8 +532,8 @@ public sealed partial class MainWindow
             UpdateDesktopMenuStates();
             if (!CanRunDesktopCommand("open-gallery-window") || galleryEdit.Items.OfType<MenuFlyoutItem>().Where(item => item.Visibility == Visibility.Visible).Any(item => item.Icon == null))
                 throw new InvalidOperationException("Gallery Edit must expose icon-bearing commands for the selected project.");
-            if (!galleryEdit.Items.OfType<MenuFlyoutItem>().Where(item => item.Visibility == Visibility.Visible).Select(item => item.Tag as string).SequenceEqual(new[] { "rename-project" }))
-                throw new InvalidOperationException("All Projects Edit must contain only Rename Project.");
+            if (!galleryEdit.Items.OfType<MenuFlyoutItem>().Where(item => item.Visibility == Visibility.Visible).Select(item => item.Tag as string).SequenceEqual(new[] { "focus-search", "clear-search", "rename-project" }))
+                throw new InvalidOperationException("All Projects Edit must contain Search Projects, Clear Search and Rename Project.");
             if (!galleryMenus.Single(menu => menu.Title == "File").Items.OfType<MenuFlyoutItem>().Any(item => item.Tag as string == "open-gallery-window" && item.Visibility == Visibility.Visible))
                 throw new InvalidOperationException("Open in New Window belongs in All Projects File.");
             if (!CanRunDesktopCommand("rename-project") || !CanRunDesktopCommand("trash-project") || !CanRunDesktopCommand("project-settings") || !CanRunDesktopCommand("open-selected-project") || !CanRunDesktopCommand("export"))

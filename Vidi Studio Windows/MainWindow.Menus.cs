@@ -502,6 +502,7 @@ public sealed partial class MainWindow
 
     private bool LibraryCommandVisible(string id)
     {
+        if (id == "youtube-browser") return !desktopEditorVisible && youtubeBrowserCanRun == null;
         if (id.StartsWith("youtube-", StringComparison.Ordinal)) {
             if (!YouTubeMenusVisible) return false;
             if (id is "youtube-list" or "youtube-table" or "youtube-open-editor" or "youtube-refresh-list" or "youtube-load-videos" or "youtube-load-playlists") return youtubeBrowserCanRun != null;
@@ -578,7 +579,7 @@ public sealed partial class MainWindow
         if (id.StartsWith("summary-", StringComparison.Ordinal)) return Section.SelectedIndex == 1;
         return id switch
         {
-            "analyze" => false,
+            "analyze" or "youtube-browser" => false,
             "transcribe" or "import-transcript" or "delete-transcript" => Section.SelectedIndex == 0,
             "generate-summary" or "import-summary" or "delete-summary" => Section.SelectedIndex == 1,
             "generate-ad-cues" or "import-descriptions" or "delete-descriptions" => Section.SelectedIndex == 2,

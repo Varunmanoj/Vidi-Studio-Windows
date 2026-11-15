@@ -68,7 +68,7 @@ public sealed record YouTubeVideo(JsonObject Data)
 }
 public sealed record YouTubePlaylist(string Id, string Title, string Description, string Visibility, string Count, string Published)
 {
-    public override string ToString() => Title + " · " + Visibility + " · " + Count + " videos";
+    public override string ToString() => Id.Length == 0 ? Title : Title + " · " + Visibility + " · " + (Count.Length > 0 ? Count : "Unknown") + " videos";
 }
 public sealed record YouTubeCaption(string Id, string Language, string Name, string Kind, string Status)
 {

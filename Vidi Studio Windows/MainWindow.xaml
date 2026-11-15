@@ -129,7 +129,6 @@
     <Button x:Name="RenameProjectTitleButton" Grid.Column="1" Content="&#xE70F;" FontFamily="Segoe Fluent Icons" Click="RenameProjectTitle_Click" Visibility="Collapsed" ToolTipService.ToolTip="Rename this project" AutomationProperties.Name="Rename project" AutomationProperties.AutomationId="rename-project-title"/>
    </Grid>
    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-    <Button Content="My YouTube Videos…" Click="YouTubeBrowser_Click"/>
     <ToggleButton x:Name="TopInspectorToggle" Content="&#xE8A0;" FontFamily="Segoe Fluent Icons" Tag="show-inspector" Checked="PanelVisibilityToggle_Changed" Unchecked="PanelVisibilityToggle_Changed" Visibility="Collapsed" ToolTipService.ToolTip="Hide Inspector (Ctrl+Shift+B)" AutomationProperties.Name="Hide Inspector" AutomationProperties.AutomationId="show-inspector"/>
    </StackPanel>
    </Grid>

@@ -124,7 +124,7 @@ public sealed class SettingsStore
             return;
         }
         Data[key] = value;
-        if (key == "narrationPlayback") NormalizeNarrationPlayback();
+        if (key is "ttsMode" or "narrationPlayback") NormalizeNarrationPlayback();
     }
     public void Set(string key, bool value) => Data[key] = value;
     public void Set(string key, double value) => Data[key] = value;
@@ -162,10 +162,18 @@ public sealed class SettingsStore
         Data["summaryReadbackVoice"] = "narration";
         return true;
     }
-    private bool NormalizeNarrationPlayback()
+    private bool NormalizeNarrationPlayback() => NormalizeNarrationPlayback(Data);
+    public static bool NormalizeNarrationPlayback(JsonObject data)
     {
-        if (Get("narrationPlayback", "generated") != "device") return false;
-        Data["narrationPlayback"] = "ondevice";
+        var playback = GetString(data["narrationPlayback"], "generated");
+        if (GetString(data["ttsMode"]) == "gemini")
+        {
+            if (playback == "generated") return false;
+            data["narrationPlayback"] = "generated";
+            return true;
+        }
+        if (playback != "device") return false;
+        data["narrationPlayback"] = "ondevice";
         return true;
     }
     public double Number(string key, double fallback = 1) => GetDouble(Data[key], fallback);

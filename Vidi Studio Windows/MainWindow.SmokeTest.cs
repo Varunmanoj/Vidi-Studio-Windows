@@ -1185,6 +1185,7 @@ public sealed partial class MainWindow
             await settings.VerifyWindowThemeAsync();
             await settings.VerifyExportSoundForSmokeTestAsync();
             await settings.VerifySummaryHighlightAppearanceForSmokeTestAsync();
+            await settings.VerifyProviderSwitchingAsync();
         }
         finally { settings.Close(); await display; PreviewTheme(originalTheme); }
     }

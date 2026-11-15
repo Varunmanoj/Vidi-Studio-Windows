@@ -135,15 +135,27 @@ public sealed partial class SettingsDialog : Window
         await Task.Delay(100);
         if (voices.Count != GeminiVoices.Featured.Count || voices.Any(v => v.Id == "" || v.ToString() != v.Id) || localSpeechControls.Visibility != Visibility.Collapsed)
             throw new InvalidOperationException("A stale local voice list or local speech controls remained visible for Gemini settings.");
-        narrationPlaybackChoice.SelectedItem = ((IEnumerable<PlaybackOption>)narrationPlaybackChoice.ItemsSource).First(option => option.Id == "ondevice");
+        foreach (var provider in new[] { "windows-core", "sapi5", "piper" })
+        {
+            mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == provider);
+            if (!narrationPlaybackChoice.IsEnabled) throw new InvalidOperationException("Local speech must unlock playback choices.");
+            narrationPlaybackChoice.SelectedItem = ((IEnumerable<PlaybackOption>)narrationPlaybackChoice.ItemsSource).First(option => option.Id == "ondevice");
+            if (SettingsStore.GetString(draft["narrationPlayback"]) != "ondevice") throw new InvalidOperationException("Local text preview is unavailable.");
+            mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "gemini");
+            VerifyGeneratedOnly();
+            // Even a stale/programmatic selection cannot restore the invalid combination.
+            narrationPlaybackChoice.SelectedItem = ((IEnumerable<PlaybackOption>)narrationPlaybackChoice.ItemsSource).First(option => option.Id == "ondevice");
+            VerifyGeneratedOnly();
+        }
         await RefreshVoices();
-        if (!((IEnumerable<SpeechEngineOption>)mode.ItemsSource).Any(option => option.Id == "gemini") ||
-            SettingsStore.GetString(draft["ttsMode"]) != "gemini")
-            throw new InvalidOperationException("On-device preview must keep the selected Gemini generation engine.");
-        if (voices.Count != GeminiVoices.Featured.Count || voices.Any(v => v.Id == "" || v.ToString() != v.Id)) throw new InvalidOperationException("Gemini voice list was lost in on-device preview.");
-        narrationPlaybackChoice.SelectedItem = ((IEnumerable<PlaybackOption>)narrationPlaybackChoice.ItemsSource).First(option => option.Id == "generated");
-        if (SettingsStore.GetString(draft["ttsMode"]) != "gemini" || (mode.SelectedItem as SpeechEngineOption)?.Id != "gemini")
-            throw new InvalidOperationException("Returning to saved narration playback must keep Gemini selected.");
+        NavigateForSmokeTest(0); NavigateForSmokeTest(2);
+        VerifyGeneratedOnly();
+        void VerifyGeneratedOnly()
+        {
+            if (narrationPlaybackChoice!.IsEnabled || (narrationPlaybackChoice.SelectedItem as PlaybackOption)?.Id != "generated" ||
+                SettingsStore.GetString(draft["narrationPlayback"]) != "generated" || SettingsStore.GetString(draft["ttsMode"]) != "gemini")
+                throw new InvalidOperationException("Gemini must lock playback to synchronized generated narration.");
+        }
     }
     internal async Task VerifyLocalVoiceSamplesAsync()
     {
@@ -517,6 +529,7 @@ public sealed partial class SettingsDialog : Window
     private ComboBox? narrationPlaybackChoice;
     private void AddPlaybackChoice(StackPanel panel)
     {
+        SettingsStore.NormalizeNarrationPlayback(draft);
         var options = new[] { new PlaybackOption("generated", "Play synthesized narration"),
             new PlaybackOption("ondevice", "Preview segment text with the selected voice") };
         var field = new ComboBox { MinWidth = 0, MaxWidth = 360, ItemsSource = options,
@@ -527,8 +540,18 @@ public sealed partial class SettingsDialog : Window
             if (field.SelectedItem is not PlaybackOption option) return;
             StopSample();
             draft["narrationPlayback"] = option.Id;
+            UpdateNarrationPlaybackChoice();
         };
+        UpdateNarrationPlaybackChoice();
         AddSettingsRow(panel, "Narration during playback", field, stretchControl: true);
+    }
+    private void UpdateNarrationPlaybackChoice()
+    {
+        SettingsStore.NormalizeNarrationPlayback(draft);
+        if (narrationPlaybackChoice is not { } field) return;
+        field.IsEnabled = SettingsStore.GetString(draft["ttsMode"]) != "gemini";
+        field.SelectedItem = ((IEnumerable<PlaybackOption>)field.ItemsSource)
+            .First(option => option.Id == SettingsStore.GetString(draft["narrationPlayback"], "generated"));
     }
     private void AddChoice(StackPanel panel, string label, string key, string[] values)
     {
@@ -651,6 +674,7 @@ public sealed partial class SettingsDialog : Window
                 if (mode.SelectedItem is not SpeechEngineOption selected) return;
                 StopSample(false);
                 draft["ttsMode"] = selected.Id;
+                UpdateNarrationPlaybackChoice();
                 if (selected.Id is not "gemini") draft["systemVoice"] = SettingsStore.GetString(draft[VoiceKey(selected.Id)]);
                 await RefreshVoices();
             };

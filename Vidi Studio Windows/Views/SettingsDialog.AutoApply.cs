@@ -47,7 +47,7 @@ public sealed partial class SettingsDialog
                 foreach (var item in preferences) model.Settings.Data[item.Key] = item.Value?.DeepClone();
                 model.Settings.Save();
                 App.ApplySettingsChanges(changed);
-            });
+            }, value => { if (!CredentialStore.Sarvam.Write(value)) throw new IOException("Credential storage failed."); });
             pendingPreferences = null;
             retryAfter = 0;
             autoApplyError.Text = "";

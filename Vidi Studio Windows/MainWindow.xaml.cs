@@ -1147,7 +1147,7 @@ public sealed partial class MainWindow : Window
         ProjectIntegrityFinderButton.Visibility = report.CanShowInFinder ? Visibility.Visible : Visibility.Collapsed;
 
         var narration = report.CanRegenerateNarration
-            && (Model.CurrentNarrationEngine() != "gemini" || Model.CanUseAI);
+            && (Model.CanNarrate);
         var videoArtifacts = report.CanRegenerateVideoArtifacts;
         ProjectIntegrityRegenerateButton.Visibility = narration || videoArtifacts ? Visibility.Visible : Visibility.Collapsed;
         ProjectIntegrityRegenerateButton.Content = narration ? "Regenerate missing narration" : "Regenerate video details & pictures";
@@ -1924,9 +1924,9 @@ public sealed partial class MainWindow : Window
         if (Model.OnlineReason("synthesize-tts", extra) is { } offline) { await ShowError(new ConnectivityException(offline)); return; }
         var flags = extra?.ToList() ?? new List<string>();
         if (!flags.Contains("--segment") && !flags.Contains("--changed") && !flags.Contains("--regenerate-all")) flags.Add("--regenerate-all");
-        if (Model.CurrentNarrationEngine() == "gemini" && !Model.CanUseAI)
+        if (!Model.CanNarrate)
         {
-            await ShowSettingsSectionAsync(3);
+            await ShowSettingsSectionAsync(Model.CurrentNarrationEngine() == "sarvam" ? 2 : 3);
             return;
         }
         if (Model.CurrentNarrationEngine() == "piper" && !PiperService.IsVoiceDownloaded(Model.CurrentNarrationVoice()))

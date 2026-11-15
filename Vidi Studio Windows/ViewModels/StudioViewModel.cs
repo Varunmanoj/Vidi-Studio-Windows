@@ -120,6 +120,11 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         ConnectionFailure = true; Status = reason;
         if (ConnectivityNotification is { } notify) await notify(reason);
     }
+    public bool CanNarrate => CurrentNarrationEngine() switch {
+        "gemini" => CanUseAI,
+        "sarvam" => !string.IsNullOrWhiteSpace(Settings.Get("sarvamApiKey")) && Settings.Get("sarvamKeyStatus") != "invalid" && ConnectivityService.Shared.Available(OnlineService.Sarvam),
+        _ => true
+    };
     public bool CanUseAI => HasApiKey && !IsApiKeyInvalid && !AiProcessingBlocked && ConnectivityService.Shared.Available(OnlineService.Gemini);
     public string? OnlineReason(string command, IEnumerable<string>? extra = null) => OnlineRequirements.Services(command, Project, Settings, extra).Select(ConnectivityService.Shared.Reason).FirstOrDefault(s => s != null);
     public void RefreshConnectivity() { Changed(nameof(CanUseAI)); }
@@ -467,6 +472,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public string CurrentNarrationVoice()
     {
         var engine = CurrentNarrationEngine();
+        if (engine == "sarvam") return SarvamSpeech.Voice(Settings.Data);
         if (engine == "gemini")
         {
             var gv = Settings.Get("geminiVoice", "Kore").Trim();

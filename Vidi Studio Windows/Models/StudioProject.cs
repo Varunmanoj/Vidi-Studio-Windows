@@ -795,6 +795,7 @@ public static class NarrationVoiceFormatting
 {
     public static string EngineDisplayName(string? engine) => (engine ?? "").Trim().ToLowerInvariant() switch
     {
+        "sarvam" => "Sarvam Voices",
         "gemini" => "Gemini Voices",
         "system" => "Apple Voices",
         "windows-core" => "Windows OneCore",
@@ -817,6 +818,7 @@ public static class NarrationVoiceFormatting
         var trimmed = (voice ?? "").Trim();
         if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("default:", StringComparison.OrdinalIgnoreCase))
             return "System default";
+        if (Services.SarvamSpeech.Catalog.Voices.FirstOrDefault(v => v.Id == trimmed) is { } sarvam) return sarvam.Label;
         // Bridged Narrator voices are identified by their voice package name.
         if (NaturalPackage.Match(trimmed) is { Success: true } natural)
         {

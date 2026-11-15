@@ -625,6 +625,7 @@ public sealed partial class MainWindow
             await Task.Delay(250);
             settings.VerifySidebarNavigationForSmokeTest();
             settings.VerifyPiperSampleMenuForSmokeTest();
+            await settings.VerifySarvamSettingsForSmokeTestAsync();
             await settings.VerifyLayoutForSmokeTestAsync();
             await settings.VerifyAutomaticSettingsForSmokeTestAsync();
             settings.VerifyDeveloperModeGateForSmokeTest();
@@ -1274,6 +1275,7 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("YouTube Accounts did not reuse Settings or select its page.");
             settings.VerifySidebarNavigationForSmokeTest();
             await settings.VerifyLayoutForSmokeTestAsync();
+            await settings.VerifySarvamSettingsForSmokeTestAsync();
             foreach (var (id, title) in new[] { (8, "youtube"), (1, "projects"), (5, "storage") })
             {
                 settings.SelectSection(id);

@@ -439,6 +439,10 @@
         {
           "id": "ad-audio-readiness",
           "title": "AD audio readiness by language"
+        },
+        {
+          "id": "sarvam-rest",
+          "title": "Sarvam narration"
         }
       ]
     },
@@ -717,6 +721,26 @@
         {
           "id": "project-language-settings",
           "title": "Project language in Settings and the inspector"
+        },
+        {
+          "id": "sarvam-voices",
+          "title": "Sarvam Voices"
+        },
+        {
+          "id": "summary-voice",
+          "title": "Local Summary voice"
+        },
+        {
+          "id": "sarvam-model-refresh",
+          "title": "Keeping the model list current"
+        },
+        {
+          "id": "summary-voice-browser",
+          "title": "Finding a Summary voice"
+        },
+        {
+          "id": "sarvam-voice-browser",
+          "title": "Finding a Sarvam voice"
         }
       ]
     },
@@ -877,6 +901,10 @@
         {
           "id": "no-export-completion-sound",
           "title": "No export completion sound"
+        },
+        {
+          "id": "sarvam-troubleshooting",
+          "title": "Sarvam narration"
         }
       ]
     },
@@ -931,6 +959,10 @@
         {
           "id": "youtube-summary-context",
           "title": "YouTube summary context"
+        },
+        {
+          "id": "sarvam-privacy",
+          "title": "Sarvam narration"
         }
       ]
     }

@@ -182,7 +182,7 @@ public sealed partial class SettingsDialog
         finally { playbackChoice.SelectedItem = selected; }
         static bool ContainsSummaryControls(DependencyObject node)
         {
-            if (node is FrameworkElement element && Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(element).StartsWith("summary-", StringComparison.Ordinal)) return true;
+            if (node is FrameworkElement element && Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(element) is "summary-sentence-highlight" or "summary-word-highlight") return true;
             for (var i=0;i<VisualTreeHelper.GetChildrenCount(node);i++) if (ContainsSummaryControls(VisualTreeHelper.GetChild(node,i))) return true;
             return false;
         }

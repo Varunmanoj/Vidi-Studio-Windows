@@ -263,6 +263,7 @@ public sealed partial class SettingsDialog : Window
         this.projectTarget = projectTarget;
         allowClosedProjectTarget = projectTarget != null && !App.OpenEditorProjects.Any(p => p.Folder == projectTarget.Folder);
         this.model = model; draft = model.Settings.Data.DeepClone().AsObject();
+        draft["sarvamApiKey"] = model.Settings.Get("sarvamApiKey");
         // Developer prompts stay hidden until the user enables Developer mode in Appearance.
         if (requestedSection == 4 && !DeveloperModeEnabled) requestedSection = 0;
         // Seed the key box from Windows Credential Manager; it is never part of config.json.
@@ -549,7 +550,7 @@ public sealed partial class SettingsDialog : Window
     {
         SettingsStore.NormalizeNarrationPlayback(draft);
         if (narrationPlaybackChoice is not { } field) return;
-        field.IsEnabled = SettingsStore.GetString(draft["ttsMode"]) != "gemini";
+        field.IsEnabled = SettingsStore.GetString(draft["ttsMode"]) is not ("gemini" or "sarvam");
         field.SelectedItem = ((IEnumerable<PlaybackOption>)field.ItemsSource)
             .First(option => option.Id == SettingsStore.GetString(draft["narrationPlayback"], "generated"));
     }
@@ -596,7 +597,7 @@ public sealed partial class SettingsDialog : Window
     {
         var provider = SettingsStore.GetString(draft["ttsMode"], "windows-core");
         var options = new List<SpeechEngineOption> { new("windows-core", "Windows OneCore"), new("sapi5", "Windows SAPI 5"),
-            new("piper", "Piper Voices"), new("gemini", "Gemini Voices") };
+            new("piper", "Piper Voices"), new("gemini", "Gemini Voices"), new("sarvam", "Sarvam Voices") };
         if (mode.ItemsSource is not IEnumerable<SpeechEngineOption> existing)
         {
             mode.ItemsSource = options;
@@ -675,7 +676,7 @@ public sealed partial class SettingsDialog : Window
                 StopSample(false);
                 draft["ttsMode"] = selected.Id;
                 UpdateNarrationPlaybackChoice();
-                if (selected.Id is not "gemini") draft["systemVoice"] = SettingsStore.GetString(draft[VoiceKey(selected.Id)]);
+                if (selected.Id is not ("gemini" or "sarvam")) draft["systemVoice"] = SettingsStore.GetString(draft[VoiceKey(selected.Id)]);
                 await RefreshVoices();
             };
             sapiHost.TextChanged += (_, _) => draft["sapiHostPath"] = sapiHost.Text;
@@ -720,11 +721,14 @@ public sealed partial class SettingsDialog : Window
         restoreMenu.Items.Add(restoreItem); restoreSpeech.ContextFlyout = restoreMenu;
         speechGroup.Children.Add(restoreSpeech);
         panel.Children.Add(localSpeechControls);
+        BuildAdditionalSpeechControls(panel);
         var voiceGroup = AddNarrationGroup(panel, "Voices");
+        nativeVoiceGroup = voiceGroup;
         voiceGroup.Children.Add(piperControls);
         voiceGroup.Children.Add(voice); voiceGroup.Children.Add(sapiHost);
         var refresh = new Button { Content = "Refresh Voices" }; refresh.Click += async (_, _) => await RefreshVoices(); voiceGroup.Children.Add(refresh);
         var sample = new TextBox { Header = "Voice sample", Text = "Welcome to Vidi Studio. Create accessible video with clear audio descriptions.", MaxLength = 500, TextWrapping = TextWrapping.Wrap };
+        nativeSample = sample;
         panel.Children.Add(sample);
         var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         samplePlayButton = new Button();
@@ -739,6 +743,7 @@ public sealed partial class SettingsDialog : Window
         sampleStopButton.Click += (_, _) => StopSample();
         controls.Children.Add(sampleStopButton);
         UpdateSampleControls();
+        nativeSampleButtons = controls;
         panel.Children.Add(controls);
         _ = RefreshVoices();
     }
@@ -818,14 +823,16 @@ public sealed partial class SettingsDialog : Window
             "piper" => "Downloaded Piper voice",
             _ => "Windows OneCore voice"
         };
-        localSpeechControls.Visibility = provider == "gemini" ? Visibility.Collapsed : Visibility.Visible;
+        localSpeechControls.Visibility = provider is "gemini" or "sarvam" ? Visibility.Collapsed : Visibility.Visible;
         sapiHost.Visibility = provider == "sapi5" && DeveloperModeEnabled ? Visibility.Visible : Visibility.Collapsed;
         UpdateVoiceEngineVisibility(provider);
+        UpdateAdditionalSpeechVisibility(provider);
         UpdateSampleControls();
         voice.ItemsSource = null;
         voices = new();
         try
         {
+            if (provider == "sarvam") return;
             if (provider == "gemini")
             {
                 voices = GeminiVoices.Featured.ToList();
@@ -936,7 +943,6 @@ public sealed partial class SettingsDialog : Window
             {
                 var previewConfig = PreviewConfig();
                 var enteredKey = SettingsStore.GetString(draft["apiKey"]).Trim();
-                if (!string.IsNullOrEmpty(enteredKey)) previewConfig["apiKey"] = enteredKey;
                 await File.WriteAllTextAsync(config, previewConfig.ToJsonString(Models.Json.Options), cancellation.Token);
                 await model.Engine.RunAsync(new[] { "preview-tts", "--text", text, "--output", audio }, cancellation: cancellation.Token, configPath: config,
                     apiKey: enteredKey);

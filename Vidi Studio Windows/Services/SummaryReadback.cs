@@ -190,9 +190,12 @@ public sealed class SummaryReadback : IDisposable
             token.ThrowIfCancellationRequested();
             var config = Path.Combine(folder, "config.json");
             // The summary is read with the same engine and voice as narration.
-            var mode = settings.Get("ttsMode", "windows-core");
+            var profile = SummarySpeechProfile.Resolve(settings);
+            var mode = profile.Engine;
             var configData = settings.Data.DeepClone().AsObject();
             configData["ttsMode"] = mode;
+            configData["systemVoice"] = profile.Voice; configData["piperVoice"] = profile.Voice;
+            configData["systemSpeechRate"] = profile.Rate; configData["systemSpeechPitch"] = profile.Pitch; configData["systemSpeechVolume"] = profile.Volume;
             await File.WriteAllTextAsync(config, configData.ToJsonString(Models.Json.Options), token);
 
             // Piper renders the whole run in one long-lived process so the voice
@@ -204,8 +207,8 @@ public sealed class SummaryReadback : IDisposable
             Task? piperBatch = null;
             if (mode == "piper")
             {
-                var piperVoice = settings.Get("piperVoice", settings.Get("systemVoice"));
-                var piperRate = settings.Number("systemSpeechRate");
+                var piperVoice = profile.Voice;
+                var piperRate = profile.Rate;
                 PrepareReadbackCache();
                 piperPaths = new string[sentences.Count];
                 piperCached = new bool[sentences.Count];
@@ -213,7 +216,7 @@ public sealed class SummaryReadback : IDisposable
                 var batch = new List<SpeechBatchItem>();
                 for (var index = startIndex; index < sentences.Count; index++)
                 {
-                    var key = ReadbackCacheKey(mode, piperVoice, piperRate, sentences[index].Text);
+                    var key = ReadbackCacheKey(mode, piperVoice, piperRate, sentences[index].Text, profile.Pitch, profile.Volume);
                     piperKeys[index] = key;
                     var cached = ReadbackCachePath(key);
                     if (File.Exists(cached) && new FileInfo(cached).Length > 64)
@@ -246,18 +249,21 @@ public sealed class SummaryReadback : IDisposable
                 {
                     path = piperPaths![index];
                     if (!piperCached![index])
+                    {
                         await WaitForReadbackAudioAsync(path, piperBatch, token);
+                        path = await NormalizeReadbackAsync(path, profile, config, token);
+                    }
                     audioSource = MediaSource.CreateFromUri(new Uri(path));
                 }
                 else if (mode is "windows-core" or "system")
                 {
                     using var synthesizer = new SpeechSynthesizer();
-                    var voiceId = settings.Get("systemVoice");
+                    var voiceId = profile.Voice;
                     if (!string.IsNullOrEmpty(voiceId)) synthesizer.Voice = SpeechSynthesizer.AllVoices.FirstOrDefault(v => v.Id == voiceId)
                         ?? throw new InvalidOperationException("The selected Windows voice is not installed.");
-                    synthesizer.Options.SpeakingRate = Math.Clamp(settings.Number("systemSpeechRate"), .5, 2);
-                    synthesizer.Options.AudioPitch = Math.Clamp(settings.Number("systemSpeechPitch"), .5, 2);
-                    synthesizer.Options.AudioVolume = Math.Clamp(settings.Number("systemSpeechVolume"), 0, 1);
+                    synthesizer.Options.SpeakingRate = Math.Clamp(profile.Rate, .5, 2);
+                    synthesizer.Options.AudioPitch = Math.Clamp(profile.Pitch, .5, 2);
+                    synthesizer.Options.AudioVolume = Math.Clamp(profile.Volume, 0, 1);
                     synthesizer.Options.IncludeWordBoundaryMetadata = true;
                     var stream = await synthesizer.SynthesizeTextToStreamAsync(sentence).AsTask(token);
                     audioSource = MediaSource.CreateFromStream(stream, stream.ContentType);
@@ -295,14 +301,14 @@ public sealed class SummaryReadback : IDisposable
                     {
                         // SAPI 5 speaks through the same speech host as live narration,
                         // so summary playback does not depend on an extra engine process.
-                        var voice = settings.Get("systemVoice");
-                        await SpeechService.SynthesizeAsync(host, mode, voice, sentence, path, settings.Number("systemSpeechRate"), token);
+                        var voice = profile.Voice;
+                        await SpeechService.SynthesizeAsync(host, mode, voice, sentence, path, profile.Rate, token);
+                        path = await NormalizeReadbackAsync(path, profile, config, token);
                         audioSource = MediaSource.CreateFromUri(new Uri(path));
                     }
                     else
                     {
-                        await engine.RunAsync(new[] { "preview-tts", "--text", sentence, "--output", path }, cancellation: token, configPath: config);
-                        audioSource = MediaSource.CreateFromUri(new Uri(path));
+                        throw new InvalidOperationException("Choose a local Summary voice in Settings.");
                     }
                 }
                 token.ThrowIfCancellationRequested();
@@ -340,13 +346,21 @@ public sealed class SummaryReadback : IDisposable
         }
     }
 
+    private async Task<string> NormalizeReadbackAsync(string path, SummarySpeechProfile profile, string config, CancellationToken token)
+    {
+        if (profile.Pitch == 1 && profile.Volume == 1) return path;
+        var normalized = Path.Combine(Path.GetDirectoryName(config)!, Guid.NewGuid() + ".wav");
+        await engine.RunAsync(new[] { "normalize-speech", "--input", path, "--output", normalized }, cancellation: token, configPath: config);
+        return normalized;
+    }
+
     private const int MaxCachedReadbackFiles = 400;
     private readonly object readbackCacheGate = new();
     private bool readbackCacheReady;
     private static string ReadbackCacheDirectory => Path.Combine(SettingsStore.DirectoryPath, "readback-cache");
     private static string ReadbackCachePath(string key) => Path.Combine(ReadbackCacheDirectory, key + ".wav");
 
-    private static string ReadbackCacheKey(string mode, string voice, double rate, string text)
+    private static string ReadbackCacheKey(string mode, string voice, double rate, string text, double pitch = 1, double volume = 1)
     {
         var signature = "";
         if (mode == "piper")
@@ -358,7 +372,7 @@ public sealed class SummaryReadback : IDisposable
             }
             catch (IOException) { }
         }
-        var material = $"{mode}|{voice}|{signature}|{(rate.ToString("0.###", CultureInfo.InvariantCulture))}|{text}";
+        var material = $"{mode}|{voice}|{signature}|{pitch.ToString(CultureInfo.InvariantCulture)}|{volume.ToString(CultureInfo.InvariantCulture)}|{(rate.ToString("0.###", CultureInfo.InvariantCulture))}|{text}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material)));
     }
 

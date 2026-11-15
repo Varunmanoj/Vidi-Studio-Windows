@@ -84,7 +84,7 @@ public sealed partial class MainWindow
     {
         var state = readback.State;
         SummaryPlayButton.Content = state == Services.SummaryReadbackState.Stopped ? "Play" : state == Services.SummaryReadbackState.Preparing ? "Preparing…" : state == Services.SummaryReadbackState.Playing ? "Pause" : "Resume";
-        var online = Model.Settings.Get("ttsMode", "windows-core") != "gemini" || ConnectivityService.Shared.Available(OnlineService.Gemini);
+        var online = true; // Summary speech always resolves to a local engine.
         SummaryPlayButton.IsEnabled = state != Services.SummaryReadbackState.Preparing && (online || state is Services.SummaryReadbackState.Playing or Services.SummaryReadbackState.Paused);
         ToolTipService.SetToolTip(SummaryPlayButton, online ? "Read summary" : ConnectivityService.Shared.Reason(OnlineService.Gemini));
         SummaryStopButton.IsEnabled = state != Services.SummaryReadbackState.Stopped;

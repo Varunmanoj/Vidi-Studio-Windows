@@ -1,5 +1,6 @@
 param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [ValidateSet('Debug','Release')][string]$Configuration = 'Debug', [switch]$Package, [switch]$Rebuild)
 $ErrorActionPreference = 'Stop'
+$env:PYTHONUTF8 = '1'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 # Piper is bundled with the app; fetch and verify the runtime before MSBuild evaluates content.
 & (Join-Path $PSScriptRoot 'fetch-piper.ps1')

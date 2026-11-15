@@ -153,5 +153,10 @@ public sealed partial class SettingsDialog
     private static Voice Heading(string id, string text) => new("heading:" + id, text, "", "", false, text, VoiceGroups.Heading);
 
     /// <summary>A copy of the draft for transient engine configs.</summary>
-    private System.Text.Json.Nodes.JsonObject PreviewConfig() => draft.DeepClone().AsObject();
+    private System.Text.Json.Nodes.JsonObject PreviewConfig()
+    {
+        var config = draft.DeepClone().AsObject();
+        config.Remove("sarvamApiKey"); config.Remove("apiKey");
+        return config;
+    }
 }

@@ -11,6 +11,7 @@ namespace Vidi_Studio_Windows.Services;
 /// </summary>
 internal static class CredentialStore
 {
+    internal static readonly CredentialSlot Sarvam = new("VidiStudio/SarvamApiKey", "Sarvam API key");
     private static readonly CredentialSlot Gemini = new("VidiStudio/GeminiApiKey", "Gemini API key");
 
     /// <summary>Returns the stored Gemini API key, or <c>null</c> when none is present.</summary>

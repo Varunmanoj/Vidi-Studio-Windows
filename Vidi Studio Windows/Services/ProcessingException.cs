@@ -48,6 +48,7 @@ public sealed class ProcessingException : Exception
             diagnostic.StartsWith("Piper did not finish", StringComparison.Ordinal) ||
             diagnostic.StartsWith("This text has no words to read aloud", StringComparison.Ordinal))
             return diagnostic;
+        if (diagnostic.Contains("Sarvam", StringComparison.OrdinalIgnoreCase)) return diagnostic;
         if (diagnostic.Contains("API_KEY_INVALID", StringComparison.OrdinalIgnoreCase) ||
             (diagnostic.Contains("invalid", StringComparison.OrdinalIgnoreCase) && diagnostic.Contains("API key", StringComparison.OrdinalIgnoreCase)))
             return "The Gemini API key is invalid or rejected by Google. Please enter a valid API key in Settings.";

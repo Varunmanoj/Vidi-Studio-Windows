@@ -10,7 +10,7 @@ using Vidi_Studio_Windows.Models;
 
 namespace Vidi_Studio_Windows.Services;
 
-public enum OnlineService { Gemini, YouTube, Voices }
+public enum OnlineService { Sarvam, Gemini, YouTube, Voices }
 public enum ConnectionState { Checking, Available, Offline, Unreachable }
 
 /// <summary>Application-wide, credential-free reachability. All notifications
@@ -35,6 +35,7 @@ public sealed class ConnectivityService
     }
     private static Uri Origin(OnlineService service) => new(service switch
     {
+        OnlineService.Sarvam => "https://api.sarvam.ai/",
         OnlineService.Gemini => "https://generativelanguage.googleapis.com/",
         OnlineService.YouTube => "https://www.youtube.com/",
         _ => "https://huggingface.co/"

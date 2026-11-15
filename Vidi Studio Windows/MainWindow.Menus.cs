@@ -635,7 +635,7 @@ public sealed partial class MainWindow
         return id switch {
             "segment-one-play" or "segment-one-skip" => Model.Project?.IsYouTube != true || ConnectivityService.Shared.Available(OnlineService.YouTube),
             "segment-one-reanalyze" or "segment-one-rewrite" => Model.CanUseAI,
-            "segment-one-synthesize" => Model.CurrentNarrationEngine() != "gemini" || Model.CanUseAI,
+            "segment-one-synthesize" => Model.CanNarrate,
             "segment-one-preview" => segment.AudioReady || ReferenceEquals(previewingSegment, segment),
             "segment-one-preview-stop" => ReferenceEquals(previewingSegment, segment),
             "segment-one-delete-audio" => segment.Audio != null,
@@ -736,7 +736,7 @@ public sealed partial class MainWindow
         var hasTranscript = p.HasTranscript || ExtraFlag(p, "transcriptGenerated");
         var canDescribe = p.SavedResults.Any(r => r.Kind == "transcript" && r.State == "saved") && p.SavedResults.Any(r => r.Kind == "summary" && r.State == "saved");
         var ai = Model.CanUseAI;
-        var tts = Model.Settings.Get("ttsMode", "windows-core") != "gemini" || ai;
+        var tts = Model.CanNarrate;
         switch (id)
         {
             case "jump-to-time": return double.IsFinite(p.Duration) && p.Duration > 0;
@@ -793,8 +793,6 @@ public sealed partial class MainWindow
         if (id.StartsWith("summary-", StringComparison.Ordinal))
         {
             if (Section.SelectedIndex != 1 || summaryEditMode || !p.HasSummary) return false;
-            if (Model.Settings.Get("ttsMode", "windows-core") == "gemini" && !ConnectivityService.Shared.Available(OnlineService.Gemini)
-                && id is not ("summary-stop" or "summary-pause")) return false;
             return id switch
             {
                 "summary-play" => readback.State is SummaryReadbackState.Stopped or SummaryReadbackState.Paused,

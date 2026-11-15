@@ -48,20 +48,12 @@ public sealed class EngineClient
             if (!File.Exists(frozen)) start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "engine", "vidistudio_engine.py"));
             foreach (var argument in requestArguments) start.ArgumentList.Add(argument);
             var geminiKey = (apiKey ?? settings.Get("apiKey")).Trim();
-            if (configPath == null && !string.IsNullOrEmpty(geminiKey))
-            {
-                // Create a transient execution config so frozen engines that read config.json
-                // can receive the securely stored key without persisting it to SettingsStore.ConfigPath.
-                var runConfigData = settings.Data.DeepClone().AsObject();
-                runConfigData["apiKey"] = geminiKey;
-                Directory.CreateDirectory(SettingsStore.DirectoryPath);
-                temporaryConfig = Path.Combine(SettingsStore.DirectoryPath, "run-" + Guid.NewGuid() + ".json");
-                File.WriteAllText(temporaryConfig, runConfigData.ToJsonString(Models.Json.Options));
-            }
             start.Environment["VIDISTUDIO_CONFIG"] = configPath ?? temporaryConfig ?? SettingsStore.ConfigPath;
             // The Gemini key is held in Windows Credential Manager and handed to the engine per
             // process in the environment; it is never written to the config file on disk.
             if (geminiKey.Length > 0) start.Environment["VIDISTUDIO_API_KEY"] = geminiKey;
+            var sarvamKey = settings.Get("sarvamApiKey").Trim();
+            if (sarvamKey.Length > 0) start.Environment["VIDISTUDIO_SARVAM_API_KEY"] = sarvamKey;
             start.Environment["VIDISTUDIO_SPEECH_HOST"] = SpeechHost;
             start.Environment["VIDISTUDIO_PIPER_PATH"] = PiperService.RuntimePath;
             start.Environment["VIDISTUDIO_PIPER_VOICES"] = PiperService.VoicesPath;
@@ -88,6 +80,7 @@ public sealed class EngineClient
                 {
                     using var doc = JsonDocument.Parse(line);
                     var root = doc.RootElement.Clone();
+                    if (root.TryGetProperty("narrationProvider", out var provider) && provider.GetString() == "sarvam" && sarvamKey == settings.Get("sarvamApiKey").Trim() && root.TryGetProperty("sarvamKeyStatus", out var status)) { settings.Set("sarvamKeyStatus", status.GetString() ?? "unverified"); settings.Save(); }
                     var message = root.TryGetProperty("message", out var m) ? m.GetString() ?? "Processing" : "Processing";
                     double? value = root.TryGetProperty("progress", out var p) && p.TryGetDouble(out var number) ? number : null;
                     connectionWatch.Consume(root);
@@ -136,6 +129,8 @@ public sealed class EngineClient
     {
         var key = settings.Get("apiKey");
         if (!string.IsNullOrEmpty(key)) detail = detail.Replace(key, "[redacted]");
+        var sarvamKey = settings.Get("sarvamApiKey");
+        if (!string.IsNullOrEmpty(sarvamKey)) detail = detail.Replace(sarvamKey, "[redacted]");
         Directory.CreateDirectory(SettingsStore.DirectoryPath);
         File.AppendAllText(Path.Combine(SettingsStore.DirectoryPath, "diagnostics.log"), $"{DateTimeOffset.Now:u} {detail}{Environment.NewLine}");
     }

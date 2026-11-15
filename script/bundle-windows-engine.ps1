@@ -12,7 +12,7 @@ try {
     if (Test-Path -LiteralPath $sslPolicy) { $sslData = @('--add-data', ($sslPolicy + ';.')) }
     $oldErrorPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    & $Python -m PyInstaller --noconfirm --onedir --name vidistudio-engine --distpath dist/windows --workpath build/engine --specpath build --add-data "$engineProjectRoot/engine/ai-defaults.json;." --collect-all google.genai --collect-all yt_dlp --collect-all yt_dlp_ejs --copy-metadata yt-dlp --copy-metadata yt-dlp-ejs @sslData engine/vidistudio_engine.py 2>&1 | ForEach-Object { Write-Host $_ }
+    & $Python -m PyInstaller --noconfirm --onedir --name vidistudio-engine --distpath dist/windows --workpath build/engine --specpath build --add-data "$engineProjectRoot/engine/ai-defaults.json;." --add-data "$engineProjectRoot/engine/sarvam-voices.json;." --collect-all google.genai --collect-submodules sarvamai --copy-metadata sarvamai --collect-all yt_dlp --collect-all yt_dlp_ejs --copy-metadata yt-dlp --copy-metadata yt-dlp-ejs @sslData engine/vidistudio_engine.py 2>&1 | ForEach-Object { Write-Host $_ }
     $engineBuildExit = $LASTEXITCODE
     $ErrorActionPreference = $oldErrorPreference
     if ($engineBuildExit -ne 0) { throw 'Engine packaging failed.' }
@@ -20,6 +20,7 @@ try {
     if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $denoBinary)) { throw 'The locked YouTube JavaScript runtime is unavailable.' }
     New-Item -ItemType Directory -Force dist/windows/vidistudio-engine/media | Out-Null
     Copy-Item -LiteralPath $denoBinary -Destination dist/windows/vidistudio-engine/media/deno.exe -Force
+    if (Test-Path -LiteralPath runtime/engine) { Remove-Item -LiteralPath runtime/engine -Recurse -Force }
     New-Item -ItemType Directory -Force runtime/engine | Out-Null
     Copy-Item -Path 'dist/windows/vidistudio-engine/*' -Destination runtime/engine -Recurse -Force
     $health = & (Join-Path $engineProjectRoot 'runtime/engine/vidistudio-engine.exe') doctor

@@ -15,7 +15,7 @@ internal sealed class SettingsAutoApply
     public bool HasChanges(JsonObject current) => !JsonNode.DeepEquals(applied, current);
 
     public bool Apply(JsonObject current, Func<JsonObject> load,
-        Action<JsonObject, string?, IReadOnlyCollection<string>> save)
+        Action<JsonObject, string?, IReadOnlyCollection<string>> save, Action<string>? saveSarvamKey = null)
     {
         if (!HasChanges(current)) return false;
         var snapshot = current.DeepClone().AsObject();
@@ -23,12 +23,17 @@ internal sealed class SettingsAutoApply
             .Where(key => applied.ContainsKey(key) != snapshot.ContainsKey(key)
                 || !JsonNode.DeepEquals(applied[key], snapshot[key])).ToArray();
         var latest = load().DeepClone().AsObject();
-        foreach (var key in changed.Where(key => key is not "apiKey" and not "azureSpeechKey"))
+        foreach (var key in changed.Where(key => key is not "apiKey" and not "sarvamApiKey" and not "azureSpeechKey"))
             MergeProperty(latest, key, applied, snapshot);
         // Credentials never enter the JSON payload passed to persistence.
+        latest.Remove("sarvamApiKey");
         latest.Remove("apiKey");
         latest.Remove("azureSpeechKey");
         var keyEdit = changed.Contains("apiKey") ? snapshot["apiKey"]?.GetValue<string>() ?? "" : null;
+        if (changed.Contains("sarvamApiKey")) {
+            if (saveSarvamKey == null) throw new InvalidOperationException("Sarvam credential persistence is unavailable.");
+            saveSarvamKey(snapshot["sarvamApiKey"]?.GetValue<string>() ?? "");
+        }
         save(latest, keyEdit, changed);
         // A failed write must remain pending for retry, including when closing the window.
         applied = snapshot;

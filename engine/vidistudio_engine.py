@@ -8,6 +8,7 @@ import youtube_metadata
 import youtube_audio
 import audio_sources
 import network_activity
+import sarvam_tts
 import gemini_adapter
 import parity
 import import_assets
@@ -93,6 +94,8 @@ def safe_error(exc):
     try:
         key = config().get('apiKey')
         if key: message = message.replace(key, '[redacted]')
+        sarvam_key = os.environ.get('VIDISTUDIO_SARVAM_API_KEY', '')
+        if sarvam_key: message = message.replace(sarvam_key, '[redacted]')
     except Exception: pass
     return message
 
@@ -1347,6 +1350,8 @@ def narration_engine(cfg):
 
 
 def narration_voice(cfg):
+    if cfg.get('ttsMode') == 'sarvam':
+        return sarvam_tts.parameters(cfg).get('speaker', 'Default voice')
     if narration_engine(cfg) == 'gemini':
         return str(cfg.get('geminiVoice', 'Kore') or 'Kore').strip() or 'Kore'
     if narration_engine(cfg) == 'piper':
@@ -1360,6 +1365,7 @@ def narration_voice(cfg):
 
 
 def narration_signature(cfg, project=None):
+    if cfg.get('ttsMode') == 'sarvam': return sarvam_tts.signature(cfg)
     if cfg.get('ttsMode', 'system') == 'gemini':
         return f"gemini|{cfg.get('geminiVoice', 'Kore')}|{cfg.get('models', {}).get('tts_audio', '')}"
     rate, pitch, volume = speech_controls(cfg)
@@ -1457,7 +1463,9 @@ def synthesize(root,p,segment=None,changed=False,regenerate_all=False,segments=N
             text_stream.write(c['text'])
             textfile = Path(text_stream.name)
         try:
-            if cfg.get('ttsMode','system') == 'gemini':
+            if cfg.get('ttsMode','system') == 'sarvam':
+                sarvam_tts.synthesize(output, c['text'], cfg, run, tool('ffmpeg'), emit)
+            elif cfg.get('ttsMode','system') == 'gemini':
                 gemini_speech(output, c['text'], p)
             elif sys.platform == 'darwin':
                 raw = output.with_suffix('.aiff')
@@ -1502,7 +1510,7 @@ def synthesize(root,p,segment=None,changed=False,regenerate_all=False,segments=N
             output.unlink(missing_ok=True)
             raise
         except Exception as exc:
-            if network_activity.transport_failure(exc):
+            if network_activity.transport_failure(exc) or isinstance(exc, sarvam_tts.SarvamError):
                 output.unlink(missing_ok=True)
                 raise
             # A single description must not stop the rest of the narration run.
@@ -3045,7 +3053,7 @@ def dispatch_project(args, root, p):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command',choices=['check-api-key','reanalyze-transcript-segment','undo-transcript','redo-transcript','reanalyze-segment','prepare-analysis-video','check-video-availability','cleanup-project','clear-generated','delete-generated','delete-segment-audio','list-models','list-voices','preview-tts','import-video','probe-video','generate-thumbnails','transcribe','generate-summary','generate-ad-cues','synthesize-tts','export-final-video','export-selectable-video','export-original-video','export-closed-audio-description-video','export-open-audio-description-video','export-closed-caption-video','export-dual-closed-caption-video','export-open-caption-video','export-original-audio','export-described-audio','export-youtube-described-audio','export-youtube-original-audio','download-youtube-audio','export-hls','save-cues','save-segments','save-summary','doctor',*parity.COMMANDS,*import_assets.COMMANDS,*audio_sources.COMMANDS,*language_results.COMMANDS,'read-youtube-metadata'])
+    parser.add_argument('command',choices=['check-sarvam-key','list-sarvam-models','normalize-speech','check-api-key','reanalyze-transcript-segment','undo-transcript','redo-transcript','reanalyze-segment','prepare-analysis-video','check-video-availability','cleanup-project','clear-generated','delete-generated','delete-segment-audio','list-models','list-voices','preview-tts','import-video','probe-video','generate-thumbnails','transcribe','generate-summary','generate-ad-cues','synthesize-tts','export-final-video','export-selectable-video','export-original-video','export-closed-audio-description-video','export-open-audio-description-video','export-closed-caption-video','export-dual-closed-caption-video','export-open-caption-video','export-original-audio','export-described-audio','export-youtube-described-audio','export-youtube-original-audio','download-youtube-audio','export-hls','save-cues','save-segments','save-summary','doctor',*parity.COMMANDS,*import_assets.COMMANDS,*audio_sources.COMMANDS,*language_results.COMMANDS,'read-youtube-metadata'])
     parser.add_argument('--project',type=Path); parser.add_argument('--video',type=Path); parser.add_argument('--library',type=Path); parser.add_argument('--input',type=Path)
     parser.add_argument('--media-format', choices=VIDEO_EXPORT_FORMATS + AUDIO_EXPORT_FORMATS)
     parser.add_argument('--content',choices=['transcript','summary','descriptions','combined'],default='descriptions'); parser.add_argument('--url'); parser.add_argument('--name'); parser.add_argument('--timestamp',type=float,default=0); parser.add_argument('--duration',type=float); parser.add_argument('--segment'); parser.add_argument('--segments', action='append'); parser.add_argument('--format',choices=['srt','vtt','txt','json','md'],default='srt'); parser.add_argument('--changed',action='store_true'); parser.add_argument('--start-stage',default='transcribe')
@@ -3103,6 +3111,14 @@ def main():
         return
     if args.command == 'check-api-key':
         check_api_key(); return
+    if args.command == 'check-sarvam-key':
+        sarvam_tts.check_key(emit); return
+    if args.command == 'list-sarvam-models':
+        sarvam_tts.refresh_models(emit); return
+    if args.command == 'normalize-speech':
+        if not args.input or not args.output: raise ValueError('Choose speech input and output files.')
+        if config().get('ttsMode') not in ('system', 'windows-core', 'sapi5', 'piper'): raise ValueError('Summary speech must use a local engine.')
+        finish_system_speech(args.input, args.output, config()); return
     if args.command == 'preview-tts':
         preview_tts(args.output, args.text); return
     if args.command == 'list-models':
@@ -3115,7 +3131,8 @@ def main():
     if args.command=='doctor':
         import ssl, certifi
         tls = ssl.create_default_context(cafile=certifi.where())
-        emit('VidiStudio is ready',python=platform.python_version(),ffmpeg=tool('ffmpeg'),ffprobe=tool('ffprobe'),sslReady=tls.verify_mode == ssl.CERT_REQUIRED and tls.check_hostname); return
+        from sarvamai import SarvamAI
+        emit('VidiStudio is ready',sarvamReady=bool(SarvamAI and sarvam_tts.bundled_models()),python=platform.python_version(),ffmpeg=tool('ffmpeg'),ffprobe=tool('ffprobe'),sslReady=tls.verify_mode == ssl.CERT_REQUIRED and tls.check_hostname); return
     if args.command=='import-video':
         if not args.video or not args.library: raise ValueError('Import requires --video and --library.')
         ensure_supported_local_video(args.video)

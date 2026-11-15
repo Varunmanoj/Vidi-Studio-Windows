@@ -34,7 +34,7 @@ public sealed partial class MainWindow
         var project = Model.Project;
         var newCount = project == null ? 0 : descriptions.Count(segment => !HasSegmentAudio(project, segment));
         var existingCount = descriptionCount - newCount;
-        var geminiReady = Model.CurrentNarrationEngine() != "gemini" || Model.CanUseAI;
+        var geminiReady = Model.CanNarrate;
         var narrationLabel = existingCount == 0
             ? $"Generate Audio for {newCount} Description{(newCount == 1 ? "" : "s")}"
             : newCount == 0
@@ -145,9 +145,9 @@ public sealed partial class MainWindow
             return;
         }
         var engine = Model.CurrentNarrationEngine();
-        if (engine == "gemini" && !Model.CanUseAI)
+        if (!Model.CanNarrate)
         {
-            await ShowSettingsSectionAsync(3);
+            await ShowSettingsSectionAsync(Model.CurrentNarrationEngine() == "sarvam" ? 2 : 3);
             return;
         }
         if (engine == "piper" && !PiperService.IsVoiceDownloaded(Model.CurrentNarrationVoice()))

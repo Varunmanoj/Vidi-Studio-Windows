@@ -35,6 +35,7 @@ public sealed class SettingsStore
         var legacy = GetString(Data["apiKey"]);
         // Keep the plaintext value in place rather than lose the key if the store is unavailable.
         if (!string.IsNullOrWhiteSpace(legacy) && !CredentialStore.Write(legacy)) return false;
+        Data.Remove("sarvamApiKey");
         Data.Remove("apiKey");
         return true;
     }
@@ -112,15 +113,18 @@ public sealed class SettingsStore
     public string Get(string key, string fallback = "") => key switch
     {
         "apiKey" => CredentialStore.Read() ?? fallback,
+        "sarvamApiKey" => CredentialStore.Sarvam.Read() ?? fallback,
         _ => GetString(Data[key], fallback)
     };
     public bool GetBool(string key, bool fallback = false) => GetBool(Data[key], fallback);
     public void Set(string key, string value)
     {
+        if (key == "sarvamApiKey") { if (!CredentialStore.Sarvam.Write(value)) throw new IOException("Credential storage failed."); Data.Remove(key); Data["sarvamKeyStatus"] = "unverified"; return; }
         if (key == "apiKey")
         {
             CredentialStore.Write(value);
-            Data.Remove("apiKey");
+            Data.Remove("sarvamApiKey");
+        Data.Remove("apiKey");
             return;
         }
         Data[key] = value;
@@ -166,7 +170,7 @@ public sealed class SettingsStore
     public static bool NormalizeNarrationPlayback(JsonObject data)
     {
         var playback = GetString(data["narrationPlayback"], "generated");
-        if (GetString(data["ttsMode"]) == "gemini")
+        if (GetString(data["ttsMode"]) is "gemini" or "sarvam")
         {
             if (playback == "generated") return false;
             data["narrationPlayback"] = "generated";
@@ -181,6 +185,7 @@ public sealed class SettingsStore
     {
         NormalizeNarrationPlayback();
         // The Gemini key lives only in Windows Credential Manager; never persist it here.
+        Data.Remove("sarvamApiKey");
         Data.Remove("apiKey");
         Data.Remove("azureSpeechKey");
         // These jobs now share the base selection for local and YouTube projects.

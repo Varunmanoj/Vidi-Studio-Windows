@@ -1,7 +1,9 @@
+using Vidi_Studio_Windows.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
 using System.Linq;
+using System.Collections.Generic;
 
 namespace Vidi_Studio_Windows;
 
@@ -75,9 +77,10 @@ public sealed partial class MainWindow
         {
             inspectorVoiceRequest = request;
             inspectorVoiceLanguage = "Unknown";
-            if (engineID is not ("piper" or "gemini")) _ = LoadInspectorVoiceLanguageAsync(request, host, engineID, voiceID);
+            if (engineID is not ("piper" or "gemini" or "sarvam")) _ = LoadInspectorVoiceLanguageAsync(request, host, engineID, voiceID);
         }
-        var language = engineID == "gemini" ? "Multilingual"
+        var language = engineID == "sarvam" ? SarvamSpeech.Catalog.Languages.GetValueOrDefault(SettingsStore.GetString(SarvamSpeech.Profile(Model.Settings.Data)["language"]), "Unknown")
+            : engineID == "gemini" ? "Multilingual"
             : engineID == "piper" ? Services.PiperService.Catalog.FirstOrDefault(v => v.Id == Model.CurrentNarrationVoice())?.LanguageLabel ?? "Unknown"
             : inspectorVoiceLanguage;
         var engine = Models.NarrationVoiceFormatting.EngineDisplayName(engineID);

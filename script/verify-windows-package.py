@@ -31,7 +31,7 @@ with zipfile.ZipFile(args.package) as package:
     assert machine(app.attrib["Executable"]) == expected, "Wrong UI architecture"
     assert machine("speech/VidiStudio.SpeechHost.exe") == expected, "Wrong speech helper architecture"
     assert machine("VidiStudio.ShellExtension.dll") == expected, "Wrong shell extension architecture"
-    for file in ["speech/VidiStudio.SpeechHost.runtimeconfig.json", "engine/vidistudio_engine.py", "engine/windows_speech.py", "engine/mov_accessibility.py", "engine/youtube_audio.py", "engine/ai-defaults.json", "Assets/youtube.html", "Assets/piper-voices.json", "Assets/Sounds/descend.wav", "Assets/Sounds/Boink3.wav", "Assets/Sounds/ascend.wav", "Assets/Sounds/Buzzer1.wav", "piper/piper.exe", "piper/onnxruntime.dll", "piper/espeak-ng-data/en_dict"]:
+    for file in ["Assets/sarvam-voices.json", "engine/sarvam_tts.py", "engine/sarvam-voices.json", "speech/VidiStudio.SpeechHost.runtimeconfig.json", "engine/vidistudio_engine.py", "engine/windows_speech.py", "engine/mov_accessibility.py", "engine/youtube_audio.py", "engine/ai-defaults.json", "Assets/youtube.html", "Assets/piper-voices.json", "Assets/Sounds/descend.wav", "Assets/Sounds/Boink3.wav", "Assets/Sounds/ascend.wav", "Assets/Sounds/Buzzer1.wav", "piper/piper.exe", "piper/onnxruntime.dll", "piper/espeak-ng-data/en_dict"]:
         read(file)
     modern_ns = {
         "com": "http://schemas.microsoft.com/appx/manifest/com/windows10",
@@ -51,6 +51,8 @@ with zipfile.ZipFile(args.package) as package:
         engine_machine = machine("engine-bin/vidistudio-engine.exe")
         assert engine_machine in (expected, 0x8664), "Engine is incompatible with target"
         read("engine-bin/_internal/ai-defaults.json")
+        read("engine-bin/_internal/sarvam-voices.json")
+        assert any(name.startswith("engine-bin/_internal/sarvamai-") and name.endswith(".dist-info/METADATA") for name in names), "Missing Sarvam SDK metadata"
         assert machine("engine-bin/media/deno.exe") in (expected, 0x8664), "YouTube JavaScript runtime is incompatible with target"
         read("engine-bin/_internal/yt_dlp_ejs/yt/solver/core.min.js")
         assert any(name.startswith("engine-bin/") and re.search(r"/python3\d+\.dll$", name) for name in names), "Missing bundled Python runtime"

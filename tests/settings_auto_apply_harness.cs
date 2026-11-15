@@ -60,6 +60,16 @@ static class SettingsAutoApplyHarness
         var reopened = new SettingsAutoApply(stored);
         Check(!reopened.HasChanges(stored), "Reopening lost the saved baseline.");
         Check(writes == 4, "Duplicate settings writes.");
+        string? sarvamEdit = null;
+        draft["sarvamApiKey"] = "sarvam-secret";
+        tracker.Apply(draft, () => stored, Persist, value => sarvamEdit = value);
+        Check(sarvamEdit == "sarvam-secret" && !stored.ContainsKey("sarvamApiKey"), "Sarvam secret entered preferences or was lost.");
+        draft["sarvamApiKey"] = "replacement";
+        try { tracker.Apply(draft, () => stored, Persist, _ => throw new IOException("credential failed")); }
+        catch (IOException) { }
+        Check(tracker.HasChanges(draft), "Failed Sarvam key write was accepted.");
+        tracker.Apply(draft, () => stored, Persist, value => sarvamEdit = value);
+        Check(sarvamEdit == "replacement", "Sarvam key retry lost the edit.");
         Console.WriteLine("PASS: automatic settings merge, nested edits, removal, credentials, retry, close flush and reopen");
     }
 }

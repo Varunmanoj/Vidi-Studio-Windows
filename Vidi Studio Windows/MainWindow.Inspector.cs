@@ -77,9 +77,10 @@ public sealed partial class MainWindow
         {
             inspectorVoiceRequest = request;
             inspectorVoiceLanguage = "Unknown";
-            if (engineID is not ("piper" or "gemini" or "sarvam")) _ = LoadInspectorVoiceLanguageAsync(request, host, engineID, voiceID);
+            if (engineID is not ("piper" or "gemini" or "sarvam" or "elevenlabs")) _ = LoadInspectorVoiceLanguageAsync(request, host, engineID, voiceID);
         }
-        var language = engineID == "sarvam" ? SarvamSpeech.Catalog.Languages.GetValueOrDefault(SettingsStore.GetString(SarvamSpeech.Profile(Model.Settings.Data)["language"]), "Unknown")
+        var language = engineID == "elevenlabs" ? (SettingsStore.GetString(Model.Settings.Data["elevenlabsSpeech"]?["language"],"auto") is var elevenLanguage && elevenLanguage != "auto" ? new System.Globalization.CultureInfo(elevenLanguage).DisplayName : "Automatic")
+            : engineID == "sarvam" ? SarvamSpeech.Catalog.Languages.GetValueOrDefault(SettingsStore.GetString(SarvamSpeech.Profile(Model.Settings.Data)["language"]), "Unknown")
             : engineID == "gemini" ? "Multilingual"
             : engineID == "piper" ? Services.PiperService.Catalog.FirstOrDefault(v => v.Id == Model.CurrentNarrationVoice())?.LanguageLabel ?? "Unknown"
             : inspectorVoiceLanguage;

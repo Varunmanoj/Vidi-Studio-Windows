@@ -279,8 +279,12 @@ public sealed partial class MainWindow
             AutomationProperties.GetHeadingLevel(InspectorSectionTitle) != AutomationHeadingLevel.Level2)
             throw new InvalidOperationException("Editor/inspector heading levels are missing.");
         var duration = Models.NarrationTimeFormat.SpokenProjectDuration(project.Duration);
+        // The timeline is populated by the first dispatcher timer tick. Wait for
+        // that production update instead of assuming it ran during window layout.
+        for (var attempt=0; attempt<20 && (!AutomationProperties.GetName(TimeLabel).Contains(duration) || !AutomationProperties.GetItemStatus(Playhead).Contains(duration)); attempt++)
+            await Task.Delay(100);
         if (!AutomationProperties.GetName(TimeLabel).Contains(duration) || !AutomationProperties.GetItemStatus(Playhead).Contains(duration))
-            throw new InvalidOperationException("Timeline has no spoken media time/duration.");
+            throw new InvalidOperationException($"Timeline has no spoken media time/duration: name={AutomationProperties.GetName(TimeLabel)}, status={AutomationProperties.GetItemStatus(Playhead)}, duration={duration}.");
         bool Visible(FrameworkElement element)
         {
             for (DependencyObject? node = element; node != null; node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node))

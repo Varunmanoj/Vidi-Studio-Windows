@@ -53,7 +53,10 @@ public sealed class EngineClient
             // process in the environment; it is never written to the config file on disk.
             if (geminiKey.Length > 0) start.Environment["VIDISTUDIO_API_KEY"] = geminiKey;
             var sarvamKey = settings.Get("sarvamApiKey").Trim();
+            var elevenlabsKey = settings.Get("elevenlabsApiKey").Trim();
             if (sarvamKey.Length > 0) start.Environment["VIDISTUDIO_SARVAM_API_KEY"] = sarvamKey;
+            start.Environment.Remove("VIDISTUDIO_ELEVENLABS_API_KEY");
+            if (settings.Get("ttsMode") == "elevenlabs") start.Environment["VIDISTUDIO_ELEVENLABS_API_KEY"] = settings.Get("elevenlabsApiKey");
             start.Environment["VIDISTUDIO_SPEECH_HOST"] = SpeechHost;
             start.Environment["VIDISTUDIO_PIPER_PATH"] = PiperService.RuntimePath;
             start.Environment["VIDISTUDIO_PIPER_VOICES"] = PiperService.VoicesPath;
@@ -80,6 +83,7 @@ public sealed class EngineClient
                 {
                     using var doc = JsonDocument.Parse(line);
                     var root = doc.RootElement.Clone();
+                    if (root.TryGetProperty("elevenlabsKeyStatus",out var elevenStatus) && elevenlabsKey == settings.Get("elevenlabsApiKey").Trim()) { settings.Set("elevenlabsKeyStatus",elevenStatus.GetString() ?? "unavailable");settings.Save(); }
                     if (root.TryGetProperty("narrationProvider", out var provider) && provider.GetString() == "sarvam" && sarvamKey == settings.Get("sarvamApiKey").Trim() && root.TryGetProperty("sarvamKeyStatus", out var status)) { settings.Set("sarvamKeyStatus", status.GetString() ?? "unverified"); settings.Save(); }
                     var message = root.TryGetProperty("message", out var m) ? m.GetString() ?? "Processing" : "Processing";
                     double? value = root.TryGetProperty("progress", out var p) && p.TryGetDouble(out var number) ? number : null;
@@ -131,6 +135,8 @@ public sealed class EngineClient
         if (!string.IsNullOrEmpty(key)) detail = detail.Replace(key, "[redacted]");
         var sarvamKey = settings.Get("sarvamApiKey");
         if (!string.IsNullOrEmpty(sarvamKey)) detail = detail.Replace(sarvamKey, "[redacted]");
+        var elevenlabsKey = settings.Get("elevenlabsApiKey");
+        if (!string.IsNullOrEmpty(elevenlabsKey)) detail = detail.Replace(elevenlabsKey,"[redacted]");
         Directory.CreateDirectory(SettingsStore.DirectoryPath);
         File.AppendAllText(Path.Combine(SettingsStore.DirectoryPath, "diagnostics.log"), $"{DateTimeOffset.Now:u} {detail}{Environment.NewLine}");
     }

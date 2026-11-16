@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """Run the combined-workspace desktop menu checker."""
 from pathlib import Path
-import os
 import runpy
 import sys
 
-workspace = Path(os.environ.get('VIDISTUDIO_DESKTOP_WORKSPACE', Path(__file__).resolve().parents[2]))
-checker = workspace / 'script/check_menu_parity.py'
+checker = Path(__file__).resolve().parents[2] / 'script/check_menu_parity.py'
 if not checker.is_file():
     if '--allow-missing' in sys.argv:
         print('SKIP: desktop menu parity requires the combined Mac/Windows workspace.')
         raise SystemExit(0)
     raise SystemExit('Desktop menu parity requires the combined Mac/Windows workspace.')
-sys.argv[1:1] = ['--windows-root', str(Path(__file__).resolve().parents[1])]
 workspace = checker.parent.parent
 contract = runpy.run_path(str(Path(__file__).with_name('contextual_menu_contract.py')))
+contract['check_elevenlabs_settings'](
+    (workspace / 'VidiStudio Mac/VidiStudio/ElevenLabsVoiceSettingsView.swift').read_text() + (workspace / 'VidiStudio Mac/VidiStudio/ElevenLabsSpeech.swift').read_text(),
+    (workspace / 'Vidi-Studio-Windows/Vidi Studio Windows/Views/SettingsDialog.ElevenLabs.cs').read_text())
 contract['check_sarvam_settings'](
     (workspace / 'VidiStudio Mac/VidiStudio/SarvamVoiceSettingsView.swift').read_text() + (workspace / 'VidiStudio Mac/VidiStudio/SarvamVoiceBrowser.swift').read_text(),
     (workspace / 'Vidi-Studio-Windows/Vidi Studio Windows/Views/SettingsDialog.Sarvam.cs').read_text() + (workspace / 'Vidi-Studio-Windows/Vidi Studio Windows/Views/SettingsDialog.SarvamBrowser.cs').read_text())

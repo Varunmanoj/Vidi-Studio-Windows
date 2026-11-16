@@ -155,6 +155,7 @@ public sealed partial class SettingsDialog
     private System.Text.Json.Nodes.JsonObject PreviewConfig()
     {
         var config = draft.DeepClone().AsObject();
+        config.Remove("elevenlabsApiKey");
         config.Remove("sarvamApiKey"); config.Remove("apiKey");
         return config;
     }

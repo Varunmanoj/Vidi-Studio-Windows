@@ -16,7 +16,7 @@ class NarrationPlaybackOptions(unittest.TestCase):
         mac_model = (ROOT/'VidiStudio Mac/VidiStudio/StudioModel.swift').read_text()
         win_prefs = (ROOT/'Vidi-Studio-Windows/Vidi Studio Windows/Services/ProjectPlaybackPreferences.cs').read_text()
         win_projects = (ROOT/'Vidi-Studio-Windows/Vidi Studio Windows/Views/SettingsDialog.Projects.cs').read_text()
-        self.assertIn('var sections = ["Appearance", "Projects", "Narration", "Gemini API", "YouTube Accounts"]', mac_settings)
+        self.assertIn('var sections = ["Appearance", "Projects", "Narration", "Gemini", "YouTube Accounts"]', mac_settings)
         self.assertIn('sections.append("Developer prompts")', mac_settings)
         self.assertIn('sections += ["Storage", "Help", "About"]', mac_settings)
         self.assertIn('ContentUnavailableView("No Open Projects"', mac_settings)
@@ -65,7 +65,7 @@ class NarrationPlaybackOptions(unittest.TestCase):
         self.assertIn('new("piper", "Piper Voices")', source)
         self.assertIn('new("gemini", "Gemini Voices")', source)
         self.assertIn('draft["ttsMode"] = selected.Id;\n                UpdateNarrationPlaybackChoice();', source)
-        self.assertIn('field.IsEnabled = SettingsStore.GetString(draft["ttsMode"]) is not ("gemini" or "sarvam");', source)
+        self.assertIn('field.IsEnabled = SettingsStore.GetString(draft["ttsMode"]) is not ("gemini" or "sarvam" or "elevenlabs");', source)
         self.assertIn('SettingsStore.NormalizeNarrationPlayback(draft);', source)
 
     def test_windows_gemini_voices_show_only_voice_names_and_hide_local_sliders(self):
@@ -75,8 +75,8 @@ class NarrationPlaybackOptions(unittest.TestCase):
         self.assertIn('Names.Select(name => new Voice(name, name, "", "")).ToArray()', gemini)
         self.assertNotIn('LoadGeminiVoicesAsync', dialog)
         self.assertNotIn('Header = "Filter voices"', dialog)
-        self.assertIn('localSpeechControls.Visibility = provider is "gemini" or "sarvam" ? Visibility.Collapsed : Visibility.Visible;', dialog)
-        self.assertIn('samplePlayButton.IsEnabled = sampleState != SampleState.Generating && (provider != "gemini" || HasDraftApiKey && ConnectivityService.Shared.Available(OnlineService.Gemini));', dialog)
+        self.assertIn('localSpeechControls.Visibility = provider is "gemini" or "sarvam" or "elevenlabs" ? Visibility.Collapsed : Visibility.Visible;', dialog)
+        self.assertIn('samplePlayButton.IsEnabled = sampleState != SampleState.Stopped || (!VoiceSampleSession.Busy && (provider != "gemini" || HasDraftApiKey && ConnectivityService.Shared.Available(OnlineService.Gemini)));', dialog)
 
     def test_windows_migrates_legacy_engines_without_resetting_preview_choice(self):
         source = (ROOT/'Vidi-Studio-Windows/Vidi Studio Windows/Services/SettingsStore.cs').read_text()

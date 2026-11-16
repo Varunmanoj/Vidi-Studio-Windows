@@ -68,7 +68,7 @@ public sealed record SummarySpeechProfile(string Engine, string Voice, double Ra
     public static SummarySpeechProfile Resolve(SettingsStore settings)
     {
         var mode = settings.Get("ttsMode", "windows-core");
-        if (mode is "gemini" or "sarvam")
+        if (mode is "gemini" or "sarvam" or "elevenlabs")
         {
             var profile = Independent(settings.Data);
             mode = SettingsStore.GetString(profile["engine"], "windows-core");

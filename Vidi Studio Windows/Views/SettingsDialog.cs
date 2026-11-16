@@ -515,7 +515,7 @@ public sealed partial class SettingsDialog : Window
     {
         SettingsStore.NormalizeNarrationPlayback(draft);
         if (narrationPlaybackChoice is not { } field) return;
-        field.IsEnabled = SettingsStore.GetString(draft["ttsMode"]) is not ("gemini" or "sarvam");
+        field.IsEnabled = SettingsStore.GetString(draft["ttsMode"]) is not ("gemini" or "sarvam" or "elevenlabs");
         field.SelectedItem = ((IEnumerable<PlaybackOption>)field.ItemsSource)
             .First(option => option.Id == SettingsStore.GetString(draft["narrationPlayback"], "generated"));
     }
@@ -563,7 +563,7 @@ public sealed partial class SettingsDialog : Window
     {
         var provider = SettingsStore.GetString(draft["ttsMode"], "windows-core");
         var options = new List<SpeechEngineOption> { new("windows-core", "Windows OneCore"), new("sapi5", "Windows SAPI 5"),
-            new("piper", "Piper Voices"), new("gemini", "Gemini Voices"), new("sarvam", "Sarvam Voices") };
+            new("piper", "Piper Voices"), new("gemini", "Gemini Voices"), new("sarvam", "Sarvam Voices"), new("elevenlabs", "ElevenLabs Voices") };
         if (mode.ItemsSource is not IEnumerable<SpeechEngineOption> existing)
         {
             mode.ItemsSource = options;
@@ -642,7 +642,7 @@ public sealed partial class SettingsDialog : Window
                 StopSample(false);
                 draft["ttsMode"] = selected.Id;
                 UpdateNarrationPlaybackChoice();
-                if (selected.Id is not ("gemini" or "sarvam")) draft["systemVoice"] = SettingsStore.GetString(draft[VoiceKey(selected.Id)]);
+                if (selected.Id is not ("gemini" or "sarvam" or "elevenlabs")) draft["systemVoice"] = SettingsStore.GetString(draft[VoiceKey(selected.Id)]);
                 await RefreshVoices();
             };
             sapiHost.TextChanged += (_, _) => draft["sapiHostPath"] = sapiHost.Text;
@@ -721,7 +721,7 @@ public sealed partial class SettingsDialog : Window
     private bool HasDraftApiKey => !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"])) &&
         SettingsStore.GetString(draft["apiKeyValid"], "true") != "false" &&
         SettingsStore.GetString(draft["apiPlan"], "") != "invalid";
-    private void VoiceSampleChanged() { if (!closed) { UpdateSampleControls(); UpdateSarvamSampleControls(); UpdateSummarySampleControls(); } }
+    private void VoiceSampleChanged() { if (!closed) { UpdateSampleControls(); UpdateSarvamSampleControls(); UpdateSummarySampleControls(); if(elevenCard?.Visibility == Visibility.Visible) RenderElevenRows(); } }
     private void UpdateSampleControls()
     {
         if (samplePlayButton != null)
@@ -789,7 +789,7 @@ public sealed partial class SettingsDialog : Window
             "piper" => "Downloaded Piper voice",
             _ => "Windows OneCore voice"
         };
-        localSpeechControls.Visibility = provider is "gemini" or "sarvam" ? Visibility.Collapsed : Visibility.Visible;
+        localSpeechControls.Visibility = provider is "gemini" or "sarvam" or "elevenlabs" ? Visibility.Collapsed : Visibility.Visible;
         sapiHost.Visibility = provider == "sapi5" && DeveloperModeEnabled ? Visibility.Visible : Visibility.Collapsed;
         UpdateVoiceEngineVisibility(provider);
         UpdateAdditionalSpeechVisibility(provider);
@@ -798,7 +798,7 @@ public sealed partial class SettingsDialog : Window
         voices = new();
         try
         {
-            if (provider == "sarvam") return;
+            if (provider is "sarvam" or "elevenlabs") return;
             if (provider == "gemini")
             {
                 voices = GeminiVoices.Featured.ToList();

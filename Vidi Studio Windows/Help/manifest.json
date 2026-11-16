@@ -447,6 +447,10 @@
         {
           "id": "sarvam-rest",
           "title": "Sarvam narration"
+        },
+        {
+          "id": "elevenlabs-rest",
+          "title": "ElevenLabs narration"
         }
       ]
     },
@@ -731,6 +735,10 @@
           "title": "Sarvam Voices"
         },
         {
+          "id": "elevenlabs-voices",
+          "title": "ElevenLabs Voices"
+        },
+        {
           "id": "summary-voice",
           "title": "Local Summary voice"
         },
@@ -967,6 +975,10 @@
         {
           "id": "sarvam-privacy",
           "title": "Sarvam narration"
+        },
+        {
+          "id": "elevenlabs-privacy",
+          "title": "ElevenLabs narration"
         }
       ]
     }

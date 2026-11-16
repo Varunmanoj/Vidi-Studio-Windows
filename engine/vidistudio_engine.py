@@ -9,6 +9,7 @@ import youtube_audio
 import audio_sources
 import network_activity
 import sarvam_tts
+import elevenlabs_tts
 import gemini_adapter
 import parity
 import import_assets
@@ -96,6 +97,8 @@ def safe_error(exc):
         if key: message = message.replace(key, '[redacted]')
         sarvam_key = os.environ.get('VIDISTUDIO_SARVAM_API_KEY', '')
         if sarvam_key: message = message.replace(sarvam_key, '[redacted]')
+        elevenlabs_key = os.environ.get('VIDISTUDIO_ELEVENLABS_API_KEY', '')
+        if elevenlabs_key: message = message.replace(elevenlabs_key, '[redacted]')
     except Exception: pass
     return message
 
@@ -1350,6 +1353,7 @@ def narration_engine(cfg):
 
 
 def narration_voice(cfg):
+    if cfg.get('ttsMode') == 'elevenlabs': return (cfg.get('elevenlabsSpeech') or {}).get('voiceName') or (cfg.get('elevenlabsSpeech') or {}).get('voice', '')
     if cfg.get('ttsMode') == 'sarvam':
         return sarvam_tts.parameters(cfg).get('speaker', 'Default voice')
     if narration_engine(cfg) == 'gemini':
@@ -1463,7 +1467,9 @@ def synthesize(root,p,segment=None,changed=False,regenerate_all=False,segments=N
             text_stream.write(c['text'])
             textfile = Path(text_stream.name)
         try:
-            if cfg.get('ttsMode','system') == 'sarvam':
+            if cfg.get('ttsMode','system') == 'elevenlabs':
+                elevenlabs_tts.synthesize(output, c['text'], cfg, run, tool('ffmpeg'), emit)
+            elif cfg.get('ttsMode','system') == 'sarvam':
                 sarvam_tts.synthesize(output, c['text'], cfg, run, tool('ffmpeg'), emit)
             elif cfg.get('ttsMode','system') == 'gemini':
                 gemini_speech(output, c['text'], p)
@@ -1510,7 +1516,7 @@ def synthesize(root,p,segment=None,changed=False,regenerate_all=False,segments=N
             output.unlink(missing_ok=True)
             raise
         except Exception as exc:
-            if network_activity.transport_failure(exc) or isinstance(exc, sarvam_tts.SarvamError):
+            if network_activity.transport_failure(exc) or isinstance(exc, (sarvam_tts.SarvamError, elevenlabs_tts.ElevenLabsError)):
                 output.unlink(missing_ok=True)
                 raise
             # A single description must not stop the rest of the narration run.
@@ -3053,7 +3059,7 @@ def dispatch_project(args, root, p):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command',choices=['preview-sarvam-sample','check-sarvam-key','list-sarvam-models','normalize-speech','check-api-key','reanalyze-transcript-segment','undo-transcript','redo-transcript','reanalyze-segment','prepare-analysis-video','check-video-availability','cleanup-project','clear-generated','delete-generated','delete-segment-audio','list-models','list-voices','preview-tts','import-video','probe-video','generate-thumbnails','transcribe','generate-summary','generate-ad-cues','synthesize-tts','export-final-video','export-selectable-video','export-original-video','export-closed-audio-description-video','export-open-audio-description-video','export-closed-caption-video','export-dual-closed-caption-video','export-open-caption-video','export-original-audio','export-described-audio','export-youtube-described-audio','export-youtube-original-audio','download-youtube-audio','export-hls','save-cues','save-segments','save-summary','doctor',*parity.COMMANDS,*import_assets.COMMANDS,*audio_sources.COMMANDS,*language_results.COMMANDS,'read-youtube-metadata'])
+    parser.add_argument('command',choices=['elevenlabs-settings','preview-sarvam-sample','check-sarvam-key','list-sarvam-models','normalize-speech','check-api-key','reanalyze-transcript-segment','undo-transcript','redo-transcript','reanalyze-segment','prepare-analysis-video','check-video-availability','cleanup-project','clear-generated','delete-generated','delete-segment-audio','list-models','list-voices','preview-tts','import-video','probe-video','generate-thumbnails','transcribe','generate-summary','generate-ad-cues','synthesize-tts','export-final-video','export-selectable-video','export-original-video','export-closed-audio-description-video','export-open-audio-description-video','export-closed-caption-video','export-dual-closed-caption-video','export-open-caption-video','export-original-audio','export-described-audio','export-youtube-described-audio','export-youtube-original-audio','download-youtube-audio','export-hls','save-cues','save-segments','save-summary','doctor',*parity.COMMANDS,*import_assets.COMMANDS,*audio_sources.COMMANDS,*language_results.COMMANDS,'read-youtube-metadata'])
     parser.add_argument('--project',type=Path); parser.add_argument('--video',type=Path); parser.add_argument('--library',type=Path); parser.add_argument('--input',type=Path)
     parser.add_argument('--media-format', choices=VIDEO_EXPORT_FORMATS + AUDIO_EXPORT_FORMATS)
     parser.add_argument('--content',choices=['transcript','summary','descriptions','combined'],default='descriptions'); parser.add_argument('--url'); parser.add_argument('--name'); parser.add_argument('--timestamp',type=float,default=0); parser.add_argument('--duration',type=float); parser.add_argument('--segment'); parser.add_argument('--segments', action='append'); parser.add_argument('--format',choices=['srt','vtt','txt','json','md'],default='srt'); parser.add_argument('--changed',action='store_true'); parser.add_argument('--start-stage',default='transcribe')
@@ -3066,6 +3072,7 @@ def main():
     parser.add_argument('--replace-existing',action='store_true',help='Replace the existing export for the same configuration after explicit confirmation.')
     parser.add_argument('--captions', choices=['none','closed','open','dual-closed'], default='none', help='Add no transcript, one switchable caption track, two switchable transcript tracks, or permanently rendered captions to an Audio Description video.')
     parser.add_argument('--web-audio', choices=['original','closed-description','open-description'], default='closed-description', help='Choose the audio presentation for a Web Playback HLS package.')
+    parser.add_argument('--elevenlabs-action', choices=['check','models','voices','add','demo','forget']); parser.add_argument('--elevenlabs-request', default='{}')
     parser.add_argument('--sarvam-model'); parser.add_argument('--sarvam-voice'); parser.add_argument('--sarvam-language')
     parser.add_argument('--language')
     parser.add_argument('--result-id')
@@ -3112,6 +3119,8 @@ def main():
         return
     if args.command == 'check-api-key':
         check_api_key(); return
+    if args.command == 'elevenlabs-settings':
+        elevenlabs_tts.execute(args.elevenlabs_action, json.loads(args.elevenlabs_request), emit); return
     if args.command == 'preview-sarvam-sample':
         sarvam_tts.preview_sample(args.sarvam_model, args.sarvam_voice, args.sarvam_language, run, tool('ffmpeg'), emit); return
     if args.command == 'check-sarvam-key':

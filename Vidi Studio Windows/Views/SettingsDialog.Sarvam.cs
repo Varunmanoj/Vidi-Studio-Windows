@@ -47,6 +47,7 @@ public sealed partial class SettingsDialog
 
     private void BuildAdditionalSpeechControls(StackPanel panel)
     {
+        PrepareElevenLabs(panel);
         sarvamSettingsCard ??= SpeechSettingsCard(sarvamControls);
         summarySettingsCard ??= SpeechSettingsCard(summaryVoiceControls);
         foreach (var card in new[] { sarvamSettingsCard, summarySettingsCard }) {
@@ -63,14 +64,16 @@ public sealed partial class SettingsDialog
     }
     private void UpdateAdditionalSpeechVisibility(string provider)
     {
+        if (elevenCard != null) elevenCard.Visibility = provider == "elevenlabs" ? Visibility.Visible : Visibility.Collapsed;
+        if (provider == "elevenlabs") { if (elevenFields.Children.Count == 0) BuildElevenFields(); if (elevenModels.Count == 0 && !elevenChecking) _ = RefreshElevenLabs(); } else StopElevenDemo();
         sarvamControls.Visibility = provider == "sarvam" ? Visibility.Visible : Visibility.Collapsed;
-        summaryVoiceControls.Visibility = provider is "sarvam" or "gemini" ? Visibility.Visible : Visibility.Collapsed;
+        summaryVoiceControls.Visibility = provider is "sarvam" or "gemini" or "elevenlabs" ? Visibility.Visible : Visibility.Collapsed;
         if (sarvamControls.Parent is Border sarvamCard) sarvamCard.Visibility = sarvamControls.Visibility;
         if (summaryVoiceControls.Parent is Border summaryCard) summaryCard.Visibility = summaryVoiceControls.Visibility;
         foreach (var control in new[] { nativeVoiceGroup, nativeSample, nativeSampleButtons })
-            if (control != null) control.Visibility = provider == "sarvam" ? Visibility.Collapsed : Visibility.Visible;
+            if (control != null) control.Visibility = provider is "sarvam" or "elevenlabs" ? Visibility.Collapsed : Visibility.Visible;
         if (provider == "sarvam") { BuildSarvamSettings(); if (!sarvamModelsRequested) { sarvamModelsRequested = true; _ = RefreshSarvamModelsAsync(); if (!string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["sarvamApiKey"])) && SettingsStore.GetString(draft["sarvamKeyStatus"]) != "verified") sarvamKeyTimer?.Start(); } } else StopSarvamDemo();
-        if (provider is "sarvam" or "gemini") BuildSummarySpeechSettings();
+        if (provider is "sarvam" or "gemini" or "elevenlabs") BuildSummarySpeechSettings();
     }
 
     private ComboBox SpeechChoiceControl(StackPanel panel, string title, string id, string value,

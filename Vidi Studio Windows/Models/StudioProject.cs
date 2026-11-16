@@ -795,6 +795,7 @@ public static class NarrationVoiceFormatting
 {
     public static string EngineDisplayName(string? engine) => (engine ?? "").Trim().ToLowerInvariant() switch
     {
+        "elevenlabs" => "ElevenLabs Voices",
         "sarvam" => "Sarvam Voices",
         "gemini" => "Gemini Voices",
         "system" => "Apple Voices",

@@ -23,9 +23,10 @@ internal sealed class SettingsAutoApply
             .Where(key => applied.ContainsKey(key) != snapshot.ContainsKey(key)
                 || !JsonNode.DeepEquals(applied[key], snapshot[key])).ToArray();
         var latest = load().DeepClone().AsObject();
-        foreach (var key in changed.Where(key => key is not "apiKey" and not "sarvamApiKey" and not "azureSpeechKey"))
+        foreach (var key in changed.Where(key => key is not "elevenlabsApiKey" and not "apiKey" and not "sarvamApiKey" and not "azureSpeechKey"))
             MergeProperty(latest, key, applied, snapshot);
         // Credentials never enter the JSON payload passed to persistence.
+        latest.Remove("elevenlabsApiKey");
         latest.Remove("sarvamApiKey");
         latest.Remove("apiKey");
         latest.Remove("azureSpeechKey");

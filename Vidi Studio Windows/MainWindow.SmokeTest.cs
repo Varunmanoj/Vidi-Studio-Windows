@@ -1286,6 +1286,7 @@ public sealed partial class MainWindow
                 }
                 PreviewTheme(originalTheme);
             });
+            await settings.VerifyElevenLabsForSmokeTestAsync(theme => CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "elevenlabs-" + theme + ".png")));
             await settings.VerifyGeminiKeyLayoutForSmokeTestAsync(async () => {
                 foreach (var theme in new[] { "dark", "light" }) {
                     PreviewTheme(theme); await Task.Delay(150);

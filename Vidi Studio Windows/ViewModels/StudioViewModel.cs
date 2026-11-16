@@ -122,6 +122,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     }
     public bool CanNarrate => CurrentNarrationEngine() switch {
         "gemini" => CanUseAI,
+        "elevenlabs" => !string.IsNullOrWhiteSpace(Settings.Get("elevenlabsApiKey")) && Settings.Get("elevenlabsKeyStatus") != "invalid" && SettingsStore.GetString(Settings.Data["elevenlabsSpeech"]?["voice"]).Length > 0 && ConnectivityService.Shared.Available(OnlineService.ElevenLabs),
         "sarvam" => !string.IsNullOrWhiteSpace(Settings.Get("sarvamApiKey")) && Settings.Get("sarvamKeyStatus") != "invalid" && ConnectivityService.Shared.Available(OnlineService.Sarvam),
         _ => true
     };
@@ -472,6 +473,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public string CurrentNarrationVoice()
     {
         var engine = CurrentNarrationEngine();
+        if (engine == "elevenlabs") return SettingsStore.GetString(Settings.Data["elevenlabsSpeech"]?["voiceName"],SettingsStore.GetString(Settings.Data["elevenlabsSpeech"]?["voice"]));
         if (engine == "sarvam") return SarvamSpeech.Voice(Settings.Data);
         if (engine == "gemini")
         {

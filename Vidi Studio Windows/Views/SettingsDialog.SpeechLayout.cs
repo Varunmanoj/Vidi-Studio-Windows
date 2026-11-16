@@ -132,7 +132,7 @@ public sealed partial class SettingsDialog
             if (panel.Children.Contains(control)) panel.Children.Remove(control);
             else if (control.Parent is Panel parent) parent.Children.Remove(control);
         }
-        Panel row = id is "sarvam-key-actions" or "gemini-key-actions" ? new CompactActionsPanel() : new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        Panel row = id.StartsWith("elevenlabs-",StringComparison.Ordinal) || id is "sarvam-key-actions" or "gemini-key-actions" ? new CompactActionsPanel() : new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         row.HorizontalAlignment = HorizontalAlignment.Stretch;
         AutomationProperties.SetAutomationId(row,id);
         foreach (var control in controls) { control.VerticalAlignment = VerticalAlignment.Center; row.Children.Add(control); }

@@ -643,6 +643,7 @@ public sealed partial class MainWindow
     }
     private static string EngineTitle(string mode) => mode switch
     {
+        "elevenlabs" => "ElevenLabs Voices",
         "sarvam" => "Sarvam Voices",
         "gemini" => "Gemini Voices",
         "sapi5" => "Windows SAPI 5",

@@ -285,7 +285,7 @@ public sealed partial class SettingsDialog : Window
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(heading, "settings-page-title");
         Grid.SetRow(heading, 1); Grid.SetColumn(heading, 1); layout.Children.Add(heading);
         var sections = new ListView { SelectionMode = ListViewSelectionMode.Single };
-        var labels = new[] { "Appearance", "Projects", "Narration", "Gemini API", "Developer prompts", "Storage", "Help", "About", "YouTube Accounts" };
+        var labels = new[] { "Appearance", "Projects", "Narration", "Gemini", "Developer prompts", "Storage", "Help", "About", "YouTube Accounts" };
         var glyphs = new[] { "\uE790", "\uE8F1", "\uE767", "\uE734", "\uE8F2", "\uE8B7", "\uE897", "\uE946", "\uE714" };
         // Keep section IDs stable for menu/navigation callers while matching the Mac sidebar order.
         foreach (var i in new[] { 0, 1, 2, 3, 8, 4, 5, 6, 7 })

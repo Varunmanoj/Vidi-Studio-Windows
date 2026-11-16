@@ -199,7 +199,7 @@ public sealed partial class SettingsDialog
         planPillText = new TextBlock(); planDetailsSubtitle = new TextBlock();
 
         var titleRows = new StackPanel();
-        titleRows.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Gemini API", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }));
+        titleRows.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Gemini", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }));
         var titleCard = GeminiSettingsCard(titleRows);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(titleCard,"gemini-title-card");
         panel.Children.Add(titleCard);

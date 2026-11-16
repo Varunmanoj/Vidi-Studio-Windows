@@ -94,7 +94,7 @@ public sealed partial class SettingsDialog
 #if DEBUG
     internal void VerifySidebarNavigationForSmokeTest()
     {
-        var expected = new[] { "Appearance", "Projects", "Narration", "Gemini API", "YouTube Accounts" }
+        var expected = new[] { "Appearance", "Projects", "Narration", "Gemini", "YouTube Accounts" }
             .Concat(DeveloperModeEnabled ? new[] { "Developer prompts" } : Array.Empty<string>())
             .Concat(new[] { "Storage", "Help", "About" });
         var actual = sectionList!.Items.OfType<ListViewItem>().Where(item => item.Visibility == Visibility.Visible)

@@ -675,8 +675,8 @@
           "title": "Narration"
         },
         {
-          "id": "gemini-api",
-          "title": "Gemini API"
+          "id": "gemini",
+          "title": "Gemini"
         },
         {
           "id": "video-processing",

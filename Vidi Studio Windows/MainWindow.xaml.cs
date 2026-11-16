@@ -2123,7 +2123,7 @@ public sealed partial class MainWindow : Window
     {
         var section = ((sender as FrameworkElement)?.Tag as string) switch
         {
-            "Projects" => 1, "Narration" => 2, "Gemini API" => 3, "Developer prompts" => 4,
+            "Projects" => 1, "Narration" => 2, "Gemini" or "Gemini API" => 3, "Developer prompts" => 4,
             "Storage" => 5, "Help" => 6, "About" => 7, "YouTube Accounts" => 8, _ => 0
         };
         await ShowSettingsSectionAsync(section);

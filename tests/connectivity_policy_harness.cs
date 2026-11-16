@@ -2,7 +2,8 @@ using System;
 using Vidi_Studio_Windows.Services;
 using Vidi_Studio_Windows.Models;
 namespace Vidi_Studio_Windows.Services {
-    public enum OnlineService { Gemini, YouTube, Voices, Sarvam }
+    public enum ConnectionState { Checking, Available, Offline, Unreachable }
+    public enum OnlineService { Gemini, YouTube, Voices, Sarvam, ElevenLabs }
     public sealed class SettingsStore { public string Mode = "windows-core"; public string Get(string key, string fallback) => Mode; }
 }
 namespace Vidi_Studio_Windows.Models {
@@ -24,6 +25,20 @@ class Program {
     foreach (var command in OnlineRequirements.GeminiCommands) Check(command,OnlineService.Gemini);
     settings.Mode="gemini";Check("synthesize-tts",OnlineService.Gemini);
     settings.Mode="sarvam";Check("synthesize-tts",OnlineService.Sarvam);
+    foreach(var provider in new[]{("gemini",OnlineService.Gemini),("sarvam",OnlineService.Sarvam),("elevenlabs",OnlineService.ElevenLabs)}) {
+        var warning=new VoiceSelectionWarning();
+        if(!warning.ShouldWarn(provider.Item2,ConnectionState.Offline)
+            || warning.ShouldWarn(provider.Item2,ConnectionState.Offline)
+            || warning.ShouldWarn(provider.Item2,ConnectionState.Checking)
+            || warning.ShouldWarn(provider.Item2,ConnectionState.Unreachable)
+            || warning.ShouldWarn(provider.Item2,ConnectionState.Available)
+            || !warning.ShouldWarn(provider.Item2,ConnectionState.Offline)
+            || warning.ShouldWarn(null,ConnectionState.Available)
+            || !warning.ShouldWarn(provider.Item2,ConnectionState.Offline)) throw new Exception("Voice warning dismissal/recheck/recovery");
+        settings.Mode=provider.Item1;
+        foreach(var command in new[]{"synthesize-tts","synthesize-speech","synthesize-changed","preview-tts"}) Check(command,provider.Item2);
+    }
+    Check("preview-sarvam-sample",null);
     settings.Mode="piper";Check("synthesize-tts",null);
     project.IsYouTube=true;Check("prepare-video",OnlineService.YouTube);Check("export-youtube-original-audio",OnlineService.YouTube);
     project.AudioSources=new AudioSourceSettings { Export="imported" };Check("export-youtube-original-audio",null);

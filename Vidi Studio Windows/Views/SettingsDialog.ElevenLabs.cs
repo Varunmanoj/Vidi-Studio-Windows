@@ -249,11 +249,11 @@ public sealed partial class SettingsDialog
         try {
             var result=await ElevenLabsSpeech.Request("demo",elevenKey,new JsonObject{["voice"]=ES(voice["id"]),["model"]=ES(ElevenProfile["model"]),["language"]=variant==null?ES(ElevenProfile["language"]):ES(variant["language"]),["locale"]=ES(variant?["locale"])},lifetime.Token);
             if(closed||request!=elevenAudioRevision)return;
-            if(ES(result["demoPath"]).Length==0){elevenMessage.Text=ES(result["error"],"Sample unavailable");StopElevenDemo();RenderElevenRows();return;}
+            if(ES(result["demoPath"]).Length==0){elevenMessage.Text=ES(result["error"],"Sample unavailable");StopElevenDemo();RenderElevenRows();await ShowVoiceWarningAsync(OnlineService.ElevenLabs,"This voice demo could not be downloaded or played. Check your internet connection and try again.");return;}
             elevenPlayer=new Windows.Media.Playback.MediaPlayer{Source=Windows.Media.Core.MediaSource.CreateFromUri(new Uri(ES(result["demoPath"])))};
             elevenPlayer.MediaEnded+=(_,_)=>DispatcherQueue.TryEnqueue(()=>{StopElevenDemo();if(!closed)RenderElevenRows();});
-            elevenPlayer.MediaFailed+=(_,_)=>DispatcherQueue.TryEnqueue(()=>{StopElevenDemo();if(!closed){elevenMessage.Text="Could not play this demo.";RenderElevenRows();}});elevenPlayer.Play();
-        }catch(Exception){if(request==elevenAudioRevision&&!closed){StopElevenDemo();elevenMessage.Text="Could not play this demo.";RenderElevenRows();}}
+            elevenPlayer.MediaFailed+=(_,_)=>DispatcherQueue.TryEnqueue(async ()=>{StopElevenDemo();if(!closed){elevenMessage.Text="Could not play this demo.";RenderElevenRows();await ShowVoiceWarningAsync(OnlineService.ElevenLabs,"This voice demo could not be downloaded or played. Check your internet connection and try again.");}});elevenPlayer.Play();
+        }catch(Exception){if(request==elevenAudioRevision&&!closed){StopElevenDemo();elevenMessage.Text="Could not play this demo.";RenderElevenRows();await ShowVoiceWarningAsync(OnlineService.ElevenLabs,"This voice demo could not be downloaded or played. Check your internet connection and try again.");}}
     }
 #if DEBUG
     internal async Task VerifyElevenLabsForSmokeTestAsync(Func<string,Task> capture)

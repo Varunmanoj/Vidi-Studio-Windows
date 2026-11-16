@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Media;
+using Vidi_Studio_Windows.Services;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -89,6 +90,9 @@ public sealed partial class MainWindow
             ("languages",()=>new ContentDialog {Title="Language and Saved Results",Content=new ScrollViewer {Content=BuildLanguageResultsPanel(project)},CloseButtonText="Close"},720,800),
             ("export-text",()=>Export(2),1040,760),
             ("export-audio",()=>Export(1),1040,760),
+            ("voice-offline-gemini",()=>Views.SettingsDialog.VoiceConnectionDialog(OnlineService.Gemini,"No internet connection. Connect to the internet to use Gemini."),520,300),
+            ("voice-offline-elevenlabs",()=>Views.SettingsDialog.VoiceConnectionDialog(OnlineService.ElevenLabs,"No internet connection. Connect to the internet to use ElevenLabs."),520,300),
+            ("voice-offline",()=>Views.SettingsDialog.VoiceConnectionDialog(OnlineService.Sarvam,"No internet connection. Connect to the internet to use Sarvam."),520,300),
             ("piper-voices",()=>new Views.PiperVoicesDialog(),780,740),
             ("piper-delete",()=>new Views.PiperDeleteVoicesDialog(),720,700),
             ("sources",()=>new ContentDialog {Title="Audio sources",Content=new Views.AudioSourceControls(this,Model,exportHost:false),CloseButtonText="Done"},740,700)

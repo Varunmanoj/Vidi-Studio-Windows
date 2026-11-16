@@ -327,7 +327,7 @@ public sealed partial class SettingsDialog
             sarvamDemo.Source = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(path)); sarvamDemo.Play(); status.Text = "Playing sample";
         }
         catch (Exception ex) {
-            if (!closed && generation == demoGeneration) { StopSarvamDemo(); status.Text = ex.Message; }
+            if (!closed && generation == demoGeneration) { StopSarvamDemo(); status.Text = ex.Message; await ShowVoiceWarningAsync(OnlineService.Sarvam,"The sample could not be prepared. Check your internet connection and voice settings, then try again."); }
         }
         finally { sarvamSamplePreparing = false; if (!sarvamDemoActive) VoiceSampleSession.End(sarvamSampleOwner); if (!closed) UpdateSarvamSampleControls(); }
     }

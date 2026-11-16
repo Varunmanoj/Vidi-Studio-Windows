@@ -222,14 +222,42 @@ public sealed partial class SettingsDialog : Window
     private readonly MediaPlayer samplePlayer = new();
     private readonly SettingsSoundPreview soundPreview;
     private readonly Dictionary<string, (Button Button, MenuFlyoutItem Menu, string Label)> soundPreviewControls = new();
+    private bool voiceWarningOpen;
+    private readonly VoiceSelectionWarning voiceSelectionWarning = new();
+    internal static ContentDialog VoiceConnectionDialog(OnlineService service, string reason) => new() {
+        Title = "Internet Connection Required",
+        Content = new TextBlock { Text = reason + "\n\nNew online narration and uncached voice samples need internet. Saved audio and installed local voices remain available.", TextWrapping = TextWrapping.Wrap },
+        CloseButtonText = "Close"
+    };
+    private async Task ShowVoiceWarningAsync(OnlineService service, string? failure = null) {
+        if(closed) return;
+        var state=ConnectivityService.Shared.State(service);
+        if(voiceWarningOpen) return;
+        if(failure==null && !voiceSelectionWarning.ShouldWarn(service,state)) return;
+        voiceWarningOpen=true;
+        try {
+            var dialog=VoiceConnectionDialog(service,ConnectivityService.Shared.Reason(service) ?? failure!);
+            if(state==ConnectionState.Available) dialog.Title="Voice Sample Couldn’t Play";
+            await WindowedDialog.ShowAsync(dialog,this,520,300);
+            ConnectivityService.Shared.Check();
+        } finally { voiceWarningOpen=false; }
+    }
+    private Task WarnSelectedVoiceAsync() => SettingsStore.GetString(draft["ttsMode"]) switch {
+        "gemini" => ShowVoiceWarningAsync(OnlineService.Gemini),
+        "sarvam" => ShowVoiceWarningAsync(OnlineService.Sarvam),
+        "elevenlabs" => ShowVoiceWarningAsync(OnlineService.ElevenLabs),
+        _ => ResetVoiceWarning()
+    };
+    private Task ResetVoiceWarning() { voiceSelectionWarning.ShouldWarn(null,ConnectionState.Available); return Task.CompletedTask; }
     private void ConnectivityChanged(object? sender, EventArgs e)
     {
+        if(narrationBuilt && SelectedSection==2) _ = WarnSelectedVoiceAsync();
         if (checkPlanButton != null) {
             checkPlanButton.IsEnabled = !checkingApiKey && (string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"])) || ConnectivityService.Shared.Available(OnlineService.Gemini));
             ToolTipService.SetToolTip(checkPlanButton, string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"])) ? "Enter a Gemini API key to check it." : ConnectivityService.Shared.Reason(OnlineService.Gemini) ?? "Check the entered API key");
         }
         if (samplePlayButton != null && SettingsStore.GetString(draft["ttsMode"]) == "gemini")
-            samplePlayButton.IsEnabled = ConnectivityService.Shared.Available(OnlineService.Gemini) && HasDraftApiKey && (sampleState != SampleState.Stopped || !VoiceSampleSession.Busy);
+            samplePlayButton.IsEnabled = sampleState != SampleState.Stopped || (ConnectivityService.Shared.Available(OnlineService.Gemini) && HasDraftApiKey && !VoiceSampleSession.Busy);
     }
     private readonly object nativeSampleOwner = new();
     private enum SampleState { Stopped, Generating, Playing }
@@ -657,6 +685,7 @@ public sealed partial class SettingsDialog : Window
                 draft["ttsMode"] = selected.Id;
                 UpdateNarrationPlaybackChoice();
                 if (selected.Id is not ("gemini" or "sarvam" or "elevenlabs")) draft["systemVoice"] = SettingsStore.GetString(draft[VoiceKey(selected.Id)]);
+                await WarnSelectedVoiceAsync();
                 await RefreshVoices();
             };
             sapiHost.TextChanged += (_, _) => draft["sapiHostPath"] = sapiHost.Text;
@@ -883,7 +912,7 @@ public sealed partial class SettingsDialog : Window
         if (VoiceSampleSession.Busy) return;
         soundPreview.Stop();
         if ((mode.SelectedItem as SpeechEngineOption)?.Id == "gemini" && !ConnectivityService.Shared.Available(OnlineService.Gemini)) {
-            status.Text = ConnectivityService.Shared.Reason(OnlineService.Gemini); return;
+            status.Text = ConnectivityService.Shared.Reason(OnlineService.Gemini); await ShowVoiceWarningAsync(OnlineService.Gemini,status.Text); return;
         }
         StopSample(false);
         sampleCancellation = new();
@@ -945,6 +974,7 @@ public sealed partial class SettingsDialog : Window
             {
                 StopSample(false);
                 status.Text = $"Sample could not be created: {ex.Message}";
+                if ((mode.SelectedItem as SpeechEngineOption)?.Id == "gemini") await ShowVoiceWarningAsync(OnlineService.Gemini,status.Text);
             }
         }
         finally { File.Delete(config); }

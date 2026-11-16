@@ -42,3 +42,16 @@ public static class OnlineRequirements
     }
 }
 
+
+// Rechecks must not reopen a dismissed warning before the connection recovers.
+internal sealed class VoiceSelectionWarning
+{
+    private OnlineService? warnedService;
+    internal bool ShouldWarn(OnlineService? service, ConnectionState state)
+    {
+        if(service == null || state == ConnectionState.Available) { warnedService=null; return false; }
+        if(state is not (ConnectionState.Offline or ConnectionState.Unreachable) || warnedService==service) return false;
+        warnedService=service;
+        return true;
+    }
+}

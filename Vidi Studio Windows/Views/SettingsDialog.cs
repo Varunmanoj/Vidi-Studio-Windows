@@ -167,15 +167,13 @@ public sealed partial class SettingsDialog : Window
             if (voices.Count < 2) throw new InvalidOperationException(provider + " voice list is empty.");
             await Preview("This is a Vidi Studio voice sample.");
             if (status.Text != "Playing sample.") throw new InvalidOperationException(provider + " sample failed: " + status.Text);
-            if (samplePlayButton?.Content as string != "Pause sample") throw new InvalidOperationException("Play did not become Pause.");
+            if (Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(samplePlayButton!) != "Stop Sample") throw new InvalidOperationException("Play did not immediately become Stop.");
             await ToggleSampleAsync("This is a Vidi Studio voice sample.");
-            if (sampleState != SampleState.Paused || samplePlayButton.Content as string != "Resume sample")
-                throw new InvalidOperationException("Sample did not pause.");
+            if (sampleState != SampleState.Stopped || Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(samplePlayButton) != "Play Sample") throw new InvalidOperationException("Clicking the active sample did not stop and restore Play.");
             await ToggleSampleAsync("This is a Vidi Studio voice sample.");
-            if (sampleState != SampleState.Playing || samplePlayButton.Content as string != "Pause sample")
-                throw new InvalidOperationException("Sample did not resume.");
+            if (sampleState != SampleState.Playing) throw new InvalidOperationException("Stopped sample did not restart.");
             StopSample();
-            if (sampleState != SampleState.Stopped || samplePlayButton.Content as string != "Play selected voice sample" || sampleStopButton?.IsEnabled != false)
+            if (sampleState != SampleState.Stopped || Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(samplePlayButton) != "Play Sample" || sampleStopButton?.IsEnabled != false)
                 throw new InvalidOperationException("Stop did not reset the sample controls.");
         }
     }
@@ -231,12 +229,14 @@ public sealed partial class SettingsDialog : Window
             ToolTipService.SetToolTip(checkPlanButton, string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"])) ? "Enter a Gemini API key to check it." : ConnectivityService.Shared.Reason(OnlineService.Gemini) ?? "Check the entered API key");
         }
         if (samplePlayButton != null && SettingsStore.GetString(draft["ttsMode"]) == "gemini")
-            samplePlayButton.IsEnabled = ConnectivityService.Shared.Available(OnlineService.Gemini) && HasDraftApiKey && sampleState != SampleState.Generating;
+            samplePlayButton.IsEnabled = ConnectivityService.Shared.Available(OnlineService.Gemini) && HasDraftApiKey && (sampleState != SampleState.Stopped || !VoiceSampleSession.Busy);
     }
-    private enum SampleState { Stopped, Generating, Playing, Paused }
+    private readonly object nativeSampleOwner = new();
+    private enum SampleState { Stopped, Generating, Playing }
     private SampleState sampleState;
     private Button? samplePlayButton;
     private Button? sampleStopButton;
+    private ProgressRing nativePreparingRing = new() { Width = 18, Height = 18, Visibility = Visibility.Collapsed };
     private readonly List<string> temporaryFiles = new();
     private CancellationTokenSource? sampleCancellation;
     private CancellationTokenSource? voiceCancellation;
@@ -342,11 +342,14 @@ public sealed partial class SettingsDialog : Window
         model.PropertyChanged += ReceiveModelProjectChange;
         ConnectivityService.Shared.Changed += ConnectivityChanged;
         Closed += (_, _) => ConnectivityService.Shared.Changed -= ConnectivityChanged;
+        VoiceSampleSession.Changed += VoiceSampleChanged;
+        Closed += (_,_) => { VoiceSampleSession.Changed -= VoiceSampleChanged; VoiceSampleSession.End(nativeSampleOwner); };
         samplePlayer.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
             if (closed || sampleState != SampleState.Playing) return;
             samplePlayer.Source = null;
             sampleState = SampleState.Stopped;
+            VoiceSampleSession.End(nativeSampleOwner);
             UpdateSampleControls();
             status.Text = "Sample finished.";
         });
@@ -704,9 +707,12 @@ public sealed partial class SettingsDialog : Window
         };
         ConfigurePiperSampleMenu(sample);
         controls.Children.Add(samplePlayButton);
-        sampleStopButton = new Button { Content = "Stop" };
+        sampleStopButton = new Button { Content = "Stop Sample", Visibility = Visibility.Collapsed };
         sampleStopButton.Click += (_, _) => StopSample();
-        controls.Children.Add(sampleStopButton);
+        IconButtonContent.Set(sampleStopButton,"Stop Sample",Symbol.Stop);
+        nativePreparingRing = new ProgressRing { Width = 18, Height = 18, Visibility = Visibility.Collapsed };
+        controls.Children.Add(sampleStopButton); controls.Children.Add(nativePreparingRing);
+        SetVoiceSampleMenu(samplePlayButton,"local-sample",() => sampleState == SampleState.Stopped && !VoiceSampleSession.Busy && ((mode.SelectedItem as SpeechEngineOption)?.Id != "gemini" || HasDraftApiKey && ConnectivityService.Shared.Available(OnlineService.Gemini)),() => _ = Preview(sample.Text),() => sampleState != SampleState.Stopped,() => StopSample());
         UpdateSampleControls();
         nativeSampleButtons = controls;
         sampleRows.Children.Add(GeminiRowDivider()); sampleRows.Children.Add(controls);
@@ -715,43 +721,38 @@ public sealed partial class SettingsDialog : Window
     private bool HasDraftApiKey => !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"])) &&
         SettingsStore.GetString(draft["apiKeyValid"], "true") != "false" &&
         SettingsStore.GetString(draft["apiPlan"], "") != "invalid";
+    private void VoiceSampleChanged() { if (!closed) { UpdateSampleControls(); UpdateSarvamSampleControls(); UpdateSummarySampleControls(); } }
     private void UpdateSampleControls()
     {
         if (samplePlayButton != null)
         {
-            samplePlayButton.Content = sampleState switch
+            var sampleTitle = sampleState switch
             {
-                SampleState.Generating => "Creating sample…",
-                SampleState.Playing => "Pause sample",
-                SampleState.Paused => "Resume sample",
-                _ => "Play selected voice sample"
+                SampleState.Generating => "Stop Sample",
+                SampleState.Playing => "Stop Sample",
+                _ => "Play Sample"
             };
+            IconButtonContent.Set(samplePlayButton,sampleTitle,sampleState != SampleState.Stopped ? Symbol.Stop : Symbol.Play);
             var provider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
-            samplePlayButton.IsEnabled = sampleState != SampleState.Generating && (provider != "gemini" || HasDraftApiKey && ConnectivityService.Shared.Available(OnlineService.Gemini));
+            samplePlayButton.IsEnabled = sampleState != SampleState.Stopped || (!VoiceSampleSession.Busy && (provider != "gemini" || HasDraftApiKey && ConnectivityService.Shared.Available(OnlineService.Gemini)));
             if (provider == "piper") samplePlayButton.IsEnabled &= PiperService.IsVoiceDownloaded(SettingsStore.GetString(draft["piperVoice"]));
         }
+        nativePreparingRing.IsActive = sampleState == SampleState.Generating;
+        nativePreparingRing.Visibility = nativePreparingRing.IsActive ? Visibility.Visible : Visibility.Collapsed;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(nativePreparingRing,"Preparing voice sample");
         if (sampleStopButton != null) sampleStopButton.IsEnabled = sampleState != SampleState.Stopped;
         UpdatePiperSampleControls();
     }
-    private async Task ToggleSampleAsync(string text)
-    {
-        if (sampleState == SampleState.Playing)
-        {
-            samplePlayer.Pause(); sampleState = SampleState.Paused;
-            status.Text = "Sample paused."; UpdateSampleControls();
-        }
-        else if (sampleState == SampleState.Paused)
-        {
-            samplePlayer.Play(); sampleState = SampleState.Playing;
-            status.Text = "Playing sample."; UpdateSampleControls();
-        }
-        else if (sampleState == SampleState.Stopped) await Preview(text);
+    private async Task ToggleSampleAsync(string text) {
+        if (sampleState != SampleState.Stopped) StopSample();
+        else await Preview(text);
     }
     private void StopSample(bool report = true)
     {
         sampleCancellation?.Cancel(); sampleCancellation = null;
         samplePlayer.Pause(); samplePlayer.Source = null;
         sampleState = SampleState.Stopped;
+        VoiceSampleSession.End(nativeSampleOwner);
         UpdateSampleControls();
         if (report) status.Text = "Sample stopped.";
     }
@@ -864,6 +865,7 @@ public sealed partial class SettingsDialog : Window
     }
     private async Task Preview(string text)
     {
+        if (VoiceSampleSession.Busy) return;
         soundPreview.Stop();
         if ((mode.SelectedItem as SpeechEngineOption)?.Id == "gemini" && !ConnectivityService.Shared.Available(OnlineService.Gemini)) {
             status.Text = ConnectivityService.Shared.Reason(OnlineService.Gemini); return;
@@ -872,6 +874,7 @@ public sealed partial class SettingsDialog : Window
         sampleCancellation = new();
         var cancellation = sampleCancellation;
         if (string.IsNullOrWhiteSpace(text)) { status.Text = "Enter a sample to speak."; return; }
+        if (!VoiceSampleSession.Begin(nativeSampleOwner)) return;
         sampleState = SampleState.Generating; UpdateSampleControls();
         Directory.CreateDirectory(SettingsStore.DirectoryPath);
         var config = Path.Combine(SettingsStore.DirectoryPath, Guid.NewGuid() + ".json");

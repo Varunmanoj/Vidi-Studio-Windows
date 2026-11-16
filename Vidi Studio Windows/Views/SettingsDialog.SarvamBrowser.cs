@@ -33,7 +33,7 @@ public sealed partial class SettingsDialog
             var ordered = sarvamVoiceSort == "descending" ? families.OrderByDescending(group => group.Key,StringComparer.CurrentCultureIgnoreCase)
                 : sarvamVoiceSort == "style" ? families.OrderBy(group => group.OrderBy(v => v.StyleLabel).First().StyleLabel,StringComparer.CurrentCultureIgnoreCase).ThenBy(group => group.Key,StringComparer.CurrentCultureIgnoreCase)
                 : families.OrderBy(group => group.Key,StringComparer.CurrentCultureIgnoreCase);
-            rows.Children.Clear();
+            rows.Children.Clear(); sarvamSampleRings.Clear();
             foreach (var family in ordered)
             {
                 rows.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = family.Key, FontSize = 16 }));
@@ -61,11 +61,22 @@ public sealed partial class SettingsDialog
                     layout.Children.Add(choice);
                     var actions = new StackPanel { Spacing = 4 };
                     Grid.SetColumn(actions,1); layout.Children.Add(actions);
-                    var status = new TextBlock { Text = voice.DemoUrl == null ? "Sample unavailable" : "" };
-                    SpeechAction(actions,"Play Sample","sarvam-row-sample-" + voice.Id,() => { if (voice.DemoUrl != null) _ = PlaySarvamDemoAsync(voice.DemoUrl,status); },voice.DemoUrl != null);
+                    var ring = new ProgressRing { Width = 18, Height = 18, IsActive = false, Visibility = Visibility.Collapsed };
+                    AutomationProperties.SetName(ring,"Preparing sample of " + voice.Label); sarvamSampleRings[voice.Id] = ring; actions.Children.Add(ring);
+                    var status = new TextBlock();
+                    var playSample = new Button { Content = "Play Sample", IsEnabled = CanPlaySarvamSample };
+                    AutomationProperties.SetAutomationId(playSample,"sarvam-row-sample-" + voice.Id);
+                    playSample.Click += (_,_) => {
+                        if (sarvamDemoActive && sarvamSampleId == voice.Id) StopSarvamDemo();
+                        else if (CanPlaySarvamSample) _ = PlaySarvamDemoAsync(voice,language,status);
+                    };
+                    SetVoiceSampleMenu(playSample,"sarvam-row-sample-" + voice.Id,() => CanPlaySarvamSample,() => _ = PlaySarvamDemoAsync(voice,language,status),() => sarvamDemoActive && sarvamSampleId == voice.Id,StopSarvamDemo);
+                    IconButtonContent.Set(playSample,"Play Sample",Symbol.Play);
+                    actions.Children.Add(playSample);
                     actions.Children.Add(status); rows.Children.Add(row);
                 }
             }
+            UpdateSarvamSampleControls();
             if (rows.Children.Count == 0) rows.Children.Add(new TextBlock { Text = "No matching voices" });
         }
         SpeechChoiceControl(browser,"Style","sarvam-style-filter",sarvamVoiceStyle,styles,value => { sarvamVoiceStyle = value; Render(); });

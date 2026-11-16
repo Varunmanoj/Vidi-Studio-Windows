@@ -27,7 +27,7 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
 
     private sealed class RowState
     {
-        public Button Sample { get; } = new() { Width = 120, VerticalAlignment = VerticalAlignment.Center };
+        public Button Sample { get; } = new() { MinWidth = 120, VerticalAlignment = VerticalAlignment.Center };
         public Button Action { get; } = new() { Width = 110, VerticalAlignment = VerticalAlignment.Center };
         public ProgressRing Ring { get; } = new()
         {
@@ -69,6 +69,9 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
     private string? deletingVoiceId;
     private string? sampleLoadingId;
     private string? sampleVoiceId;
+    private readonly object sampleOwner = new();
+    private CancellationTokenSource? sampleCancellation;
+    private int sampleGeneration;
 
     public PiperDeleteVoicesDialog()
     {
@@ -99,7 +102,8 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
         samplePlayer.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() => FinishSample("Sample finished."));
         samplePlayer.MediaFailed += (_, _) => DispatcherQueue.TryEnqueue(() =>
             FinishSample("The sample could not be played. Check the internet connection and try again."));
-        Closed += (_, _) => { lifetime.Cancel(); samplePlayer.Dispose(); };
+        VoiceSampleSession.Changed += UpdateSampleAvailability;
+        Closed += (_, _) => { VoiceSampleSession.Changed -= UpdateSampleAvailability; StopSample(null,false); lifetime.Cancel(); samplePlayer.Dispose(); };
         // Escape closes the dialog from anywhere, including the search box.
         body.KeyDown += (_, args) =>
         {
@@ -227,14 +231,20 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
         Grid.SetColumn(state.SampleStatus, 2);
         grid.Children.Add(state.SampleStatus);
 
-        state.Sample.Content = sampleLoadingId == voice.Id ? "Loading…" : sampleVoiceId == voice.Id ? "Stop sample" : "Play sample";
-        state.Sample.IsEnabled = sampleLoadingId == null && !locked;
-        AutomationProperties.SetName(state.Sample, (sampleVoiceId == voice.Id ? "Stop sample for " : "Play sample for ") + voice.DisplayName);
+        IconButtonContent.Set(state.Sample,sampleLoadingId == voice.Id ? "Stop Sample" : sampleVoiceId == voice.Id ? "Stop Sample" : "Play Sample",sampleLoadingId == voice.Id ? Symbol.Stop : sampleVoiceId == voice.Id ? Symbol.Stop : Symbol.Play);
+        state.Sample.IsEnabled = (sampleVoiceId == voice.Id || sampleLoadingId == voice.Id || !VoiceSampleSession.Busy) && !locked;
+        AutomationProperties.SetName(state.Sample, (sampleVoiceId == voice.Id || sampleLoadingId == voice.Id ? "Stop sample for " : "Play sample for ") + voice.DisplayName);
         AutomationProperties.SetHelpText(state.Sample,
             "Plays a short sample published with this voice. The preview needs the internet; a downloaded voice itself works offline.");
         state.Sample.Click += async (_, _) => await ToggleSampleAsync(voice);
-        Grid.SetColumn(state.Sample, 3);
-        grid.Children.Add(state.Sample);
+        var sampleMenu = MenuAccessKeys.Create();
+        var play = new MenuFlyoutItem { Text = "Play Sample" };
+        var stop = new MenuFlyoutItem { Text = "Stop Sample" };
+        play.Click += async (_,_) => { if (!VoiceSampleSession.Busy && state.Sample.IsEnabled) await ToggleSampleAsync(voice); };
+        stop.Click += (_,_) => { if (sampleVoiceId != null || sampleLoadingId != null) StopSample("Sample stopped."); };
+        sampleMenu.Opening += (_,_) => { play.IsEnabled = !VoiceSampleSession.Busy && state.Sample.IsEnabled; stop.IsEnabled = sampleVoiceId != null || sampleLoadingId != null; };
+        sampleMenu.Items.Add(play); sampleMenu.Items.Add(stop); state.Sample.ContextFlyout = sampleMenu;
+        Grid.SetColumn(state.Sample,3); grid.Children.Add(state.Sample);
 
         IconButtonContent.Set(state.Action, removing ? "Deleting…" : "Delete", Symbol.Delete);
         IconButtonContent.SetDestructive(state.Action, true);
@@ -278,24 +288,28 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
         status.Text = message;
     }
 
+    private void UpdateSampleAvailability() {
+        foreach (var pair in rows) {
+            var active = sampleVoiceId == pair.Key || sampleLoadingId == pair.Key;
+            pair.Value.Sample.IsEnabled = active || (!VoiceSampleSession.Busy && deletingVoiceId == null && (PiperService.HasCachedSample(pair.Key) || ConnectivityService.Shared.Available(OnlineService.Voices)));
+            IconButtonContent.Set(pair.Value.Sample,sampleLoadingId == pair.Key ? "Stop Sample" : active ? "Stop Sample" : "Play Sample",sampleLoadingId == pair.Key ? Symbol.Stop : active ? Symbol.Stop : Symbol.Play);
+        }
+    }
     private async Task ToggleSampleAsync(PiperCatalogVoice voice)
     {
-        if (sampleLoadingId != null || deletingVoiceId != null) return;
-        if (sampleVoiceId == voice.Id)
-        {
-            StopSample("Sample stopped.");
-            return;
-        }
-        StopSample(null, rebuild: false);
+        if (sampleLoadingId == voice.Id) { StopSample("Sample stopped."); return; }
+        if (sampleVoiceId == voice.Id) { StopSample("Sample stopped."); return; }
+        if (VoiceSampleSession.Busy || deletingVoiceId != null || !VoiceSampleSession.Begin(sampleOwner)) return;
+        var generation = ++sampleGeneration;
         sampleLoadingId = voice.Id;
         Rebuild();
         status.Text = $"Loading a sample of {voice.DisplayName}…";
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            sampleCancellation = timeout; timeout.CancelAfter(TimeSpan.FromSeconds(30));
             var path = await PiperService.GetSampleAsync(voice, timeout.Token);
-            if (lifetime.IsCancellationRequested) return;
+            if (lifetime.IsCancellationRequested || generation != sampleGeneration) return;
             samplePlayer.Source = MediaSource.CreateFromUri(new Uri(path));
             samplePlayer.Play();
             sampleVoiceId = voice.Id;
@@ -303,23 +317,29 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
         }
         catch (OperationCanceledException)
         {
-            if (!lifetime.IsCancellationRequested)
+            if (!lifetime.IsCancellationRequested && generation == sampleGeneration)
                 status.Text = "The sample took too long to load. Check the internet connection and try again.";
         }
         catch (Exception ex)
         {
-            status.Text = "The sample could not be played. " + FriendlySampleError(ex);
+            if (generation == sampleGeneration) status.Text = "The sample could not be played. " + FriendlySampleError(ex);
         }
         finally
         {
-            sampleLoadingId = null;
-            Rebuild();
+            if (generation == sampleGeneration) {
+                sampleCancellation = null; sampleLoadingId = null;
+                if (sampleVoiceId == null) VoiceSampleSession.End(sampleOwner);
+                Rebuild();
+            }
         }
     }
 
+
     private void StopSample(string? message, bool rebuild = true)
     {
-        sampleVoiceId = null;
+        sampleGeneration++; sampleCancellation?.Cancel(); sampleCancellation = null;
+        sampleVoiceId = null; sampleLoadingId = null;
+        VoiceSampleSession.End(sampleOwner);
         samplePlayer.Pause();
         samplePlayer.Source = null;
         if (message != null) status.Text = message;
@@ -330,6 +350,7 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
     {
         if (sampleVoiceId == null) return;
         sampleVoiceId = null;
+        VoiceSampleSession.End(sampleOwner);
         samplePlayer.Source = null;
         status.Text = message;
         Rebuild();

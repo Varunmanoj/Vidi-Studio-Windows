@@ -92,7 +92,7 @@ public sealed partial class SettingsDialog
     private MenuFlyoutItem? piperPlaySampleMenuItem;
     private MenuFlyoutItem? piperStopSampleMenuItem;
     private bool CanPlayPiperSample => !closed && sectionList?.SelectedIndex == 2 &&
-        SettingsStore.GetString(draft["ttsMode"]) == "piper" && sampleState == SampleState.Stopped &&
+        SettingsStore.GetString(draft["ttsMode"]) == "piper" && sampleState == SampleState.Stopped && !VoiceSampleSession.Busy &&
         PiperService.IsRuntimeAvailable && PiperService.IsVoiceDownloaded(SettingsStore.GetString(draft["piperVoice"]));
     private bool CanStopPiperSample => SettingsStore.GetString(draft["ttsMode"]) == "piper" && sampleState != SampleState.Stopped;
 
@@ -103,7 +103,7 @@ public sealed partial class SettingsDialog
     }
     private async Task TogglePiperSampleAsync(string text)
     {
-        if (CanStopPiperSample) StopSample();
+        if (CanStopPiperSample) await ToggleSampleAsync(text);
         else await PlayPiperSampleAsync(text);
     }
     private void ConfigurePiperSampleMenu(TextBox sample)
@@ -124,11 +124,10 @@ public sealed partial class SettingsDialog
         var piper = SettingsStore.GetString(draft["ttsMode"]) == "piper";
         if (samplePlayButton != null)
         {
-            samplePlayButton.ContextFlyout = piper ? piperSampleMenu : null;
-            AutomationProperties.SetName(samplePlayButton, samplePlayButton.Content as string ?? "Play selected voice sample");
+            if (piper) samplePlayButton.ContextFlyout = piperSampleMenu;
             if (piper)
             {
-                samplePlayButton.Content = CanStopPiperSample ? "Stop Sample" : "Play Sample";
+                IconButtonContent.Set(samplePlayButton,CanStopPiperSample ? "Stop Sample" : "Play Sample",CanStopPiperSample ? Symbol.Stop : Symbol.Play);
                 samplePlayButton.IsEnabled = CanPlayPiperSample || CanStopPiperSample;
                 AutomationProperties.SetName(samplePlayButton, (CanStopPiperSample ? "Stop sample of " : "Play sample of ") +
                     (voice.SelectedItem as Voice)?.Name);

@@ -20,10 +20,9 @@ public sealed partial class SettingsDialog
     private readonly StackPanel summaryVoiceControls = new() { Spacing = 12 };
     private FrameworkElement? nativeVoiceGroup, nativeSample, nativeSampleButtons;
     private Windows.Media.Playback.MediaPlayer? sarvamDemo;
-    private bool sarvamDemoActive, extraSpeechHooked;
+    private bool sarvamDemoActive, sarvamSamplePreparing, extraSpeechHooked;
     private int demoGeneration, summaryVoiceRequest;
     private Button? sarvamPlayControl, sarvamStopControl;
-    private System.Threading.CancellationTokenSource? sarvamDownload;
     private List<(string Id,string Label)> sarvamModelOptions = SarvamSpeech.Models.Select(m => (m,SarvamSpeech.ModelLabel(m))).ToList();
     private bool sarvamModelsRequested, sarvamModelsRefreshing;
     private string sarvamModelStatus = "";
@@ -39,7 +38,12 @@ public sealed partial class SettingsDialog
     private TextBlock? sarvamKeyStatusText;
     private Button? sarvamCheckKeyButton;
     private string sarvamKeyMessage = "";
-    private static readonly HttpClient demoClient = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private TextBlock? activeSarvamSampleStatus;
+    private string? sarvamSampleId;
+    private readonly Dictionary<string,ProgressRing> sarvamSampleRings = new();
+    private readonly object sarvamSampleOwner = new(), summarySampleOwner = new();
+    private ProgressRing sarvamPreparingRing = new() { Width = 18, Height = 18, Visibility = Visibility.Collapsed };
+    private ProgressRing summaryPreparingRing = new() { Width = 18, Height = 18, Visibility = Visibility.Collapsed };
 
     private void BuildAdditionalSpeechControls(StackPanel panel)
     {
@@ -135,6 +139,7 @@ public sealed partial class SettingsDialog
     private void BuildSarvamSettings()
     {
         StopSarvamDemo(); sarvamControls.Children.Clear();
+        sarvamPreparingRing = new ProgressRing { Width = 18, Height = 18, Visibility = Visibility.Collapsed };
         sarvamControls.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Sarvam Voices", FontSize = 18 }));
         var profile = SarvamSpeech.Profile(draft); var modelId = SarvamSpeech.Model(draft);
         Button? deleteKeyButton = null;
@@ -146,7 +151,7 @@ public sealed partial class SettingsDialog
         keyStatus.Visibility = Visibility.Collapsed;
         AutomationProperties.SetLiveSetting(keyStatus,Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
         if (sarvamKeyChecking) keyStatus.Text = "Checking API key…"; else if (sarvamKeyMessage.Length > 0) keyStatus.Text = sarvamKeyMessage;
-        password.PasswordChanged += (_, _) => { sarvamKeyMessage = ""; sarvamKeyTimer?.Stop(); if (password.Password.Trim().Length > 0) sarvamKeyTimer?.Start(); draft["sarvamApiKey"] = password.Password.Trim(); draft["sarvamKeyStatus"] = "unverified"; keyStatus.Text = password.Password.Length == 0 ? "No API key" : "API key saved — unverified"; if (deleteKeyButton != null) deleteKeyButton.IsEnabled = password.Password.Length > 0; if (sarvamCheckKeyButton != null) sarvamCheckKeyButton.IsEnabled = password.Password.Trim().Length > 0 && !sarvamKeyChecking; };
+        password.PasswordChanged += (_, _) => { sarvamKeyMessage = ""; sarvamKeyTimer?.Stop(); if (password.Password.Trim().Length > 0) sarvamKeyTimer?.Start(); StopSarvamDemo(); draft["sarvamApiKey"] = password.Password.Trim(); UpdateSarvamSampleControls(); draft["sarvamKeyStatus"] = "unverified"; keyStatus.Text = password.Password.Length == 0 ? "No API key" : "API key saved — unverified"; if (deleteKeyButton != null) deleteKeyButton.IsEnabled = password.Password.Length > 0; if (sarvamCheckKeyButton != null) sarvamCheckKeyButton.IsEnabled = password.Password.Trim().Length > 0 && !sarvamKeyChecking; };
         var keyMenu = MenuAccessKeys.Create();
         var editKey = new MenuFlyoutItem { Text = "Edit Sarvam API Key", Tag = "sarvam-key-edit" };
         editKey.Click += (_, _) => password.Focus(FocusState.Programmatic); keyMenu.Items.Add(editKey);
@@ -208,13 +213,17 @@ public sealed partial class SettingsDialog
         SpeechChoiceControl(sarvamControls,"Sample rate","sarvam-sample-rate",SettingsStore.GetDouble(profile["sampleRate"],22050).ToString(System.Globalization.CultureInfo.InvariantCulture),rates.Select(r => (r.ToString(),r + " Hz")), value => profile["sampleRate"] = int.Parse(value));
         SpeechChoiceControl(sarvamControls,"Audio format","sarvam-codec",SettingsStore.GetString(profile["codec"],"wav"),new[] {"wav","mp3","aac","flac"}.Select(c => (c,c.ToUpperInvariant())), value => profile["codec"] = value);
         }
-        var demo = voices.FirstOrDefault(v => v.Id == SettingsStore.GetString(profile["voice"]))?.DemoUrl;
-        var demoStatus = new TextBlock { Text = demo == null ? "Sample unavailable" : "" };
-        sarvamPlayControl = SpeechAction(sarvamControls,"Play Sample","sarvam-sample-play", () => { if (demo != null) _ = PlaySarvamDemoAsync(demo,demoStatus); },demo != null);
+        var sampleVoice = voices.FirstOrDefault(v => v.Id == SettingsStore.GetString(profile["voice"]));
+        var demoStatus = new TextBlock();
+        sarvamPlayControl = SpeechAction(sarvamControls,"Play Sample","sarvam-sample-play", () => { if (sarvamDemoActive) StopSarvamDemo(); else if (sampleVoice != null) _ = PlaySarvamDemoAsync(sampleVoice,language,demoStatus); },sampleVoice != null);
+        SetVoiceSampleMenu(sarvamPlayControl,"sarvam-sample",() => CanPlaySarvamSample,() => { if (sampleVoice != null) _ = PlaySarvamDemoAsync(sampleVoice,language,demoStatus); },() => sarvamDemoActive,StopSarvamDemo);
         sarvamStopControl = SpeechAction(sarvamControls,"Stop Sample","sarvam-sample-stop",StopSarvamDemo,false);
+        sarvamStopControl.Visibility = Visibility.Collapsed;
         sarvamControls.Children.Add(demoStatus);
         SpeechActionsRow(sarvamControls,"sarvam-key-actions", sarvamCheckKeyButton!, SpeechItems<Button>(sarvamControls).Single(b => AutomationProperties.GetAutomationId(b) == "sarvam-key-dashboard"));
-        SpeechActionsRow(sarvamControls,"sarvam-sample-actions",sarvamPlayControl!,sarvamStopControl!,demoStatus);
+        SpeechActionsRow(sarvamControls,"sarvam-sample-actions",sarvamPlayControl!,sarvamStopControl!,sarvamPreparingRing,demoStatus);
+        AutomationProperties.SetName(sarvamPreparingRing,"Preparing Sarvam sample");
+        UpdateSarvamSampleControls();
     }
     private async Task CheckSarvamKeyAsync()
     {
@@ -257,42 +266,66 @@ public sealed partial class SettingsDialog
         catch (Exception) { sarvamModelStatus = "Using saved models"; }
         finally { sarvamModelsRefreshing = false; if (!closed && SettingsStore.GetString(draft["ttsMode"]) == "sarvam") BuildSarvamSettings(); }
     }
-    private void StopSarvamDemo() {
-        demoGeneration++; sarvamDownload?.Cancel(); sarvamDownload?.Dispose(); sarvamDownload = null;
-        sarvamDemo?.Pause(); if (sarvamDemo != null) sarvamDemo.Source = null; sarvamDemoActive = false;
-        if (sarvamStopControl != null) sarvamStopControl.IsEnabled = false;
-        if (sarvamPlayControl != null) sarvamPlayControl.IsEnabled = SarvamSpeech.Catalog.Voices.FirstOrDefault(v => v.Model == SarvamSpeech.Model(draft) && v.Id == SarvamSpeech.Voice(draft))?.DemoUrl != null;
+    private bool CanPlaySarvamSample => !closed && !sarvamDemoActive && !sarvamSamplePreparing && !VoiceSampleSession.Busy && !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["sarvamApiKey"]));
+    private void UpdateSarvamSampleControls() {
+        foreach (var button in SpeechItems<Button>(sarvamControls)) {
+            var id = AutomationProperties.GetAutomationId(button);
+            if (id.StartsWith("sarvam-row-sample-")) {
+                var current = sarvamDemoActive && id == "sarvam-row-sample-" + sarvamSampleId;
+                button.IsEnabled = current || CanPlaySarvamSample;
+                IconButtonContent.Set(button,current ? "Stop Sample" : "Play Sample",current ? Symbol.Stop : Symbol.Play);
+            }
+        }
+        if (sarvamPlayControl != null) {
+            sarvamPlayControl.IsEnabled = sarvamDemoActive || (CanPlaySarvamSample && SarvamSpeech.Catalog.Voices.Any(v => v.Model == SarvamSpeech.Model(draft) && v.Id == SarvamSpeech.Voice(draft)));
+            IconButtonContent.Set(sarvamPlayControl,sarvamDemoActive ? "Stop Sample" : "Play Sample",sarvamDemoActive ? Symbol.Stop : Symbol.Play);
+        }
+        if (sarvamStopControl != null) { sarvamStopControl.IsEnabled = sarvamDemoActive; IconButtonContent.Set(sarvamStopControl,"Stop Sample",Symbol.Stop); }
+        foreach (var pair in sarvamSampleRings) {
+            pair.Value.IsActive = sarvamSamplePreparing && sarvamSampleId == pair.Key;
+            pair.Value.Visibility = pair.Value.IsActive ? Visibility.Visible : Visibility.Collapsed;
+        }
+        sarvamPreparingRing.IsActive = sarvamSamplePreparing;
+        sarvamPreparingRing.Visibility = sarvamSamplePreparing ? Visibility.Visible : Visibility.Collapsed;
     }
-    private async Task PlaySarvamDemoAsync(string address, TextBlock status)
+
+    private void StopSarvamDemo() {
+        demoGeneration++;
+        sarvamDemo?.Pause(); if (sarvamDemo != null) sarvamDemo.Source = null; sarvamDemoActive = false; sarvamSampleId = null;
+        if (activeSarvamSampleStatus != null) activeSarvamSampleStatus.Text = "";
+        activeSarvamSampleStatus = null;
+        if (!sarvamSamplePreparing) VoiceSampleSession.End(sarvamSampleOwner);
+        UpdateSarvamSampleControls();
+    }
+    private async Task PlaySarvamDemoAsync(SarvamVoice voice, string language, TextBlock status)
     {
-        if (sarvamDemoActive) return;
-        StopSarvamDemo(); var generation = demoGeneration; sarvamDemoActive = true;
-        sarvamDownload = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-        var token = sarvamDownload.Token;
-        if (sarvamPlayControl != null) sarvamPlayControl.IsEnabled = false;
-        if (sarvamStopControl != null) sarvamStopControl.IsEnabled = true;
+        if (!CanPlaySarvamSample) return;
+        StopSarvamDemo();
+        if (!ApplyPreferences()) return;
+        if (!VoiceSampleSession.Begin(sarvamSampleOwner)) return;
+        var generation = demoGeneration; sarvamSamplePreparing = true; sarvamDemoActive = true; sarvamSampleId = voice.Id; activeSarvamSampleStatus = status;
+        status.Text = "Preparing sample…";
+        UpdateSarvamSampleControls();
         try
         {
-            var directory = Path.Combine(SettingsStore.DirectoryPath,"sarvam-demo-cache"); Directory.CreateDirectory(directory);
-            var path = Path.Combine(directory,Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(address))) + ".mp3");
-            if (!File.Exists(path))
-            {
-                using var response = await demoClient.GetAsync(address,token); response.EnsureSuccessStatusCode();
-                var bytes = await response.Content.ReadAsByteArrayAsync(token);
-                if (bytes.Length < 64 || response.Content.Headers.ContentType?.MediaType?.StartsWith("audio/") != true) throw new IOException();
-                var pending = path + "." + Guid.NewGuid() + ".tmp";
-                try { await File.WriteAllBytesAsync(pending,bytes,token); File.Move(pending,path,true); } finally { if (File.Exists(pending)) File.Delete(pending); }
-            }
+            // Do not cancel a submitted audition on Stop/close: let it finish
+            // caching, then suppress playback using the generation guard.
+            var events = await model.Engine.RunAsync(new[] { "preview-sarvam-sample", "--sarvam-model", voice.Model, "--sarvam-voice", voice.Id, "--sarvam-language", language });
+            var ready = events.LastOrDefault(e => e.Data.TryGetProperty("sarvamSamplePath", out _));
+            var path = ready?.Data.GetProperty("sarvamSamplePath").GetString();
+            if (string.IsNullOrEmpty(path)) throw new IOException("Sample could not be prepared.");
             if (closed || generation != demoGeneration) return;
             if (sarvamDemo == null) {
                 sarvamDemo = new Windows.Media.Playback.MediaPlayer();
-                sarvamDemo.MediaEnded += (_,_) => DispatcherQueue.TryEnqueue(() => { StopSarvamDemo(); status.Text = ""; });
-                sarvamDemo.MediaFailed += (_,_) => DispatcherQueue.TryEnqueue(() => { StopSarvamDemo(); status.Text = "Sample could not be played."; });
+                sarvamDemo.MediaEnded += (_,_) => DispatcherQueue.TryEnqueue(StopSarvamDemo);
+                sarvamDemo.MediaFailed += (_,_) => DispatcherQueue.TryEnqueue(() => { var failed = activeSarvamSampleStatus; StopSarvamDemo(); if (failed != null) failed.Text = "Sample could not be played."; });
             }
             sarvamDemo.Source = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(path)); sarvamDemo.Play(); status.Text = "Playing sample";
         }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException) { if (!closed && generation == demoGeneration) status.Text = "Sample unavailable. Check your connection and try again."; StopSarvamDemo(); }
+        catch (Exception ex) {
+            if (!closed && generation == demoGeneration) { StopSarvamDemo(); status.Text = ex.Message; }
+        }
+        finally { sarvamSamplePreparing = false; if (!sarvamDemoActive) VoiceSampleSession.End(sarvamSampleOwner); if (!closed) UpdateSarvamSampleControls(); }
     }
     private void BuildSummarySpeechSettings()
     {
@@ -317,7 +350,7 @@ public sealed partial class SettingsDialog
     private async Task PopulateSummaryVoicesAsync(StackPanel holder, JsonObject profile, string engine)
     {
         var request = ++summaryVoiceRequest;
-        holder.Children.Clear();
+        holder.Children.Clear(); summaryPreparingRing = new ProgressRing { Width = 18, Height = 18, Visibility = Visibility.Collapsed };
         try
         {
             var available = engine == "windows-core" ? Windows.Media.SpeechSynthesis.SpeechSynthesizer.AllVoices.Select(v => new Voice(v.Id,v.DisplayName,v.Language,v.Gender.ToString())).ToList()
@@ -337,7 +370,7 @@ public sealed partial class SettingsDialog
                 if (engine != "piper") options.Insert(0,("","System default"));
                 choices.Children.Clear();
                 SpeechChoiceControl(choices,"Summary voice","summary-voice",selected,options,value => { StopSummaryVoiceSample(); profile[key] = value; Render(); });
-                if (summarySamplePlayButton != null) summarySamplePlayButton.IsEnabled = engine != "piper" || PiperService.IsVoiceDownloaded(selected);
+                UpdateSummarySampleControls();
             }
             var languageOptions = new[] {("","All languages")}.Concat(available.Select(v => v.Language).Where(code => code.Length > 0).Distinct().OrderBy(SpeechLanguageLabel).Select(code => (code,SpeechLanguageLabel(code))));
             SpeechChoiceControl(holder,"Language and region","summary-language-filter",summaryVoiceLanguage,languageOptions,value => { summaryVoiceLanguage = value; Render(); });
@@ -351,8 +384,10 @@ public sealed partial class SettingsDialog
             }
             SpeechChoiceControl(holder,"Sort by","summary-voice-sort",summaryVoiceSort,new[] {("language","Language (A–Z)"),("name","Voice name (A–Z)")},value => { summaryVoiceSort = value; Render(); });
             holder.Children.Add(selectedText); holder.Children.Add(choices);
-            summarySamplePlayButton = SpeechAction(holder,"Play Sample","summary-sample-play",async () => await PlaySummaryVoiceSampleAsync(profile,engine));
+            summarySamplePlayButton = SpeechAction(holder,"Play Sample","summary-sample-play",async () => { if (summarySampleCancellation != null) StopSummaryVoiceSample(); else await PlaySummaryVoiceSampleAsync(profile,engine); });
+            SetVoiceSampleMenu(summarySamplePlayButton,"summary-sample",() => !VoiceSampleSession.Busy && (engine != "piper" || PiperService.IsVoiceDownloaded(SettingsStore.GetString(profile["piperVoice"]))),() => _ = PlaySummaryVoiceSampleAsync(profile,engine),() => summarySampleCancellation != null,StopSummaryVoiceSample);
             summarySampleStopButton = SpeechAction(holder,"Stop Sample","summary-sample-stop",StopSummaryVoiceSample,false);
+            summarySampleStopButton.Visibility = Visibility.Collapsed;
             summarySampleStatus = new TextBlock(); holder.Children.Add(summarySampleStatus);
             SpeechAction(holder,"Refresh Voices","summary-voices-refresh",async () => await PopulateSummaryVoicesAsync(holder,profile,engine));
             if (engine != "piper") {
@@ -360,33 +395,46 @@ public sealed partial class SettingsDialog
                 SpeechAction(holder,"Open Windows Voice Settings","summary-system-voices",async () => await Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:speech")));
             }
             Render();
-            SpeechActionsRow(holder,"summary-sample-actions",summarySamplePlayButton!,summarySampleStopButton!,SpeechItems<Button>(holder).Single(b => AutomationProperties.GetAutomationId(b) == "summary-voices-refresh"));
+            SpeechActionsRow(holder,"summary-sample-actions",summarySamplePlayButton!,summarySampleStopButton!,summaryPreparingRing,SpeechItems<Button>(holder).Single(b => AutomationProperties.GetAutomationId(b) == "summary-voices-refresh"));
             if (engine != "piper") SpeechActionsRow(holder,"summary-system-actions",SpeechItems<Button>(holder).Single(b => AutomationProperties.GetAutomationId(b) == "summary-voice-default"),SpeechItems<Button>(holder).Single(b => AutomationProperties.GetAutomationId(b) == "summary-system-voices"));
         }
         catch (OperationCanceledException) { }
         catch (Exception) { if (!closed && request == summaryVoiceRequest) holder.Children.Add(new TextBlock { Text = "Local voices could not be loaded." }); }
     }
+    private void UpdateSummarySampleControls() {
+        var active = summarySampleCancellation != null;
+        var summary = SummarySpeechProfile.Independent(draft);
+        var engine = SettingsStore.GetString(summary["engine"],"windows-core");
+        if (summarySamplePlayButton != null) {
+            summarySamplePlayButton.IsEnabled = active || (!VoiceSampleSession.Busy && (engine != "piper" || PiperService.IsVoiceDownloaded(SettingsStore.GetString(summary["piperVoice"]))));
+            IconButtonContent.Set(summarySamplePlayButton,active ? "Stop Sample" : "Play Sample",active ? Symbol.Stop : Symbol.Play);
+        }
+        if (summarySampleStopButton != null) { summarySampleStopButton.IsEnabled = active; IconButtonContent.Set(summarySampleStopButton,"Stop Sample",Symbol.Stop); }
+        summaryPreparingRing.IsActive = active && summarySamplePath == null;
+        summaryPreparingRing.Visibility = summaryPreparingRing.IsActive ? Visibility.Visible : Visibility.Collapsed;
+        AutomationProperties.SetName(summaryPreparingRing,"Preparing Summary voice sample");
+    }
+
     private void StopSummaryVoiceSample()
     {
         summarySampleCancellation?.Cancel(); summarySampleCancellation?.Dispose(); summarySampleCancellation = null;
         summarySamplePlayer?.Pause(); if (summarySamplePlayer != null) summarySamplePlayer.Source = null;
         if (summarySamplePath != null) { try { File.Delete(summarySamplePath); } catch (IOException) { } summarySamplePath = null; }
-        if (summarySamplePlayButton != null) summarySamplePlayButton.IsEnabled = true;
-        if (summarySampleStopButton != null) summarySampleStopButton.IsEnabled = false;
+        VoiceSampleSession.End(summarySampleOwner); UpdateSummarySampleControls();
         if (summarySampleStatus != null) summarySampleStatus.Text = "";
     }
     private async Task PlaySummaryVoiceSampleAsync(JsonObject profile, string engine)
     {
-        if (engine is not ("windows-core" or "sapi5" or "piper") || closed) return;
-        StopSummaryVoiceSample(); StopSarvamDemo();
+        if (engine is not ("windows-core" or "sapi5" or "piper") || closed || VoiceSampleSession.Busy) return;
+        StopSummaryVoiceSample();
+        if (!VoiceSampleSession.Begin(summarySampleOwner)) return;
         var cancellation = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); summarySampleCancellation = cancellation;
         var token = cancellation.Token;
         Directory.CreateDirectory(SettingsStore.DirectoryPath);
         var config = Path.Combine(SettingsStore.DirectoryPath,"summary-sample-" + Guid.NewGuid() + ".json");
         var output = Path.Combine(SettingsStore.DirectoryPath,"summary-sample-" + Guid.NewGuid() + ".wav");
         temporaryFiles.Add(config); temporaryFiles.Add(output);
-        if (summarySamplePlayButton != null) summarySamplePlayButton.IsEnabled = false;
-        if (summarySampleStopButton != null) summarySampleStopButton.IsEnabled = true;
+        UpdateSummarySampleControls();
         if (summarySampleStatus != null) summarySampleStatus.Text = "Preparing sample…";
         try {
             var preferences = PreviewConfig(); preferences["ttsMode"] = engine;
@@ -401,7 +449,7 @@ public sealed partial class SettingsDialog
                 summarySamplePlayer.MediaEnded += (_,_) => DispatcherQueue.TryEnqueue(StopSummaryVoiceSample);
                 summarySamplePlayer.MediaFailed += (_,_) => DispatcherQueue.TryEnqueue(() => { StopSummaryVoiceSample(); if (summarySampleStatus != null) summarySampleStatus.Text = "Sample could not be played."; });
             }
-            summarySamplePath = output; summarySamplePlayer.Source = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(output)); summarySamplePlayer.Play();
+            summarySamplePath = output; UpdateSummarySampleControls(); summarySamplePlayer.Source = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(output)); summarySamplePlayer.Play();
             if (summarySampleStatus != null) summarySampleStatus.Text = "Playing sample";
         } catch (OperationCanceledException) { try { File.Delete(output); } catch (IOException) { } }
         catch (Exception) { StopSummaryVoiceSample(); if (summarySampleStatus != null) summarySampleStatus.Text = "The selected local voice could not create a sample."; }
@@ -445,7 +493,38 @@ public sealed partial class SettingsDialog
                 var slider = SpeechItems<Slider>(sarvamControls).Single(c => AutomationProperties.GetAutomationId(c) == expected);
                 if (slider.ContextFlyout is not MenuFlyout menu || menu.Items.Count != 3) throw new InvalidOperationException("Voice sliders need matching adjustment menus.");
                 var play = SpeechItems<Button>(sarvamControls).Single(c => AutomationProperties.GetAutomationId(c) == "sarvam-sample-play");
-                if (play.IsEnabled != (modelId == "bulbul:v3")) throw new InvalidOperationException("Catalog demos must never generate a missing sample.");
+                if (play.IsEnabled != CanPlaySarvamSample || play.ContextFlyout is not MenuFlyout playMenu || playMenu.Items.Count != 2)
+                    throw new InvalidOperationException("Every known Sarvam model needs Play Sample and its matching menu.");
+                var rowSamples = SpeechItems<Button>(sarvamControls).Where(c => AutomationProperties.GetAutomationId(c).StartsWith("sarvam-row-sample-"));
+                if (!rowSamples.Any() || rowSamples.Any(b => b.IsEnabled != CanPlaySarvamSample || b.ContextFlyout is not MenuFlyout m || m.Items.Count != 2))
+                    throw new InvalidOperationException("Every voice row needs enabled sample playback and Play/Stop menus.");
+                var gateOwner = new object();
+                if (!VoiceSampleSession.Begin(gateOwner)) throw new InvalidOperationException("Unexpected active sample before native sample test.");
+                try {
+                    if (rowSamples.Any(b => b.IsEnabled) || play.IsEnabled || summarySamplePlayButton?.IsEnabled == true) throw new InvalidOperationException("Another engine must disable Sarvam and Summary Play controls.");
+                } finally { VoiceSampleSession.End(gateOwner); }
+                var sampleOriginal = sampleState;
+                try {
+                    sampleState = SampleState.Generating; UpdateSampleControls();
+                    if (!nativePreparingRing.IsActive || nativePreparingRing.Visibility != Visibility.Visible || AutomationProperties.GetName(samplePlayButton!) != "Stop Sample") throw new InvalidOperationException("Gemini/local preparation must immediately show Stop and an accessible spinner.");
+                    sampleState = SampleState.Playing; UpdateSampleControls();
+                    if (nativePreparingRing.IsActive || AutomationProperties.GetName(samplePlayButton!) != "Stop Sample") throw new InvalidOperationException("Playback must hide the spinner and retain Stop.");
+                } finally { sampleState = sampleOriginal; UpdateSampleControls(); }
+                var savedKey = SettingsStore.GetString(draft["sarvamApiKey"]);
+                draft["sarvamApiKey"] = ""; UpdateSarvamSampleControls();
+                if (play.IsEnabled || rowSamples.Any(b => b.IsEnabled)) throw new InvalidOperationException("Keyless Sarvam samples must be disabled.");
+                draft["sarvamApiKey"] = "isolated-smoke-key";
+                sarvamDemoActive = true; UpdateSarvamSampleControls();
+                if (!play.IsEnabled || rowSamples.Any(b => b.IsEnabled) || sarvamStopControl?.IsEnabled != true) throw new InvalidOperationException("Active sample must disable every other play action.");
+                var activeRow = rowSamples.First();
+                sarvamSampleId = AutomationProperties.GetAutomationId(activeRow)["sarvam-row-sample-".Length..]; UpdateSarvamSampleControls();
+                if (!activeRow.IsEnabled || AutomationProperties.GetName(activeRow) != "Stop Sample" || rowSamples.Where(b => b != activeRow).Any(b => b.IsEnabled)) throw new InvalidOperationException("Only the active row may remain enabled as Stop Sample.");
+                sarvamDemoActive = false; sarvamSampleId = null; sarvamSamplePreparing = true; UpdateSarvamSampleControls();
+                if (!sarvamPreparingRing.IsActive || sarvamPreparingRing.Visibility != Visibility.Visible) throw new InvalidOperationException("Sarvam preparation must show the spinner.");
+                if (play.IsEnabled || rowSamples.Any(b => b.IsEnabled)) throw new InvalidOperationException("Pending sample must disable repeat requests.");
+                sarvamSamplePreparing = false; UpdateSarvamSampleControls();
+                if (!play.IsEnabled || rowSamples.Any(b => !b.IsEnabled)) throw new InvalidOperationException("Finishing a sample must re-enable all play actions.");
+                draft["sarvamApiKey"] = savedKey; UpdateSarvamSampleControls();
                 var browser = sarvamControls.Children.OfType<StackPanel>().Single(p => AutomationProperties.GetAutomationId(p) == "sarvam-voice-browser");
                 var searchBox = browser.Children.OfType<Grid>().Single(g => AutomationProperties.GetAutomationId(g) == "sarvam-search-box");
                 var searchVoices = searchBox.Children.OfType<TextBox>().Single();

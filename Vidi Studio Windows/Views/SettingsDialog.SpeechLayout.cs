@@ -2,6 +2,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using System;
+using Vidi_Studio_Windows.Services;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -34,6 +36,17 @@ internal sealed class CompactActionsPanel : Panel
 
 public sealed partial class SettingsDialog
 {
+    private void SetVoiceSampleMenu(Button button, string id, Func<bool> canPlay, Action play, Func<bool> active, Action stop) {
+        var menu = MenuAccessKeys.Create();
+        var start = new MenuFlyoutItem { Text = "Play Sample", Tag = id + "-play" };
+        var stopItem = new MenuFlyoutItem { Text = "Stop Sample", Tag = id + "-stop" };
+        start.Click += (_,_) => { if (canPlay()) play(); };
+        stopItem.Click += (_,_) => { if (active()) stop(); };
+        menu.Opening += (_,_) => { start.IsEnabled = canPlay(); stopItem.IsEnabled = active(); };
+        menu.Items.Add(start); menu.Items.Add(stopItem); button.ContextFlyout = menu;
+    }
+
+
     private static FontIcon ApiKeyStatusIcon(TextBlock status, string id = "sarvam-key-status")
     {
         var icon = (FontIcon)Microsoft.UI.Xaml.Markup.XamlReader.Load("<FontIcon xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" FontSize=\"18\" Width=\"24\" VerticalAlignment=\"Center\"><FontIcon.Style><Style TargetType=\"FontIcon\"><Setter Property=\"Foreground\" Value=\"{ThemeResource TextFillColorSecondaryBrush}\"/></Style></FontIcon.Style></FontIcon>");

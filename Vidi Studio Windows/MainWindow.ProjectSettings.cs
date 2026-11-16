@@ -1,5 +1,7 @@
 using Microsoft.UI.Xaml;
 using System;
+using System.Linq;
+using Microsoft.UI.Xaml.Controls;
 using System.Threading.Tasks;
 using Vidi_Studio_Windows.Models;
 
@@ -8,8 +10,20 @@ namespace Vidi_Studio_Windows;
 public sealed partial class MainWindow
 {
     internal bool CanUseProjectLanguageSettings => !Model.Busy && !HasUnsavedLanguageSummary;
-    internal Microsoft.UI.Xaml.Controls.StackPanel ProjectLanguageSettingsPanel(bool editing, Action<bool> setEditing, Action changed) =>
-        BuildLanguageResultsPanel(Model.Project!, true, editing, setEditing, changed);
+    internal StackPanel ProjectLanguageSettingsPanel(bool editing, Action<bool> setEditing, Action changed)
+    {
+        var panel = BuildLanguageResultsPanel(Model.Project!, true, editing, setEditing, changed);
+        foreach (var picker in panel.Children.OfType<ComboBox>().ToArray()) {
+            var index = panel.Children.IndexOf(picker);
+            var title = picker.Header as string ?? "Language";
+            panel.Children.RemoveAt(index);
+            picker.Header = null;
+            var rows = new StackPanel();
+            Views.SettingsDialog.CompactRow(rows, title, picker, true);
+            panel.Children.Insert(index, rows);
+        }
+        return panel;
+    }
 
     internal async Task RunProjectSettingsActionAsync(string command)
     {

@@ -250,7 +250,7 @@ public sealed partial class SettingsDialog : Window
     private readonly VoiceComboBox voice = new() { Header = "Installed voice", HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly TextBox sapiHost = new() { Header = "Optional SAPI host executable" };
     private readonly StackPanel localSpeechControls = new() { Spacing = 14 };
-    private readonly StackPanel storageAdvancedControls = new() { Spacing = 12 };
+    private readonly StackPanel storageAdvancedControls = new() { Spacing = 0 };
     private List<Voice> voices = new();
     public SettingsDialog(StudioViewModel model, Window window, int initialSection = 0, StudioProject? projectTarget = null)
     {
@@ -373,7 +373,7 @@ public sealed partial class SettingsDialog : Window
             if (sampleState != SampleState.Stopped) StopSample(false);
             // Release retained Narration controls while their nested rows are still
             // attached; after removing the page WinUI may no longer expose Parent.
-            foreach (var control in new FrameworkElement[] { mode, voice, sapiHost, localSpeechControls, piperControls })
+            foreach (var control in new FrameworkElement[] { mode, voice, sapiHost, localSpeechControls, piperControls, storageAdvancedControls })
                 DetachFromVisualParent(control);
             if (host.Content is Panel oldPanel) oldPanel.Children.Clear();
             host.Content = null;
@@ -391,47 +391,8 @@ public sealed partial class SettingsDialog : Window
                 case 1: BuildProjects(panel); break;
                 case 2: BuildNarration(panel); break;
                 case 3: BuildGemini(panel); break;
-                case 4:
-                    if (draft["prompts"] is JsonObject prompts)
-                        foreach (var stage in prompts.ToList())
-                        {
-                            var fields = new StackPanel { Spacing = 10 };
-                            if (stage.Value is JsonObject pair) foreach (var entry in pair.ToList())
-                            {
-                                var field = new TextBox { Header = entry.Key, Text = SettingsStore.GetString(entry.Value), AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 130 };
-                                var name = entry.Key; field.TextChanged += (_, _) => pair[name] = field.Text; fields.Children.Add(field);
-                            }
-                            panel.Children.Add(new Expander { Header = stage.Key, Content = fields, HorizontalAlignment = HorizontalAlignment.Stretch });
-                        }
-                    break;
-                case 5:
-                    AddText(panel, "Project library", "libraryPath");
-                    storageAdvancedControls.Children.Clear();
-                    storageAdvancedControls.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Advanced", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }));
-                    AddText(storageAdvancedControls, "Python executable", "pythonPath", "python.exe");
-                    AddExecutablePicker(storageAdvancedControls, "FFmpeg executable", "ffmpegPath");
-                    AddExecutablePicker(storageAdvancedControls, "FFprobe executable", "ffprobePath");
-                    var contextMenuButton = new Button { Content = "Repair legacy File Explorer context menu" };
-                    contextMenuButton.Click += (_, _) =>
-                    {
-                        try
-                        {
-                            Services.ShellIntegration.RegisterContextMenu();
-                            status.Text = "Legacy File Explorer context menu registered for video files.";
-                        }
-                        catch (Exception ex)
-                        {
-                            status.Text = "Could not register the legacy context menu: " + ex.Message;
-                        }
-                    };
-                    storageAdvancedControls.Children.Add(contextMenuButton);
-                    panel.Children.Add(storageAdvancedControls);
-                    UpdateAdvancedControlsVisibility();
-                    var doctor = new Button { Content = "Check engine and media tools" };
-                    doctor.Click += async (_, _) => { await model.RunAsync("doctor", needsProject: false); status.Text = model.Status; }; panel.Children.Add(doctor);
-                    var logs = new Button { Content = "Open diagnostics folder" };
-                    logs.Click += async (_, _) => { Directory.CreateDirectory(SettingsStore.DirectoryPath); await Windows.System.Launcher.LaunchFolderPathAsync(SettingsStore.DirectoryPath); }; panel.Children.Add(logs);
-                    break;
+                case 4: BuildDeveloperPrompts(panel); break;
+                case 5: BuildStorage(panel); break;
                 case 6: BuildHelp(panel); break;
                 case 7: BuildAbout(panel); break;
                 case 8: panel.Children.Add(new YouTubeAccountsPanel(this)); break;
@@ -500,15 +461,16 @@ public sealed partial class SettingsDialog : Window
     }
     private void AddText(StackPanel panel, string label, string key, string fallback = "")
     {
-        var field = new TextBox { Header = label, Text = SettingsStore.GetString(draft[key], fallback) };
-        field.TextChanged += (_, _) => draft[key] = field.Text; panel.Children.Add(field);
+        var field = new TextBox { Text = SettingsStore.GetString(draft[key], fallback), MinWidth = 0 };
+        field.TextChanged += (_, _) => draft[key] = field.Text; CompactRow(panel,label,field,true);
     }
     private void AddExecutablePicker(StackPanel panel, string label, string key)
     {
         var row = new Grid { ColumnSpacing = 10 };
         row.ColumnDefinitions.Add(new ColumnDefinition());
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var field = new TextBox { Header = label, Text = SettingsStore.GetString(draft[key]), HorizontalAlignment = HorizontalAlignment.Stretch };
+        var field = new TextBox { Text = SettingsStore.GetString(draft[key]), HorizontalAlignment = HorizontalAlignment.Stretch, MinWidth = 0 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(field,label);
         field.TextChanged += (_, _) => draft[key] = field.Text;
         row.Children.Add(field);
         var browse = new Button { Content = "Browse…", VerticalAlignment = VerticalAlignment.Bottom, MinWidth = 100 };
@@ -525,7 +487,7 @@ public sealed partial class SettingsDialog : Window
             }
             catch (Exception ex) { model.Engine.Log(ex.ToString()); status.Text = "Could not open the executable picker. Enter the path manually."; }
         };
-        Grid.SetColumn(browse, 1); row.Children.Add(browse); panel.Children.Add(row);
+        Grid.SetColumn(browse, 1); row.Children.Add(browse); CompactRow(panel,label,row,true);
     }
     private ComboBox? narrationPlaybackChoice;
     private void AddPlaybackChoice(StackPanel panel)
@@ -571,9 +533,10 @@ public sealed partial class SettingsDialog : Window
         var heading = ScreenReaderHeading.Mark(new TextBlock { Text = title, FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4) });
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetHeadingLevel(heading, Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2);
         host.Children.Add(heading);
-        var rows = new StackPanel { Spacing = 12 };
-        host.Children.Add(new AccessibilityGroup(title + " settings") { CornerRadius = new CornerRadius(8), Padding = new Thickness(16),
-            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"], Child = rows });
+        var rows = new StackPanel { Spacing = 8 };
+        var group = new AccessibilityGroup(title + " settings") { Tag = "narration-card", CornerRadius = new CornerRadius(8), Padding = new Thickness(12,10,12,10), Child = rows };
+        group.Style = (Style)Microsoft.UI.Xaml.Markup.XamlReader.Load("<Style xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" TargetType=\"ContentControl\"><Setter Property=\"Background\" Value=\"{ThemeResource CardBackgroundFillColorDefaultBrush}\"/></Style>");
+        host.Children.Add(group);
         return rows;
     }
     private void AddSpeechSlider(StackPanel panel, string label, string key, double fallback, double minimum, double maximum)
@@ -725,11 +688,13 @@ public sealed partial class SettingsDialog : Window
         var voiceGroup = AddNarrationGroup(panel, "Voices");
         nativeVoiceGroup = voiceGroup;
         voiceGroup.Children.Add(piperControls);
-        voiceGroup.Children.Add(voice); voiceGroup.Children.Add(sapiHost);
+        voice.Header=null; sapiHost.Header=null;
+        CompactRow(voiceGroup,"Installed voice",voice,true); CompactRow(voiceGroup,"Optional SAPI host executable",sapiHost,true);
         var refresh = new Button { Content = "Refresh Voices" }; refresh.Click += async (_, _) => await RefreshVoices(); voiceGroup.Children.Add(refresh);
         var sample = new TextBox { Header = "Voice sample", Text = "Welcome to Vidi Studio. Create accessible video with clear audio descriptions.", MaxLength = 500, TextWrapping = TextWrapping.Wrap };
-        nativeSample = sample;
-        panel.Children.Add(sample);
+        sample.Header=null;
+        var sampleSection = new StackPanel(); var sampleRows = CompactGroup(sampleSection,"Voice sample");
+        CompactRow(sampleRows,"Sample text",sample,true); nativeSample=sampleSection; panel.Children.Add(sampleSection);
         var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         samplePlayButton = new Button();
         samplePlayButton.Click += async (_, _) =>
@@ -744,7 +709,7 @@ public sealed partial class SettingsDialog : Window
         controls.Children.Add(sampleStopButton);
         UpdateSampleControls();
         nativeSampleButtons = controls;
-        panel.Children.Add(controls);
+        sampleRows.Children.Add(GeminiRowDivider()); sampleRows.Children.Add(controls);
         _ = RefreshVoices();
     }
     private bool HasDraftApiKey => !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"])) &&

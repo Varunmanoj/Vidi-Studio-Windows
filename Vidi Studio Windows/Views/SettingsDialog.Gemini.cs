@@ -40,21 +40,75 @@ public sealed partial class SettingsDialog
     private readonly List<(string Stage, ComboBox Selector)> modelSelectorRows = new();
     private bool synchronizingModelSelection;
 
-    private readonly Border apiStatusCard = new();
-    private readonly FontIcon apiStatusIcon = new();
-    private readonly TextBlock apiStatusTitle = new();
-    private readonly TextBlock apiStatusDescription = new() { TextWrapping = TextWrapping.Wrap };
+    private TextBlock apiKeyStatusText = new();
+    private FontIcon? apiStatusIcon;
 
-    private readonly Border planPillBadge = new();
-    private readonly FontIcon planDot = new();
-    private readonly TextBlock planPillText = new();
-    private readonly TextBlock planDetailsSubtitle = new();
+    private Border planPillBadge = new();
+    private FontIcon planDot = new();
+    private TextBlock planPillText = new();
+    private TextBlock planDetailsSubtitle = new();
 
     private Button? checkPlanButton;
     private string detectedPlan = "free";
     private DispatcherTimer? checkDebounceTimer;
     private long apiKeyCheckRevision;
     private bool checkingApiKey;
+
+#if DEBUG
+    internal void BringGeminiIntoViewForSmokeTest(bool models)
+    {
+        if (models) modelSelectorRows.First().Selector.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0 });
+        else sectionHost.ChangeView(null,0,null,true);
+    }
+    internal void VerifyGeminiGroupsForSmokeTest()
+    {
+        layout.UpdateLayout();
+        var cards = SpeechItems<Border>(currentSectionPanel!).Where(b => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(b).StartsWith("gemini-section-",StringComparison.Ordinal)).ToArray();
+        if (cards.Length != 6) throw new InvalidOperationException("Gemini sections must use six compact grouped cards.");
+        foreach (var card in cards) {
+            if (card.Background is not SolidColorBrush brush) throw new InvalidOperationException("Gemini cards must use their theme fill.");
+            var c = brush.Color;
+            if (((FrameworkElement)Content).ActualTheme == ElementTheme.Dark && (c.R+c.G+c.B)/3.0*c.A/255.0 + 32*(1-c.A/255.0) > 120)
+                throw new InvalidOperationException("Gemini cards must follow dark mode.");
+        }
+        var language = SpeechItems<ComboBox>(currentSectionPanel!).Single(c => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(c) == "gemini-output-language");
+        foreach (var field in modelSelectorRows.Select(r => r.Selector).Append(language)) {
+            if (field.Header != null || field.Parent is not Grid row) throw new InvalidOperationException("Gemini labels must share aligned rows with their fields.");
+            var label = row.Children.OfType<TextBlock>().First();
+            var l = label.TransformToVisual(row).TransformPoint(new Windows.Foundation.Point());
+            var f = field.TransformToVisual(row).TransformPoint(new Windows.Foundation.Point());
+            if (row.ActualWidth >= 480 && (f.X <= l.X || System.Math.Abs((l.Y+label.ActualHeight/2)-(f.Y+field.ActualHeight/2)) > 2))
+                throw new InvalidOperationException("Gemini labels and selectors must appear beside one another.");
+        }
+        var actions = SpeechItems<CompactActionsPanel>(currentSectionPanel!).Single();
+        if (actions.Children.OfType<Button>().Count() != 2) throw new InvalidOperationException("Gemini key actions must use matching native buttons.");
+        var sizes = actions.Children.Cast<FrameworkElement>().Select(b => b.ActualHeight).ToArray();
+        if (System.Math.Abs(sizes[0]-sizes[1]) > 2) throw new InvalidOperationException("Gemini key buttons must have matching heights.");
+    }
+    internal async Task VerifyGeminiKeyLayoutForSmokeTestAsync(Func<Task> capture)
+    {
+        NavigateForSmokeTest(3); await Task.Delay(150); layout.UpdateLayout();
+        var key = SpeechItems<PasswordBox>(currentSectionPanel!).Single();
+        var row = key.Parent as Grid ?? throw new InvalidOperationException("Gemini key must use an inline grid.");
+        var icon = row.Children.OfType<FontIcon>().Single();
+        var trash = row.Children.OfType<Button>().Single();
+        if (Grid.GetColumn(icon) != 1 || Grid.GetColumn(trash) != 2 ||
+            Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(icon) != "gemini-key-status" ||
+            string.IsNullOrWhiteSpace(Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(icon)))
+            throw new InvalidOperationException("Gemini key status must be accessible between the key and trash.");
+        var actions = SpeechItems<Panel>(currentSectionPanel!).Single(p => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(p) == "gemini-key-actions");
+        VerifyKeyActionsForSmokeTest(actions);
+        var probe = new TextBlock(); var probeIcon = ApiKeyStatusIcon(probe,"gemini-key-status");
+        foreach (var (text,glyph) in new[] { ("API key verified. Paid Plan. 37 models available.","\uE73E"), ("API key rejected. Google rejected this key.","\uE711"), ("Checking API key…","\uE823"), ("API key check incomplete. Connection unavailable.","\uE7BA"), ("No API key entered","\uE7BA") }) {
+            probe.Text = text;
+            if (probeIcon.Glyph != glyph || Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(probeIcon) != text || ToolTipService.GetToolTip(probeIcon) as string != text)
+                throw new InvalidOperationException("Gemini status must retain its full accessible state.");
+            if (glyph == "\uE73E" && (probeIcon.Foreground is not SolidColorBrush green || green.Color.G <= green.Color.R))
+                throw new InvalidOperationException("Verified Gemini keys must show a green checkmark.");
+        }
+        sectionHost.ChangeView(null,0,null,true); await Task.Delay(150); await capture();
+    }
+#endif
 
     private static string CleanModelName(string id, string rawName)
     {
@@ -132,31 +186,31 @@ public sealed partial class SettingsDialog
                 draft["defaultOutputLanguage"] = choice.Id;
             }
         };
-        group.Children.Add(field);
-        AddGeminiNote(group, "Each project has one shared language picker in the right inspector. Existing projects start in Auto; Assign Language preserves their text and audio.");
+        field.Header = null; field.Width = 280;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(field,"gemini-output-language");
+        AddGeminiRow(group,"Default Language for New Projects",field);
     }
 
     private void BuildGemini(StackPanel panel)
     {
-        DetachFromVisualParent(apiStatusCard);
-        DetachFromVisualParent(apiStatusIcon);
-        DetachFromVisualParent(apiStatusTitle);
-        DetachFromVisualParent(apiStatusDescription);
-        DetachFromVisualParent(planPillBadge);
-        DetachFromVisualParent(planDot);
-        DetachFromVisualParent(planPillText);
-        DetachFromVisualParent(planDetailsSubtitle);
-        apiStatusCard.Child = null;
-        planPillBadge.Child = null;
+        // These display-only controls belong to the newly constructed page.
+        // Unloaded WinUI controls can no longer expose Parent for detachment.
+        planPillBadge = new Border(); planDot = new FontIcon();
+        planPillText = new TextBlock(); planDetailsSubtitle = new TextBlock();
 
-        panel.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Gemini API", FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) }));
+        var titleRows = new StackPanel();
+        titleRows.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Gemini API", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }));
+        var titleCard = GeminiSettingsCard(titleRows);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(titleCard,"gemini-title-card");
+        panel.Children.Add(titleCard);
 
         BuildOutputLanguages(panel);
 
-        var topStack = new StackPanel { Spacing = 10 };
+        var topStack = AddGeminiGroup(panel,"Connect to Gemini");
 
         var keyRow = new Grid { ColumnSpacing = 8 };
         keyRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        keyRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         keyRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var key = new PasswordBox
@@ -165,6 +219,9 @@ public sealed partial class SettingsDialog
             Password = SettingsStore.GetString(draft["apiKey"]),
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(key,"gemini-api-key");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(key,"Personal Gemini API key");
+        key.Header = null;
         Grid.SetColumn(key, 0);
         keyRow.Children.Add(key);
 
@@ -215,17 +272,15 @@ public sealed partial class SettingsDialog
             ConnectivityChanged(null, EventArgs.Empty);
             status.Text = "Gemini API key deleted from Windows Credential Manager.";
         };
-        Grid.SetColumn(deleteKeyButton, 1);
+        apiKeyStatusText = new TextBlock();
+        apiStatusIcon = ApiKeyStatusIcon(apiKeyStatusText,"gemini-key-status");
+        Grid.SetColumn(apiStatusIcon,1); keyRow.Children.Add(apiStatusIcon);
+        Grid.SetColumn(deleteKeyButton, 2);
         keyRow.Children.Add(deleteKeyButton);
 
-        topStack.Children.Add(keyRow);
-        topStack.Children.Add(new TextBlock
-        {
-            Text = "Your Gemini key is stored securely in Windows Credential Manager and is never saved inside a project.",
-            TextWrapping = TextWrapping.Wrap, Opacity = .7, FontSize = 12
-        });
-
-        var openKeysLink = new HyperlinkButton
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(deleteKeyButton,"gemini-key-delete-icon");
+        AddGeminiRow(topStack,"API key",keyRow,true);
+        var openKeysLink = new Button
         {
             Content = new StackPanel
             {
@@ -237,9 +292,11 @@ public sealed partial class SettingsDialog
                     new TextBlock { Text = "Open API Keys in Google AI Studio" }
                 }
             },
-            NavigateUri = new Uri("https://aistudio.google.com/api-keys"),
-            Padding = new Thickness(0, 2, 0, 2)
+            Padding = new Thickness(12, 6, 12, 6)
         };
+        openKeysLink.Click += async (_,_) => await Windows.System.Launcher.LaunchUriAsync(new Uri("https://aistudio.google.com/api-keys"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(openKeysLink,"Open API Keys in Google AI Studio");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(openKeysLink,"gemini-key-dashboard");
         topStack.Children.Add(openKeysLink);
 
         checkPlanButton = new Button
@@ -254,61 +311,22 @@ public sealed partial class SettingsDialog
                     new TextBlock { Text = "Check API Key & Reload Models" }
                 }
             },
-            Padding = new Thickness(14, 8, 14, 8),
+            Padding = new Thickness(12, 6, 12, 6),
             IsEnabled = true
         };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(checkPlanButton,"Check API Key & Reload Models");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(checkPlanButton,"gemini-key-check");
         checkPlanButton.Click += async (_, _) => await CheckApiKeyAndPlanAsync();
         topStack.Children.Add(checkPlanButton);
 
-        // Verification Card matching Mac
-        apiStatusCard.CornerRadius = new CornerRadius(8);
-        apiStatusCard.Padding = new Thickness(14, 12, 14, 12);
-        apiStatusCard.Margin = new Thickness(0, 2, 0, 0);
+        SpeechActionsRow(topStack,"gemini-key-actions",checkPlanButton,openKeysLink);
+        topStack.Children.Insert(1,GeminiRowDivider());
+        IconButtonContent.SetDestructive(deleteKeyButton,true);
 
-        var verifyGrid = new Grid { ColumnSpacing = 12 };
-        verifyGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        verifyGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        apiStatusIcon.FontSize = 18;
-        apiStatusIcon.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(apiStatusIcon, 0);
-        verifyGrid.Children.Add(apiStatusIcon);
-
-        var verifyTextStack = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
-        apiStatusTitle.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
-        apiStatusTitle.FontSize = 13;
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetLiveSetting(apiStatusTitle, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
-        apiStatusDescription.FontSize = 12;
-        apiStatusDescription.Opacity = 0.85;
-        verifyTextStack.Children.Add(apiStatusTitle);
-        verifyTextStack.Children.Add(apiStatusDescription);
-        Grid.SetColumn(verifyTextStack, 1);
-        verifyGrid.Children.Add(verifyTextStack);
-
-        apiStatusCard.Child = verifyGrid;
-        topStack.Children.Add(apiStatusCard);
-
-        panel.Children.Add(topStack);
-
-        // Account Plan group matching Mac
-        var accountPlanGroup = new StackPanel { Spacing = 8, Margin = new Thickness(0, 16, 0, 0) };
-        accountPlanGroup.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Account Plan", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 14 }));
-
-        var planCard = new Border
-        {
-            CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(16, 14, 16, 14),
-            Background = new SolidColorBrush(Color.FromArgb(18, 128, 128, 128))
-        };
-
-        var planCardStack = new StackPanel { Spacing = 8 };
-        var planRow = new Grid();
-        planRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        planRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var planTitle = new TextBlock { Text = "Plan Tier", FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumn(planTitle, 0);
-        planRow.Children.Add(planTitle);
+        var accountPlanGroup = new StackPanel();
+        var planCardStack = AddGeminiGroup(accountPlanGroup,"Account Plan");
+        accountPlanGroup.Visibility = string.IsNullOrWhiteSpace(key.Password) ? Visibility.Collapsed : Visibility.Visible;
+        panel.Children.Add(accountPlanGroup);
 
         planPillBadge.CornerRadius = new CornerRadius(14);
         planPillBadge.Padding = new Thickness(12, 4, 12, 4);
@@ -321,18 +339,12 @@ public sealed partial class SettingsDialog
         pillStack.Children.Add(planDot);
         pillStack.Children.Add(planPillText);
         planPillBadge.Child = pillStack;
-        Grid.SetColumn(planPillBadge, 1);
-        planRow.Children.Add(planPillBadge);
-        planCardStack.Children.Add(planRow);
-
+        AddGeminiRow(planCardStack,"Plan Tier",planPillBadge);
         planDetailsSubtitle.FontSize = 12;
         planDetailsSubtitle.Opacity = 0.75;
         planDetailsSubtitle.TextWrapping = TextWrapping.Wrap;
+        planCardStack.Children.Add(GeminiRowDivider());
         planCardStack.Children.Add(planDetailsSubtitle);
-
-        planCard.Child = planCardStack;
-        accountPlanGroup.Children.Add(planCard);
-        panel.Children.Add(accountPlanGroup);
 
         // Debounce timer for automatic checking when key is entered / pasted
         checkDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
@@ -346,6 +358,7 @@ public sealed partial class SettingsDialog
         {
             draft["apiKey"] = key.Password;
             var hasKey = !string.IsNullOrWhiteSpace(key.Password);
+            accountPlanGroup.Visibility = hasKey ? Visibility.Visible : Visibility.Collapsed;
             apiKeyCheckRevision++; // Ignore results for the previously entered key.
             checkingApiKey = false;
             draft.Remove("apiKeyValid");
@@ -391,11 +404,13 @@ public sealed partial class SettingsDialog
         AddModelSelector(youtube, "youtube_transcript", "YouTube video model");
         AddModelSelector(youtube, "transcript", "Imported audio transcription");
         AddModelSelector(youtube, "audio_descriptions", "Audio descriptions with imported audio");
-        AddGeminiNote(panel, "When Transcription source is YouTube video, transcription and Audio Descriptions automatically use the YouTube video model. When it is Imported audio, the two choices above are used and shared with Local video. Descriptions still analyze the YouTube picture and current transcript. Playback and export choices do not change the model. Summary and other task models remain shared. Changes apply to future requests.");
 
         // Advanced group
-        var advanced = new StackPanel { Spacing = 12 };
-        AddText(advanced, "API version", "apiVersion", "v1beta");
+        var advanced = new StackPanel { Spacing = 0 };
+        var version = new TextBox { Text = SettingsStore.GetString(draft["apiVersion"],"v1beta"), Width = 280 };
+        version.TextChanged += (_,_) => draft["apiVersion"] = version.Text;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(version,"gemini-api-version");
+        AddGeminiRow(advanced,"API version",version,true);
         var processing = new ComboBox
         {
             Header = "Video processing",
@@ -407,12 +422,18 @@ public sealed partial class SettingsDialog
         {
             if (processing.SelectedIndex >= 0) draft["videoProcessing"] = processing.SelectedIndex == 0 ? "agentic" : "static";
         };
-        advanced.Children.Add(processing);
-        AddGeminiNote(advanced, "Choose Static for fixed video sampling or Agentic for model-directed video analysis. Applies to summaries and Audio Descriptions for local and YouTube videos, and YouTube screen-text requests. Transcription and selected-range analysis use Static. Availability depends on the selected model and your Gemini access.");
+        processing.Header = null; processing.Width = 280;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(processing,"gemini-video-processing");
+        AddGeminiRow(advanced,"Video processing",processing);
         var latest = new Button { Content = "Use latest available models" };
         latest.Click += (_, _) => SelectLatestModels();
-        advanced.Children.Add(latest);
-        panel.Children.Add(new Expander { Header = "Advanced", Content = advanced, HorizontalAlignment = HorizontalAlignment.Stretch });
+        latest.Padding = new Thickness(12,6,12,6);
+        advanced.Children.Add(GeminiRowDivider()); advanced.Children.Add(latest);
+        var advancedRows = new StackPanel();
+        advancedRows.Children.Add(new Expander { Header = "Advanced", Content = advanced, HorizontalAlignment = HorizontalAlignment.Stretch });
+        var advancedCard = GeminiSettingsCard(advancedRows);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(advancedCard,"gemini-section-advanced");
+        panel.Children.Add(advancedCard);
 
         // Initialize status card based on initial key
         var initialHasKey = !string.IsNullOrWhiteSpace(key.Password);
@@ -443,16 +464,7 @@ public sealed partial class SettingsDialog
         if (valid == true)
         {
             var planName = isPaid ? "Paid Plan" : "Free Plan";
-            apiStatusCard.Visibility = Visibility.Visible;
-            apiStatusCard.Background = new SolidColorBrush(Color.FromArgb(28, 16, 124, 65));
-            apiStatusCard.BorderBrush = new SolidColorBrush(Color.FromArgb(120, 16, 124, 65));
-            apiStatusCard.BorderThickness = new Thickness(1);
-            apiStatusIcon.Glyph = "\uE73E"; // Checkmark icon
-            apiStatusIcon.Foreground = new SolidColorBrush(Color.FromArgb(255, 16, 124, 65));
-            apiStatusTitle.Text = $"API Key Verified ({planName})";
-            apiStatusTitle.Foreground = new SolidColorBrush(Color.FromArgb(255, 16, 124, 65));
-            var countLabel = modelCount > 0 ? $"{modelCount} models available." : "Models loaded.";
-            apiStatusDescription.Text = $"The entered Gemini API key is valid. {countLabel}";
+            apiKeyStatusText.Text = $"API key verified. {planName}. " + (modelCount > 0 ? $"{modelCount} models available." : "Models loaded.");
 
             // Account Plan pill:
             var pillColor = isPaid ? Color.FromArgb(255, 0, 120, 212) : Color.FromArgb(255, 16, 124, 65);
@@ -470,15 +482,7 @@ public sealed partial class SettingsDialog
         }
         else if (valid == false)
         {
-            apiStatusCard.Visibility = Visibility.Visible;
-            apiStatusCard.Background = new SolidColorBrush(Color.FromArgb(32, 230, 80, 40));
-            apiStatusCard.BorderBrush = new SolidColorBrush(Color.FromArgb(120, 230, 80, 40));
-            apiStatusCard.BorderThickness = new Thickness(1);
-            apiStatusIcon.Glyph = "\uE783";
-            apiStatusIcon.Foreground = new SolidColorBrush(Color.FromArgb(255, 230, 80, 40));
-            apiStatusTitle.Text = "Invalid API Key";
-            apiStatusTitle.Foreground = new SolidColorBrush(Color.FromArgb(255, 230, 80, 40));
-            apiStatusDescription.Text = "The entered Gemini API key is invalid. Google rejected it. Replace it with a valid key from Google AI Studio.";
+            apiKeyStatusText.Text = "API key rejected. " + (errorMsg.Length > 0 ? errorMsg : "Google rejected this key.");
 
             // Account Plan pill:
             planPillBadge.Background = new SolidColorBrush(Color.FromArgb(30, 230, 80, 40));
@@ -494,28 +498,7 @@ public sealed partial class SettingsDialog
         {
             // Empty / checking
             var hasKey = !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"]));
-            if (hasKey)
-            {
-                apiStatusCard.Visibility = Visibility.Visible;
-                apiStatusCard.Background = new SolidColorBrush(Color.FromArgb(22, 128, 128, 128));
-                apiStatusCard.BorderBrush = new SolidColorBrush(Color.FromArgb(80, 128, 128, 128));
-                apiStatusCard.BorderThickness = new Thickness(1);
-                apiStatusIcon.Glyph = "\uE72C";
-                apiStatusIcon.Foreground = (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
-                apiStatusTitle.Text = checking ? "Checking API key…" : errorMsg.Length > 0 ? "API Key Check Incomplete" : "API Key Not Checked";
-                apiStatusTitle.Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
-                apiStatusDescription.Text = checking ? "Verifying the entered key with Google…" : errorMsg.Length > 0 ? errorMsg : "Choose Check API Key & Plan to verify the entered key.";
-            }
-            else
-            {
-                apiStatusCard.Visibility = Visibility.Visible;
-                apiStatusCard.Background = new SolidColorBrush(Color.FromArgb(22, 128, 128, 128));
-                apiStatusCard.BorderThickness = new Thickness(1);
-                apiStatusIcon.Glyph = "\uE7BA";
-                apiStatusTitle.Text = "No API Key Entered";
-                apiStatusTitle.Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
-                apiStatusDescription.Text = "Enter a Gemini API key, then choose Check API Key & Plan.";
-            }
+            apiKeyStatusText.Text = !hasKey ? "No API key entered" : checking ? "Checking API key…" : errorMsg.Length > 0 ? "API key check incomplete. " + errorMsg : "API key saved — unverified";
 
             planPillBadge.Background = new SolidColorBrush(Color.FromArgb(30, 128, 128, 128));
             planPillBadge.BorderBrush = new SolidColorBrush(Color.FromArgb(80, 128, 128, 128));
@@ -526,8 +509,6 @@ public sealed partial class SettingsDialog
             planPillText.Foreground = new SolidColorBrush(Color.FromArgb(255, 180, 180, 180));
             planDetailsSubtitle.Text = !hasKey ? "Enter a Gemini API key to detect your plan." : "Check the entered API key before showing account information.";
         }
-        Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.FromElement(apiStatusTitle)?
-            .RaiseAutomationEvent(Microsoft.UI.Xaml.Automation.Peers.AutomationEvents.LiveRegionChanged);
     }
 
     private async Task CheckApiKeyAndPlanAsync()
@@ -666,18 +647,26 @@ public sealed partial class SettingsDialog
         }
     }
 
-    private static void AddGeminiNote(StackPanel panel, string text) =>
-        panel.Children.Add(new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75, Margin = new Thickness(0, 4, 0, 0) });
+    private static Border GeminiRowDivider() => (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load("<Border xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" Height=\"1\" Background=\"{ThemeResource DividerStrokeColorDefaultBrush}\" Margin=\"0,6,0,6\"/>");
 
+    private static Border GeminiSettingsCard(StackPanel rows)
+    {
+        var card = SpeechSettingsCard(rows);
+        card.Padding = new Thickness(12,10,12,10); card.Margin = new Thickness(0);
+        return card;
+    }
+    private static Grid AddGeminiRow(StackPanel rows, string label, FrameworkElement control, bool stretch = false)
+    {
+        if (rows.Children.Count > 0) rows.Children.Add(GeminiRowDivider());
+        return AddSettingsRow(rows,label,control,stretch);
+    }
     private static StackPanel AddGeminiGroup(StackPanel panel, string title)
     {
-        panel.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 14, Margin = new Thickness(0, 16, 0, 8) }));
-        var rows = new StackPanel { Spacing = 10 };
-        panel.Children.Add(new Border
-        {
-            CornerRadius = new CornerRadius(10), Padding = new Thickness(16, 12, 16, 12), Child = rows,
-            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(18, 128, 128, 128))
-        });
+        panel.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 14, Margin = new Thickness(0,12,0,4) }));
+        var rows = new StackPanel { Spacing = 0 };
+        var card = GeminiSettingsCard(rows);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(card,"gemini-section-"+title.Replace(" ","-").ToLowerInvariant());
+        panel.Children.Add(card);
         return rows;
     }
 
@@ -735,7 +724,7 @@ public sealed partial class SettingsDialog
                 finally { synchronizingModelSelection = false; }
             }
         };
-        AddSettingsRow(panel, label, selector, stretchControl: true);
+        AddGeminiRow(panel,label,selector,true);
     }
 
     private Task RefreshGeminiModelsAsync() => CheckApiKeyAndPlanAsync();

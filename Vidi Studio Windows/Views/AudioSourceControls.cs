@@ -16,13 +16,14 @@ public sealed class AudioSourceControls : UserControl
     private readonly ContentDialog? host;
     private readonly bool exportHost;
     private readonly bool showHeading;
+    private readonly bool compact;
     private readonly Func<Task>? chooseAudio;
     private readonly Func<Task>? reviewAudio;
     private readonly StackPanel panel = new() { Spacing = 8 };
 
-    public AudioSourceControls(MainWindow owner, StudioViewModel model, ContentDialog? host = null, bool exportHost = true, bool showHeading = true, Func<Task>? chooseAudio = null, Func<Task>? reviewAudio = null)
+    public AudioSourceControls(MainWindow owner, StudioViewModel model, ContentDialog? host = null, bool exportHost = true, bool showHeading = true, Func<Task>? chooseAudio = null, Func<Task>? reviewAudio = null, bool compact = false)
     {
-        this.owner = owner; this.model = model; this.host = host;
+        this.owner = owner; this.model = model; this.host = host; this.compact=compact;
         this.exportHost = exportHost; this.showHeading = showHeading; this.chooseAudio = chooseAudio; this.reviewAudio = reviewAudio;
         Content = panel;
         Refresh();
@@ -57,6 +58,11 @@ public sealed class AudioSourceControls : UserControl
         }
         Action("Choose Audio File…", chooseAudio ?? owner.ChooseOriginalAudioAsync);
         if (project.OriginalAudio != null) Action("Remove Selection", async () => { await model.RunAsync("remove-original-audio"); });
+        if(compact) {
+            var buttons=System.Linq.Enumerable.ToArray(System.Linq.Enumerable.OfType<Button>(panel.Children));
+            foreach(var button in buttons) panel.Children.Remove(button);
+            panel.Children.Add(SettingsDialog.CompactActions(buttons));
+        }
     }
 
     private void Picker(string title, string argument, string current, string youtube, StudioProject project)
@@ -72,7 +78,7 @@ public sealed class AudioSourceControls : UserControl
             await model.RunAsync("set-audio-sources", new[] { argument, box.SelectedIndex == 1 ? "imported" : "youtube" });
             Refresh();
         };
-        panel.Children.Add(box);
+        if(compact) { box.Header=null; SettingsDialog.CompactRow(panel,title,box,true); } else panel.Children.Add(box);
     }
 
     private void Action(string title, Func<Task> action)

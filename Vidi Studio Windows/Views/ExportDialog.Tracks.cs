@@ -198,6 +198,6 @@ public sealed partial class ExportDialog
             picker.ContextFlyout = menu;
         } else if (element is Panel panel) foreach (var child in panel.Children.OfType<FrameworkElement>()) AttachExportMenus(child);
         else if (element is Border border && border.Child is FrameworkElement child) AttachExportMenus(child);
-        else if (element is Expander expander && expander.Content is FrameworkElement content) AttachExportMenus(content);
+        else if (element is ContentControl container && container.Content is FrameworkElement content) AttachExportMenus(content);
     }
 }

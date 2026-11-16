@@ -20,7 +20,7 @@ class ImportAssetsUI(unittest.TestCase):
         self.assertIn('ToolTipService.ToolTip="Import a transcript, summary, AD transcript, or AD audio into this project"', UI)
         self.assertIn('ToolTipService.ToolTip="Preview Markdown (Ctrl-Alt-Shift-P)"', UI)
         self.assertIn('AutomationProperties.Name="Undo summary edit"', UI)
-        self.assertIn('Import narration audio…', (ROOT / 'Vidi Studio Windows' / 'MainWindow.Commands.cs').read_text(encoding='utf-8'))
+        self.assertIn('Import narration audio…', MENUS)
 
     def test_all_text_formats_are_validated_before_import_and_after(self):
         inspector = (ROOT / 'Vidi Studio Windows' / 'Models' / 'ImportTimingInspector.cs').read_text(encoding='utf-8')

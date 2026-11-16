@@ -17,7 +17,7 @@ public sealed partial class SettingsDialog
         var language = SettingsStore.GetString(profile["language"],"en-IN");
         var voices = SarvamSpeech.Catalog.Voices.Where(v => v.Model == modelId && v.Languages.Contains(language)).ToArray();
         var browser = new StackPanel { Spacing = 10 };
-        sarvamControls.Children.Add(browser);
+        AutomationProperties.SetAutomationId(browser,"sarvam-voice-browser"); sarvamControls.Children.Add(browser);
         browser.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Voices", FontSize = 16 }));
         var styles = new[] {("all","All styles")}.Concat(voices.GroupBy(v => v.Style).Select(group => (group.Key,group.First().StyleLabel.Length > 0 ? group.First().StyleLabel : "Standard")).OrderBy(option => option.Item2));
         var rows = new StackPanel { Spacing = 10 };

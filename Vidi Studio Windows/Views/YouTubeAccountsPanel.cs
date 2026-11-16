@@ -13,7 +13,8 @@ namespace Vidi_Studio_Windows.Views;
 public sealed class YouTubeAccountsPanel : StackPanel
 {
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
-    private readonly StackPanel profiles = new() { Spacing = 16 };
+    private readonly StackPanel profiles = new() { Spacing = 12 };
+    private readonly CompactActionsPanel links = new();
     private readonly Button add = new() { Content = "Add Account" };
     private readonly Button cancel = new() { Content = "Cancel Sign-in", Visibility = Visibility.Collapsed };
     private readonly ProgressRing progress = new() { Width = 18, Height = 18, Visibility = Visibility.Collapsed };
@@ -29,11 +30,14 @@ public sealed class YouTubeAccountsPanel : StackPanel
             header.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "YouTube Accounts", FontSize = 24, VerticalAlignment = VerticalAlignment.Center }));
             var done = new Button { Content = "Done" }; done.Click += (_, _) => Done?.Invoke(this, EventArgs.Empty); Grid.SetColumn(done, 1); header.Children.Add(done); Children.Add(header);
         }
+        Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text="Google accounts",FontWeight=Microsoft.UI.Text.FontWeights.SemiBold }));
         Children.Add(profiles);
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 }; actions.Children.Add(add); actions.Children.Add(progress); actions.Children.Add(cancel); Children.Add(actions);
+        var actions = SettingsDialog.CompactActions(add,progress,cancel);
+        var connections=SettingsDialog.CompactGroup(this,"Account connections"); connections.Children.Add(actions);
         AutomationProperties.SetAccessibilityView(progress, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
-        AutomationProperties.SetLiveSetting(status, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite); Children.Add(status);
+        AutomationProperties.SetLiveSetting(status, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite); connections.Children.Add(status);
         add.Click += async (_, _) => await SignIn(); cancel.Click += (_, _) => operation?.Cancel();
+        SettingsDialog.CompactGroup(this,"Google and YouTube").Children.Add(links);
         AddLink("Manage Google account access", "https://myaccount.google.com/connections");
         AddLink("YouTube Terms of Service", "https://www.youtube.com/t/terms");
         var menu = MenuAccessKeys.Create();
@@ -47,7 +51,7 @@ public sealed class YouTubeAccountsPanel : StackPanel
     {
         var link = new HyperlinkButton { Content = title, NavigateUri = new Uri(url), Padding = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Left };
         var menu = MenuAccessKeys.Create(); AddMenu(menu, title, () => _ = Windows.System.Launcher.LaunchUriAsync(new Uri(url)), () => true); link.ContextFlyout = menu;
-        Children.Add(link);
+        links.Children.Add(link);
     }
     private static void AddMenu(MenuFlyout menu, string title, Action action, Func<bool> available)
     {
@@ -87,6 +91,7 @@ public sealed class YouTubeAccountsPanel : StackPanel
     private void RefreshRows(YouTubeAccount[] accounts)
     {
         profiles.Children.Clear();
+        if(accounts.Length==0) profiles.Children.Add(SettingsDialog.CompactCard(new TextBlock { Text="No accounts connected",TextWrapping=TextWrapping.Wrap }));
         foreach (var account in accounts) {
             var row = new Grid { ColumnSpacing = 12, RowSpacing = 8 };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -97,7 +102,7 @@ public sealed class YouTubeAccountsPanel : StackPanel
             var details = new StackPanel(); details.Children.Add(new TextBlock { Text = account.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
             details.Children.Add(new TextBlock { Text = account.Email, Opacity = 0.7, TextWrapping = TextWrapping.Wrap }); details.Children.Add(new TextBlock { Text = "YouTube channel: " + account.ChannelName, TextWrapping = TextWrapping.Wrap });
             Grid.SetColumn(details, 1); row.Children.Add(details);
-            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+            var actions = new CompactActionsPanel { VerticalAlignment = VerticalAlignment.Center };
             var selected = YouTubeService.Shared.SelectedId == account.Id;
             var change = new Button { Content = selected ? "Selected" : "Switch Account", IsEnabled = !selected && operation == null }; change.Click += (_, _) => Switch(account); actions.Children.Add(change);
             var signOut = new Button { Content = "Sign Out", IsEnabled = operation == null }; signOut.Click += (_, _) => SignOut(account); actions.Children.Add(signOut);
@@ -108,10 +113,11 @@ public sealed class YouTubeAccountsPanel : StackPanel
             AddMenu(menu, "Sign Out", () => SignOut(account), () => operation == null);
             AddMenu(menu, "Disconnect Google Account…", () => _ = Disconnect(account), () => operation == null); row.ContextFlyout = menu;
             void Arrange() {
-                var narrow = row.ActualWidth < 850;
+                var required=40+24+180+actions.Children.Cast<FrameworkElement>().Sum(c => c.DesiredSize.Width)+16;
+                var narrow = row.ActualWidth < required;
                 Grid.SetColumn(actions, narrow ? 1 : 2); Grid.SetRow(actions, narrow ? 1 : 0); Grid.SetColumnSpan(actions, narrow ? 2 : 1);
             }
-            row.SizeChanged += (_, _) => Arrange(); profiles.Children.Add(row);
+            row.SizeChanged += (_, _) => Arrange(); profiles.Children.Add(SettingsDialog.CompactCard(row));
         }
     }
 }

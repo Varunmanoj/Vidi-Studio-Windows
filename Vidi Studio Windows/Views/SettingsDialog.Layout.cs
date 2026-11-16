@@ -59,9 +59,9 @@ public sealed partial class SettingsDialog
         return new Border { Width = 54, Child = control };
     }
 
-    private static Grid AddSettingsRow(StackPanel panel, string label, FrameworkElement control, bool stretchControl = false)
+    internal static Grid AddSettingsRow(StackPanel panel, string label, FrameworkElement control, bool stretchControl = false, double stackBelow = 480)
     {
-        var row = new Grid { ColumnSpacing = 16, RowSpacing = 0, MinHeight = 36 };
+        var row = new Grid { ColumnSpacing = 16, RowSpacing = 0, MinHeight = 36, Tag = "settings-row" };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -73,10 +73,12 @@ public sealed partial class SettingsDialog
         control.VerticalAlignment = VerticalAlignment.Center;
         control.HorizontalAlignment = stretchControl ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
         Grid.SetColumn(control, 1); row.Children.Add(control);
+        row.Visibility = control.Visibility;
+        control.RegisterPropertyChangedCallback(UIElement.VisibilityProperty,(_,_) => row.Visibility = control.Visibility);
         var preferredWidth = control.Width;
         row.SizeChanged += (_, args) =>
         {
-            var stacked = args.NewSize.Width < 480;
+            var stacked = args.NewSize.Width < stackBelow;
             row.RowSpacing = stacked ? 8 : 0;
             control.Width = stacked && stretchControl ? double.NaN : preferredWidth;
             Grid.SetColumnSpan(title, stacked ? 2 : 1);

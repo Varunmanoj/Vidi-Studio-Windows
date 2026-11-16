@@ -33,6 +33,7 @@ public sealed partial class SettingsDialog
     private string? summarySamplePath;
     private Button? summarySamplePlayButton, summarySampleStopButton;
     private TextBlock? summarySampleStatus;
+    private Border? sarvamSettingsCard, summarySettingsCard;
     private bool sarvamKeyChecking;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? sarvamKeyTimer;
     private TextBlock? sarvamKeyStatusText;
@@ -42,9 +43,12 @@ public sealed partial class SettingsDialog
 
     private void BuildAdditionalSpeechControls(StackPanel panel)
     {
-        foreach (var control in new[] { sarvamControls, summaryVoiceControls })
-            if (control.Parent is Panel parent) parent.Children.Remove(control);
-        panel.Children.Add(sarvamControls); panel.Children.Add(summaryVoiceControls);
+        sarvamSettingsCard ??= SpeechSettingsCard(sarvamControls);
+        summarySettingsCard ??= SpeechSettingsCard(summaryVoiceControls);
+        foreach (var card in new[] { sarvamSettingsCard, summarySettingsCard }) {
+            if (card.Parent is Panel parent) parent.Children.Remove(card);
+            panel.Children.Add(card);
+        }
         if (!extraSpeechHooked)
         {
             extraSpeechHooked = true;
@@ -57,6 +61,8 @@ public sealed partial class SettingsDialog
     {
         sarvamControls.Visibility = provider == "sarvam" ? Visibility.Visible : Visibility.Collapsed;
         summaryVoiceControls.Visibility = provider is "sarvam" or "gemini" ? Visibility.Visible : Visibility.Collapsed;
+        if (sarvamControls.Parent is Border sarvamCard) sarvamCard.Visibility = sarvamControls.Visibility;
+        if (summaryVoiceControls.Parent is Border summaryCard) summaryCard.Visibility = summaryVoiceControls.Visibility;
         foreach (var control in new[] { nativeVoiceGroup, nativeSample, nativeSampleButtons })
             if (control != null) control.Visibility = provider == "sarvam" ? Visibility.Collapsed : Visibility.Visible;
         if (provider == "sarvam") { BuildSarvamSettings(); if (!sarvamModelsRequested) { sarvamModelsRequested = true; _ = RefreshSarvamModelsAsync(); if (!string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["sarvamApiKey"])) && SettingsStore.GetString(draft["sarvamKeyStatus"]) != "verified") sarvamKeyTimer?.Start(); } } else StopSarvamDemo();
@@ -87,7 +93,7 @@ public sealed partial class SettingsDialog
             menu.Opening += (_, _) => item.IsChecked = picker.SelectedItem is ComboBoxItem selected && (string)selected.Tag == option.Id;
             menu.Items.Add(item);
         }
-        picker.ContextFlyout = menu; panel.Children.Add(picker); return picker;
+        picker.ContextFlyout = menu; picker.Header = null; picker.Width = 280; AddSettingsRow(panel,title,picker); return picker;
     }
     private void SpeechAdjustmentControl(StackPanel panel, string title, string id, JsonObject profile, string key, double initial, double low, double high, double step = .05)
     {
@@ -107,7 +113,12 @@ public sealed partial class SettingsDialog
             menu.Opening += (_, _) => item.IsEnabled = suffix == "reset" || (suffix == "increase" ? slider.Value < high : slider.Value > low);
             menu.Items.Add(item);
         }
-        slider.ContextFlyout = menu; panel.Children.Add(slider); panel.Children.Add(number);
+        slider.ContextFlyout = menu; slider.Header = null;
+        var controls = new Grid { ColumnSpacing = 10, Width = 320 };
+        controls.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1,GridUnitType.Star) });
+        controls.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        controls.Children.Add(slider); Grid.SetColumn(number,1); number.VerticalAlignment = VerticalAlignment.Center; controls.Children.Add(number);
+        AddSettingsRow(panel,title,controls,true);
     }
     private Button SpeechAction(StackPanel panel, string label, string id, Action action, bool enabled = true)
     {
@@ -130,8 +141,9 @@ public sealed partial class SettingsDialog
         var password = new PasswordBox { Header = "Sarvam API key", Password = SettingsStore.GetString(draft["sarvamApiKey"]) };
         AutomationProperties.SetAutomationId(password,"sarvam-api-key");
         var keyStatus = new TextBlock { Text = password.Password.Length == 0 ? "No API key" : SettingsStore.GetString(draft["sarvamKeyStatus"]) switch { "verified" => "API key verified", "invalid" => "API key rejected", _ => "API key saved — unverified" } };
+        keyStatus.MaxWidth = 220; keyStatus.TextWrapping = TextWrapping.Wrap;
         sarvamKeyStatusText = keyStatus;
-        AutomationProperties.SetAutomationId(keyStatus,"sarvam-key-status");
+        keyStatus.Visibility = Visibility.Collapsed;
         AutomationProperties.SetLiveSetting(keyStatus,Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
         if (sarvamKeyChecking) keyStatus.Text = "Checking API key…"; else if (sarvamKeyMessage.Length > 0) keyStatus.Text = sarvamKeyMessage;
         password.PasswordChanged += (_, _) => { sarvamKeyMessage = ""; sarvamKeyTimer?.Stop(); if (password.Password.Trim().Length > 0) sarvamKeyTimer?.Start(); draft["sarvamApiKey"] = password.Password.Trim(); draft["sarvamKeyStatus"] = "unverified"; keyStatus.Text = password.Password.Length == 0 ? "No API key" : "API key saved — unverified"; if (deleteKeyButton != null) deleteKeyButton.IsEnabled = password.Password.Length > 0; if (sarvamCheckKeyButton != null) sarvamCheckKeyButton.IsEnabled = password.Password.Trim().Length > 0 && !sarvamKeyChecking; };
@@ -147,14 +159,18 @@ public sealed partial class SettingsDialog
         var keyRow = new Grid { ColumnSpacing = 8 };
         keyRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1,GridUnitType.Star) });
         keyRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        keyRow.Children.Add(password); Grid.SetColumn(deleteKeyButton,1); keyRow.Children.Add(deleteKeyButton);
+        keyRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var statusIcon = ApiKeyStatusIcon(keyStatus);
+        keyRow.Children.Add(password); Grid.SetColumn(statusIcon,1); keyRow.Children.Add(statusIcon);
+        Grid.SetColumn(deleteKeyButton,2); keyRow.Children.Add(deleteKeyButton);
         deleteKeyButton.Content = new FontIcon { Glyph = "\uE74D", FontSize = 14 };
         deleteKeyButton.MinWidth = 36; deleteKeyButton.Padding = new Thickness(8,6,8,6); deleteKeyButton.VerticalAlignment = VerticalAlignment.Bottom;
         IconButtonContent.SetDestructive(deleteKeyButton,true);
         AutomationProperties.SetName(deleteKeyButton,"Delete Sarvam API key");
         AutomationProperties.SetAutomationId(deleteKeyButton,"sarvam-key-delete-icon");
         ToolTipService.SetToolTip(deleteKeyButton,"Delete Sarvam API key");
-        sarvamControls.Children.Insert(1,keyRow);
+        password.Header = null; AutomationProperties.SetName(password,"Sarvam API key"); var passwordRow = AddSettingsRow(sarvamControls,"Sarvam API key",keyRow,true);
+        sarvamControls.Children.Remove(passwordRow); sarvamControls.Children.Insert(1,passwordRow);
         sarvamCheckKeyButton = SpeechAction(sarvamControls,sarvamKeyChecking ? "Checking API Key…" : "Check API Key","sarvam-key-check",async () => { sarvamKeyTimer?.Stop(); await CheckSarvamKeyAsync(); },password.Password.Trim().Length > 0 && !sarvamKeyChecking);
         SpeechAction(sarvamControls,"Open Sarvam API Keys","sarvam-key-dashboard", async () => await Windows.System.Launcher.LaunchUriAsync(new Uri("https://indus.sarvam.ai/key-management")));
         var modelChoices = sarvamModelOptions.ToList();
@@ -197,6 +213,8 @@ public sealed partial class SettingsDialog
         sarvamPlayControl = SpeechAction(sarvamControls,"Play Sample","sarvam-sample-play", () => { if (demo != null) _ = PlaySarvamDemoAsync(demo,demoStatus); },demo != null);
         sarvamStopControl = SpeechAction(sarvamControls,"Stop Sample","sarvam-sample-stop",StopSarvamDemo,false);
         sarvamControls.Children.Add(demoStatus);
+        SpeechActionsRow(sarvamControls,"sarvam-key-actions", sarvamCheckKeyButton!, SpeechItems<Button>(sarvamControls).Single(b => AutomationProperties.GetAutomationId(b) == "sarvam-key-dashboard"));
+        SpeechActionsRow(sarvamControls,"sarvam-sample-actions",sarvamPlayControl!,sarvamStopControl!,demoStatus);
     }
     private async Task CheckSarvamKeyAsync()
     {
@@ -307,7 +325,7 @@ public sealed partial class SettingsDialog
             if (closed || request != summaryVoiceRequest) return;
             var key = engine == "piper" ? "piperVoice" : engine == "sapi5" ? "sapi5Voice" : "windowsCoreVoice";
             var selectedText = new TextBlock();
-            var choices = new StackPanel { Spacing = 8 };
+            var choices = new StackPanel { Spacing = 8 }; AutomationProperties.SetAutomationId(choices,"summary-voice-choices");
             void Render()
             {
                 var selected = SettingsStore.GetString(profile[key]);
@@ -342,6 +360,8 @@ public sealed partial class SettingsDialog
                 SpeechAction(holder,"Open Windows Voice Settings","summary-system-voices",async () => await Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:speech")));
             }
             Render();
+            SpeechActionsRow(holder,"summary-sample-actions",summarySamplePlayButton!,summarySampleStopButton!,SpeechItems<Button>(holder).Single(b => AutomationProperties.GetAutomationId(b) == "summary-voices-refresh"));
+            if (engine != "piper") SpeechActionsRow(holder,"summary-system-actions",SpeechItems<Button>(holder).Single(b => AutomationProperties.GetAutomationId(b) == "summary-voice-default"),SpeechItems<Button>(holder).Single(b => AutomationProperties.GetAutomationId(b) == "summary-system-voices"));
         }
         catch (OperationCanceledException) { }
         catch (Exception) { if (!closed && request == summaryVoiceRequest) holder.Children.Add(new TextBlock { Text = "Local voices could not be loaded." }); }
@@ -389,7 +409,7 @@ public sealed partial class SettingsDialog
     }
 
 #if DEBUG
-    internal async Task VerifySarvamSettingsForSmokeTestAsync()
+    internal async Task VerifySarvamSettingsForSmokeTestAsync(Func<Task>? capture = null)
     {
         var originallyRequested = sarvamModelsRequested;
         sarvamModelsRequested = true;
@@ -404,21 +424,29 @@ public sealed partial class SettingsDialog
             await Task.Delay(150);
             if (localSpeechControls.Visibility != Visibility.Collapsed || sarvamControls.Visibility != Visibility.Visible || summaryVoiceControls.Visibility != Visibility.Visible)
                 throw new InvalidOperationException("Sarvam controls and independent Summary controls must replace local narration controls.");
-            var keyRow = sarvamControls.Children.OfType<Grid>().Single();
+            var keyRow = (Grid)SpeechItems<PasswordBox>(sarvamControls).Single().Parent;
             if (keyRow.Children.OfType<PasswordBox>().Count() != 1 || keyRow.Children.OfType<Button>().Single().Content is not FontIcon)
                 throw new InvalidOperationException("The key trash icon must be beside the secure field.");
+            if (keyRow.Children.OfType<FontIcon>().Single().GetValue(AutomationProperties.AutomationIdProperty) as string != "sarvam-key-status") throw new InvalidOperationException("Key status must be inline before the trash icon.");
+            layout.UpdateLayout();
+            var actions = sarvamControls.Children.OfType<Panel>().Single(p => AutomationProperties.GetAutomationId(p) == "sarvam-key-actions");
+            VerifyKeyActionsForSmokeTest(actions);
+            var modelControl = SpeechItems<ComboBox>(sarvamControls).Single(c => AutomationProperties.GetAutomationId(c) == "sarvam-model");
+            if (modelControl.Header != null || modelControl.Parent is not Grid) throw new InvalidOperationException("Speech choices must use aligned label/control rows.");
+            if (capture != null) { keyRow.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0 }); await Task.Delay(150); await capture(); }
             foreach (var modelId in SarvamSpeech.Models)
             {
-                var picker = sarvamControls.Children.OfType<ComboBox>().Single(c => AutomationProperties.GetAutomationId(c) == "sarvam-model");
+                var picker = SpeechItems<ComboBox>(sarvamControls).Single(c => AutomationProperties.GetAutomationId(c) == "sarvam-model");
                 picker.SelectedItem = picker.Items.Cast<ComboBoxItem>().First(i => (string)i.Tag == modelId);
                 await Task.Delay(50);
                 if (SarvamSpeech.Model(draft) != modelId) throw new InvalidOperationException("Model menu and state differ.");
+                VerifyKeyActionsForSmokeTest(sarvamControls.Children.OfType<Panel>().Single(p => AutomationProperties.GetAutomationId(p) == "sarvam-key-actions"));
                 var expected = modelId == "bulbul:v2" ? "sarvam-pitch" : "sarvam-temperature";
-                var slider = sarvamControls.Children.OfType<Slider>().Single(c => AutomationProperties.GetAutomationId(c) == expected);
+                var slider = SpeechItems<Slider>(sarvamControls).Single(c => AutomationProperties.GetAutomationId(c) == expected);
                 if (slider.ContextFlyout is not MenuFlyout menu || menu.Items.Count != 3) throw new InvalidOperationException("Voice sliders need matching adjustment menus.");
-                var play = sarvamControls.Children.OfType<Button>().Single(c => AutomationProperties.GetAutomationId(c) == "sarvam-sample-play");
+                var play = SpeechItems<Button>(sarvamControls).Single(c => AutomationProperties.GetAutomationId(c) == "sarvam-sample-play");
                 if (play.IsEnabled != (modelId == "bulbul:v3")) throw new InvalidOperationException("Catalog demos must never generate a missing sample.");
-                var browser = sarvamControls.Children.OfType<StackPanel>().Single();
+                var browser = sarvamControls.Children.OfType<StackPanel>().Single(p => AutomationProperties.GetAutomationId(p) == "sarvam-voice-browser");
                 var searchBox = browser.Children.OfType<Grid>().Single(g => AutomationProperties.GetAutomationId(g) == "sarvam-search-box");
                 var searchVoices = searchBox.Children.OfType<TextBox>().Single();
                 var rows = (StackPanel)browser.Children.OfType<ScrollViewer>().Single().Content;
@@ -429,17 +457,17 @@ public sealed partial class SettingsDialog
                 searchVoices.Text = "No voice should match this test phrase";
                 for (var attempt = 0; attempt < 20 && rows.Children.OfType<StackPanel>().Any(); attempt++) await Task.Delay(25);
                 if (rows.Children.OfType<StackPanel>().Any() || SettingsStore.GetString(SarvamSpeech.Profile(draft)["voice"]) != savedVoice)
-                    throw new InvalidOperationException($"Sarvam search must hide nonmatches without changing the selected voice: rows={rows.Children.OfType<StackPanel>().Count()}, selectionChanged={SettingsStore.GetString(SarvamSpeech.Profile(draft)["voice"]) != savedVoice}, currentBrowser={ReferenceEquals(browser,sarvamControls.Children.OfType<StackPanel>().Single())}, loaded={searchVoices.IsLoaded}, textApplied={searchVoices.Text == "No voice should match this test phrase"}, queryApplied={sarvamVoiceSearch == "No voice should match this test phrase"}.");
+                    throw new InvalidOperationException($"Sarvam search must hide nonmatches without changing the selected voice: rows={rows.Children.OfType<StackPanel>().Count()}, selectionChanged={SettingsStore.GetString(SarvamSpeech.Profile(draft)["voice"]) != savedVoice}, currentBrowser={ReferenceEquals(browser,sarvamControls.Children.OfType<StackPanel>().Single(p => AutomationProperties.GetAutomationId(p) == "sarvam-voice-browser"))}, loaded={searchVoices.IsLoaded}, textApplied={searchVoices.Text == "No voice should match this test phrase"}, queryApplied={sarvamVoiceSearch == "No voice should match this test phrase"}.");
                 var clearSearch = searchBox.Children.OfType<StackPanel>().Single().Children.OfType<Button>().Single();
                 if (!clearSearch.IsEnabled || clearSearch.ContextFlyout is not MenuFlyout) throw new InvalidOperationException("Search needs an enabled clear icon and matching menu.");
                 var clearPeer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(clearSearch);
                 ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)clearPeer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
                 for (var attempt = 0; attempt < 20 && !rows.Children.OfType<StackPanel>().Any(); attempt++) await Task.Delay(25);
                 if (searchVoices.Text.Length != 0 || !rows.Children.OfType<StackPanel>().Any()) throw new InvalidOperationException("The clear icon must restore the matching voice list.");
-                if (browser.Children.OfType<ComboBox>().Any(c => AutomationProperties.GetAutomationId(c) == "sarvam-language-filter")) throw new InvalidOperationException("Narration language must also filter the voice browser without a duplicate language picker.");
+                if (SpeechItems<ComboBox>(browser).Any(c => AutomationProperties.GetAutomationId(c) == "sarvam-language-filter")) throw new InvalidOperationException("Narration language must also filter the voice browser without a duplicate language picker.");
                 foreach (var filterId in new[] { "sarvam-style-filter", "sarvam-voice-sort" })
                 {
-                    var filter = browser.Children.OfType<ComboBox>().Single(c => AutomationProperties.GetAutomationId(c) == filterId);
+                    var filter = SpeechItems<ComboBox>(browser).Single(c => AutomationProperties.GetAutomationId(c) == filterId);
                     if (filter.ContextFlyout is not MenuFlyout filterMenu || filterMenu.Items.Count != filter.Items.Count)
                         throw new InvalidOperationException("Voice browser choices must have matching menus.");
                 }
@@ -452,18 +480,18 @@ public sealed partial class SettingsDialog
             var search = holder.Children.OfType<TextBox>().Single();
             var selectedVoice = SettingsStore.GetString(summaryProfile["windowsCoreVoice"]);
             search.Text = "No voice should match this test phrase";
-            var choicePanel = holder.Children.OfType<StackPanel>().Single();
-            for (var attempt = 0; attempt < 20 && choicePanel.Children.OfType<ComboBox>().Single().Items.Count != 1; attempt++) await Task.Delay(25);
-            var voiceChoice = choicePanel.Children.OfType<ComboBox>().Single();
+            var choicePanel = holder.Children.OfType<StackPanel>().Single(p => AutomationProperties.GetAutomationId(p) == "summary-voice-choices");
+            for (var attempt = 0; attempt < 20 && SpeechItems<ComboBox>(choicePanel).Single().Items.Count != 1; attempt++) await Task.Delay(25);
+            var voiceChoice = SpeechItems<ComboBox>(choicePanel).Single();
             if (voiceChoice.Items.Count != 1 || SettingsStore.GetString(summaryProfile["windowsCoreVoice"]) != selectedVoice)
                 throw new InvalidOperationException("Summary filtering must retain the selected voice and hide nonmatches.");
             search.Text = "";
             await Task.Delay(50);
-            var sort = holder.Children.OfType<ComboBox>().Single(c => AutomationProperties.GetAutomationId(c) == "summary-voice-sort");
+            var sort = SpeechItems<ComboBox>(holder).Single(c => AutomationProperties.GetAutomationId(c) == "summary-voice-sort");
             sort.SelectedItem = sort.Items.Cast<ComboBoxItem>().First(i => (string)i.Tag == "name");
             if (summaryVoiceSort != "name" || sort.ContextFlyout is not MenuFlyout sortMenu || sortMenu.Items.Count != 2)
                 throw new InvalidOperationException("Summary sorting needs matching choices and menu access.");
-            var language = holder.Children.OfType<ComboBox>().Single(c => AutomationProperties.GetAutomationId(c) == "summary-language-filter");
+            var language = SpeechItems<ComboBox>(holder).Single(c => AutomationProperties.GetAutomationId(c) == "summary-language-filter");
             if (language.Items.Count > 1) language.SelectedIndex = 1;
             if (SettingsStore.GetString(summaryProfile["windowsCoreVoice"]) != selectedVoice)
                 throw new InvalidOperationException("Summary language filtering changed the selected voice.");

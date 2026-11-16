@@ -2,7 +2,7 @@ using System;
 using Vidi_Studio_Windows.Services;
 using Vidi_Studio_Windows.Models;
 namespace Vidi_Studio_Windows.Services {
-    public enum OnlineService { Gemini, YouTube, Voices }
+    public enum OnlineService { Gemini, YouTube, Voices, Sarvam }
     public sealed class SettingsStore { public string Mode = "windows-core"; public string Get(string key, string fallback) => Mode; }
 }
 namespace Vidi_Studio_Windows.Models {
@@ -23,6 +23,7 @@ class Program {
     Check("translate-results",OnlineService.Gemini);Check("copy-results",null);
     foreach (var command in OnlineRequirements.GeminiCommands) Check(command,OnlineService.Gemini);
     settings.Mode="gemini";Check("synthesize-tts",OnlineService.Gemini);
+    settings.Mode="sarvam";Check("synthesize-tts",OnlineService.Sarvam);
     settings.Mode="piper";Check("synthesize-tts",null);
     project.IsYouTube=true;Check("prepare-video",OnlineService.YouTube);Check("export-youtube-original-audio",OnlineService.YouTube);
     project.AudioSources=new AudioSourceSettings { Export="imported" };Check("export-youtube-original-audio",null);

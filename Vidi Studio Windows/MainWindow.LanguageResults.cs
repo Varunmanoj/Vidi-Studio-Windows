@@ -49,7 +49,7 @@ public sealed partial class MainWindow
     private void RefreshLanguagePanel() {
         if (Model.Project is not { } project) return;
         LanguageResultsPanel.Children.Clear(); LanguageResultsPanel.Children.Add(BuildLanguageResultsPanel(project));
-        if (activeLanguagePanelHost != null) activeLanguagePanelHost.Content = BuildLanguageResultsPanel(project);
+        if (activeLanguagePanelHost != null) activeLanguagePanelHost.Content = Views.CompactDialogLayout.PrepareContent(BuildLanguageResultsPanel(project));
     }
     private async Task ShowLanguageResultsDialogAsync() {
         if (Model.Project is not { } project) return;

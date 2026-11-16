@@ -5,6 +5,10 @@
       "title": "Welcome to VidiStudio",
       "sections": [
         {
+          "id": "desktop-dialog-layout",
+          "title": "Compact desktop dialogs"
+        },
+        {
           "id": "understand-the-three-kinds-of-content",
           "title": "Understand the three kinds of content"
         },

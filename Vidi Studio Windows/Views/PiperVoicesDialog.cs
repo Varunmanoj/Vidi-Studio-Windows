@@ -87,16 +87,11 @@ public sealed class PiperVoicesDialog : ContentDialog
         Resources["ContentDialogMaxWidth"] = 820d;
         Resources["ContentDialogMaxHeight"] = 900d;
         var body = new StackPanel { Spacing = 10, Width = 720 };
-        body.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .75,
-            Text = "Download neural voices for offline narration. Filter or sort the catalog, then play a sample before downloading." });
         body.Children.Add(search);
-        var filters = new Grid { ColumnSpacing = 10 };
-        for (var column = 0; column < 3; column++) filters.ColumnDefinitions.Add(new ColumnDefinition());
-        Grid.SetColumn(languageFilter, 0); filters.Children.Add(languageFilter);
-        Grid.SetColumn(qualityFilter, 1); filters.Children.Add(qualityFilter);
-        Grid.SetColumn(sortFilter, 2); filters.Children.Add(sortFilter);
+        var filters = new StackPanel { Spacing=8 };
+        filters.Children.Add(languageFilter); filters.Children.Add(qualityFilter); filters.Children.Add(sortFilter);
         body.Children.Add(filters);
-        body.Children.Add(list);
+        body.Children.Add(CompactDialogLayout.Card(list,"Piper voices"));
         body.Children.Add(progress);
         body.Children.Add(status);
         body.Children.Add(summary);

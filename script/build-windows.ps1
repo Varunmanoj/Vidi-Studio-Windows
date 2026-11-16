@@ -17,6 +17,10 @@ if ($buildPython) {
     if ($LASTEXITCODE -ne 0) { throw 'Desktop version synchronization failed.' }
     & $buildPython (Join-Path $PSScriptRoot 'check_menu_parity.py') --allow-missing
     if ($LASTEXITCODE -ne 0) { throw 'Desktop menu parity check failed.' }
+    & $buildPython (Join-Path $PSScriptRoot 'check_desktop_ui_parity.py') --allow-missing
+    if ($LASTEXITCODE -ne 0) { throw 'Desktop UI layout parity check failed.' }
+    & $buildPython -m unittest discover -s (Join-Path $projectRoot 'tests') -p test_desktop_ui_parity.py
+    if ($LASTEXITCODE -ne 0) { throw 'Desktop UI layout regression tests failed.' }
     & $buildPython (Join-Path $PSScriptRoot 'check_xaml_references.py')
     if ($LASTEXITCODE -ne 0) { throw 'Inspector XAML/source reference check failed.' }
 }

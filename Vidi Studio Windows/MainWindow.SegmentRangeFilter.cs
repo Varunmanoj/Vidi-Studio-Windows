@@ -20,10 +20,10 @@ public sealed partial class MainWindow
     {
         var modes = new[] { "all", "selection", "numberRanges", "timeRanges" };
         var titles = new[] { "All segments", "Select segment numbers", "Segment number ranges", "Time ranges" };
-        var root = new StackPanel { Spacing = 10 };
+        var root = new StackPanel { Spacing = 10, Tag = "segment-filter-controls" };
         var mode = new ComboBox { Header = "Filter type", ItemsSource = titles, SelectedIndex = Math.Max(0, Array.IndexOf(modes, draft.Mode)), HorizontalAlignment = HorizontalAlignment.Stretch };
         AutomationProperties.SetAutomationId(mode, "segment-filter-type");
-        var details = new StackPanel { Spacing = 12 };
+        var details = new StackPanel { Spacing = 12, Tag = "segment-filter-details" };
         var modeMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         foreach (var index in Enumerable.Range(0, modes.Length))
         {
@@ -120,6 +120,7 @@ public sealed partial class MainWindow
                 }
                 matching.ContextFlyout = menu; details.Children.Add(matching);
             }
+            Views.CompactDialogLayout.PrepareContent(details);
         }
         mode.SelectionChanged += (_, _) =>
         {

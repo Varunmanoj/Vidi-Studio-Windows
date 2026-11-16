@@ -68,7 +68,7 @@ public sealed partial class SettingsDialog
             try { projectTarget = selected; allowClosedProjectTarget = !App.OpenEditorProjects.Any(p => p.Folder == selected.Folder); panel.Children.Clear(); BuildProjects(panel); }
             finally { changingProjectChoice = false; }
         };
-        panel.Children.Add(chooser);
+        chooser.Header=null; CompactRow(CompactGroup(panel,"Project"),"Project settings for",chooser,true);
         panel.Children.Add(new TextBlock
         {
             Text = project.Name,
@@ -77,12 +77,7 @@ public sealed partial class SettingsDialog
             TextWrapping = TextWrapping.Wrap
         });
         var rows = new StackPanel { Spacing = 0 };
-        var card = new Border
-        {
-            Style = (Style)Application.Current.Resources["SettingsProjectCardStyle"],
-            Padding = new Thickness(14, 8, 14, 8),
-            Child = rows
-        };
+        var card = CompactCard(rows);
         projectNarrationToggle = AddProjectToggle(rows,
             "Narration during playback",
             "Turns synchronized narration on or off for " + project.Name + " and remembers the choice for this project",
@@ -108,15 +103,6 @@ public sealed partial class SettingsDialog
 
     private ToggleSwitch? AddProjectToggle(StackPanel panel, string label, string hint, bool isOn, Action<bool> changed)
     {
-        var row = new Grid { ColumnSpacing = 16, Padding = new Thickness(0, 10, 0, 10) };
-        row.ColumnDefinitions.Add(new ColumnDefinition());
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        row.Children.Add(new TextBlock
-        {
-            Text = label,
-            TextWrapping = TextWrapping.Wrap,
-            VerticalAlignment = VerticalAlignment.Center
-        });
         var toggle = new ToggleSwitch
         {
             IsOn = isOn,
@@ -133,9 +119,7 @@ public sealed partial class SettingsDialog
             if (applyingProjectPlaybackPreference) return;
             changed(toggle.IsOn);
         };
-        Grid.SetColumn(toggle, 1);
-        row.Children.Add(toggle);
-        panel.Children.Add(row);
+        CompactRow(panel,label,CompactSettingsControl(toggle));
         return toggle;
     }
 

@@ -80,12 +80,11 @@ public sealed class TextTimingDialog : ContentDialog
     private UIElement BuildContent(string sourceName)
     {
         var stack = new StackPanel { Spacing = 10, Width = 760 };
-        stack.Children.Add(new TextBlock
-        {
-            Text = $"Review the start and end time for every line in {sourceName}. Times must stay inside {Format(0)} to {Format(duration)} and must not overlap.",
-            TextWrapping = TextWrapping.Wrap, Opacity = .75
-        });
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var info = new StackPanel();
+        SettingsDialog.CompactRow(info,"File",new TextBlock { Text=sourceName,TextWrapping=TextWrapping.Wrap },true);
+        SettingsDialog.CompactRow(info,"Video duration",new TextBlock { Text=Format(duration) },true);
+        stack.Children.Add(CompactDialogLayout.Card(info,"Timing source"));
+        var actions = new CompactActionsPanel();
         var distribute = new Button { Content = "Distribute Evenly" };
         ToolTipService.SetToolTip(distribute, "Give every line an equal share of the video");
         distribute.Click += (_, _) => { if (!aligning) { Distribute(); RefreshRows(); UpdateState(); } };
@@ -110,11 +109,6 @@ public sealed class TextTimingDialog : ContentDialog
             Content = rowPanel,
             MaxHeight = 480,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto
-        });
-        stack.Children.Add(new TextBlock
-        {
-            Text = "Optional Gemini timing is a proposal only. Saving records that you reviewed it.",
-            TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .65
         });
         return stack;
     }

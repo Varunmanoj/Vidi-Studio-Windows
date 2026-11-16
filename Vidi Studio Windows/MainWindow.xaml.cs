@@ -1528,6 +1528,7 @@ public sealed partial class MainWindow : Window
             Child = errorStack
         };
 
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(validationBorder,"segment-timing-validation");
         var textBox = new TextBox
         {
             Header = isDescription ? "Audio description text" : "Transcript text",
@@ -1992,7 +1993,7 @@ public sealed partial class MainWindow : Window
         var boxes = new[] { "transcript", "summary", "descriptions", "narration", "thumbnails", "exports", "history" }
             .Select(component => new CheckBox { Content = component, Tag = component }).ToList();
         foreach (var box in boxes) options.Children.Add(box);
-        content.Children.Add(options);
+        content.Children.Add(Views.CompactDialogLayout.Card(options,"Content to delete"));
         boxes[2].Checked += (_, _) => { boxes[3].IsChecked = true; boxes[3].IsEnabled = false; };
         boxes[2].Unchecked += (_, _) => boxes[3].IsEnabled = true;
         var dialog = new ContentDialog

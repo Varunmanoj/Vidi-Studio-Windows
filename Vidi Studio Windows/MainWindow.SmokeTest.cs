@@ -100,7 +100,7 @@ public sealed partial class MainWindow
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_DIALOGS_ONLY") == "1")
             {
                 await VerifyCompanionDialogsForSmokeTestAsync(report);
-                await File.WriteAllTextAsync(report, "PASS: one hidden, content-fitted native window per dialog, no visible startup resize or nested animation; light/dark initial presentation and live light/dark/system themes; dynamic content growth, cancellation before presentation, delete gating, and Primary/Secondary/Cancel results.");
+                await File.WriteAllTextAsync(report, "PASS: one hidden, content-fitted native window per dialog presentation, no visible startup resize or nested animation; light/dark initial presentation and live light/dark/system themes; dynamic content growth, cancellation before presentation, delete gating, and Primary/Secondary/Cancel results.");
                 return;
             }
             VerifyContextualMenusForSmokeTest();
@@ -870,6 +870,7 @@ public sealed partial class MainWindow
             await VerifyDialogThemesForSmokeTestAsync(errorDialog, report, "error-dialog-window");
             await CaptureSmokeImage(errorDialog, Path.Combine(Path.GetDirectoryName(report)!, "error-dialog-light.png"));
             errorDialog.Hide(); await errorDisplay;
+            await VerifyCompactDialogFormsForSmokeTestAsync(report);
             await VerifyDialogCommandsForSmokeTestAsync(report);
             PreviewTheme(originalTheme);
             var result = await Model.RunAsync("doctor", needsProject: false);
@@ -1275,7 +1276,32 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("YouTube Accounts did not reuse Settings or select its page.");
             settings.VerifySidebarNavigationForSmokeTest();
             await settings.VerifyLayoutForSmokeTestAsync();
-            await settings.VerifySarvamSettingsForSmokeTestAsync();
+            await settings.VerifySarvamSettingsForSmokeTestAsync(async () => {
+                foreach (var theme in new[] { "dark", "light" }) {
+                    PreviewTheme(theme); await Task.Delay(150); settings.VerifyNarrationThemeForSmokeTest();
+                    settings.BringNarrationIntoViewForSmokeTest(false); await Task.Delay(150);
+                    await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-layout-narration-" + theme + ".png"));
+                    settings.BringNarrationIntoViewForSmokeTest(true); await Task.Delay(150);
+                    await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-layout-sarvam-" + theme + ".png"));
+                }
+                PreviewTheme(originalTheme);
+            });
+            await settings.VerifyGeminiKeyLayoutForSmokeTestAsync(async () => {
+                foreach (var theme in new[] { "dark", "light" }) {
+                    PreviewTheme(theme); await Task.Delay(150);
+                    settings.BringGeminiIntoViewForSmokeTest(false); await Task.Delay(150); settings.VerifyGeminiGroupsForSmokeTest();
+                    await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-layout-gemini-" + theme + ".png"));
+                    settings.BringGeminiIntoViewForSmokeTest(true); await Task.Delay(150);
+                    await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-layout-gemini-models-" + theme + ".png"));
+                }
+                PreviewTheme(originalTheme);
+            });
+            ShowEditor();
+            try {
+                await settings.VerifyCompactPagesForSmokeTestAsync((section, theme) =>
+                    CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, $"settings-compact-{section}-{theme}.png")));
+            }
+            finally { ShowGallery_Click(this, new RoutedEventArgs()); PreviewTheme(originalTheme); }
             foreach (var (id, title) in new[] { (8, "youtube"), (1, "projects"), (5, "storage") })
             {
                 settings.SelectSection(id);
@@ -1356,6 +1382,7 @@ public sealed partial class MainWindow
                     var display = ShowDialogAsync(dialog, width, height);
                     await Task.Delay(350);
                     await VerifyDialogThemesForSmokeTestAsync(dialog, report, image);
+                    VerifyCompactDialogLayout(dialog);
                     if (ReferenceEquals(dialog, deleteDialog))
                     {
                         if (dialog.IsPrimaryButtonEnabled) throw new InvalidOperationException("Delete was enabled without a selection.");
@@ -1371,6 +1398,7 @@ public sealed partial class MainWindow
                         throw new InvalidOperationException("The closed dialog retained a host keyboard accelerator.");
                 }
             }
+            await VerifyCompactDialogFormsForSmokeTestAsync(report);
             await VerifyDialogCommandsForSmokeTestAsync(report);
             await VerifyDialogContentGrowthForSmokeTestAsync(report);
             await VerifyDialogCanceledBeforePresentationForSmokeTestAsync();
@@ -1495,10 +1523,10 @@ public sealed partial class MainWindow
                         if (filterDialog is null) throw new InvalidOperationException("The segment filter dialog did not open.");
                         await dialogPresentationVerifier!.WaitUntilReadyAsync(filterDialog);
                         var panel = (StackPanel)((ScrollViewer)filterDialog.Content).Content;
-                        var controls = panel.Children.OfType<StackPanel>().Single(child => child.Children.OfType<ComboBox>().Any(combo => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(combo) == "segment-filter-type"));
-                        var mode = controls.Children.OfType<ComboBox>().Single();
+                        var controls = DialogControls(panel).OfType<StackPanel>().Single(child => child.Tag as string == "segment-filter-controls");
+                        var mode = DialogControls(controls).OfType<ComboBox>().Single(combo => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(combo) == "segment-filter-type");
                         mode.SelectedIndex = 1;
-                        var details = controls.Children.OfType<StackPanel>().Single();
+                        var details = DialogControls(controls).OfType<StackPanel>().Single(child => child.Tag as string == "segment-filter-details");
                         var checks = (StackPanel)((ScrollViewer)details.Children[0]).Content;
                         if (checks.Children.Count != allRows.Count) throw new InvalidOperationException("Filter checklist includes missing or wrong-result rows.");
                         if (checks.Children.FirstOrDefault() is Border border && border.Child is CheckBox check)
@@ -1508,16 +1536,16 @@ public sealed partial class MainWindow
                             check.IsChecked = false;
                         }
                         mode.SelectedIndex = 2;
-                        if (details.Children.OfType<StackPanel>().First().Children.OfType<StackPanel>().Single().Children.OfType<NumberBox>().Count() != 2)
+                        if (DialogControls(details).OfType<NumberBox>().Count() != 2)
                             throw new InvalidOperationException("Segment ranges need separate Start and End controls.");
                         mode.SelectedIndex = 0;
                         var savedOnly = panel.Children.OfType<StackPanel>().First();
-                        if (savedOnly.Children.OfType<Button>().Any() || savedOnly.Children.OfType<ComboBox>().Any(combo => (combo.Header?.ToString() ?? "").Contains("Language")))
+                        if (DialogControls(savedOnly).OfType<Button>().Any() || DialogControls(savedOnly).OfType<ComboBox>().Any(combo => (combo.Header?.ToString() ?? "").Contains("Language")))
                             throw new InvalidOperationException("Filter exposes copy or language controls.");
                         if (result == ContentDialogResult.Primary)
                         {
                             foreach (var box in panel.Children.OfType<CheckBox>()) box.IsChecked = false;
-                            if (panel.Children.OfType<ComboBox>().FirstOrDefault() is { } audio) audio.SelectedIndex = 0;
+                            if (DialogControls(panel).OfType<ComboBox>().FirstOrDefault(box => box.Header as string == "Audio") is { } audio) audio.SelectedIndex = 0;
                         }
                         var label = result switch { ContentDialogResult.Secondary => "Clear Filter", ContentDialogResult.Primary => "Apply Filter", _ => "Cancel" };
                         var button = FindButton(filterDialog, label) ?? throw new InvalidOperationException("Missing filter action: " + label);
@@ -2376,7 +2404,7 @@ public sealed partial class MainWindow
                 active = await opened.Task.WaitAsync(TimeSpan.FromSeconds(15));
                 await Task.Delay(200);
                 var content = (StackPanel)active.Content;
-                var field = content.Children.OfType<TextBox>().Single();
+                var field = DialogControls(content).OfType<TextBox>().Single(box => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(box) == "jump-time-input");
                 field.Text = "-1";
                 await Task.Delay(80);
                 if (active.IsPrimaryButtonEnabled) throw new InvalidOperationException("Negative time accepted.");
@@ -2540,13 +2568,13 @@ public sealed partial class MainWindow
             var controls = (StackPanel)((ScrollViewer)layout.Children[0]).Content;
             var timing = controls.Children.OfType<Views.SegmentTimingEditor>().Single();
             var show = layout.Children.OfType<Button>().Single();
-            var texts = controls.Children.OfType<TextBox>().ToArray();
+            var texts = new[] { DialogControls(controls).OfType<TextBox>().Single(box => box.Header as string == "Transcript text"), DialogControls(controls).OfType<TextBox>().Single(box => box.Header as string == "Optional hint for Gemini") };
             timing.StartPicker.Value = Math.Max(0, cue.Start);
             timing.EndPicker.Value = Math.Min(project.Duration, cue.End);
             texts[0].Text = "Unsaved validation smoke draft";
             texts[1].Text = "Preserve this Gemini hint";
             var end = timing.EndPicker.Value;
-            var errorRows = ((StackPanel)controls.Children.OfType<Border>().Single().Child)
+            var errorRows = ((StackPanel)DialogControls(controls).OfType<Border>().Single(border => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(border) == "segment-timing-validation").Child)
                 .Children.OfType<StackPanel>().Last().Children.OfType<TextBlock>();
             if (!errorRows.Any(row => row.Text.Contains($"audio description segment #{cue.SegmentNumber} ")))
                 throw new InvalidOperationException("Timing validation did not identify the description's visible segment number.");
@@ -2555,6 +2583,8 @@ public sealed partial class MainWindow
                 Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(show) != "show-validation-issue")
                 throw new InvalidOperationException("Validation footer/menu guards are missing.");
             Invoke(show);
+            var reopened = await Task.WhenAny(restored.Task, editing!);
+            if (ReferenceEquals(reopened, editing)) { await editing!; throw new InvalidOperationException("The segment editor ended before reopening its validation draft."); }
             active = await restored.Task.WaitAsync(TimeSpan.FromSeconds(30));
             if (texts[0].Text != "Unsaved validation smoke draft" || texts[1].Text != "Preserve this Gemini hint" ||
                 timing.EndPicker.Value != end || Section.SelectedIndex != 0 || validationShowcaseActive || validationHighlightKey != null)
@@ -2592,7 +2622,7 @@ public sealed partial class MainWindow
                 var first = await Task.WhenAny(command, presented.Task);
                 if (first == command) { await command; throw new InvalidOperationException("Project menu action did not open its dialog: " + id); }
                 var dialog = await presented.Task.WaitAsync(TimeSpan.FromSeconds(10));
-                if (name is not null) ((TextBox)dialog.Content).Text = name;
+                if (name is not null) DialogControls((UIElement)dialog.Content).OfType<TextBox>().Single(box => box.Header as string == "Project name").Text = name;
                 var button = FindButton(dialog, name is null ? "Cancel" : "Save")
                     ?? throw new InvalidOperationException("Missing project dialog action.");
                 var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(button);
@@ -2647,6 +2677,7 @@ public sealed partial class MainWindow
             internal int ReadyCount;
             internal Windows.Graphics.SizeInt32 ReadySize;
             internal bool StartupVerified;
+            internal bool Closed;
             internal string? Failure;
             internal readonly TaskCompletionSource<bool> Ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
@@ -2658,9 +2689,15 @@ public sealed partial class MainWindow
         }
         private void OnPreparing(ContentDialog dialog, Window window)
         {
-            if (dialogs.ContainsKey(dialog)) throw new InvalidOperationException("A second native window was created for the same dialog.");
+            // Validation intentionally closes the editor before showcasing a row, then
+            // reopens the same draft. Forbid overlapping hosts, not a later presentation.
+            if (dialogs.TryGetValue(dialog,out var previous)) {
+                if (!previous.Closed) throw new InvalidOperationException("A second native window was created for the same dialog presentation.");
+                if (previous.Failure is not null) throw new InvalidOperationException(previous.Failure);
+            }
             var state = new Presentation { Window = window };
-            dialogs.Add(dialog, state);
+            dialogs[dialog] = state;
+            window.Closed += (_,_) => state.Closed = true;
             window.AppWindow.Changed += (_, _) =>
             {
                 if (window.AppWindow is not { } appWindow) return;

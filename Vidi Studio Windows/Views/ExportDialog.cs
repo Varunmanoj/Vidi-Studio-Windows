@@ -28,7 +28,7 @@ public sealed partial class ExportDialog : ContentDialog
     private readonly StudioViewModel model;
     private readonly MainWindow? owner;
     private readonly ListView sidebar = new() { SelectionMode = ListViewSelectionMode.Single };
-    private readonly StackPanel page = new() { Spacing = 18, Padding = new Thickness(26, 22, 26, 20) };
+    private readonly StackPanel page = new() { Spacing = 12, Padding = new Thickness(20, 16, 20, 16) };
     private readonly StackPanel footer = new() { Orientation = Orientation.Horizontal,
         HorizontalAlignment = HorizontalAlignment.Center, Spacing = 12, Padding = new Thickness(0, 12, 0, 8) };
     private readonly Button saveButton = new() { Content = "Save", Width = 120 };
@@ -204,7 +204,7 @@ public sealed partial class ExportDialog : ContentDialog
             output.Unchecked += (_, _) => { combineTracks = false; BuildPage(); };
             page.Children.Add(output);
         }
-        if (SelectingTracks) { BuildTrackChoices(); AttachExportMenus(page); UpdatePreview(); return; }
+        if (SelectingTracks) { BuildTrackChoices(); CompactDialogLayout.PrepareContent(page); AttachExportMenus(page); UpdatePreview(); return; }
         AddLanguageSelections();
         switch (section)
         {
@@ -213,21 +213,18 @@ public sealed partial class ExportDialog : ContentDialog
             case 2: BuildText(); break;
             case 3: BuildWeb(); break;
         }
+        CompactDialogLayout.PrepareContent(page);
         AttachExportMenus(page);
         UpdatePreview();
     }
 
-    private static Border Card(UIElement child) => new()
-    {
-        Child = child, CornerRadius = new CornerRadius(10), Padding = new Thickness(16, 12, 16, 12),
-        Background = new SolidColorBrush(Color.FromArgb(18, 128, 128, 128))
-    };
+    private static Border Card(UIElement child) => CompactDialogLayout.Card(child);
 
     private void AddChoices(string title, string prompt, string[] labels, int selected, Action<int> changed, Func<int, bool>? available = null)
     {
         var group = new StackPanel { Spacing = 8 };
         group.Children.Add(new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 16 });
-        var buttons = new RadioButtons { Header = prompt };
+        var buttons = new RadioButtons();
         for (var index = 0; index < labels.Length; index++)
         {
             var enabled = available?.Invoke(index) ?? true;

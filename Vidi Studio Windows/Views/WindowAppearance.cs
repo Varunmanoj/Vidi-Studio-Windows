@@ -334,6 +334,7 @@ internal static class WindowedDialog
 
     internal static async Task<ContentDialogResult> ShowAsync(ContentDialog dialog, Window owner, int width = 680, int height = 460)
     {
+        CompactDialogLayout.PrepareDialog(dialog);
         var window = new Window { Title = dialog.Title?.ToString() ?? "Vidi Studio" };
 #if DEBUG
         Preparing?.Invoke(dialog, window);
@@ -369,11 +370,30 @@ internal static class WindowedDialog
         // Allow wide editors to use the requested width instead of the 548 px ContentDialog default,
         // leaving room for the card's 24 px side padding and an optional scrollbar. Dialogs that
         // deliberately cap themselves with their own resource keep that cap.
-        var availableCardWidth = Math.Max(480.0, width - 24.0);
-        if (!dialog.Resources.ContainsKey("ContentDialogMinWidth"))
+        var scale = (owner.Content as FrameworkElement)?.XamlRoot?.RasterizationScale ?? 1;
+        var ownerWidth = Math.Max(240, owner.AppWindow.ClientSize.Width / scale - 24);
+        var availableCardWidth = Math.Max(240, Math.Min(width - 24.0, ownerWidth));
+        // MaxWidth may come from WinUI's narrow default style. Preserve only an explicit
+        // caller cap; retaining the style cap would clip wide browsers and editors.
+        var explicitCap = dialog.ReadLocalValue(FrameworkElement.MaxWidthProperty) is double cap
+            ? cap : double.PositiveInfinity;
+        dialog.MaxWidth = Math.Min(explicitCap,availableCardWidth);
+        dialog.MinWidth = Math.Min(dialog.MinWidth,availableCardWidth);
+        dialog.Width = double.NaN;
+        // ContainsKey also searches global theme resources. Enumerate the caller's entries
+        // so the system's 548 px card cap is not mistaken for a deliberate local override.
+        static double? LocalSize(ResourceDictionary resources, string key)
+        {
+            foreach (var entry in resources)
+                if (entry.Key is string name && name == key && entry.Value is double value) return value;
+            return null;
+        }
+        if (LocalSize(dialog.Resources,"ContentDialogMinWidth") is double minimum)
+            dialog.Resources["ContentDialogMinWidth"] = Math.Min(minimum,availableCardWidth);
+        else
             dialog.Resources["ContentDialogMinWidth"] = Math.Min(520.0, availableCardWidth);
-        if (dialog.Resources.ContainsKey("ContentDialogMaxWidth") && dialog.Resources["ContentDialogMaxWidth"] is double existingCap)
-            dialog.Resources["ContentDialogMaxWidth"] = Math.Max(existingCap, availableCardWidth);
+        if (LocalSize(dialog.Resources,"ContentDialogMaxWidth") is double existingCap)
+            dialog.Resources["ContentDialogMaxWidth"] = Math.Min(existingCap,availableCardWidth);
         else
             dialog.Resources["ContentDialogMaxWidth"] = availableCardWidth;
         // InPlace requires a live visual parent. Unlike Popup placement, it never creates the
@@ -417,7 +437,6 @@ internal static class WindowedDialog
         dialog.Loaded += OnDialogLoaded;
         var area = owner.AppWindow;
         // AppWindow uses physical pixels; dialog measurements and requested sizes use XAML pixels.
-        var scale = (owner.Content as FrameworkElement)?.XamlRoot?.RasterizationScale ?? 1;
         width = Math.Min((int)Math.Ceiling(width * scale), Math.Max(400, area.Size.Width - 24));
         height = Math.Min((int)Math.Ceiling(height * scale), Math.Max(320, area.Size.Height - 24));
         window.AppWindow.Resize(new Windows.Graphics.SizeInt32(width, height));

@@ -59,6 +59,26 @@ public sealed partial class SettingsDialog
         return new Border { Width = 54, Child = control };
     }
 
+    // Search is a browsing surface, not a value in the two-column settings form.
+    internal static void FullWidthVoiceSearch(FrameworkElement field)
+    {
+        field.Tag = "voice-search-full-width";
+        field.Width = double.NaN; field.MinWidth = 0; field.MaxWidth = double.PositiveInfinity;
+        field.HorizontalAlignment = HorizontalAlignment.Stretch;
+        if (field is TextBox search) {
+            search.Header = null;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(search,"Search voices");
+        }
+    }
+#if DEBUG
+    internal static void VerifyFullWidthVoiceSearchForSmokeTest(FrameworkElement field)
+    {
+        field.UpdateLayout();
+        if (field.Parent is not FrameworkElement host || host.ActualWidth <= 0 || field.ActualWidth < host.ActualWidth - 2 || field.Tag as string != "voice-search-full-width")
+            throw new InvalidOperationException($"Voice search must fill its row: {field.ActualWidth} / {(field.Parent as FrameworkElement)?.ActualWidth}.");
+    }
+#endif
+
     internal static Grid AddSettingsRow(StackPanel panel, string label, FrameworkElement control, bool stretchControl = false, double stackBelow = 480)
     {
         var row = new Grid { ColumnSpacing = 16, RowSpacing = 0, MinHeight = 36, Tag = "settings-row" };

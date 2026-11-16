@@ -80,9 +80,9 @@ public sealed partial class SettingsDialog
             if (rows.Children.Count == 0) rows.Children.Add(new TextBlock { Text = "No matching voices" });
         }
         SpeechChoiceControl(browser,"Style","sarvam-style-filter",sarvamVoiceStyle,styles,value => { sarvamVoiceStyle = value; Render(); });
-        browser.Children.Add(new TextBlock { Text = "Search voices" });
         var searchBox = new Grid { ColumnSpacing = 8 };
         AutomationProperties.SetAutomationId(searchBox,"sarvam-search-box");
+        FullWidthVoiceSearch(searchBox);
         searchBox.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         searchBox.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1,GridUnitType.Star) });
         searchBox.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

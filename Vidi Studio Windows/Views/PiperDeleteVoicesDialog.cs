@@ -81,6 +81,7 @@ public sealed class PiperDeleteVoicesDialog : ContentDialog
         Resources["ContentDialogMaxWidth"] = 760d;
         Resources["ContentDialogMaxHeight"] = 860d;
         var body = new StackPanel { Spacing = 10, Width = 660 };
+        SettingsDialog.FullWidthVoiceSearch(search);
         body.Children.Add(search);
         var filters = new StackPanel { Spacing=8 };
         filters.Children.Add(languageFilter); filters.Children.Add(qualityFilter); filters.Children.Add(sortFilter);

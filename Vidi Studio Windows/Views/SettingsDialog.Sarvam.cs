@@ -68,8 +68,8 @@ public sealed partial class SettingsDialog
         if (provider == "elevenlabs") { if (elevenFields.Children.Count == 0) BuildElevenFields(); if (elevenModels.Count == 0 && !elevenChecking) _ = RefreshElevenLabs(); } else StopElevenDemo();
         sarvamControls.Visibility = provider == "sarvam" ? Visibility.Visible : Visibility.Collapsed;
         summaryVoiceControls.Visibility = provider is "sarvam" or "gemini" or "elevenlabs" ? Visibility.Visible : Visibility.Collapsed;
-        if (sarvamControls.Parent is Border sarvamCard) sarvamCard.Visibility = sarvamControls.Visibility;
-        if (summaryVoiceControls.Parent is Border summaryCard) summaryCard.Visibility = summaryVoiceControls.Visibility;
+        if (sarvamSettingsCard != null) sarvamSettingsCard.Visibility = sarvamControls.Visibility;
+        if (summarySettingsCard != null) summarySettingsCard.Visibility = summaryVoiceControls.Visibility;
         foreach (var control in new[] { nativeVoiceGroup, nativeSample, nativeSampleButtons })
             if (control != null) control.Visibility = provider is "sarvam" or "elevenlabs" ? Visibility.Collapsed : Visibility.Visible;
         if (provider == "sarvam") { BuildSarvamSettings(); if (!sarvamModelsRequested) { sarvamModelsRequested = true; _ = RefreshSarvamModelsAsync(); if (!string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["sarvamApiKey"])) && SettingsStore.GetString(draft["sarvamKeyStatus"]) != "verified") sarvamKeyTimer?.Start(); } } else StopSarvamDemo();
@@ -102,11 +102,12 @@ public sealed partial class SettingsDialog
         }
         picker.ContextFlyout = menu; picker.Header = null; picker.Width = 280; AddSettingsRow(panel,title,picker); return picker;
     }
-    private void SpeechAdjustmentControl(StackPanel panel, string title, string id, JsonObject profile, string key, double initial, double low, double high, double step = .05)
+    private void SpeechAdjustmentControl(StackPanel panel, string title, string id, JsonObject profile, string key, double initial, double low, double high, double step = .05, bool percentage = false)
     {
         var slider = new Slider { Header = title, Minimum = low, Maximum = high, StepFrequency = step, Value = SettingsStore.GetDouble(profile[key], initial) };
-        string FormatValue() => id.StartsWith("summary-", StringComparison.Ordinal) ? slider.Value.ToString("P0", System.Globalization.CultureInfo.CurrentCulture) : slider.Value.ToString("0.00", System.Globalization.CultureInfo.CurrentCulture);
+        string FormatValue() => slider.Value.ToString(percentage ? "0%" : id.StartsWith("summary-", StringComparison.Ordinal) ? "P0" : "0.00", System.Globalization.CultureInfo.CurrentCulture);
         var number = new TextBlock { Text = FormatValue() };
+        AutomationProperties.SetAutomationId(number, id + "-value");
         AutomationProperties.SetName(slider, title); AutomationProperties.SetAutomationId(slider, id);
         slider.ValueChanged += (_, _) => { profile[key] = slider.Value; number.Text = FormatValue(); };
         var menu = MenuAccessKeys.Create();
@@ -334,15 +335,19 @@ public sealed partial class SettingsDialog
     {
         StopSummaryVoiceSample();
         summaryVoiceControls.Children.Clear(); var profile = SummarySpeechProfile.Independent(draft);
-        summaryVoiceControls.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Summary voice", FontSize = 18 }));
+        var summaryHeading = ScreenReaderHeading.Mark(new TextBlock { Text = "Summary voice", FontSize = 18 });
+        AutomationProperties.SetAutomationId(summaryHeading,"summary-heading");
+        AutomationProperties.SetHeadingLevel(summaryHeading,Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2);
+        summaryVoiceControls.Children.Add(summaryHeading);
         var engine = SettingsStore.GetString(profile["engine"],"windows-core");
         SpeechChoiceControl(summaryVoiceControls,"Summary engine","summary-engine",engine,new[] {("windows-core","Windows OneCore"),("sapi5","Windows SAPI 5"),("piper","Piper Voices")}, value => { profile["engine"] = value; BuildSummarySpeechSettings(); });
-        var holder = new StackPanel { Spacing = 8 }; summaryVoiceControls.Children.Add(holder);
-        _ = PopulateSummaryVoicesAsync(holder,profile,engine);
         SpeechAdjustmentControl(summaryVoiceControls,"Speech rate","summary-rate",profile,"rate",1,.5,2);
         SpeechAdjustmentControl(summaryVoiceControls,"Pitch","summary-pitch",profile,"pitch",1,.5,2);
         SpeechAdjustmentControl(summaryVoiceControls,"Speech volume","summary-volume",profile,"volume",1,0,1);
         SpeechAction(summaryVoiceControls,"Restore Defaults","summary-controls-reset",() => { profile["rate"] = 1; profile["pitch"] = 1; profile["volume"] = 1; BuildSummarySpeechSettings(); });
+        summaryVoiceControls.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Voices", FontSize = 16 }));
+        var holder = new StackPanel { Spacing = 8 }; summaryVoiceControls.Children.Add(holder);
+        _ = PopulateSummaryVoicesAsync(holder,profile,engine);
         if (engine == "piper") SpeechAction(summaryVoiceControls,"Download or Remove Voices…","summary-manage-voices",async () => { await WindowedDialog.ShowAsync(new PiperVoicesDialog(),this,780,740); BuildSummarySpeechSettings(); });
     }
     private static string SpeechLanguageLabel(string code)
@@ -379,6 +384,7 @@ public sealed partial class SettingsDialog
             SpeechChoiceControl(holder,"Language and region","summary-language-filter",summaryVoiceLanguage,languageOptions,value => { summaryVoiceLanguage = value; Render(); });
             var search = new TextBox { Header = "Search voices", PlaceholderText = "Search by voice or language", Text = summaryVoiceSearch };
             AutomationProperties.SetAutomationId(search,"summary-voice-search");
+            FullWidthVoiceSearch(search);
             search.TextChanged += (_,_) => { summaryVoiceSearch = search.Text; Render(); }; holder.Children.Add(search);
             var clear = SpeechAction(holder,"Clear voice search","summary-search-clear",() => search.Text = "");
             if (clear.ContextFlyout is MenuFlyout searchMenu) {
@@ -460,7 +466,7 @@ public sealed partial class SettingsDialog
     }
 
 #if DEBUG
-    internal async Task VerifySarvamSettingsForSmokeTestAsync(Func<Task>? capture = null)
+    internal async Task VerifySarvamSettingsForSmokeTestAsync(Func<Task>? capture = null, Func<string,Task>? captureControls = null)
     {
         var originallyRequested = sarvamModelsRequested;
         sarvamModelsRequested = true;
@@ -495,6 +501,24 @@ public sealed partial class SettingsDialog
                 var expected = modelId == "bulbul:v2" ? "sarvam-pitch" : "sarvam-temperature";
                 var slider = SpeechItems<Slider>(sarvamControls).Single(c => AutomationProperties.GetAutomationId(c) == expected);
                 if (slider.ContextFlyout is not MenuFlyout menu || menu.Items.Count != 3) throw new InvalidOperationException("Voice sliders need matching adjustment menus.");
+                foreach(var theme in new[]{"dark","light"}) {
+                    ApplyWindowTheme(theme);await Task.Delay(50);
+                    var unitCases = modelId == "bulbul:v2" ? new[]{("pitch",-.75),("pitch",0.0),("pitch",.75),("loudness",.3),("loudness",1.0),("loudness",3.0)} : new[]{("temperature",.01),("temperature",.6),("temperature",1.0)};
+                    foreach(var (key,value) in unitCases) {
+                        var control=SpeechItems<Slider>(sarvamControls).Single(c=>AutomationProperties.GetAutomationId(c)=="sarvam-"+key);
+                        var saved=control.Value;control.Value=value;
+                        var readout=SpeechItems<TextBlock>(sarvamControls).Single(c=>AutomationProperties.GetAutomationId(c)=="sarvam-"+key+"-value");
+                        var stored=SettingsStore.GetDouble(SarvamSpeech.Profile(draft)[key],double.NaN);
+                        if(readout.Text!=value.ToString("0.00",System.Globalization.CultureInfo.CurrentCulture)||!double.IsFinite(stored)||Math.Abs(stored-value)>.001)throw new InvalidOperationException("Sarvam numeric display must preserve saved values: "+key+"="+readout.Text);
+                        control.Value=saved;
+                    }
+                    var pace=SpeechItems<Slider>(sarvamControls).Single(c=>AutomationProperties.GetAutomationId(c)=="sarvam-pace");
+                    var savedPace=pace.Value;pace.Value=1;
+                    if(SpeechItems<TextBlock>(sarvamControls).Single(c=>AutomationProperties.GetAutomationId(c)=="sarvam-pace-value").Text!=1.0.ToString("0.00",System.Globalization.CultureInfo.CurrentCulture))throw new InvalidOperationException("Sarvam speaking speed must retain its multiplier.");
+                    pace.Value=savedPace;
+                    if(captureControls!=null) { pace.StartBringIntoView(new BringIntoViewOptions{VerticalAlignmentRatio=.35,AnimationDesired=false});await Task.Delay(100);await captureControls(modelId.Replace(':','-')+"-"+theme); }
+                }
+                ApplyWindowTheme(model.Settings.Get("theme","system"));
                 var play = SpeechItems<Button>(sarvamControls).Single(c => AutomationProperties.GetAutomationId(c) == "sarvam-sample-play");
                 if (play.IsEnabled != CanPlaySarvamSample || play.ContextFlyout is not MenuFlyout playMenu || playMenu.Items.Count != 2)
                     throw new InvalidOperationException("Every known Sarvam model needs Play Sample and its matching menu.");
@@ -530,6 +554,7 @@ public sealed partial class SettingsDialog
                 draft["sarvamApiKey"] = savedKey; UpdateSarvamSampleControls();
                 var browser = sarvamControls.Children.OfType<StackPanel>().Single(p => AutomationProperties.GetAutomationId(p) == "sarvam-voice-browser");
                 var searchBox = browser.Children.OfType<Grid>().Single(g => AutomationProperties.GetAutomationId(g) == "sarvam-search-box");
+                VerifyFullWidthVoiceSearchForSmokeTest(searchBox);
                 var searchVoices = searchBox.Children.OfType<TextBox>().Single();
                 var rows = (StackPanel)browser.Children.OfType<ScrollViewer>().Single().Content;
                 var savedVoice = SettingsStore.GetString(SarvamSpeech.Profile(draft)["voice"]);
@@ -560,6 +585,13 @@ public sealed partial class SettingsDialog
             var holder = summaryVoiceControls.Children.OfType<StackPanel>().Single();
             for (var attempt = 0; attempt < 50 && !holder.Children.OfType<TextBox>().Any(); attempt++) await Task.Delay(50);
             var search = holder.Children.OfType<TextBox>().Single();
+            VerifyFullWidthVoiceSearchForSmokeTest(search);
+            var heading = SpeechItems<TextBlock>(summaryVoiceControls).Single(t=>AutomationProperties.GetAutomationId(t)=="summary-heading");
+            if (heading.Text != "Summary voice" || Microsoft.UI.Xaml.Automation.AutomationProperties.GetHeadingLevel(heading) != Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2)
+                throw new InvalidOperationException("Summary voice heading must name the controls below it.");
+            var summarySliders = SpeechItems<Slider>(summaryVoiceControls).ToArray();
+            if (summarySliders.Length != 3 || summarySliders.Any(slider=>slider.TransformToVisual(summaryVoiceControls).TransformPoint(new Windows.Foundation.Point()).Y <= heading.TransformToVisual(summaryVoiceControls).TransformPoint(new Windows.Foundation.Point()).Y || slider.TransformToVisual(summaryVoiceControls).TransformPoint(new Windows.Foundation.Point()).Y >= holder.TransformToVisual(summaryVoiceControls).TransformPoint(new Windows.Foundation.Point()).Y))
+                throw new InvalidOperationException("Summary tuning must follow its heading and precede voice browsing.");
             var selectedVoice = SettingsStore.GetString(summaryProfile["windowsCoreVoice"]);
             search.Text = "No voice should match this test phrase";
             var choicePanel = holder.Children.OfType<StackPanel>().Single(p => AutomationProperties.GetAutomationId(p) == "summary-voice-choices");

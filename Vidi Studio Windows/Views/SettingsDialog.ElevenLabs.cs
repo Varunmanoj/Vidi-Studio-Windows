@@ -126,7 +126,7 @@ public sealed partial class SettingsDialog
         var field=new TextBox{Text=text,PlaceholderText=title};AutomationProperties.SetName(field,title);AutomationProperties.SetAutomationId(field,id);
         field.TextChanged+=(_,_)=>change(field.Text);
         var menu=MenuAccessKeys.Create();var focusItem=new MenuFlyoutItem{Text="Focus "+title};AutomationProperties.SetAutomationId(focusItem,id+"-focus");focusItem.Click+=(_,_)=>field.Focus(FocusState.Programmatic);menu.Items.Add(focusItem);
-        var clear=new MenuFlyoutItem{Text="Clear "+title};AutomationProperties.SetAutomationId(clear,id+"-clear");clear.Click+=(_,_)=>field.Text="";menu.Items.Add(clear);field.ContextFlyout=menu;AddSettingsRow(parent,title,field,true);
+        var clear=new MenuFlyoutItem{Text="Clear "+title};AutomationProperties.SetAutomationId(clear,id+"-clear");clear.Click+=(_,_)=>field.Text="";menu.Items.Add(clear);field.ContextFlyout=menu;FullWidthVoiceSearch(field);parent.Children.Add(field);
     }
     private void ScheduleElevenQuery(){elevenQueryTimer?.Stop();elevenQueryTimer?.Start();}
     private void BuildElevenFields()
@@ -156,8 +156,8 @@ public sealed partial class SettingsDialog
         foreach(var field in (profile["controls"] as JsonArray??new()).Select(n=>ES(n))) {
             if(field=="speakerBoost") {var toggle=new ToggleSwitch{IsOn=SettingsStore.GetBool(profile[field],true)};toggle.Toggled+=(_,_)=>profile[field]=toggle.IsOn;AutomationProperties.SetAutomationId(toggle,"elevenlabs-speaker-boost");var menu=MenuAccessKeys.Create();var item=new ToggleMenuFlyoutItem{Text="Speaker boost"};item.Click+=(_,_)=>toggle.IsOn=!toggle.IsOn;menu.Opening+=(_,_)=>item.IsChecked=toggle.IsOn;menu.Items.Add(item);toggle.ContextFlyout=menu;AddSettingsRow(elevenFields,"Speaker boost",toggle);continue;}
             if(field=="stabilityMode"){SpeechChoiceControl(elevenFields,"Stability","elevenlabs-stability-mode",SettingsStore.GetDouble(profile[field],.5).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture),new[]{("0.0","Creative"),("0.5","Natural"),("1.0","Robust")},value=>profile[field]=double.Parse(value,System.Globalization.CultureInfo.InvariantCulture));continue;}
-            var title=field switch{"speed"=>"Speaking speed","cloneStrength"=>"Clone strength",_=>System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(field)};
-            SpeechAdjustmentControl(elevenFields,title,field=="cloneStrength"?"elevenlabs-clone-strength":"elevenlabs-"+field,profile,field,field=="speed"?1:field=="similarity"?.75:field=="stability"?.5:0,field=="speed"?.7:0,field=="speed"?1.2:1);
+            var title=field switch{"speed"=>"Speaking speed","style"=>"Style emphasis","cloneStrength"=>"Clone strength",_=>System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(field)};
+            SpeechAdjustmentControl(elevenFields,title,field=="cloneStrength"?"elevenlabs-clone-strength":"elevenlabs-"+field,profile,field,field=="speed"?1:field=="similarity"?.75:field=="stability"?.5:0,field=="speed"?.7:0,field=="speed"?1.2:1,percentage:field is "stability" or "similarity" or "style" or "cloneStrength");
         }
         SpeechChoiceControl(elevenFields,"Audio quality","elevenlabs-format",ES(profile["format"],"mp3_44100_128"),elevenFormats.Select(n=>(ES(n?["id"]),ES(n?["name"]))),value=>profile["format"]=value);
         SpeechAction(elevenFields,"Restore Voice Defaults","elevenlabs-controls-reset",()=>{foreach(var (key,value) in new[]{("stability",.5),("stabilityMode",.5),("similarity",.75),("style",0.0),("speed",1.0),("cloneStrength",0.0)})profile[key]=value;profile["speakerBoost"]=true;profile["format"]="mp3_44100_128";BuildElevenFields();});
@@ -261,8 +261,8 @@ public sealed partial class SettingsDialog
         var before=draft.DeepClone().AsObject();var originalKey=elevenKey;var oldModels=elevenModels;var oldVoices=elevenVoices;
         elevenFixture=true;elevenTimer?.Stop();elevenQueryTimer?.Stop();elevenKey="";
         try {
-            elevenModels=JsonNode.Parse("""[{"id":"future-model","name":"Future Model","controls":["stability","similarity","speed","speakerBoost"],"languages":[{"id":"en","name":"English"}]}]""")!.AsArray();
-            elevenVoices=JsonNode.Parse("""[{"id":"voice-a","name":"Sample voice","language":"en","accent":"British","preview":"https://storage.googleapis.com/example.mp3","variants":[]},{"id":"voice-b","name":"Sample voice","language":"hi","accent":"Indian","preview":"","variants":[]}]""")!.AsArray();
+            elevenModels=JsonNode.Parse("""[{"id":"future-model","name":"Future Model","controls":["stability","similarity","style","speed","cloneStrength","speakerBoost"],"languages":[{"id":"en","name":"English"}]}]""")!.AsArray();
+            elevenVoices=JsonNode.Parse("""[{"id":"voice-a","name":"Sample voice","language":"en","accent":"British","category":"professional","tuning":{"future-model":"fine_tuned"},"preview":"https://storage.googleapis.com/example.mp3","variants":[]},{"id":"voice-b","name":"Sample voice","language":"hi","accent":"Indian","preview":"","variants":[]}]""")!.AsArray();
             elevenFormats=JsonNode.Parse("""[{"id":"mp3_44100_128","name":"MP3 · 44.1 kHz · 128 kbps"}]""")!.AsArray();
             draft["ttsMode"]="elevenlabs";SelectElevenModel("future-model");SelectElevenVoice(elevenVoices[0]!.AsObject());
             NavigateForSmokeTest(0);NavigateForSmokeTest(2);mode.SelectedItem=((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option=>option.Id=="elevenlabs");await Task.Delay(150);BuildElevenFields();
@@ -277,6 +277,17 @@ public sealed partial class SettingsDialog
                 var trashPoint=trash.TransformToVisual(elevenControls).TransformPoint(new Windows.Foundation.Point());
                 if(statusPoint.X<=keyPoint.X||trashPoint.X<=statusPoint.X||Math.Abs(statusPoint.Y+status.ActualHeight/2-keyPoint.Y-password.ActualHeight/2)>2)throw new InvalidOperationException($"ElevenLabs status/trash must be inline with its key: key={keyPoint.X},{keyPoint.Y},{password.ActualWidth},{password.ActualHeight}; status={statusPoint.X},{statusPoint.Y},{status.ActualWidth},{status.ActualHeight}; trash={trashPoint.X},{trashPoint.Y}; visible={elevenCard?.Visibility}");
                 if(SpeechItems<TextBlock>(elevenPlan).Count(t=>t.Text=="Remaining allowance")!=1||!SpeechItems<TextBlock>(elevenPlan).Any(t=>t.Text=="0"))throw new InvalidOperationException("ElevenLabs plan allowance rendering failed.");
+                VerifyFullWidthVoiceSearchForSmokeTest(SpeechItems<TextBox>(elevenFields).Single(box=>AutomationProperties.GetAutomationId(box)=="elevenlabs-voice-search"));
+                var style=SpeechItems<Slider>(elevenFields).Single(slider=>AutomationProperties.GetAutomationId(slider)=="elevenlabs-style");
+                if(AutomationProperties.GetName(style)!="Style emphasis")throw new InvalidOperationException("ElevenLabs Style emphasis accessible label regressed.");
+                foreach(var (field,expected) in new[]{("stability","50%"),("similarity","75%"),("style","0%"),("clone-strength","0%"),("speed","1.00")}) {
+                    var number=SpeechItems<TextBlock>(elevenFields).Single(text=>AutomationProperties.GetAutomationId(text)=="elevenlabs-"+field+"-value");
+                    var expectedText=field=="speed"?1.0.ToString("0.00",System.Globalization.CultureInfo.CurrentCulture):expected;
+                    if(number.Text!=expectedText)throw new InvalidOperationException("ElevenLabs slider display units regressed: "+field+"="+number.Text);
+                }
+                style.Value=.25;
+                if(SpeechItems<TextBlock>(elevenFields).Single(text=>AutomationProperties.GetAutomationId(text)=="elevenlabs-style-value").Text!="25%"||Math.Abs(SettingsStore.GetDouble(ElevenProfile["style"],0)-.25)>.001)throw new InvalidOperationException("ElevenLabs percentage display must preserve normalized saved values.");
+                style.Value=0;
                 var speed=SpeechItems<Slider>(elevenFields).Single(slider=>AutomationProperties.GetAutomationId(slider)=="elevenlabs-speed");
                 if(Math.Abs(speed.Minimum-.7)>.001||Math.Abs(speed.Maximum-1.2)>.001||Math.Abs(speed.Value-1)>.001||AutomationProperties.GetName(speed)!="Speaking speed")throw new InvalidOperationException("ElevenLabs speaking-speed range/default/name regressed.");
                 speed.Value=1.1;if(Math.Abs(SettingsStore.GetDouble(ElevenProfile["speed"],0)-1.1)>.001)throw new InvalidOperationException("ElevenLabs speaking speed did not save.");speed.Value=1;
@@ -291,7 +302,10 @@ public sealed partial class SettingsDialog
                 if(!selections[0].IsChecked.GetValueOrDefault()||demos[1].IsEnabled)throw new InvalidOperationException("ElevenLabs selected voice and unavailable demo state regressed.");
                 foreach(var button in demos){var parent=(Grid)button.Parent;var select=parent.Children.OfType<RadioButton>().Single();if(Math.Abs(button.TransformToVisual(parent).TransformPoint(new Windows.Foundation.Point()).Y+button.ActualHeight/2-select.TransformToVisual(parent).TransformPoint(new Windows.Foundation.Point()).Y-select.ActualHeight/2)>2)throw new InvalidOperationException("ElevenLabs demo icon lost row alignment.");}
                 await capture(theme);
+                style.StartBringIntoView(new BringIntoViewOptions{VerticalAlignmentRatio=.5,AnimationDesired=false});await Task.Delay(150);await capture(theme+"-controls");
                 selections[0].StartBringIntoView(new BringIntoViewOptions{VerticalAlignmentRatio=0,AnimationDesired=false});await Task.Delay(150);await capture(theme+"-voices");
+                var summaryHeading=SpeechItems<TextBlock>(summaryVoiceControls).Single(t=>AutomationProperties.GetAutomationId(t)=="summary-heading");
+                summaryHeading.StartBringIntoView(new BringIntoViewOptions{VerticalAlignmentRatio=0,AnimationDesired=false});await Task.Delay(150);await capture(theme+"-summary");
             }
             password.Password=stored;
             if(SettingsStore.NormalizeNarrationPlayback(draft)&&ES(draft["narrationPlayback"])!="generated")throw new InvalidOperationException("ElevenLabs cloud playback was not normalized.");

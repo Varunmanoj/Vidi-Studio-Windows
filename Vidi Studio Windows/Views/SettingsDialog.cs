@@ -376,6 +376,7 @@ public sealed partial class SettingsDialog : Window
             if (sampleState != SampleState.Stopped) StopSample(false);
             // Release retained Narration controls while their nested rows are still
             // attached; after removing the page WinUI may no longer expose Parent.
+            ReleaseRetainedVoiceFields();
             foreach (var control in new FrameworkElement[] { mode, voice, sapiHost, localSpeechControls, piperControls, storageAdvancedControls })
                 DetachFromVisualParent(control);
             if (host.Content is Panel oldPanel) oldPanel.Children.Clear();
@@ -540,6 +541,7 @@ public sealed partial class SettingsDialog : Window
         var group = new AccessibilityGroup(title + " settings") { Tag = "narration-card", CornerRadius = new CornerRadius(8), Padding = new Thickness(12,10,12,10), Child = rows };
         group.Style = (Style)Microsoft.UI.Xaml.Markup.XamlReader.Load("<Style xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" TargetType=\"ContentControl\"><Setter Property=\"Background\" Value=\"{ThemeResource CardBackgroundFillColorDefaultBrush}\"/></Style>");
         host.Children.Add(group);
+        rows.RegisterPropertyChangedCallback(UIElement.VisibilityProperty,(_,_) => { group.Visibility = rows.Visibility; heading.Visibility = rows.Visibility; });
         return rows;
     }
     private void AddSpeechSlider(StackPanel panel, string label, string key, double fallback, double minimum, double maximum)
@@ -622,9 +624,21 @@ public sealed partial class SettingsDialog : Window
             controls.Menu.Text = title;
         }
     }
+    private void ReleaseRetainedVoiceFields()
+    {
+        // Collapsed WinUI groups can stop exposing Parent. Detach from the
+        // retained logical owners before rebuilding or clearing their page.
+        if (nativeVoiceGroup is StackPanel previousVoiceGroup) {
+            if (previousVoiceGroup.Children.Contains(piperControls)) previousVoiceGroup.Children.Remove(piperControls);
+            foreach (var row in previousVoiceGroup.Children.OfType<Grid>())
+                foreach (var field in new FrameworkElement[] { voice, sapiHost })
+                    if (row.Children.Contains(field)) row.Children.Remove(field);
+        }
+    }
     private ToggleSwitch? exportSoundControl;
     private void BuildNarration(StackPanel panel)
     {
+        ReleaseRetainedVoiceFields();
         foreach (var element in new FrameworkElement[] { mode, voice, sapiHost, localSpeechControls }) if (element.Parent is Panel parent) parent.Children.Remove(element);
         localSpeechControls.Children.Clear();
         BuildVoiceEngineControls();
@@ -690,6 +704,7 @@ public sealed partial class SettingsDialog : Window
         BuildAdditionalSpeechControls(panel);
         var voiceGroup = AddNarrationGroup(panel, "Voices");
         nativeVoiceGroup = voiceGroup;
+        if (piperControls.Parent is Panel previousVoiceHost) previousVoiceHost.Children.Remove(piperControls);
         voiceGroup.Children.Add(piperControls);
         voice.Header=null; sapiHost.Header=null;
         CompactRow(voiceGroup,"Installed voice",voice,true); CompactRow(voiceGroup,"Optional SAPI host executable",sapiHost,true);

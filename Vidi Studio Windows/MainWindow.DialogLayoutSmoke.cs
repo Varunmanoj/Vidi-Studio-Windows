@@ -46,6 +46,8 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException($"Dialog control clipped: {dialog.Title} / {AutomationProperties.GetName(field)} {field.GetType().Name}: {point.X}+{field.ActualWidth} > {root.ActualWidth}; dialog={dialog.ActualWidth}");
         }
         if(dialog.Content is UIElement content)foreach(var control in DialogControls(content).Where(c=>c is Button or RadioButton or ComboBox or TextBox or NumberBox))Bounds(control);
+        if(dialog.Content is UIElement searchContent) foreach(var search in DialogControls(searchContent).Where(c=>c.Tag as string=="voice-search-full-width"))
+            Views.SettingsDialog.VerifyFullWidthVoiceSearchForSmokeTest(search);
         foreach(var title in new[] {dialog.PrimaryButtonText,dialog.SecondaryButtonText,dialog.CloseButtonText})
             if(!string.IsNullOrEmpty(title) && FindButton(dialog,title) is {} button)Bounds(button);
         foreach(var row in DialogElements(dialog).OfType<Grid>().Where(g => g.Tag as string == "dialog-form-row" && g.ActualWidth>0 && g.ActualHeight>0)) {
@@ -87,6 +89,8 @@ public sealed partial class MainWindow
             ("languages",()=>new ContentDialog {Title="Language and Saved Results",Content=new ScrollViewer {Content=BuildLanguageResultsPanel(project)},CloseButtonText="Close"},720,800),
             ("export-text",()=>Export(2),1040,760),
             ("export-audio",()=>Export(1),1040,760),
+            ("piper-voices",()=>new Views.PiperVoicesDialog(),780,740),
+            ("piper-delete",()=>new Views.PiperDeleteVoicesDialog(),720,700),
             ("sources",()=>new ContentDialog {Title="Audio sources",Content=new Views.AudioSourceControls(this,Model,exportHost:false),CloseButtonText="Done"},740,700)
         };
         try {

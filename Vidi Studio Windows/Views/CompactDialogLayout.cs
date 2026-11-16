@@ -41,7 +41,7 @@ internal static class CompactDialogLayout
         NumberBox box => box.Header as string,
         _ => null
     };
-    private static bool IsInline(FrameworkElement field) => field is ComboBox or PasswordBox or NumberBox || field is TextBox { AcceptsReturn: false };
+    private static bool IsInline(FrameworkElement field) => field.Tag as string != "voice-search-full-width" && (field is ComboBox or PasswordBox or NumberBox || field is TextBox { AcceptsReturn: false });
 
     internal static Grid Field(string label, FrameworkElement field)
     {

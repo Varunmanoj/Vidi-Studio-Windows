@@ -90,6 +90,7 @@ public sealed class PiperVoicesDialog : ContentDialog
         Resources["ContentDialogMaxWidth"] = 820d;
         Resources["ContentDialogMaxHeight"] = 900d;
         var body = new StackPanel { Spacing = 10, Width = 720 };
+        SettingsDialog.FullWidthVoiceSearch(search);
         body.Children.Add(search);
         var filters = new StackPanel { Spacing=8 };
         filters.Children.Add(languageFilter); filters.Children.Add(qualityFilter); filters.Children.Add(sortFilter);

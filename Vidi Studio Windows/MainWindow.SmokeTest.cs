@@ -1285,7 +1285,7 @@ public sealed partial class MainWindow
                     await CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-layout-sarvam-" + theme + ".png"));
                 }
                 PreviewTheme(originalTheme);
-            });
+            }, tag => CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "sarvam-controls-"+tag+".png")));
             await settings.VerifyElevenLabsForSmokeTestAsync(theme => CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "elevenlabs-" + theme + ".png")));
             await settings.VerifyGeminiKeyLayoutForSmokeTestAsync(async () => {
                 foreach (var theme in new[] { "dark", "light" }) {

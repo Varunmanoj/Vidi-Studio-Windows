@@ -735,8 +735,16 @@
           "title": "Sarvam Voices"
         },
         {
+          "id": "sarvam-controls",
+          "title": "Understanding Sarvam voice controls"
+        },
+        {
           "id": "elevenlabs-voices",
           "title": "ElevenLabs Voices"
+        },
+        {
+          "id": "elevenlabs-controls",
+          "title": "Understanding ElevenLabs voice controls"
         },
         {
           "id": "summary-voice",

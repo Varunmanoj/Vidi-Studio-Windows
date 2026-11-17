@@ -21,9 +21,9 @@ namespace Vidi_Studio_Windows.Views;
 public sealed partial class SettingsDialog : Window
 {
     private readonly TaskCompletionSource<bool> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly MainWindow? menuOwner;
+    private MainWindow? menuOwner;
     private readonly Grid layout;
-    private readonly Window owner;
+    private Window owner;
     private readonly ScrollViewer sectionHost;
     private ListView? sectionList;
     private int SelectedSection => (sectionList?.SelectedItem as ListViewItem)?.Tag is int section ? section : -1;
@@ -451,7 +451,19 @@ public sealed partial class SettingsDialog : Window
     public Task<bool> ShowAsync()
     {
         if (!App.HasMainWindows) { Hide(); return completion.Task; }
-        PositionOverOwner(); Activate(); return completion.Task;
+        PresentFrom(owner); return completion.Task;
+    }
+    internal void PresentFrom(Window window)
+    {
+        var changed = !ReferenceEquals(owner, window);
+        owner = window;
+        menuOwner = window as MainWindow;
+        if (changed || !AppWindow.IsVisible) PositionOverOwner();
+        if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter { State: Microsoft.UI.Windowing.OverlappedPresenterState.Minimized } presenter)
+            presenter.Restore();
+        Activate();
+        // Reassert activation after a menu flyout returns focus to its originating editor.
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => { if (!closed) Activate(); });
     }
     private bool DeveloperModeEnabled => SettingsStore.GetBool(draft["developerMode"], model.Settings.GetBool("developerMode"));
     private void UpdateDeveloperPromptsVisibility()

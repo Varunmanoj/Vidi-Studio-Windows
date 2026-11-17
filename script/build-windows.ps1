@@ -27,7 +27,7 @@ if ($buildPython) {
     }
     & $buildPython (Join-Path $PSScriptRoot 'check_menu_parity.py') --allow-missing
     if ($LASTEXITCODE -ne 0) { throw 'Desktop menu parity check failed.' }
-    & $buildPython (Join-Path $PSScriptRoot 'check_desktop_ui_parity.py') --allow-missing
+    & $buildPython (Join-Path $PSScriptRoot 'check_desktop_ui_parity.py') --workspace $workspaceRoot --allow-missing
     if ($LASTEXITCODE -ne 0) { throw 'Desktop UI layout parity check failed.' }
     & $buildPython -m unittest discover -s (Join-Path $projectRoot 'tests') -p test_desktop_ui_parity.py
     if ($LASTEXITCODE -ne 0) { throw 'Desktop UI layout regression tests failed.' }
@@ -53,6 +53,10 @@ if (Test-Path -LiteralPath $frozenEngine) {
             throw 'runtime\engine is older than the engine sources and .venv-windows is missing. Run script\setup-windows.ps1 -FreezeEngine, or delete the runtime\engine folder to run the bundled source engine.'
         }
     }
+}
+if ($buildPython) {
+    & $buildPython (Join-Path $PSScriptRoot 'prepare_license_notices.py')
+    if ($LASTEXITCODE -ne 0) { throw 'Bundled component notice preparation failed.' }
 }
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1

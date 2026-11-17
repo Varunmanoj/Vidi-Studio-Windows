@@ -703,6 +703,9 @@ public sealed partial class MainWindow
         if (id == "website") return true;
         if (id == "projects-reset-filters") return !desktopEditorVisible && (!string.IsNullOrEmpty(GallerySearch.Text) || GalleryFilter.SelectedIndex != 0 || Model.LanguageFilter != "all");
         if (!desktopEditorVisible && id is "project-list" or "project-grid") return true;
+        // App information stays reachable while an editor is preparing or processing.
+        // Each window has its own model; the gallery's idle state must not determine access.
+        if (id is "settings" or "help" or "about") return true;
         if (!Model.Idle) return false;
         if (id == "project-settings") return ProjectManagementTarget() is { IntegrityPlaceholder: false } settingsProject && settingsProject.Integrity?.ManifestUnreadable != true && settingsProject.Integrity?.FolderMissing != true;
         if (OnlineRequirements.Services(id, ProjectManagementTarget(), Model.Settings).Any(service => ConnectivityService.Shared.Reason(service) != null)) return false;
@@ -722,7 +725,7 @@ public sealed partial class MainWindow
         if (id == "new-project") return true;
         if (id is "rename-project" or "trash-project" or "show-in-finder" or "open-configuration") return CanManageProject(id);
         if (id == "remove-from-list") return SelectedBrowserProject() != null;
-        if (id is "open-project" or "settings" or "help" or "about" or "close-window") return true;
+        if (id is "open-project" or "close-window") return true;
         if (id is "project-list" or "project-grid") return !desktopEditorVisible || !(Section.SelectedIndex == 1 && summaryEditMode);
         if (id == "youtube-accounts") return true;
         if (id is "youtube-list" or "youtube-table" or "youtube-open-editor" or "youtube-open-browser" or "youtube-refresh-list" or "youtube-load-videos" or "youtube-load-playlists") return youtubeBrowserCanRun?.Invoke(id) == true;
@@ -1070,7 +1073,7 @@ public sealed partial class MainWindow
             case "sort-duration-asc": SortDurationAsc_Click(this, e); break;
             case "sort-duration-desc": SortDurationDesc_Click(this, e); break;
             case "sort-origin": SortOrigin_Click(this, e); break;
-            case "about": AboutSettings_Click(this, e); break;
+            case "about": await ShowSettingsSectionAsync(7); break;
             case "close-window": CloseWindowDeferred(); return;
             case "open-editor-window": OpenEditor_Click(this, e); break;
             case "preview": TogglePreview_Click(this, e); break;

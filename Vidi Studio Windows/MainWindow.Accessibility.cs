@@ -100,8 +100,9 @@ public sealed partial class MainWindow
         foreach (var editing in new[] { false, true })
         {
             var settingsPanel = BuildLanguageResultsPanel(project, settingsContext: true, editingSettings: editing);
-            if (settingsPanel.Children.OfType<Button>().Any(button => button.Content as string == "Keep All Sections in Sync") != editing)
-                throw new InvalidOperationException("Project Settings sync action must appear only while editing.");
+            if (settingsPanel.Children.OfType<Button>().Any(button => button.Content as string == "Keep All Sections in Sync") ||
+                settingsPanel.Children.OfType<ComboBox>().Any(picker => picker.Header?.ToString()?.EndsWith(" Generation Language") == true))
+                throw new InvalidOperationException("Project Settings must share the same single language.");
         }
         ShowGallery_Click(this, new RoutedEventArgs());
     }
@@ -127,6 +128,20 @@ public sealed partial class MainWindow
                     for (var index = 0; index < 5; index++)
                     {
                         Section.SelectedIndex = index; UpdateSectionPresentation(); await Task.Delay(100); Root.UpdateLayout();
+                        var languagePanel = LanguageResultsPanel.Children.OfType<StackPanel>().Single();
+                        var language = languagePanel.Children.OfType<Control>().FirstOrDefault() as ComboBox
+                            ?? throw new InvalidOperationException("Inspector language must be the first control.");
+                        var languagePeer = FrameworkElementAutomationPeer.CreatePeerForElement(language);
+                        var firstAction = languagePanel.Children.OfType<Button>().FirstOrDefault();
+                        var languageTop = language.TransformToVisual(languagePanel).TransformPoint(new Windows.Foundation.Point());
+                        if (languagePeer?.GetName() != "View Project Language" || language.ActualWidth <= 0 ||
+                            languageTop.X < -1 || languageTop.X + language.ActualWidth > languagePanel.ActualWidth + 1 ||
+                            firstAction != null && firstAction.TransformToVisual(languagePanel).TransformPoint(new Windows.Foundation.Point()).Y < languageTop.Y + language.ActualHeight - 1)
+                            throw new InvalidOperationException("Shared inspector language must be accessible, bounded and above every action.");
+                        if (languagePanel.Children.OfType<ComboBox>().Any(picker => picker.Header?.ToString()?.EndsWith(" Generation Language") == true || picker.Header as string == "Review language filter"))
+                            throw new InvalidOperationException("Rendered inspector contains repeated language choices.");
+                        if (InspectorExports.Children.OfType<ComboBox>().Any(picker => picker.Header as string == "Export language filter"))
+                            throw new InvalidOperationException("Created Exports must follow the shared inspector language.");
                         var controlsPeer = FrameworkElementAutomationPeer.CreatePeerForElement(EditorControlsGroup);
                         if (controlsPeer?.GetAutomationControlType() != AutomationControlType.Group || controlsPeer.GetName() != EditorSectionTitle + " controls" ||
                             controlsPeer.GetChildren() is not { Count: > 0 } || AutomationProperties.GetName(Segments) != EditorSectionTitle + " segments")

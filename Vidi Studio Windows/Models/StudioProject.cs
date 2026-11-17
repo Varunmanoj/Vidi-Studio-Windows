@@ -219,17 +219,8 @@ public sealed class StudioProject : INotifyPropertyChanged
     [JsonIgnore] public string OverviewLanguageCode => SelectedLanguage;
     [JsonIgnore] public StudioProject OverviewProject => WithLanguageResults(OverviewLanguageCode);
     [JsonIgnore] public bool OverviewMatchesEditingResult => OverviewLanguageCode == SelectedLanguage;
-    public string SectionLanguage(string kind) => SectionLanguages.TryGetValue(kind, out var code) ? code : SelectedLanguage;
-    public string OperationLanguage(string command) {
-        if (!new[] { "transcribe", "generate-summary", "generate-ad-cues", "import-transcript", "import-summary", "import-ad-transcript", "import-ad-audio" }.Contains(command)) return SelectedLanguage;
-        var kind = command switch {
-            "transcribe" or "import-transcript" or "reanalyze-transcript-segment" or "undo-transcript" or "redo-transcript" => "transcript",
-            "generate-summary" or "save-summary" or "import-summary" => "summary",
-            "generate-ad-cues" or "synthesize-tts" or "save-cues" or "rewrite-cue" or "reanalyze-segment" or "import-ad-transcript" or "import-segment-narration" or "delete-segment-audio" or "undo-cues" or "redo-cues" => "descriptions",
-            "import-ad-audio" => "adAudio", _ => ""
-        };
-        return kind == "" ? SelectedLanguage : SectionLanguage(kind);
-    }
+    public string SectionLanguage(string kind) => SelectedLanguage;
+    public string OperationLanguage(string command) => SelectedLanguage;
     [JsonIgnore] public IReadOnlyList<string> AvailableViewingLanguages => SavedResults.Select(r => r.Language).Distinct().OrderBy(v => v).ToList();
     [JsonIgnore] public IReadOnlyList<string> DeletionLanguages => SavedResults.Select(r => r.Language)
         .Concat(Exports.SelectMany(path => ExportResults.TryGetValue(path, out var provenance)
@@ -433,11 +424,7 @@ public sealed class StudioProject : INotifyPropertyChanged
     }
     public List<InspectorContentStatus> ContentStatuses(int section)
     {
-        var kind = InspectorContentStatus.Kind(section);
-        if (kind == null) return new();
-        return SavedResults.Where(r => r.Kind == kind && r.HasContent).Select(r => r.Language).Append(SelectedLanguage).Distinct()
-            .OrderBy(code => code == SelectedLanguage ? 0 : 1).ThenBy(code => code, StringComparer.Ordinal)
-            .Select(code => ContentStatus(section, code)!).ToList();
+        return ContentStatus(section, SelectedLanguage) is { } status ? new() { status } : new();
     }
     public bool CanExportText(string content) => content switch
     {

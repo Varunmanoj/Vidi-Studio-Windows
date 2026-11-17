@@ -2131,7 +2131,7 @@ public sealed partial class MainWindow : Window
         {
             openSettings.SetProjectTarget(project ?? SettingsProject);
             openSettings.SelectSection(section);
-            openSettings.Activate();
+            openSettings.PresentFrom(this);
             return;
         }
         var settings = new Views.SettingsDialog(Model, this, section, project ?? SettingsProject);
@@ -2149,7 +2149,11 @@ public sealed partial class MainWindow : Window
         await ShowSettingsSectionAsync(section);
     }
     private void HelpSettings_Click(object sender, RoutedEventArgs e) => App.OpenHelpWindow(Root.ActualTheme);
-    private async void AboutSettings_Click(object sender, RoutedEventArgs e) => await ShowSettingsSectionAsync(7);
+    private async void AboutSettings_Click(object sender, RoutedEventArgs e)
+    {
+        try { await ShowSettingsSectionAsync(7); }
+        catch (Exception ex) { await ShowError(ex); }
+    }
     private async void SpeakSummary_Click(object sender, RoutedEventArgs e)
     {
         if (readback.State == SummaryReadbackState.Playing) { readback.Pause(); return; }

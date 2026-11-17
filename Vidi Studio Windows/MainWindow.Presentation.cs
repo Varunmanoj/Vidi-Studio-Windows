@@ -724,24 +724,8 @@ public sealed partial class MainWindow
     private void PopulateExportGroups(StackPanel target, StudioProject project)
     {
         target.Children.Clear();
-        var exportCodes = project.ExportLanguageCodes;
-        if (exportLanguageFilter != "all" && !exportCodes.Contains(exportLanguageFilter)) exportLanguageFilter = "all";
-        var languageFilter = LanguagePicker("Export language filter", exportLanguageFilter, true);
-        var languageChoices = new[] { new OutputLanguage("all", "All Languages") }.Concat(exportCodes.Select(code => new OutputLanguage(code, OutputLanguage.Label(code)))).ToList();
-        languageFilter.ItemsSource = languageChoices;
-        languageFilter.SelectedItem = languageChoices.First(choice => choice.Id == exportLanguageFilter);
-        languageFilter.SelectionChanged += (_, _) => {
-            if (languageFilter.SelectedItem is OutputLanguage choice) { exportLanguageFilter = choice.Id; exportResultFilter = "all"; PopulateExportGroups(target, project); }
-        };
-        var languageMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
-        foreach (var choice in languageChoices) {
-            var item = new ToggleMenuFlyoutItem { Text = choice.Title, IsChecked = choice.Id == exportLanguageFilter, IsEnabled = languageFilter.IsEnabled };
-            item.Click += (_, _) => languageFilter.SelectedItem = choice;
-            languageMenu.Items.Add(item);
-        }
-        languageFilter.ContextFlyout = languageMenu;
-        target.Children.Add(languageFilter);
-        var resultChoices = new[] { new { Id = "all", Title = "All Saved Results" } }.Concat(project.SavedResults.Where(r => exportLanguageFilter == "all" || r.Language == exportLanguageFilter).Select(r => new { r.Id, Title = OutputLanguage.Label(r.Language) + " · " + LanguageResult.KindTitle(r.Kind) + " · " + r.Title })).ToList();
+        var resultChoices = new[] { new { Id = "all", Title = "All Saved Results" } }.Concat(project.SavedResults.Where(r => r.Language == project.SelectedLanguage).Select(r => new { r.Id, Title = OutputLanguage.Label(r.Language) + " · " + LanguageResult.KindTitle(r.Kind) + " · " + r.Title })).ToList();
+        if (!resultChoices.Any(choice => choice.Id == exportResultFilter)) exportResultFilter = "all";
         var resultFilter = new ComboBox { Header = "Saved result filter", ItemsSource = resultChoices, DisplayMemberPath = "Title", SelectedItem = resultChoices.FirstOrDefault(v => v.Id == exportResultFilter) ?? resultChoices[0] };
         resultFilter.SelectionChanged += (_, _) => { var chosen = resultChoices.FirstOrDefault(v => ReferenceEquals(v, resultFilter.SelectedItem)); exportResultFilter = chosen?.Id ?? "all"; PopulateExportGroups(target, project); };
         target.Children.Add(resultFilter);
@@ -751,9 +735,10 @@ public sealed partial class MainWindow
             target.Children.Add(new TextBlock { Text = "No exports yet", Opacity = .65 });
             return;
         }
-        var languages = project.Exports.Where(path => exportLanguageFilter == "all" || project.LanguagesForExport(path).Contains(exportLanguageFilter))
+        var languages = project.Exports.Where(path => project.LanguagesForExport(path).Contains(project.SelectedLanguage))
             .Where(path => exportResultFilter == "all" || project.ExportResults.TryGetValue(path, out var provenance) && provenance.ResultIDs.Values.Contains(exportResultFilter))
-            .GroupBy(project.LanguageGroupForExport).OrderBy(group => group.Key == "multilingual" ? 0 : 1).ThenBy(group => OutputLanguage.Label(group.Key), StringComparer.Ordinal);
+            .GroupBy(project.LanguageGroupForExport).OrderBy(group => group.Key == "multilingual" ? 0 : 1).ThenBy(group => OutputLanguage.Label(group.Key), StringComparer.Ordinal).ToList();
+        if (languages.Count == 0) target.Children.Add(new TextBlock { Text = "No matching exports in " + OutputLanguage.Label(project.SelectedLanguage) + ".", TextWrapping = TextWrapping.Wrap, Opacity = .65 });
         foreach (var languageGroup in languages) {
             var languageSection = new StackPanel { Spacing = 8, Margin = new Thickness(0, 10, 0, 0) };
             var languageTitle = languageGroup.Key == "multilingual" ? "Multilingual" : OutputLanguage.Label(languageGroup.Key);

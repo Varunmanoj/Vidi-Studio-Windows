@@ -46,7 +46,7 @@ public sealed partial class MainWindow
             {
                 await VerifyGalleryAndSettingsLayoutForSmokeTestAsync(report);
                 await VerifySettingsWindowLifetimeForSmokeTestAsync();
-                await File.WriteAllTextAsync(report, "PASS: native inspector disclosure names and expanded/collapsed states; sync action only in edit mode; spoken gallery/timeline durations; named inspector heading/actions/toggles and Start/End boundaries in all three segment tabs; aligned gallery controls and centered search at wide, compact and narrow widths in light/dark; Settings stable navigation, headings and bounded scrolling; Settings stays open with another main window, closes after the final main window and saves pending preferences.");
+                await File.WriteAllTextAsync(report, "PASS: Help/About shared groups, Jump to Time reference and retained expansion, short FFmpeg/license rows and license actions, editor/gallery About menu while idle/processing and minimized, Help keeps Settings open, light/dark opaque Help caption hover/pressed colors; native inspector disclosure names and expanded/collapsed states; shared project language first, no per-section targets or review filter; spoken gallery/timeline durations; named inspector heading/actions/toggles and Start/End boundaries in all three segment tabs; aligned gallery controls and centered search at wide, compact and narrow widths in light/dark; Settings stable navigation, headings and bounded scrolling; Settings stays open with another main window, closes after the final main window and saves pending preferences.");
                 return;
             }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY") == "1")
@@ -606,7 +606,9 @@ public sealed partial class MainWindow
             if (ProjectSplitView.IsPaneOpen == expectedLibrary || EditorProjectListButton.Visibility != Visibility.Visible)
                 throw new InvalidOperationException("The bottom-left project list button did not hide the project list while staying available.");
             ToggleLibrary_Click(this, new RoutedEventArgs());
+            await VerifyAboutMenuForSmokeTestAsync();
             await VerifyProjectPaneTransitionsForSmokeTestAsync();
+            await VerifyAboutMenuForSmokeTestAsync();
             await VerifyInspectorToggleForSmokeTestAsync(report);
             var titleBarVisibility = AppTitleBar.Visibility;
             FullScreen_Click(this, new RoutedEventArgs());
@@ -624,6 +626,7 @@ public sealed partial class MainWindow
             var display = settings.ShowAsync();
             await Task.Delay(250);
             settings.VerifySidebarNavigationForSmokeTest();
+            await settings.VerifyInformationForSmokeTestAsync();
             settings.VerifyPiperSampleMenuForSmokeTest();
             await settings.VerifySarvamSettingsForSmokeTestAsync();
             await settings.VerifyLayoutForSmokeTestAsync();
@@ -721,6 +724,7 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException(
                     "The Help table of contents did not show readable chapter titles: " + string.Join(" | ", tocTitles));
             PreviewTheme("dark"); await Task.Delay(150);
+            VerifyHelpCaptionForSmokeTest(helpWindow, true);
             var renderedToc = helpWindow.RenderedTocTitlesForSmokeTest();
             if (renderedToc.Count < 2 || !renderedToc.Contains(tocTitles[0]) || tocTitles.Take(6).Any(title => !renderedToc.Contains(title)))
                 throw new InvalidOperationException("Help TOC data exists but its visible chapter/topic labels are blank: " + string.Join(" | ", renderedToc));
@@ -735,6 +739,7 @@ public sealed partial class MainWindow
             await Task.Delay(300);
             if (helpWindow.LoadedPageForSmokeTest?.Contains("/editor.html") != true) throw new InvalidOperationException("Help chapter navigation did not load the chapter.");
             PreviewTheme("light"); await Task.Delay(150);
+            VerifyHelpCaptionForSmokeTest(helpWindow, false);
             if (helpWindow.RenderedTocTitlesForSmokeTest().Count < 2) throw new InvalidOperationException("Help TOC labels disappeared in light appearance.");
             await CaptureSmokeImage(helpWindow.TocVisualForSmokeTest, Path.Combine(Path.GetDirectoryName(report)!, "help-toc-light.png"));
             if (!(await helpWindow.ReaderStateForSmokeTest()).Contains("false")) throw new InvalidOperationException("Help reader did not follow the app's light appearance.");
@@ -1071,6 +1076,67 @@ public sealed partial class MainWindow
             Application.Current.Exit();
         }
     }
+    private async Task VerifyHelpWindowForSmokeTestAsync(string report)
+    {
+        var originalTheme = Model.Settings.Get("theme", "system");
+        App.OpenHelpWindow(Root.ActualTheme);
+        var help = App.HelpWindowForSmokeTest ?? throw new InvalidOperationException("Help did not open from the active window.");
+        try
+        {
+            for (var attempt = 0; attempt < 100 && help.LoadedPageForSmokeTest == null; attempt++) await Task.Delay(100);
+            if (help.LoadedPageForSmokeTest?.Contains("/welcome.html") != true) throw new InvalidOperationException("Help did not load the local book.");
+            foreach (var theme in new[] { "light", "dark" })
+            {
+                PreviewTheme(theme); await Task.Delay(150);
+                VerifyHelpCaptionForSmokeTest(help, theme == "dark");
+                if (!(await help.ReaderStateForSmokeTest()).Contains(theme == "dark" ? "true" : "false")) throw new InvalidOperationException("Help reader theme differs from its window.");
+                await CaptureSmokeImage((FrameworkElement)help.Content, Path.Combine(Path.GetDirectoryName(report)!, "help-information-" + theme + ".png"));
+            }
+        }
+        finally { help.Close(); PreviewTheme(originalTheme); }
+    }
+
+    private static void VerifyHelpCaptionForSmokeTest(Views.HelpWindow help, bool dark)
+    {
+        var caption = help.AppWindow.TitleBar;
+        if (caption.ButtonHoverBackgroundColor is not { A: 255 } hover || caption.ButtonPressedBackgroundColor is not { A: 255 } pressed ||
+            (!dark && (hover.R < 200 || hover.G < 200 || hover.B < 200)) || (dark && (hover.R > 90 || hover.G > 90 || hover.B > 90)))
+            throw new InvalidOperationException("Help caption hover and pressed backgrounds must be opaque and follow the window theme.");
+    }
+
+    private async Task VerifyAboutMenuForSmokeTestAsync()
+    {
+        var busy = typeof(ViewModels.StudioViewModel).GetProperty(nameof(ViewModels.StudioViewModel.Busy))!;
+        var original = Model.Busy;
+        try
+        {
+            foreach (var processing in new[] { false, true })
+            {
+                busy.SetValue(Model, processing);
+                UpdateDesktopMenuStates();
+                if (!CanRunDesktopCommand("about") || !CanRunDesktopCommand("help") || !CanRunDesktopCommand("settings"))
+                    throw new InvalidOperationException("Editor or gallery processing disabled application information commands.");
+                var item = desktopMenuItems["about"].First(item => item.Visibility == Visibility.Visible);
+                var peer = new Microsoft.UI.Xaml.Automation.Peers.MenuFlyoutItemAutomationPeer(item);
+                var invoke = (Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke);
+                invoke.Invoke();
+                await Task.Delay(200);
+                var settings = openSettings ?? throw new InvalidOperationException("Help > About did not open Settings.");
+                if (!settings.AppWindow.IsVisible || settings.SelectedSectionForSmokeTest != 7) throw new InvalidOperationException("Help > About opened the wrong page.");
+                settings.SelectSection(0);
+                if (settings.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter) presenter.Minimize();
+                invoke.Invoke();
+                await Task.Delay(200);
+                if (!ReferenceEquals(settings, openSettings) || settings.SelectedSectionForSmokeTest != 7 ||
+                    settings.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter { State: Microsoft.UI.Windowing.OverlappedPresenterState.Minimized })
+                    throw new InvalidOperationException("Help > About failed to restore and reuse Settings.");
+                settings.Hide();
+                await Task.Delay(100);
+            }
+        }
+        finally { busy.SetValue(Model, original); openSettings?.Hide(); UpdateDesktopMenuStates(); }
+    }
+
     private async Task VerifySettingsWindowLifetimeForSmokeTestAsync()
     {
         // An auxiliary test host keeps the dispatcher alive to inspect the final close.
@@ -1241,7 +1307,10 @@ public sealed partial class MainWindow
         await VerifyMenuAccessForSmokeTestAsync(report);
         await VerifyInspectorDisclosureForSmokeTestAsync();
         await VerifyEditorSectionToolbarForSmokeTestAsync(report);
+        await VerifyAboutMenuForSmokeTestAsync();
         ShowGallery_Click(this, new RoutedEventArgs());
+        await VerifyAboutMenuForSmokeTestAsync();
+        await VerifyHelpWindowForSmokeTestAsync(report);
         await VerifyProjectSortingForSmokeTestAsync();
         var originalTheme = Model.Settings.Get("theme", "system");
         var scale = Root.XamlRoot.RasterizationScale;
@@ -1275,6 +1344,7 @@ public sealed partial class MainWindow
             if (openSettings != settings || settings.SelectedSectionForSmokeTest != 8)
                 throw new InvalidOperationException("YouTube Accounts did not reuse Settings or select its page.");
             settings.VerifySidebarNavigationForSmokeTest();
+            await settings.VerifyInformationForSmokeTestAsync();
             await settings.VerifyLayoutForSmokeTestAsync();
             await settings.VerifySarvamSettingsForSmokeTestAsync(async () => {
                 foreach (var theme in new[] { "dark", "light" }) {
@@ -2297,13 +2367,15 @@ public sealed partial class MainWindow
                 if (copyButtons.Length != 1 || copyButtons[0].Content?.ToString() != CurrentSectionCopyTitle || !CopyDefaultKinds(true).SequenceEqual(new[] { kind }) || !CopyDefaultKinds(false).SequenceEqual(new[] { "transcript", "summary", "descriptions" }))
                     throw new InvalidOperationException("The inspector must offer one named current-section Copy and Translate action, while Edit defaults to all sections.");
                 var headers = panel.Children.OfType<ComboBox>().Select(c => c.Header?.ToString()).ToArray();
-                foreach (var other in new[] { "transcript", "summary", "descriptions" }.Where(k => k != kind))
-                    if (headers.Contains(Models.LanguageResult.KindTitle(other) + " Generation Language")) throw new InvalidOperationException("Inspector leaked language controls from another tab.");
+                if (headers.Any(header => header?.EndsWith(" Generation Language") == true || header == "Review language filter") ||
+                    panel.Children.OfType<Control>().FirstOrDefault() is not ComboBox { Header: "View Project Language" })
+                    throw new InvalidOperationException("The inspector must start with one shared language and omit repeated language choices.");
                 if (languageControls.Any(pair => pair.requiresEdit && pair.control.IsEnabled)) throw new InvalidOperationException("Language mutation controls must be disabled in view mode.");
                 if (tab == 1) summaryEditMode = true; else editMode = true;
                 var editingPanel = BuildLanguageResultsPanel(project);
-                if (!editingPanel.Children.OfType<Button>().Any(button => button.Content as string == "Keep All Sections in Sync"))
-                    throw new InvalidOperationException("Sync action must appear in inspector edit mode.");
+                if (editingPanel.Children.OfType<Button>().Any(button => button.Content as string == "Keep All Sections in Sync") ||
+                    editingPanel.Children.OfType<ComboBox>().Any(picker => picker.Header?.ToString()?.EndsWith(" Generation Language") == true))
+                    throw new InvalidOperationException("Editing must keep the single shared language without sync or section targets.");
                 if (!HasUnsavedLanguageSummary && languageControls.Any(pair => pair.requiresEdit && !pair.control.IsEnabled)) throw new InvalidOperationException("Language controls must be available in Edit mode, including empty sections.");
                 summaryEditMode = false;
             }

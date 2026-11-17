@@ -9,6 +9,7 @@ import zipfile
 parser = argparse.ArgumentParser()
 parser.add_argument("package")
 parser.add_argument("--platform", choices=["arm64", "x64"], required=True)
+parser.add_argument("--release", action="store_true", help="Require a self-contained frozen engine and bundled media tools")
 args = parser.parse_args()
 with zipfile.ZipFile(args.package) as package:
     names = {urllib.parse.unquote(name).replace("\\", "/"): name for name in package.namelist()}
@@ -33,6 +34,9 @@ with zipfile.ZipFile(args.package) as package:
     assert machine("VidiStudio.ShellExtension.dll") == expected, "Wrong shell extension architecture"
     for file in ["Assets/sarvam-voices.json", "engine/sarvam_tts.py", "engine/sarvam-voices.json", "speech/VidiStudio.SpeechHost.runtimeconfig.json", "engine/vidistudio_engine.py", "engine/windows_speech.py", "engine/mov_accessibility.py", "engine/youtube_audio.py", "engine/ai-defaults.json", "Assets/youtube.html", "Assets/piper-voices.json", "Assets/Sounds/descend.wav", "Assets/Sounds/Boink3.wav", "Assets/Sounds/ascend.wav", "Assets/Sounds/Buzzer1.wav", "piper/piper.exe", "piper/onnxruntime.dll", "piper/espeak-ng-data/en_dict"]:
         read(file)
+    read("Assets/FFmpeg-GPLv3.txt")
+    read("engine-bin/licenses/THIRD-PARTY-LICENSES.txt")
+    read("engine-bin/licenses/Piper-MIT.txt")
     modern_ns = {
         "com": "http://schemas.microsoft.com/appx/manifest/com/windows10",
         "desktop4": "http://schemas.microsoft.com/appx/manifest/desktop/windows10/4",
@@ -47,6 +51,11 @@ with zipfile.ZipFile(args.package) as package:
     # Piper is published only as a Windows x64 build, so it runs natively on x64 and through
     # Windows 11 ARM64 x64 emulation.
     assert machine("piper/piper.exe") == 0x8664, "The bundled Piper engine must be the Windows x64 build"
+    if args.release:
+        assert machine("coreclr.dll") == expected, "Release must include the matching .NET runtime"
+        read("engine-bin/vidistudio-engine.exe")
+        for media_tool in ("ffmpeg", "ffprobe"):
+            assert machine(f"engine-bin/media/{media_tool}.exe") in (expected, 0x8664), "Media tool is incompatible with target"
     if "engine-bin/vidistudio-engine.exe" in names:
         engine_machine = machine("engine-bin/vidistudio-engine.exe")
         assert engine_machine in (expected, 0x8664), "Engine is incompatible with target"

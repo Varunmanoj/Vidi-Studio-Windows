@@ -61,7 +61,7 @@ public sealed partial class MainWindow
             }
             async Task RunImport(string command, IEnumerable<string> arguments)
             {
-                if (await Model.RunAsync(command, arguments.Concat(new[] { "--language", selection.Language ?? project.SelectedLanguage })) is not { Count: > 0 })
+                if (await Model.RunAsync(command, arguments.Concat(new[] { "--language", project.SelectedLanguage })) is not { Count: > 0 })
                 {
                     if (Model.Status.StartsWith("Cancelled", StringComparison.Ordinal)) throw new OperationCanceledException();
                     throw new IOException(Model.Status);

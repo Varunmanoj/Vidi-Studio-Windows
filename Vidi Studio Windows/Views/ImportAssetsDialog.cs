@@ -18,7 +18,6 @@ namespace Vidi_Studio_Windows.Views;
 /// <summary>Shared file selection for New Project and existing-project imports.</summary>
 public sealed class ImportAssetsPicker : UserControl
 {
-    private readonly ComboBox languagePicker = new() { Header = "Language", DisplayMemberPath = "Title", ItemsSource = OutputLanguage.Options };
     private readonly Window owner;
     private readonly StackPanel panel = new() { Spacing = 10 };
     private readonly StackPanel textPanel = new() { Spacing = 0 };
@@ -46,7 +45,7 @@ public sealed class ImportAssetsPicker : UserControl
         adAudioMode.SelectedIndex == 0 ? "narration" : "fullMix",
         OriginalAudioPath: youtube ? originalAudio : null,
         OriginalAudioPlayback: originalPlayback.SelectedIndex == 1,
-        OriginalAudioTranscription: originalTranscription.SelectedIndex == 1, CaptionProvenancePath: captionProvenance, Language: (languagePicker.SelectedItem as OutputLanguage)?.Id ?? "auto");
+        OriginalAudioTranscription: originalTranscription.SelectedIndex == 1, CaptionProvenancePath: captionProvenance, Language: (owner as MainWindow)?.SettingsProject?.SelectedLanguage);
     public bool CanImport => Selection.HasAny && (adTranscript == null || adTranscriptMode.SelectedIndex != 0 || hasTranscript || transcript != null);
 
     public ImportAssetsPicker(Window owner, ImportScope scope = ImportScope.All, double width = 640, bool showOriginal = true)
@@ -55,19 +54,6 @@ public sealed class ImportAssetsPicker : UserControl
         this.scope = scope;
         Width = width;
         Content = panel;
-        languagePicker.SelectedItem = OutputLanguage.Options.FirstOrDefault(v => v.Id == (owner as MainWindow)?.SettingsProject?.SelectedLanguage) ?? OutputLanguage.Options[0];
-        languagePicker.Header = null;
-        AutomationProperties.SetName(languagePicker, "Language");
-        languagePicker.Width = 220;
-        languagePicker.VerticalAlignment = VerticalAlignment.Center;
-        var languageRow = new Grid { ColumnSpacing = 12, Padding = new Thickness(12) };
-        languageRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        languageRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var languageLabel = new TextBlock { Text = "Language", VerticalAlignment = VerticalAlignment.Center };
-        AutomationProperties.SetHeadingLevel(languageLabel, Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2);
-        languageRow.Children.Add(languageLabel);
-        Grid.SetColumn(languagePicker, 1); languageRow.Children.Add(languagePicker);
-        panel.Children.Add(Section("Language", languageRow, showHeading: false));
         if (showOriginal && (scope is ImportScope.All or ImportScope.OriginalAudio))
         {
             originalPanel.Children.Add(Row("Original audio", new[] { ".wav", ".mp3", ".m4a", ".aac", ".flac" }, () => originalAudio, value => originalAudio = value));
@@ -270,15 +256,12 @@ public sealed class ImportAssetsPicker : UserControl
         var sections = panel.Children.OfType<StackPanel>().Where(child => child.Visibility == Visibility.Visible).ToArray();
         var titles = sections.Select(section => section.Children.OfType<TextBlock>().SingleOrDefault() ??
             ((Grid)section.Children.OfType<Border>().Single().Child).Children.OfType<TextBlock>().Single()).ToArray();
-        if (!titles.Select(title => title.Text).SequenceEqual(new[] { "Language", "Text assets", "AD audio" }) ||
+        if (!titles.Select(title => title.Text).SequenceEqual(new[] { "Text assets", "AD audio" }) ||
             titles.Any(title => AutomationProperties.GetHeadingLevel(title) != Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2) ||
             adTranscriptMode.Visibility != Visibility.Collapsed || adAudioMode.Visibility != Visibility.Collapsed || combineGuidance.Visibility != Visibility.Collapsed)
             throw new InvalidOperationException("Empty import should expose grouped headings and no inactive type choices or combine text.");
-        var row = (Grid)((Border)sections[0].Children.Last()).Child;
-        var languageCenter = languagePicker.TransformToVisual(row).TransformPoint(new Windows.Foundation.Point(0, languagePicker.ActualHeight / 2));
-        var labelCenter = titles[0].TransformToVisual(row).TransformPoint(new Windows.Foundation.Point(titles[0].ActualWidth, titles[0].ActualHeight / 2));
-        if (Math.Abs(languageCenter.Y - labelCenter.Y) > 1 || languageCenter.X < labelCenter.X)
-            throw new InvalidOperationException("Language label and picker must share one aligned row.");
+        if (panel.Children.OfType<ComboBox>().Any(c => AutomationProperties.GetName(c) == "Language"))
+            throw new InvalidOperationException("Imports must inherit the project language without another language picker.");
         try
         {
             SetFilesForSmokeTest(new ImportAssetSelection(TranscriptPath: "dialogue.srt", ADTranscriptPath: "description.srt", ADAudioPath: "narration.wav"));

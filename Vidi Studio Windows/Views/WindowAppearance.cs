@@ -171,8 +171,10 @@ internal static class WindowAppearance
         var captionBackground = materialChrome ? Windows.UI.Color.FromArgb(1, 255, 255, 255) : background;
         var foreground = dark ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
         var inactive = dark ? Windows.UI.Color.FromArgb(255, 160, 160, 160) : Windows.UI.Color.FromArgb(255, 96, 96, 96);
-        var hover = dark ? Windows.UI.Color.FromArgb(26, 255, 255, 255) : Windows.UI.Color.FromArgb(20, 0, 0, 0);
-        var pressed = dark ? Windows.UI.Color.FromArgb(40, 255, 255, 255) : Windows.UI.Color.FromArgb(32, 0, 0, 0);
+        // DWM ignores alpha in caption hover/pressed fills on supported Windows builds.
+        // Supply the composited opaque colours so light captions cannot turn black.
+        var hover = dark ? Windows.UI.Color.FromArgb(255, 55, 55, 55) : Windows.UI.Color.FromArgb(255, 229, 229, 229);
+        var pressed = dark ? Windows.UI.Color.FromArgb(255, 68, 68, 68) : Windows.UI.Color.FromArgb(255, 213, 213, 213);
 
         titleBar.BackgroundColor = background;
         titleBar.InactiveBackgroundColor = background;

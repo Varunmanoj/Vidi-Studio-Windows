@@ -987,6 +987,10 @@
         {
           "id": "elevenlabs-privacy",
           "title": "ElevenLabs narration"
+        },
+        {
+          "id": "browser-sharing",
+          "title": "Browser sharing"
         }
       ]
     }

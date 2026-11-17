@@ -235,6 +235,14 @@ class TestFileExplorerActivation(unittest.TestCase):
         self.assertIn('Item("Re-Analyze this segment", async (_, _) => {', source)
         self.assertIn('await Model.RunAsync("reanalyze-transcript-segment", new[] { "--input", path })', source)
 
+    def test_redirected_browser_link_is_copied_before_ui_dispatch(self):
+        source = self.app_xaml_cs_path.read_text(encoding="utf-8")
+        handler = source.split("mainInstance.Activated +=", 1)[1]
+        before_dispatch, queued = handler.split("dispatcher.TryEnqueue", 1)
+        self.assertIn("ReadActivation(redirectedArgs, null)", before_dispatch)
+        self.assertNotIn("redirectedArgs", queued.split("});", 1)[0])
+        self.assertIn("HandleIncomingActivationAsync(target, request)", queued)
+
     def test_startup_logs_launch_milestones_for_silent_failures(self):
         source = self.app_xaml_cs_path.read_text(encoding="utf-8")
         self.assertIn("LogStartup", source)

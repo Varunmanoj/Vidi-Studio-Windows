@@ -10,6 +10,7 @@ using Windows.ApplicationModel.Activation;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.ApplicationModel.DataTransfer.ShareTarget;
 using Windows.Storage;
+using Vidi_Studio_Windows.Services;
 
 namespace Vidi_Studio_Windows;
 
@@ -140,7 +141,7 @@ public partial class App : Application
             {
                 LogStartup("Another Vidi Studio instance owns the single-instance key; redirecting activation and exiting this process.");
                 await mainInstance.RedirectActivationToAsync(activation);
-                System.Diagnostics.Process.GetCurrentProcess().Kill();
+                Exit();
                 return;
             }
         }
@@ -154,18 +155,23 @@ public partial class App : Application
 
             if (mainInstance != null)
             {
+                var dispatcher = window.DispatcherQueue;
                 mainInstance.Activated += (sender, redirectedArgs) =>
                 {
-                    window.DispatcherQueue.TryEnqueue(async () =>
+                    // The forwarding process can exit as soon as this callback returns.
+                    // Read its activation data before dispatching to the UI thread.
+                    var request = ReadActivation(redirectedArgs, null);
+                    dispatcher.TryEnqueue(async () =>
                     {
-                        window.Activate();
-                        window.BringToForeground();
-                        await HandleIncomingActivationAsync(window, redirectedArgs, null);
+                        var target = Windows.Contains(window) ? window : Windows.FirstOrDefault() ?? OpenWindow();
+                        target.Activate();
+                        target.BringToForeground();
+                        await HandleIncomingActivationAsync(target, request);
                     });
                 };
             }
 
-            await HandleIncomingActivationAsync(window, activation, launchArguments);
+            await HandleIncomingActivationAsync(window, ReadActivation(activation, launchArguments));
             LogStartup("Launch completed.");
         }
         catch (Exception ex)
@@ -178,30 +184,40 @@ public partial class App : Application
     private static string Truncate(string? value, int length) =>
         string.IsNullOrEmpty(value) ? "" : value.Length <= length ? value : value[..length] + "…";
 
-    private static async Task HandleIncomingActivationAsync(MainWindow window, AppActivationArguments activation, string? rawLaunchArgs)
+    private sealed record ActivationRequest(string? VideoPath, string? YouTubeUrl, ShareOperation? Share);
+
+    private static ActivationRequest ReadActivation(AppActivationArguments activation, string? rawLaunchArgs)
     {
         if (activation.Kind == ExtendedActivationKind.ShareTarget && activation.Data is ShareTargetActivatedEventArgs share)
+            return new(null, null, share.ShareOperation);
+
+        var (videoPath, youtubeUrl) = ParseActivationTarget(activation, rawLaunchArgs);
+        return new(videoPath, youtubeUrl, null);
+    }
+
+    private static async Task HandleIncomingActivationAsync(MainWindow window, ActivationRequest request)
+    {
+        if (request.Share is { } operation)
         {
             void Receive(object sender, RoutedEventArgs e)
             {
                 ((FrameworkElement)window.Content).Loaded -= Receive;
-                _ = ReceiveShare(window, share.ShareOperation);
+                _ = ReceiveShare(window, operation);
             }
             if (((FrameworkElement)window.Content).IsLoaded)
-                _ = ReceiveShare(window, share.ShareOperation);
+                _ = ReceiveShare(window, operation);
             else
                 ((FrameworkElement)window.Content).Loaded += Receive;
             return;
         }
 
-        var (videoPath, youtubeUrl) = ParseActivationTarget(activation, rawLaunchArgs);
-        if (!string.IsNullOrEmpty(videoPath))
+        if (!string.IsNullOrEmpty(request.VideoPath))
         {
-            await window.OpenVideoFileAsync(videoPath);
+            await window.OpenVideoFileAsync(request.VideoPath);
         }
-        else if (!string.IsNullOrEmpty(youtubeUrl))
+        else if (!string.IsNullOrEmpty(request.YouTubeUrl))
         {
-            await window.OpenYouTubeUrlAsync(youtubeUrl);
+            await window.OpenYouTubeUrlAsync(request.YouTubeUrl);
         }
     }
 
@@ -221,9 +237,7 @@ public partial class App : Application
 
         if (activation.Kind == ExtendedActivationKind.Protocol && activation.Data is IProtocolActivatedEventArgs protoArgs)
         {
-            var result = ParseProtocolUri(protoArgs.Uri);
-            if (result.VideoPath != null || result.YouTubeUrl != null)
-                return result;
+            return ParseProtocolUri(protoArgs.Uri);
         }
 
         if (activation.Kind == ExtendedActivationKind.CommandLineLaunch && activation.Data is ICommandLineActivatedEventArgs cmdArgs)
@@ -293,7 +307,7 @@ public partial class App : Application
                     return (fileUri.LocalPath, null);
                 return (source, null);
             }
-            if (kind == "youtube" && !string.IsNullOrWhiteSpace(source))
+            if (kind == "youtube" && SharedYouTubeLink.VideoId(source) != null)
             {
                 return (null, source);
             }
@@ -397,16 +411,7 @@ public partial class App : Application
     private static bool IsYouTubeUrl(string token)
     {
         var clean = token.Trim().Trim('"', '\'');
-        try
-        {
-            if (Uri.TryCreate(clean, UriKind.Absolute, out var uri))
-            {
-                var host = uri.Host.ToLowerInvariant();
-                return host == "youtu.be" || host == "www.youtu.be" || host.Contains("youtube.com");
-            }
-        }
-        catch { }
-        return false;
+        return SharedYouTubeLink.VideoId(clean) != null;
     }
 
     private static async Task ReceiveShare(MainWindow window, ShareOperation share)
@@ -424,6 +429,7 @@ public partial class App : Application
             else if (share.Data.Contains(StandardDataFormats.WebLink))
             {
                 var uri = await share.Data.GetWebLinkAsync();
+                if (SharedYouTubeLink.VideoId(uri.AbsoluteUri) == null) { share.ReportError(SharedYouTubeLink.InvalidMessage); return; }
                 await window.OpenYouTubeUrlAsync(uri.AbsoluteUri);
                 share.ReportDataRetrieved(); share.ReportCompleted();
             }

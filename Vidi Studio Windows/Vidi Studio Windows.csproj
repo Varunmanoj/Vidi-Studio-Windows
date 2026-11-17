@@ -8,7 +8,7 @@
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
-    <Version>1.0.342</Version>
+    <Version>1.0.346</Version>
     <Product>Vidi Studio</Product>
     <AssemblyTitle>Vidi Studio</AssemblyTitle>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>
@@ -24,6 +24,7 @@
          taskbar and Start tile fall back to the generic app icon even though
          the window and executable carry AppIcon.ico. -->
     <Content Include="Assets\AppIcon.svg" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Assets\BrowserExtension.zip" LogicalName="VidiStudio.BrowserExtension.zip" />
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\SplashScreen.scale-200.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\LockScreenLogo.scale-200.png" CopyToOutputDirectory="PreserveNewest" />

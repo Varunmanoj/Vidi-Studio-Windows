@@ -461,9 +461,12 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            var incoming = new Uri(url);
-            var videoId = incoming.Host.EndsWith("youtu.be", StringComparison.OrdinalIgnoreCase) ? incoming.AbsolutePath.Trim('/') : incoming.Query.TrimStart('?').Split('&').FirstOrDefault(v => v.StartsWith("v="))?[2..];
-            if (videoId != null) (await YouTubeService.Shared.VideoAsync(videoId)).RequireAvailable();
+            var videoId = SharedYouTubeLink.VideoId(url);
+            if (videoId == null)
+            {
+                await ShowErrorMessage("Unsupported Link", SharedYouTubeLink.InvalidMessage);
+                return;
+            }
             Model.Reload();
             var existing = Model.ExistingProjectForYouTube(url);
             if (existing != null)
@@ -473,6 +476,7 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
+            (await YouTubeService.Shared.VideoAsync(videoId)).RequireAvailable();
             await Model.RunAsync("import-youtube", new[] { "--url", url, "--library", Model.Settings.Get("libraryPath") }, false);
             if (Model.Project != null) ShowEditor();
         }

@@ -400,52 +400,19 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public StudioProject? ExistingProjectForYouTube(string rawUrl)
     {
         if (string.IsNullOrWhiteSpace(rawUrl)) return null;
-        var candidateId = ExtractYouTubeId(rawUrl);
+        var candidateId = SharedYouTubeLink.VideoId(rawUrl);
         return Projects.FirstOrDefault(p =>
         {
             if (!p.IsYouTube || string.IsNullOrWhiteSpace(p.YoutubeURL)) return false;
             if (candidateId != null)
             {
-                var existingId = ExtractYouTubeId(p.YoutubeURL);
-                if (existingId != null) return string.Equals(candidateId, existingId, StringComparison.OrdinalIgnoreCase);
+                var existingId = SharedYouTubeLink.VideoId(p.YoutubeURL);
+                if (existingId != null) return string.Equals(candidateId, existingId, StringComparison.Ordinal);
             }
             return string.Equals(p.YoutubeURL.Trim(), rawUrl.Trim(), StringComparison.OrdinalIgnoreCase);
         });
     }
-    private static string? ExtractYouTubeId(string url)
-    {
-        try
-        {
-            if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri)) return null;
-            var host = uri.Host.ToLowerInvariant();
-            if (host is "youtu.be" or "www.youtu.be")
-            {
-                var id = uri.AbsolutePath.TrimStart('/');
-                var slash = id.IndexOf('/');
-                if (slash >= 0) id = id.Substring(0, slash);
-                return id.Length == 11 ? id : null;
-            }
-            if (host.Contains("youtube.com"))
-            {
-                if (uri.AbsolutePath == "/watch")
-                {
-                    foreach (var pair in uri.Query.TrimStart('?').Split('&'))
-                    {
-                        var kv = pair.Split('=');
-                        if (kv.Length == 2 && kv[0] == "v" && kv[1].Length == 11)
-                            return kv[1];
-                    }
-                }
-                var parts = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length > 1 && (parts[0] == "shorts" || parts[0] == "embed" || parts[0] == "live"))
-                {
-                    return parts[1].Length == 11 ? parts[1] : null;
-                }
-            }
-        }
-        catch { }
-        return null;
-    }
+
     public async Task<bool> DeleteProjectFolderAsync(StudioProject project)
     {
         if (Busy) return false;
@@ -673,7 +640,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         if (command == "import-youtube") {
             var supplied = extra?.ToList() ?? new List<string>();
             var position = supplied.IndexOf("--url");
-            var id = position >= 0 && position + 1 < supplied.Count ? ExtractYouTubeId(supplied[position + 1]) : null;
+            var id = position >= 0 && position + 1 < supplied.Count ? SharedYouTubeLink.VideoId(supplied[position + 1]) : null;
             if (id == null) throw new InvalidOperationException("Enter a valid YouTube video link.");
             var video = await YouTubeService.Shared.VideoAsync(id);
             video.RequireAvailable();

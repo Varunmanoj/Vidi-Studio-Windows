@@ -15,6 +15,16 @@ if (!(Test-Path -LiteralPath $buildPython)) {
 if ($buildPython) {
     & $buildPython (Join-Path $PSScriptRoot 'sync_version.py') --sync
     if ($LASTEXITCODE -ne 0) { throw 'Desktop version synchronization failed.' }
+    $workspaceRoot = if ($env:VIDISTUDIO_DESKTOP_WORKSPACE) { $env:VIDISTUDIO_DESKTOP_WORKSPACE } else { Split-Path $projectRoot -Parent }
+    $browserPackager = Join-Path $workspaceRoot 'VidiStudio Mac/script/package_browser_extension.py'
+    if (Test-Path -LiteralPath $browserPackager) {
+        & $buildPython $browserPackager --windows-payload (Join-Path $projectRoot 'Vidi Studio Windows/Assets/BrowserExtension.zip')
+        if ($LASTEXITCODE -ne 0) { throw 'Local browser extension packaging failed.' }
+        if ($Package) {
+            & $buildPython $browserPackager --output (Join-Path $projectRoot 'dist/browser-extensions')
+            if ($LASTEXITCODE -ne 0) { throw 'Browser extension packaging failed.' }
+        }
+    }
     & $buildPython (Join-Path $PSScriptRoot 'check_menu_parity.py') --allow-missing
     if ($LASTEXITCODE -ne 0) { throw 'Desktop menu parity check failed.' }
     & $buildPython (Join-Path $PSScriptRoot 'check_desktop_ui_parity.py') --allow-missing

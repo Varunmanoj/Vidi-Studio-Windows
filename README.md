@@ -1,6 +1,6 @@
 # Vidi Studio for Windows
 
-Native WinUI 3 / .NET 8 front end for the VidiStudio portable media engine. The Windows application targets **ARM64 and x64**. Project folders remain compatible with the macOS engine. The Mac checkout has not been modified.
+Native WinUI 3 / .NET 8 front end for the VidiStudio portable media engine. The Windows application targets **ARM64 and x64**. Project folders remain compatible with the macOS engine. Minimum OS: **Windows 10 version 1809 (build 17763) on x64**, or **Windows 11 version 21H2 (build 22000) on ARM64**. The ARM64 package uses x64 helpers through Windows 11 emulation; Windows 10 on ARM is not supported. See [the dependency and compatibility audit](docs/PLATFORM_COMPATIBILITY.md). Windows Help and YouTube playback require the WebView2 Evergreen Runtime. Piper voices also require the Microsoft Visual C++ v14 x64 Redistributable on both x64 and ARM64.
 
 ## Bring Your Own Key (BYOK) Architecture
 
@@ -19,7 +19,7 @@ VidiStudio is maintained across dedicated desktop repositories and an online sho
 | Component | Platform / Role | Repository URL | Links |
 | :--- | :--- | :--- | :--- |
 | **Windows Application** | Native WinUI 3 / .NET 8 (ARM64 & x64) | `https://github.com/Varunmanoj/Vidi-Studio-Windows.git` | [GitHub Repo](https://github.com/Varunmanoj/Vidi-Studio-Windows) |
-| **macOS Application** | Native SwiftUI / AVKit (macOS 26+) | `https://github.com/Varunmanoj/VidiStudio-Mac.git` | [GitHub Repo](https://github.com/Varunmanoj/VidiStudio-Mac) |
+| **macOS Application** | Native SwiftUI / AVKit (macOS 26.4+ on Apple Silicon) | `https://github.com/Varunmanoj/VidiStudio-Mac.git` | [GitHub Repo](https://github.com/Varunmanoj/VidiStudio-Mac) |
 | **Online Showcase & Web** | React / Vite Landing Page & Documentation | `https://github.com/Varunmanoj/VidiStudio.git` | [GitHub Repo](https://github.com/Varunmanoj/VidiStudio) |
 | **Official Website** | Live Product Showcase & Feature Guide | — | [accessivideo.pages.dev](https://accessivideo.pages.dev/) |
 

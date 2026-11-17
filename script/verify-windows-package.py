@@ -5,6 +5,7 @@ import re
 import urllib.parse
 import xml.etree.ElementTree as ET
 import zipfile
+from pathlib import Path
 
 parser = argparse.ArgumentParser()
 parser.add_argument("package")
@@ -21,6 +22,19 @@ with zipfile.ZipFile(args.package) as package:
     ns = {"p": "http://schemas.microsoft.com/appx/manifest/foundation/windows10"}
     identity = manifest.find("p:Identity", ns)
     assert identity.attrib["ProcessorArchitecture"] == args.platform, "Wrong MSIX architecture"
+    families = manifest.findall("p:Dependencies/p:TargetDeviceFamily", ns)
+    minimum = {"arm64": "10.0.22000.0", "x64": "10.0.17763.0"}[args.platform]
+    assert len(families) == 1 and families[0].attrib["Name"] == "Windows.Desktop", "Expected only the Desktop OS contract"
+    assert families[0].attrib["MinVersion"] == minimum, "Wrong minimum Windows version for this CPU"
+    dependency_root = Path(args.package).parent / 'Dependencies'
+    for dependency in dependency_root.rglob('*') if dependency_root.exists() else []:
+        if dependency.suffix.lower() not in ('.msix', '.appx'):
+            continue
+        with zipfile.ZipFile(dependency) as runtime:
+            runtime_manifest = ET.fromstring(runtime.read('AppxManifest.xml'))
+        for family in runtime_manifest.findall('p:Dependencies/p:TargetDeviceFamily', ns):
+            required = tuple(map(int, family.attrib['MinVersion'].split('.')))
+            assert required <= tuple(map(int, minimum.split('.'))), f'{dependency.name} exceeds the advertised Windows minimum'
     app = manifest.find("p:Applications/p:Application", ns)
     expected = {"arm64": 0xaa64, "x64": 0x8664}[args.platform]
     def machine(name):

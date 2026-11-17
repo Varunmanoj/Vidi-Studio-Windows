@@ -13,6 +13,7 @@ if (!$CreateTestCertificate -and !$CertificateThumbprint) { throw 'Supply -Certi
 [xml]$manifest = Get-Content (Join-Path $root 'Vidi Studio Windows\Package.appxmanifest')
 $publisher = [string]$manifest.Package.Identity.Publisher
 $version = [string]$manifest.Package.Identity.Version
+$minimumOS = if ($Platform -eq 'ARM64') { 'Windows 11 version 21H2, build 22000 or later' } else { 'Windows 10 version 1809, build 17763 or later' }
 $output = Join-Path $root "dist\release\$version\$Platform"
 New-Item -ItemType Directory -Force $output | Out-Null
 if ($CreateTestCertificate) {
@@ -106,6 +107,7 @@ try {
     if (Test-Path $dependencies) { Copy-Item $dependencies $output -Recurse -Force }
     @"
 VidiStudio $version / $Platform
+Minimum OS: $minimumOS
 Signing subject: $publisher
 Thumbprint: $($certificate.Thumbprint)
 Test certificate: $CreateTestCertificate
@@ -115,6 +117,10 @@ Cert:\LocalMachine\TrustedPeople before installation. Never distribute private k
 Install dependencies from the matching CPU folder, then install the MSIX using
 Add-AppxPackage -Path <MSIX> -DependencyPath <dependency MSIX paths>.
 The ARM64 package includes x64 Piper/FFmpeg and requires Windows 11 ARM emulation.
+Piper voices require the Microsoft Visual C++ v14 X64 Redistributable on both CPUs:
+https://aka.ms/vc14/vc_redist.x64.exe
+Help and YouTube playback also need WebView2 Evergreen if it is not installed.
+These two Microsoft prerequisites are not embedded in this ZIP.
 Browser extensions still require separate browser installation/consent.
 Public release also requires completing the repository FFmpeg distribution review.
 "@ | Set-Content (Join-Path $output 'INSTALL.txt') -Encoding UTF8

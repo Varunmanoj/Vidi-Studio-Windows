@@ -65,6 +65,10 @@
   <MenuBar AutomationProperties.Name="Main menu" x:Name="MainMenu" Grid.Row="1" Background="Transparent"/>
   <Border x:Name="AppSurface" Grid.Row="2" Grid.RowSpan="4" Background="{ThemeResource LayerFillColorDefaultBrush}" IsHitTestVisible="False"/>
   <StackPanel Grid.Row="2">
+   <StackPanel x:Name="SharedVideoProgress" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8" Margin="8" Visibility="Collapsed">
+    <ProgressRing x:Name="SharedVideoRing" Width="20" Height="20" IsActive="False" AutomationProperties.Name="Opening YouTube project" AutomationProperties.AutomationId="shared-youtube-opening"/>
+    <TextBlock x:Name="SharedVideoProgressText" Text="Opening YouTube project…" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>
+   </StackPanel>
    <views:ConnectivityNotice/>
    <InfoBar x:Name="ApiKeyWarningBar" Severity="Warning" IsOpen="False" IsClosable="False" Margin="16,8,16,0"
             Title="Gemini API Key Required"

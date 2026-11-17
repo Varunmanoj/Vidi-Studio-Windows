@@ -39,6 +39,11 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        _ = Task.Run(() =>
+        {
+            try { LocalBrowserExtension.Refresh(); }
+            catch (Exception ex) { LogStartup("Local browser extension update failed: " + ex.Message); }
+        });
         UnhandledException += (_, e) =>
         {
             try { new Services.EngineClient(new Services.SettingsStore()).Log(e.Exception.ToString()); } catch { }

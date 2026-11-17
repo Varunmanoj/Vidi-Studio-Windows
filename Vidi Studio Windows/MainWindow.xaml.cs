@@ -43,7 +43,7 @@ public sealed partial class MainWindow : Window
     private bool ready;
     private bool windowClosed;
     private string? pendingVideoPath;
-    private string? pendingYouTubeUrl;
+    private readonly TaskCompletionSource<bool> sharedVideoWindowReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Segment? highlightedSegment;
     private Segment? previewingSegment;
     private readonly HashSet<Segment> activeSegmentRows = new();
@@ -146,6 +146,7 @@ public sealed partial class MainWindow : Window
         {
             DeletionActivity.Changed -= DeletionActivityChanged;
             windowClosed = true;
+            sharedVideoWindowReady.TrySetResult(false);
             ready = false;
             ConnectivityService.Shared.Changed -= ConnectivityChanged;
             if (fullScreenVideo) { try { ExitFullScreenVideo(); } catch (Exception ex) { Model.Engine.Log(ex.ToString()); } }
@@ -179,11 +180,7 @@ public sealed partial class MainWindow : Window
                 pendingVideoPath = null;
                 await OpenVideoFileAsync(vidPath);
             }
-            else if (pendingYouTubeUrl is { } ytUrl)
-            {
-                pendingYouTubeUrl = null;
-                await OpenYouTubeUrlAsync(ytUrl);
-            }
+            sharedVideoWindowReady.TrySetResult(true);
         };
 #if DEBUG
         Root.Loaded += async (_, _) => { if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_REPORT") is { } report && System.Threading.Interlocked.CompareExchange(ref smokeTestClaimed, 1, 0) == 0) await RunSmokeTestAsync(report); };
@@ -444,45 +441,64 @@ public sealed partial class MainWindow : Window
     public async Task OpenYouTubeUrlAsync(string url)
     {
         if (string.IsNullOrWhiteSpace(url)) return;
-        if (!ready)
+        var videoId = SharedYouTubeLink.VideoId(url);
+        if (videoId == null)
         {
-            pendingYouTubeUrl = url;
+            if (await sharedVideoWindowReady.Task) await ShowErrorMessage("Unsupported Link", SharedYouTubeLink.InvalidMessage);
             return;
         }
-
-        Activate();
-        BringToForeground();
-
-        if (Model.Busy)
+        if (Model.Busy || SharedVideoRing.IsActive)
         {
-            await ShowErrorMessage("Vidi Studio Is Busy", "Wait for the current operation to finish, then open the video again.");
+            if (await sharedVideoWindowReady.Task) await ShowErrorMessage("Vidi Studio Is Busy", "Wait for the current operation to finish, then open the video again.");
             return;
         }
-
+        var progressClock = new System.Diagnostics.Stopwatch();
+        bool opened = false;
+        SharedVideoRing.IsActive = true;
+        SharedVideoProgress.Visibility = Visibility.Visible;
         try
         {
-            var videoId = SharedYouTubeLink.VideoId(url);
-            if (videoId == null)
-            {
-                await ShowErrorMessage("Unsupported Link", SharedYouTubeLink.InvalidMessage);
-                return;
-            }
+            if (!await sharedVideoWindowReady.Task || windowClosed) return;
+            progressClock.Start();
+            Activate();
+            BringToForeground();
+            var peer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(SharedVideoProgressText);
+            peer?.RaiseNotificationEvent(Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationKind.Other,
+                Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationProcessing.MostRecent, SharedVideoProgressText.Text, "shared-youtube-opening");
+            // Let layout and accessibility process the status before reading the library synchronously.
+            var rendered = new TaskCompletionSource<bool>();
+            if (DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => rendered.SetResult(true)))
+                await rendered.Task;
+            if (windowClosed) return;
             Model.Reload();
             var existing = Model.ExistingProjectForYouTube(url);
             if (existing != null)
             {
                 Model.Open(existing.Folder);
                 ShowEditor();
+                opened = true;
                 return;
             }
 
-            (await YouTubeService.Shared.VideoAsync(videoId)).RequireAvailable();
             await Model.RunAsync("import-youtube", new[] { "--url", url, "--library", Model.Settings.Get("libraryPath") }, false);
-            if (Model.Project != null) ShowEditor();
+            if (Model.Project != null && SharedYouTubeLink.VideoId(Model.Project.YoutubeURL) == videoId)
+            {
+                ShowEditor();
+                opened = true;
+            }
         }
         catch (Exception ex)
         {
-            await ShowError(ex);
+            SharedVideoProgress.Visibility = Visibility.Collapsed;
+            if (!windowClosed) await ShowError(ex);
+        }
+        finally
+        {
+            // Keep a cached reopen visible long enough to perceive, even if the editor is ready immediately.
+            var remaining = TimeSpan.FromMilliseconds(450) - progressClock.Elapsed;
+            if (opened && !windowClosed && remaining > TimeSpan.Zero) await Task.Delay(remaining);
+            SharedVideoRing.IsActive = false;
+            SharedVideoProgress.Visibility = Visibility.Collapsed;
         }
     }
     private void SegmentContainer_Changing(ListViewBase sender, ContainerContentChangingEventArgs args)

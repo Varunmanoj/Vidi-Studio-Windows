@@ -2470,4 +2470,6 @@ Reserved Vidi Studio as an MSIX app in Partner Center (Store ID 9PMC3Z6XGJ4J) an
 
 Reopened the saved listing and verified five captioned screenshots from the installed app running on Windows 11 in Parallels. All Projects and the local editor use Dark mode. The YouTube editor, Appearance settings, and Help use Light mode. Verified the 300 × 300, 150 × 150, and 71 × 71 PNG app icons in their respective slots. The eight uploaded assets are in [docs/microsoft-store](docs/microsoft-store).
 
+Revised the English storefront descriptions, seven feature bullets, seven search terms, and five image captions for discoverability and accessibility. The [asset gallery](docs/microsoft-store/README.md) provides Markdown alt text for every screenshot and app icon.
+
 Partner Center shows Properties and Store listings as Complete. Submission 1 is In draft for review. Pricing and availability, Age ratings, and Packages are still marked Not started, and Submit for certification is disabled. Existing release MSIX files use the local self-signed package identity.

@@ -25,6 +25,10 @@
           "title": "Voices are platform-specific"
         },
         {
+          "id": "open-a-youtube-video-from-your-browser",
+          "title": "Open a YouTube video from your browser"
+        },
+        {
           "id": "start-with-a-short-video",
           "title": "Start with a short video"
         }
@@ -34,6 +38,10 @@
       "slug": "first-project",
       "title": "Create your first accessible video",
       "sections": [
+        {
+          "id": "start-from-youtube-instead",
+          "title": "Start from YouTube instead"
+        },
         {
           "id": "bring-existing-assets-instead",
           "title": "Bring existing assets instead"
@@ -155,6 +163,24 @@
         {
           "id": "matching-context-menus",
           "title": "Matching desktop context menus"
+        }
+      ]
+    },
+    {
+      "slug": "browser-extensions",
+      "title": "Browser extensions for YouTube",
+      "sections": [
+        {
+          "id": "install-chrome-edge",
+          "title": "Install for Chrome or Edge"
+        },
+        {
+          "id": "open-youtube",
+          "title": "Open a YouTube video in VidiStudio"
+        },
+        {
+          "id": "more-browser-help",
+          "title": "Troubleshooting and privacy"
         }
       ]
     },
@@ -909,6 +935,10 @@
         {
           "id": "exported-audio-track-labels",
           "title": "An exported original track says Unknown language"
+        },
+        {
+          "id": "browser-extension-problems",
+          "title": "The browser extension is missing or cannot open a YouTube video"
         },
         {
           "id": "summary-instructions",

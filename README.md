@@ -23,6 +23,10 @@ VidiStudio is maintained across dedicated desktop repositories and an online sho
 | **Online Showcase & Web** | React / Vite Landing Page & Documentation | `https://github.com/Varunmanoj/VidiStudio.git` | [GitHub Repo](https://github.com/Varunmanoj/VidiStudio) |
 | **Official Website** | Live Product Showcase & Feature Guide | — | [accessivideo.pages.dev](https://accessivideo.pages.dev/) |
 
+## Browser extensions
+
+Install **Describe with Vidi Studio** from the [Chrome Web Store](https://chromewebstore.google.com/detail/describe-with-vidi-studio/cpdbdailfhcbcfjmhoofbielolonncop) or [Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/describe-with-vidi-studio/gdmkdnhfhblkjggbhngdbohpgbfecpac) to open YouTube videos in the installed VidiStudio desktop app. See the [browser extension setup guide](https://vidistudio.varunmanojkumar.in/docs#docs-3-2-share) for setup and use.
+
 ## Build and run in Visual Studio on Windows ARM64
 
 1. Install Visual Studio with WinUI application development support, .NET desktop tools, and the Windows SDK. The native Windows 11 File Explorer context-menu extension is optional: when the **Desktop development with C++** workload and its matching ARM64 or x64 build tools are installed, the app's `BuildOptionalShellExtension` target builds `ShellExtension/VidiStudio.ShellExtension.vcxproj` and packages the DLL. Without that workload the app still builds and runs with the legacy **Show more options** context menu; install it and rebuild to enable the modern menu. The extension inherits `<DefaultPlatformToolset>` rather than pinning v143, so VS 2022 and newer releases use their installed toolset. This project retains the template's Microsoft.WindowsAppSDK 2.5.1 and SDK BuildTools 10.0.28000.2705 references. NuGet restore needs network access.

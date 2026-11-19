@@ -71,6 +71,20 @@ class HelpWindowTests(unittest.TestCase):
         self.assertIn('Windows 11 version 21H2', requirements)
         self.assertNotIn('Windows 26.4', requirements)
 
+    def test_browser_installation_is_searchable_and_links_to_both_stores(self):
+        pages = json.loads((HELP / 'manifest.json').read_text(encoding='utf-8'))['pages']
+        topic = next(page for page in pages if page['slug'] == 'browser-extensions')
+        self.assertIn('Browser extensions', topic['title'])
+        self.assertIn(
+            {'id': 'install-chrome-edge', 'title': 'Install for Chrome or Edge'},
+            topic['sections'],
+        )
+        html = (HELP / 'browser-extensions.html').read_text(encoding='utf-8')
+        self.assertRegex(html, r'<a href="https://chromewebstore\.google\.com/detail/[^"]+">[^<]+Chrome Web Store</a>')
+        self.assertRegex(html, r'<a href="https://microsoftedge\.microsoft\.com/addons/detail/[^"]+">[^<]+Microsoft Edge Add-ons</a>')
+        self.assertNotIn('Load unpacked', html)
+        self.assertNotIn('Safari', html)
+
     def test_help_window_has_native_book_navigation_and_html_reader(self):
         xaml = (APP / 'Views' / 'HelpWindow.xaml').read_text(encoding='utf-8')
         code = (APP / 'Views' / 'HelpWindow.xaml.cs').read_text(encoding='utf-8')

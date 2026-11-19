@@ -24,7 +24,7 @@ BUILT = mac / 'build' / 'help' / 'VidiStudio.help' / 'Contents' / 'Resources' / 
 TARGET = ROOT / 'Vidi Studio Windows' / 'Help'
 if not MAC_HELP.is_dir():
     parser.error('The Mac Help sources are required; pass --mac-root or VIDISTUDIO_DESKTOP_WORKSPACE.')
-ORDER = ['welcome', 'first-project', 'projects', 'editor', 'descriptions', 'analysis',
+ORDER = ['welcome', 'first-project', 'projects', 'browser-extensions', 'editor', 'descriptions', 'analysis',
          'narration', 'exports', 'playback', 'settings', 'keyboard', 'troubleshooting', 'privacy']
 
 def plain(value):

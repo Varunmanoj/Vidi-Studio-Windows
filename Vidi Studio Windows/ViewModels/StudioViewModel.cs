@@ -617,7 +617,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             report.Warnings.Add($"{p.UnknownNarrationCount} narration segment(s) have no recorded source and are labelled Unknown voice.");
         return report;
     }
-    public async Task<List<EngineEvent>> RunAsync(string command, IEnumerable<string>? extra = null, bool needsProject = true)
+    public async Task<List<EngineEvent>> RunAsync(string command, IEnumerable<string>? extra = null, bool needsProject = true,
+        bool throwOnProcessingError = false)
     {
         if (Busy) return new();
         if (needsProject && Project == null) { Status = "Open a project first."; return new(); }
@@ -837,6 +838,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             if (canRecoverYouTubeAudio && requestFolder != null && ex.RecoveryAction == "choose-original-audio")
                 audioRecovery = new(requestFolder, command, requestArguments);
             else DetectAiIssue(ex.Diagnostic);
+            if (throwOnProcessingError && audioRecovery == null) throw;
         }
         catch (Exception ex) { Engine.Log(ex.ToString()); Status = "Could not finish. Check Settings and the diagnostic log, then retry."; DetectAiIssue(ex.Message); }
         finally

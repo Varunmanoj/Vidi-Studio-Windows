@@ -366,7 +366,13 @@ public sealed partial class MainWindow : Window
             : "Check your settings and the diagnostic log, then retry. Your saved project remains available.";
         if (ex is ProcessingException processing)
             message = processing.DisplayMessage(Model.Settings.GetBool("developerMode"), Model.Settings.Get("apiKey"));
-        await ShowDialogAsync(new ContentDialog { Title = ex is ConnectivityException ? "Internet Connection Required" : "Action could not finish", Content = DialogMessage(message), CloseButtonText = "Close" });
+        var title = ex switch
+        {
+            ConnectivityException => "Internet Connection Required",
+            ProcessingException { IsDuplicateProject: true } => "Project Already Exists",
+            _ => "Action could not finish"
+        };
+        await ShowDialogAsync(new ContentDialog { Title = title, Content = DialogMessage(message), CloseButtonText = "Close" });
     }
     private async Task ShowErrorMessage(string title, string message)
     {
@@ -540,15 +546,18 @@ public sealed partial class MainWindow : Window
             var imports = dialog.AssetSelection;
             List<EngineEvent> created;
             if (dialog.IsYouTube)
-                created = await Model.RunAsync("import-youtube", new[] { "--url", dialog.YouTubeUrl, "--library", dialog.LibraryPath }, false);
+                created = await Model.RunAsync("import-youtube", new[] { "--url", dialog.YouTubeUrl, "--library", dialog.LibraryPath },
+                    needsProject: false, throwOnProcessingError: true);
             else if (dialog.VideoPath is { } path)
-                created = await Model.RunAsync("import-video", new[] { "--video", path, "--library", dialog.LibraryPath }, false);
+                created = await Model.RunAsync("import-video", new[] { "--video", path, "--library", dialog.LibraryPath },
+                    needsProject: false, throwOnProcessingError: true);
             else return;
             // Cancelled processing returns no events and leaves the previous project selected.
             // Never apply the new files to that previous project.
             if (!created.Any(item => item.Data.TryGetProperty("project", out _)) || Model.Project == null)
             {
-                if (!Model.Status.StartsWith("Cancelled", StringComparison.Ordinal)) await ShowError(new IOException(Model.Status));
+                if (!Model.ConnectionFailure && !Model.Status.StartsWith("Cancelled", StringComparison.Ordinal))
+                    await ShowErrorMessage("Import Could Not Finish", Model.Status);
                 return;
             }
             ShowEditor();

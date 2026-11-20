@@ -100,7 +100,8 @@ public sealed partial class MainWindow
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_DIALOGS_ONLY") == "1")
             {
                 await VerifyCompanionDialogsForSmokeTestAsync(report);
-                await File.WriteAllTextAsync(report, "PASS: one hidden, content-fitted native window per dialog presentation, no visible startup resize or nested animation; light/dark initial presentation and live light/dark/system themes; dynamic content growth, cancellation before presentation, delete gating, and Primary/Secondary/Cancel results.");
+                await VerifyDuplicateProjectDialogForSmokeTestAsync(report);
+                await File.WriteAllTextAsync(report, "PASS: one hidden, content-fitted native window per dialog presentation, no visible startup resize or nested animation; light/dark initial presentation and live light/dark/system themes; dynamic content growth, cancellation before presentation, delete gating, Primary/Secondary/Cancel results, and duplicate New Project guidance with no writes to the existing project.");
                 return;
             }
             VerifyContextualMenusForSmokeTest();
@@ -1473,6 +1474,60 @@ public sealed partial class MainWindow
             throw new InvalidOperationException("A genuine content change did not resize the existing dialog window.");
         dialog.Hide();
         await display;
+    }
+
+    private async Task VerifyDuplicateProjectDialogForSmokeTestAsync(string report)
+    {
+        var project = Model.Project!;
+        var manifest = Path.Combine(project.Folder, "project.json");
+        var original = await File.ReadAllBytesAsync(manifest);
+        var library = Model.Settings.Get("libraryPath");
+        var folders = Directory.GetDirectories(library);
+        var sourceDialog = new TaskCompletionSource<Views.NewProjectDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var notice = new TaskCompletionSource<ContentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Capture(ContentDialog dialog, Window window)
+        {
+            if (dialog is Views.NewProjectDialog newProject) sourceDialog.TrySetResult(newProject);
+            else notice.TrySetResult(dialog);
+        }
+        void Invoke(ContentDialog dialog, string label)
+        {
+            var button = FindButton(dialog, label) ?? throw new InvalidOperationException("Missing dialog button: " + label);
+            var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(button);
+            ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+        }
+
+        Views.WindowedDialog.ReadyToShow += Capture;
+        var create = ShowNewProjectDialogAsync(false);
+        try
+        {
+            var dialog = await sourceDialog.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            await dialog.InspectVideoForSmokeTestAsync(project.Resolve(project.Source));
+            Invoke(dialog, "Create Project");
+            var failure = await notice.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            if (failure.Title?.ToString() != "Project Already Exists" ||
+                !Model.Status.Contains("Open it from All Projects", StringComparison.Ordinal) ||
+                failure.Content is not StackPanel message ||
+                !string.Join(" ", message.Children.OfType<TextBlock>().Select(text => text.Text)).Contains("Open it from All Projects", StringComparison.Ordinal))
+                throw new InvalidOperationException("New Project hid the duplicate diagnosis: " + failure.Title + " / " + Model.Status);
+            await VerifyDialogThemesForSmokeTestAsync(failure, report, "duplicate-project-dialog");
+            VerifyCompactDialogLayout(failure);
+            Invoke(failure, "Close");
+            await create.WaitAsync(TimeSpan.FromSeconds(10));
+            if (Model.Busy || Model.Project?.Folder != project.Folder ||
+                !original.SequenceEqual(await File.ReadAllBytesAsync(manifest)) ||
+                !folders.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(Directory.GetDirectories(library)))
+                throw new InvalidOperationException("A rejected duplicate changed the project, library or busy state.");
+        }
+        finally
+        {
+            Views.WindowedDialog.ReadyToShow -= Capture;
+            if (!create.IsCompleted)
+            {
+                if (sourceDialog.Task.IsCompletedSuccessfully) sourceDialog.Task.Result.Hide();
+                if (notice.Task.IsCompletedSuccessfully) notice.Task.Result.Hide();
+            }
+        }
     }
     private async Task VerifyDialogCanceledBeforePresentationForSmokeTestAsync()
     {

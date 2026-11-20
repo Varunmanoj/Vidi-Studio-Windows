@@ -1,3 +1,11 @@
+## 2026-11-20 — Duplicate project message in New Project (1.0.358.0)
+
+The Windows log for the screenshot recorded the duplicate-project guard at 4:38 p.m. IST, followed by the generic Windows import dialog. The Sarvam banner came from a separate reachability check. New Project now preserves the classified engine exception and shows Project Already Exists with directions to All Projects. Local imports also explain how to proceed when a different file shares its name. Duplicate protection and the shared dialog layout still apply. No follow-on asset import can run after a rejected creation.
+
+Both desktop parity checkers passed. The Windows source suite passed 140 tests, including the local filename and YouTube ID duplicate guards. The shared browser handoff fixtures and the existing error presentation checks passed. The older Windows YouTube playback-bridge test still expects a response without rate and volume fields. Its source and the playback bridge are unchanged. The website guidance passed TypeScript, the production build and local desktop and mobile search and navigation. Public updates were not published.
+
+The installed Windows 11 ARM64 Debug package passed DialogsOnly, including a real local duplicate import from New Project. The dialog and status explained the collision, light and dark screenshots showed the complete message and focused Close button, and the fixture manifest, selected project and library directories were unchanged. GallerySettingsOnly stopped earlier when live Help did not render a published screenshot. The self-contained ARM64 Release passed package inspection and replaced Debug. Windows reported one current 1.0.358.0 app and one Start entry. Release launched and responded, and its installed engine passed doctor and all 20 CLI regressions. The staging payloads and completed test tasks were removed. Native Windows x64, live YouTube import and NVDA speech were not exercised. See build/duplicate-project-358-*.log.
+
 ## 2026-11-20 — Retry from the Help window (1.0.357.0)
 
 Help shows Retry next to Open in Browser when the documentation page fails to load and moves keyboard focus to Retry. The button and its context-menu item share the same action. A retry loads the last requested documentation address, clears the error and shows the loading ring.

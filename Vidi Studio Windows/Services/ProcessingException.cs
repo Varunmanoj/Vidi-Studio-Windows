@@ -5,14 +5,22 @@ namespace Vidi_Studio_Windows.Services;
 
 public sealed class ProcessingException : Exception
 {
+    private const string DuplicateProjectDiagnostic = "This project already exists. Please continue with the existing project or delete the existing project before continuing.";
+
     public string? RecoveryAction { get; }
     public string Diagnostic { get; }
+    public bool IsDuplicateProject { get; }
     public ProcessingException(string diagnostic, string? recoveryAction = null, string? command = null)
         : base(recoveryAction == "choose-original-audio"
             ? "YouTube audio could not be retrieved. Choose a matching audio file to retry this export. Existing exports are unchanged."
             : command == "generate-summary"
                 ? "The summary could not be created. Your transcript is safe. Please try again."
-                : UserMessage(diagnostic)) { RecoveryAction = recoveryAction; Diagnostic = diagnostic; }
+                : UserMessage(diagnostic, command))
+    {
+        RecoveryAction = recoveryAction;
+        Diagnostic = diagnostic;
+        IsDuplicateProject = IsDuplicateProjectFailure(diagnostic, command);
+    }
 
     public string DisplayMessage(bool developerMode, string apiKey)
     {
@@ -20,8 +28,16 @@ public sealed class ProcessingException : Exception
         var detail = string.IsNullOrEmpty(apiKey) ? Diagnostic : Diagnostic.Replace(apiKey, "[redacted]");
         return Message + "\n\nTechnical details:\n" + detail;
     }
-    private static string UserMessage(string diagnostic)
+    private static bool IsDuplicateProjectFailure(string diagnostic, string? command) =>
+        command is ("import-video" or "import-youtube") && diagnostic == DuplicateProjectDiagnostic;
+
+    private static string UserMessage(string diagnostic, string? command)
     {
+        if (IsDuplicateProjectFailure(diagnostic, command))
+            return command == "import-video"
+                ? "A project with this video filename already exists. Open it from All Projects, or rename the file if it’s a different video."
+                : "A project for this YouTube video already exists. Open it from All Projects.";
+
         // Only known validation messages can cross from engine diagnostics into UI.
         if (Regex.IsMatch(diagnostic, @"^AD segment \d+ takes [\d.]+s but has [\d.]+s\. Shorten its text or extend its gap\.$")) return diagnostic;
         foreach (var message in new[] {

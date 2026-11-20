@@ -1,3 +1,11 @@
+## 2026-11-20 — Microsoft Store Release packages (1.0.358.0)
+
+Built Visual Studio Release StoreUpload packages for ARM64 and x64 from commit 131e69c. Both unsigned `.msixupload` files, SHA-256 sums, verification report and submission notes are in `dist/microsoft-store/1.0.358.0/`. The staged Store manifest uses the exact Product identity and publisher shown in Partner Center for Vidi Studio, Store ID 9PMC3Z6XGJ4J. The repo's development manifest was left intact. Separate uploads preserve Windows 11 21H2 on ARM64 and Windows 10 1809 on x64. Self-signed test installers built before the channel clarification are in the separate `dist/release` tree.
+
+The two upload archives and their inner MSIX files passed integrity, identity, resources, manifest, OS floor and PE architecture checks. Both contain SDK-generated symbols, the frozen engine, .NET runtime, matching speech and Explorer extensions, and FFmpeg/FFprobe. Engine and media hashes match across architectures. Windows 11 ARM64 ran doctor and 20 CLI tests with the exact engine and media files in the Store upload. Both desktop parity gates and 73 focused tests per checkout passed. The build retains the existing PRI249 qualifier and publish-profile warnings.
+
+The VM has no Windows App Certification Kit. Clean-device acceptance for the Store identity, native x64 runtime, Partner Center package validation and certification remain pending. The Store submission stays in draft. The existing restricted capabilities and incomplete FFmpeg corresponding-source and notices review are documented for submission. After hashing the final copies, removed both Windows staging trees and build tasks and verified the one existing 1.0.358.0 ARM64 registration. Evidence is in `build/store-358-*.log`.
+
 ## 2026-11-20 — Duplicate project message in New Project (1.0.358.0)
 
 The Windows log for the screenshot recorded the duplicate-project guard at 4:38 p.m. IST, followed by the generic Windows import dialog. The Sarvam banner came from a separate reachability check. New Project now preserves the classified engine exception and shows Project Already Exists with directions to All Projects. Local imports also explain how to proceed when a different file shares its name. Duplicate protection and the shared dialog layout still apply. No follow-on asset import can run after a rejected creation.

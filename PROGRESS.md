@@ -1,3 +1,7 @@
+## 2026-11-20 — Self-signed GitHub draft for 1.0.358
+
+Created the [v1.0.358 GitHub release draft](https://github.com/Varunmanoj/Vidi-Studio-Windows/releases/tag/untagged-2bf49ec2177c436cd192) at the packaged source commit 131e69c. Attached the self-signed x64 and ARM64 sideload ZIPs plus installation instructions and checksums. Verified the nested signed 1.0.358.0 MSIX files, matching architecture dependencies and public certificate in both ZIPs. GitHub reported all four assets uploaded, and their sizes and SHA-256 digests matched the local files. The draft contains zero Microsoft Store packages and remains unpublished while public trust, clean-machine validation and FFmpeg source and notices work are pending.
+
 ## 2026-11-20 — Microsoft Store Release packages (1.0.358.0)
 
 Built Visual Studio Release StoreUpload packages for ARM64 and x64 from commit 131e69c. Both unsigned `.msixupload` files, SHA-256 sums, verification report and submission notes are in `dist/microsoft-store/1.0.358.0/`. The staged Store manifest uses the exact Product identity and publisher shown in Partner Center for Vidi Studio, Store ID 9PMC3Z6XGJ4J. The repo's development manifest was left intact. Separate uploads preserve Windows 11 21H2 on ARM64 and Windows 10 1809 on x64. Self-signed test installers built before the channel clarification are in the separate `dist/release` tree.

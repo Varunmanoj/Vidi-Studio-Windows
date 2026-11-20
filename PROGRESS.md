@@ -1,3 +1,17 @@
+## 2026-11-20 — Retry from the Help window (1.0.357.0)
+
+Help shows Retry next to Open in Browser when the documentation page fails to load and moves keyboard focus to Retry. The button and its context-menu item share the same action. A retry loads the last requested documentation address, clears the error and shows the loading ring.
+
+The installed Windows 11 ARM64 Debug package passed GallerySettingsOnly and DialogsOnly separately. With WebView2 offline, invoking the Retry button through its automation peer issued a new navigation and showed the offline message again. Restoring the connection and invoking Retry in the same window loaded the published guide and decoded a screenshot. Both native desktop parity checkers and 90 focused Windows tests passed. The updated guide instructions passed local website checks. The native layout check measured both buttons while offline at 450 and 1050 logical pixels in light and dark appearances. Both controls stayed on the same row within the window. Native x64 and screen-reader speech were not tested.
+
+The ARM64 Release package passed payload inspection and replaced the Debug installation. Windows reported one current app registration and Start entry. Release Help opened, and Open in Browser reached the verified guide URL in the default browser. The installed engine passed all 20 CLI tests. Matching staging payloads and test tasks were removed and VM auto-pause was restored. Evidence is in build/live-help-357-*.log.
+
+## 2026-11-20 — Restore the documentation website inside Help (1.0.356.0)
+
+Help and Settings display the published /docs page directly in WebView2. Help requests a fresh page and bypasses the website’s service-worker offline fallback. Its native spinner clears when navigation completes or fails. Open in Browser and the button’s context menu open the current documentation URL. No Markdown conversion or chapter-feed request is involved.
+
+The installed ARM64 Debug package passed GallerySettingsOnly and DialogsOnly separately against production. The tests loaded the Welcome and Export sections, decoded a documentation screenshot, verified the offline message and spinner state with network emulation, and recovered after reconnecting. Help followed the light and dark themes. Both menu and UI parity checks and 89 focused Help/parity tests passed. The self-contained ARM64 Release package passed package and media inspection, replaced the Debug installation, registered as the only Start entry, and launched at version 1.0.356.0. Release Help opened and Open in Browser launched the guide in the default Windows browser. The installed Release engine passed 20 CLI tests. The validated Debug and Release staging payloads and temporary test tasks were cleaned up. The VM’s original auto-pause setting was restored. Evidence is in build/live-help-356-*.log. Native x64 and NVDA speech were not exercised.
+
 ## 2026-11-20 — Live desktop documentation (1.0.353.0)
 
 Help and Settings open the published website guide inside WebView2. Every open requests revalidation of `https://vidistudio.varunmanojkumar.in/docs`. The website supplies its contents, navigation and search. A connection failure shows “Documentation requires internet.” Reopen Help to retry. HTTP failures and reader startup failures have distinct messages. Mac Help uses the same website and connection message. Existing menu, shortcut and Settings entry points are retained. Future documentation-only updates ship through the website.

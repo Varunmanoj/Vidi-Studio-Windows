@@ -12,6 +12,7 @@ public sealed partial class HelpWindow : Window
 {
     internal const string GuideUrl = "https://vidistudio.varunmanojkumar.in/docs";
     private ulong navigationId;
+    private string requestedAddress = GuideUrl;
     private bool webReady;
     private bool closed;
 
@@ -26,7 +27,7 @@ public sealed partial class HelpWindow : Window
     {
         for (var i = 0; i < 200; i++)
         {
-            if (LoadedPageForSmokeTest == GuideUrl && !LoadingRing.IsActive &&
+            if (LoadedPageForSmokeTest == GuideUrl && !LoadingRing.IsActive && RetryButton.Visibility == Visibility.Collapsed &&
                 await ContentView.ExecuteScriptAsync("Boolean(document.querySelector('#docs-1-welcome') && document.querySelector('#docs-8-exports'))") == "true")
             {
                 var image = await ContentView.ExecuteScriptAsync("""
@@ -54,17 +55,65 @@ public sealed partial class HelpWindow : Window
             await core.CallDevToolsProtocolMethodAsync(method, """{"offline":true,"latency":0,"downloadThroughput":0,"uploadThroughput":0}""");
             OpenGuide();
             if (!LoadingRing.IsActive) throw new InvalidOperationException("Help progress missing.");
-            for (var i = 0; i < 150 && StatusMessage.Text == ""; i++) await Task.Delay(100);
-            if (StatusMessage.Text != "Documentation requires internet." || ContentView.Visibility != Visibility.Collapsed ||
-                LoadingRing.IsActive || !BrowserButton.IsEnabled)
-                throw new InvalidOperationException($"Offline status: {StatusMessage.Text}, loaded {LoadedPageForSmokeTest}, progress {LoadingRing.IsActive}, reader {ContentView.Visibility}.");
+            await VerifyOfflineRetryStateAsync();
+            await VerifyRetryLayoutForSmokeTestAsync();
+            var firstRequest = navigationId;
+            InvokeRetryForSmokeTest();
+            for (var i = 0; i < 50 && navigationId == firstRequest; i++) await Task.Delay(100);
+            if (navigationId == firstRequest) throw new InvalidOperationException("Retry did not issue a new request.");
+            await VerifyOfflineRetryStateAsync();
         }
         finally
         {
             await core.CallDevToolsProtocolMethodAsync(method, """{"offline":false,"latency":0,"downloadThroughput":-1,"uploadThroughput":-1}""");
         }
-        OpenGuide();
+        InvokeRetryForSmokeTest();
         await VerifyGuideForSmokeTestAsync();
+    }
+
+    private async Task VerifyOfflineRetryStateAsync()
+    {
+        for (var i = 0; i < 150 && RetryButton.Visibility != Visibility.Visible; i++) await Task.Delay(100);
+        if (StatusMessage.Text != "Documentation requires internet." || ContentView.Visibility != Visibility.Collapsed ||
+            LoadingRing.IsActive || !BrowserButton.IsEnabled || RetryButton.Visibility != Visibility.Visible ||
+            RetryButton.ContextFlyout is not MenuFlyout { Items.Count: 1 })
+            throw new InvalidOperationException("Offline Help did not offer Retry.");
+    }
+
+    private async Task VerifyRetryLayoutForSmokeTestAsync()
+    {
+        var originalSize = AppWindow.Size;
+        var originalTheme = Root.RequestedTheme;
+        var scale = Root.XamlRoot.RasterizationScale;
+        try
+        {
+            foreach (var theme in new[] { ElementTheme.Light, ElementTheme.Dark })
+            {
+                SetTheme(theme);
+                foreach (var width in new[] { 450, 1050 })
+                {
+                    AppWindow.Resize(new SizeInt32((int)Math.Round(width * scale), originalSize.Height));
+                    await Task.Delay(120);
+                    Root.UpdateLayout();
+                    var retry = RetryButton.TransformToVisual(Root).TransformBounds(new(0, 0, RetryButton.ActualWidth, RetryButton.ActualHeight));
+                    var browser = BrowserButton.TransformToVisual(Root).TransformBounds(new(0, 0, BrowserButton.ActualWidth, BrowserButton.ActualHeight));
+                    if (Root.ActualTheme != theme || retry.Width <= 0 || browser.Width <= 0 || retry.Left < 0 ||
+                        retry.Right > browser.Left || browser.Right > Root.ActualWidth || Math.Abs(retry.Top - browser.Top) > 1)
+                        throw new InvalidOperationException($"Offline Help actions are misplaced at {width} in {theme}.");
+                }
+            }
+        }
+        finally
+        {
+            AppWindow.Resize(originalSize);
+            SetTheme(originalTheme);
+        }
+    }
+
+    private void InvokeRetryForSmokeTest()
+    {
+        var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(RetryButton);
+        ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
     }
 #endif
     public HelpWindow(ElementTheme theme = ElementTheme.Default)
@@ -142,17 +191,27 @@ public sealed partial class HelpWindow : Window
         catch { if (!closed) ShowMessage("The Help reader could not start. Check the Microsoft Edge WebView2 Runtime."); }
     }
 
-    public void OpenGuide()
+    public void OpenGuide() => LoadGuide(GuideUrl);
+
+    private void RetryGuide(object sender, RoutedEventArgs e)
+    {
+        if (RetryButton.Visibility != Visibility.Visible) return;
+        LoadGuide(requestedAddress);
+        ContentView.Focus(FocusState.Programmatic);
+    }
+
+    private void LoadGuide(string address)
     {
         if (!webReady || closed) return;
 #if DEBUG
         LoadedPageForSmokeTest = null;
 #endif
         StatusMessage.Text = "";
+        RetryButton.Visibility = Visibility.Collapsed;
         ContentView.Visibility = Visibility.Visible;
         SetLoading(true);
         var core = ContentView.CoreWebView2;
-        var request = core.Environment.CreateWebResourceRequest(GuideUrl, "GET", null, "Cache-Control: no-cache");
+        var request = core.Environment.CreateWebResourceRequest(address, "GET", null, "Cache-Control: no-cache");
         core.NavigateWithWebResourceRequest(request);
     }
 
@@ -161,7 +220,13 @@ public sealed partial class HelpWindow : Window
 
     private void Content_NavigationStarting(CoreWebView2 sender, CoreWebView2NavigationStartingEventArgs args)
     {
-        if (IsGuide(args.Uri)) { navigationId = args.NavigationId; SetLoading(true); return; }
+        if (IsGuide(args.Uri))
+        {
+            requestedAddress = args.Uri;
+            navigationId = args.NavigationId;
+            SetLoading(true);
+            return;
+        }
         args.Cancel = true;
         if (args.IsUserInitiated) OpenInBrowser(args.Uri);
     }
@@ -192,12 +257,17 @@ public sealed partial class HelpWindow : Window
         SetLoading(false);
         ContentView.Visibility = Visibility.Collapsed;
         StatusMessage.Text = message;
+        if (webReady)
+        {
+            RetryButton.Visibility = Visibility.Visible;
+            RetryButton.Focus(FocusState.Programmatic);
+        }
     }
 
     private void OpenGuideInBrowser(object sender, RoutedEventArgs e)
     {
         var address = webReady ? ContentView.CoreWebView2.Source : null;
-        OpenInBrowser(IsGuide(address) ? address! : GuideUrl);
+        OpenInBrowser(IsGuide(address) ? address! : requestedAddress);
     }
 
     private static void OpenInBrowser(string address)

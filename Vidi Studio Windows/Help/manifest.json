@@ -5,14 +5,6 @@
       "title": "Welcome to VidiStudio",
       "sections": [
         {
-          "id": "system-requirements",
-          "title": "System requirements"
-        },
-        {
-          "id": "desktop-dialog-layout",
-          "title": "Compact desktop dialogs"
-        },
-        {
           "id": "understand-the-three-kinds-of-content",
           "title": "Understand the three kinds of content"
         },
@@ -21,16 +13,28 @@
           "title": "How a project works"
         },
         {
-          "id": "voices-are-platform-specific",
-          "title": "Voices are platform-specific"
-        },
-        {
           "id": "open-a-youtube-video-from-your-browser",
           "title": "Open a YouTube video from your browser"
         },
         {
           "id": "start-with-a-short-video",
           "title": "Start with a short video"
+        },
+        {
+          "id": "install-vidistudio",
+          "title": "Install VidiStudio"
+        },
+        {
+          "id": "system-requirements",
+          "title": "System requirements"
+        },
+        {
+          "id": "using-desktop-help",
+          "title": "Using desktop Help"
+        },
+        {
+          "id": "desktop-dialog-layout",
+          "title": "Compact desktop dialogs"
         }
       ]
     },

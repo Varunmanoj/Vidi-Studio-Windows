@@ -713,36 +713,15 @@ public sealed partial class MainWindow
             }
             if (helpWindow is null)
                 throw new InvalidOperationException("Help menu did not open the Help book window.");
-            if (helpWindow.LoadedPageForSmokeTest is not { } loadedHelpPage ||
-                !loadedHelpPage.EndsWith("/welcome.html", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("The Help book did not load its first page: " + (helpWindow.LoadedPageForSmokeTest ?? "<none>"));
-            if (helpWindow.ChapterCountForSmokeTest < 12 || helpWindow.TocRootCountForSmokeTest < 12)
-                throw new InvalidOperationException(
-                    $"The Help book contents did not load: chapters={helpWindow.ChapterCountForSmokeTest}, toc={helpWindow.TocRootCountForSmokeTest}.");
-            var tocTitles = helpWindow.TocTitlesForSmokeTest;
-            if (tocTitles.Count < 12 || tocTitles.Any(title => string.IsNullOrWhiteSpace(title) || title.Contains("TreeViewNode", StringComparison.Ordinal)))
-                throw new InvalidOperationException(
-                    "The Help table of contents did not show readable chapter titles: " + string.Join(" | ", tocTitles));
-            PreviewTheme("dark"); await Task.Delay(150);
-            VerifyHelpCaptionForSmokeTest(helpWindow, true);
-            var renderedToc = helpWindow.RenderedTocTitlesForSmokeTest();
-            if (renderedToc.Count < 2 || !renderedToc.Contains(tocTitles[0]) || tocTitles.Take(6).Any(title => !renderedToc.Contains(title)))
-                throw new InvalidOperationException("Help TOC data exists but its visible chapter/topic labels are blank: " + string.Join(" | ", renderedToc));
-            await CaptureSmokeImage(helpWindow.TocVisualForSmokeTest, Path.Combine(Path.GetDirectoryName(report)!, "help-toc-dark.png"));
-            if (!(await helpWindow.ReaderStateForSmokeTest()).Contains("true")) throw new InvalidOperationException("Help reader did not follow the app's dark appearance.");
-            helpWindow.SearchForSmokeTest("Welcome");
-            await Task.Delay(100);
-            if (helpWindow.TocRootCountForSmokeTest != 1) throw new InvalidOperationException("Help chapter search did not filter the contents: " + string.Join(", ", helpWindow.TocTitlesForSmokeTest));
-            helpWindow.SearchForSmokeTest("");
-            await Task.Delay(100);
-            helpWindow.NavigateForSmokeTest("editor", "summary");
-            await Task.Delay(300);
-            if (helpWindow.LoadedPageForSmokeTest?.Contains("/editor.html") != true) throw new InvalidOperationException("Help chapter navigation did not load the chapter.");
-            PreviewTheme("light"); await Task.Delay(150);
-            VerifyHelpCaptionForSmokeTest(helpWindow, false);
-            if (helpWindow.RenderedTocTitlesForSmokeTest().Count < 2) throw new InvalidOperationException("Help TOC labels disappeared in light appearance.");
-            await CaptureSmokeImage(helpWindow.TocVisualForSmokeTest, Path.Combine(Path.GetDirectoryName(report)!, "help-toc-light.png"));
-            if (!(await helpWindow.ReaderStateForSmokeTest()).Contains("false")) throw new InvalidOperationException("Help reader did not follow the app's light appearance.");
+            await helpWindow.VerifyGuideForSmokeTestAsync();
+            await helpWindow.VerifyOfflineRecoveryForSmokeTestAsync();
+            foreach (var theme in new[] { "dark", "light" })
+            {
+                PreviewTheme(theme); await Task.Delay(150);
+                VerifyHelpCaptionForSmokeTest(helpWindow, theme == "dark");
+                if ((await helpWindow.ReaderStateForSmokeTest()) != (theme == "dark" ? "true" : "false"))
+                    throw new InvalidOperationException("Live Help did not follow the app theme.");
+            }
             helpWindow.Close();
             await Task.Delay(200);
             if (App.HelpWindowForSmokeTest != null)
@@ -1083,8 +1062,8 @@ public sealed partial class MainWindow
         var help = App.HelpWindowForSmokeTest ?? throw new InvalidOperationException("Help did not open from the active window.");
         try
         {
-            for (var attempt = 0; attempt < 100 && help.LoadedPageForSmokeTest == null; attempt++) await Task.Delay(100);
-            if (help.LoadedPageForSmokeTest?.Contains("/welcome.html") != true) throw new InvalidOperationException("Help did not load the local book.");
+            await help.VerifyGuideForSmokeTestAsync();
+            await help.VerifyOfflineRecoveryForSmokeTestAsync();
             foreach (var theme in new[] { "light", "dark" })
             {
                 PreviewTheme(theme); await Task.Delay(150);

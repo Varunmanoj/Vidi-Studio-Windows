@@ -71,6 +71,21 @@ class HelpWindowTests(unittest.TestCase):
         self.assertIn('Windows 11 version 21H2', requirements)
         self.assertNotIn('Windows 26.4', requirements)
 
+    def test_welcome_puts_getting_started_before_requirements(self):
+        html = (HELP / 'welcome.html').read_text(encoding='utf-8')
+        self.assertRegex(html, r'<h1>Welcome to VidiStudio</h1>\s*<p>VidiStudio is a native Mac and Windows application')
+        self.assertEqual(re.findall(r'<h2[^>]*>([^<]+)</h2>', html)[:4], [
+            'Understand the three kinds of content',
+            'How a project works',
+            'Start with a short video',
+            'Install VidiStudio',
+        ])
+        self.assertGreater(html.index('id="system-requirements"'), html.index('id="install-vidistudio"'))
+
+        pages = json.loads((HELP / 'manifest.json').read_text(encoding='utf-8'))['pages']
+        self.assertEqual(pages[0]['slug'], 'welcome')
+        self.assertIn({'id': 'system-requirements', 'title': 'System requirements'}, pages[0]['sections'])
+
     def test_browser_installation_is_searchable_and_links_to_both_stores(self):
         pages = json.loads((HELP / 'manifest.json').read_text(encoding='utf-8'))['pages']
         topic = next(page for page in pages if page['slug'] == 'browser-extensions')
@@ -85,27 +100,15 @@ class HelpWindowTests(unittest.TestCase):
         self.assertNotIn('Load unpacked', html)
         self.assertNotIn('Safari', html)
 
-    def test_help_window_has_native_book_navigation_and_html_reader(self):
-        xaml = (APP / 'Views' / 'HelpWindow.xaml').read_text(encoding='utf-8')
+    def test_help_window_loads_live_guide_and_handles_offline_requests(self):
         code = (APP / 'Views' / 'HelpWindow.xaml.cs').read_text(encoding='utf-8')
-        self.assertIn('x:Name="TocTree"', xaml)
-        self.assertIn('x:Name="ContentView"', xaml)
-        self.assertIn('Search chapters and topics', xaml)
-        self.assertIn('SetVirtualHostNameToFolderMapping', code)
-        self.assertIn('manifest.json', code)
-        self.assertIn('scrollIntoView', code)
-        self.assertIn('PreviousButton', xaml)
-        self.assertIn('NextButton', xaml)
-        self.assertIn('<TreeView.ItemTemplate>', xaml)
-        self.assertIn('AutomationProperties.Name="{Binding Content.Title}"', xaml)
-        self.assertIn('Text="{Binding Content.Title}"', xaml)
-        self.assertIn('Glyph="{Binding Content.Icon}"', xaml)
-        self.assertIn('RenderedTocTitlesForSmokeTest', code)
-        self.assertIn('Content = new HelpNode', code)
-        self.assertNotIn('NodeView', code)
-        self.assertIn('ApplyWebTheme', code)
-        self.assertNotIn('BrowserHelpButton', xaml)
-        self.assertNotIn('HomeButton', xaml)
+        self.assertIn('https://vidistudio.varunmanojkumar.in/docs', code)
+        self.assertIn('NavigateWithWebResourceRequest(request)', code)
+        self.assertIn('Cache-Control: no-cache', code)
+        self.assertIn('Network.setBypassServiceWorker', code)
+        self.assertNotIn('docs-data/v1/', code)
+        self.assertIn('Documentation requires internet.', code)
+        self.assertNotIn('SetVirtualHostNameToFolderMapping', code)
 
     def test_help_menu_and_settings_open_the_new_window(self):
         app = (APP / 'App.xaml.cs').read_text(encoding='utf-8')

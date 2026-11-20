@@ -3,82 +3,70 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Windows.Graphics;
 
 namespace Vidi_Studio_Windows.Views;
 
-/// <summary>A native, searchable Help book window with a table of contents and HTML reader.</summary>
 public sealed partial class HelpWindow : Window
 {
+    internal const string GuideUrl = "https://vidistudio.varunmanojkumar.in/docs";
+    private ulong navigationId;
+    private bool webReady;
+    private bool closed;
+
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr window);
-    private sealed class Manifest
-    {
-        public List<Page> Pages { get; set; } = new();
-    }
 
-    private sealed class Page
-    {
-        public string Slug { get; set; } = "";
-        public string Title { get; set; } = "";
-        public List<Section> Sections { get; set; } = new();
-    }
-
-    private sealed class Section
-    {
-        public string Id { get; set; } = "";
-        public string Title { get; set; } = "";
-    }
-
-    public sealed class HelpNode
-    {
-        public string Title { get; init; } = "";
-        public string Slug { get; init; } = "";
-        public string? Anchor { get; init; }
-        public bool IsPage => Anchor == null;
-        public string Icon => IsPage ? "\uE8A5" : "\uE8FD";
-        public override string ToString() => Title;
-    }
-
-    private static readonly string HelpFolder = Path.Combine(AppContext.BaseDirectory, "Help");
-    private readonly List<Page> pages = new();
-    private readonly Dictionary<string, TreeViewNode> pageNodes = new();
-    private readonly Dictionary<string, TreeViewNode> sectionNodes = new();
-    private string currentSlug = "welcome";
-    private string? pendingAnchor;
-    private bool treeSelectionSuppressed;
-    private bool webReady;
 #if DEBUG
-    /// <summary>Exposes the loaded local page so the native smoke test can verify the book.</summary>
     internal string? LoadedPageForSmokeTest { get; private set; }
-    internal int ChapterCountForSmokeTest => pages.Count;
-    internal int TocRootCountForSmokeTest => TocTree.RootNodes.Count;
-    internal FrameworkElement TocVisualForSmokeTest => TocTree;
-    internal async Task<string> ReaderStateForSmokeTest() => await ContentView.ExecuteScriptAsync("JSON.stringify({dark:matchMedia('(prefers-color-scheme: dark)').matches,background:getComputedStyle(document.body).backgroundColor})");
-    internal void NavigateForSmokeTest(string slug, string? anchor = null) => NavigateTo(slug, anchor);
-    internal void SearchForSmokeTest(string query) => SearchBox.Text = query;
-    internal IReadOnlyList<string> TocTitlesForSmokeTest =>
-        TocTree.RootNodes.Select(node => (node.Content as HelpNode)?.Title ?? "").ToList();
-    internal IReadOnlyList<string> RenderedTocTitlesForSmokeTest()
+    internal async Task<string> ReaderStateForSmokeTest() => await ContentView.ExecuteScriptAsync("matchMedia('(prefers-color-scheme: dark)').matches");
+
+    internal async Task VerifyGuideForSmokeTestAsync()
     {
-        var titles = new List<string>();
-        void Visit(DependencyObject element)
+        for (var i = 0; i < 200; i++)
         {
-            if (element is TextBlock { Name: "HelpTocTitle", ActualWidth: > 0, ActualHeight: > 0 } text && !string.IsNullOrWhiteSpace(text.Text)) titles.Add(text.Text);
-            for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(element); i++)
-                Visit(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(element, i));
+            if (LoadedPageForSmokeTest == GuideUrl && !LoadingRing.IsActive &&
+                await ContentView.ExecuteScriptAsync("Boolean(document.querySelector('#docs-1-welcome') && document.querySelector('#docs-8-exports'))") == "true")
+            {
+                var image = await ContentView.ExecuteScriptAsync("""
+                    (() => {
+                        const img = document.querySelector('img[src*="/screenshots/mac-help/"]');
+                        if (!img) return false;
+                        img.loading = 'eager';
+                        return img.complete && img.naturalWidth > 0;
+                    })()
+                    """);
+                if (image == "true") return;
+            }
+            await Task.Delay(100);
         }
-        Visit(TocTree);
-        return titles;
+        throw new InvalidOperationException("Published Help or its screenshot did not render. " + StatusMessage.Text);
+    }
+
+    internal async Task VerifyOfflineRecoveryForSmokeTestAsync()
+    {
+        var core = ContentView.CoreWebView2;
+        const string method = "Network.emulateNetworkConditions";
+        await core.CallDevToolsProtocolMethodAsync("Network.enable", "{}");
+        try
+        {
+            await core.CallDevToolsProtocolMethodAsync(method, """{"offline":true,"latency":0,"downloadThroughput":0,"uploadThroughput":0}""");
+            OpenGuide();
+            if (!LoadingRing.IsActive) throw new InvalidOperationException("Help progress missing.");
+            for (var i = 0; i < 150 && StatusMessage.Text == ""; i++) await Task.Delay(100);
+            if (StatusMessage.Text != "Documentation requires internet." || ContentView.Visibility != Visibility.Collapsed ||
+                LoadingRing.IsActive || !BrowserButton.IsEnabled)
+                throw new InvalidOperationException($"Offline status: {StatusMessage.Text}, loaded {LoadedPageForSmokeTest}, progress {LoadingRing.IsActive}, reader {ContentView.Visibility}.");
+        }
+        finally
+        {
+            await core.CallDevToolsProtocolMethodAsync(method, """{"offline":false,"latency":0,"downloadThroughput":-1,"uploadThroughput":-1}""");
+        }
+        OpenGuide();
+        await VerifyGuideForSmokeTestAsync();
     }
 #endif
-
     public HelpWindow(ElementTheme theme = ElementTheme.Default)
     {
         InitializeComponent();
@@ -90,6 +78,7 @@ public sealed partial class HelpWindow : Window
         WindowAppearance.ApplyTheme(this, Root, theme);
         Closed += (_, _) =>
         {
+            closed = true;
             App.ThemeChanged -= ApplyAppTheme;
             try { if (webReady) ContentView.Close(); } catch { }
         };
@@ -106,9 +95,6 @@ public sealed partial class HelpWindow : Window
             appWindow.Move(new PointInt32(area.X + (area.Width - width) / 2, area.Y + (area.Height - height) / 2));
         }
         catch { }
-        LoadManifest();
-        RebuildToc();
-        UpdateNavigation();
     }
 
     public void SetTheme(ElementTheme theme)
@@ -127,215 +113,96 @@ public sealed partial class HelpWindow : Window
         if (!webReady) return;
         var scheme = Root.ActualTheme == ElementTheme.Dark ? "dark" : "light";
         ContentView.CoreWebView2.Profile.PreferredColorScheme = scheme == "dark" ? CoreWebView2PreferredColorScheme.Dark : CoreWebView2PreferredColorScheme.Light;
-        _ = ContentView.ExecuteScriptAsync($"document.documentElement.style.colorScheme='{scheme}'; document.body.style.colorScheme='{scheme}';");
     }
 
     private async void Root_Loaded(object sender, RoutedEventArgs e)
     {
-        if (webReady) return;
+        Root.Loaded -= Root_Loaded;
         try
         {
             await ContentView.EnsureCoreWebView2Async();
+            if (closed) return;
             var core = ContentView.CoreWebView2;
-            core.Settings.AreDevToolsEnabled = false;
-            core.Settings.AreDefaultContextMenusEnabled = true;
+            // The public site's service worker can return a cached app shell while offline.
+            // A Help visit must reach the website or show the native connection message.
+            await core.CallDevToolsProtocolMethodAsync("Network.setBypassServiceWorker", """{"bypass":true}""");
+            if (closed) return;
             core.Settings.IsStatusBarEnabled = false;
-            core.SetVirtualHostNameToFolderMapping("vidistudio.help", HelpFolder, CoreWebView2HostResourceAccessKind.Allow);
             core.NavigationStarting += Content_NavigationStarting;
             core.NavigationCompleted += Content_NavigationCompleted;
-            core.NewWindowRequested += Content_NewWindowRequested;
+            core.NewWindowRequested += (_, args) =>
+            {
+                args.Handled = true;
+                if (args.IsUserInitiated) OpenInBrowser(args.Uri);
+            };
             webReady = true;
             ApplyWebTheme();
-            NavigateTo(currentSlug, pendingAnchor);
+            OpenGuide();
         }
-        catch (Exception ex)
-        {
-            await ShowContentError("The Help reader could not start.", ex.Message);
-        }
+        catch { if (!closed) ShowMessage("The Help reader could not start. Check the Microsoft Edge WebView2 Runtime."); }
     }
 
-    private void LoadManifest()
+    public void OpenGuide()
     {
-        try
-        {
-            var path = Path.Combine(HelpFolder, "manifest.json");
-            var manifest = File.Exists(path) ? JsonSerializer.Deserialize<Manifest>(File.ReadAllText(path),
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) : null;
-            if (manifest?.Pages is { Count: > 0 }) pages.AddRange(manifest.Pages);
-        }
-        catch { }
-        if (pages.Count == 0)
-            pages.Add(new Page { Slug = "welcome", Title = "Welcome to Vidi Studio" });
-        currentSlug = pages[0].Slug;
+        if (!webReady || closed) return;
+#if DEBUG
+        LoadedPageForSmokeTest = null;
+#endif
+        StatusMessage.Text = "";
+        ContentView.Visibility = Visibility.Visible;
+        SetLoading(true);
+        var core = ContentView.CoreWebView2;
+        var request = core.Environment.CreateWebResourceRequest(GuideUrl, "GET", null, "Cache-Control: no-cache");
+        core.NavigateWithWebResourceRequest(request);
     }
 
-    private void RebuildToc()
-    {
-        var query = SearchBox.Text.Trim();
-        TocTree.RootNodes.Clear();
-        pageNodes.Clear();
-        sectionNodes.Clear();
-        var shown = 0;
-        foreach (var page in pages)
-        {
-            var matchingSections = string.IsNullOrEmpty(query) || page.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
-                ? page.Sections
-                : page.Sections.Where(section => section.Title.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
-            if (!string.IsNullOrEmpty(query)
-                && !page.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
-                && matchingSections.Count == 0) continue;
-            var pageNode = new TreeViewNode
-            {
-                Content = new HelpNode { Title = page.Title, Slug = page.Slug },
-                IsExpanded = !string.IsNullOrEmpty(query) || page.Slug == currentSlug
-            };
-            foreach (var section in matchingSections)
-            {
-                var sectionNode = new TreeViewNode { Content = new HelpNode { Title = section.Title, Slug = page.Slug, Anchor = section.Id } };
-                pageNode.Children.Add(sectionNode);
-                sectionNodes[page.Slug + "#" + section.Id] = sectionNode;
-            }
-            TocTree.RootNodes.Add(pageNode);
-            pageNodes[page.Slug] = pageNode;
-            shown++;
-        }
-        SearchStatus.Text = string.IsNullOrEmpty(query)
-            ? $"{pages.Count} chapters · {pages.Sum(page => page.Sections.Count)} topics"
-            : $"{shown} matching chapter{(shown == 1 ? "" : "s")}";
-        SelectToc(currentSlug);
-    }
-
-    private void Search_Changed(object sender, TextChangedEventArgs e) => RebuildToc();
-
-    private void Toc_SelectionChanged(TreeView sender, TreeViewSelectionChangedEventArgs args)
-    {
-        if (treeSelectionSuppressed || sender.SelectedNode?.Content is not HelpNode node) return;
-        NavigateTo(node.Slug, node.Anchor);
-    }
-
-    private void SelectToc(string slug, string? anchor = null)
-    {
-        if (!pageNodes.TryGetValue(slug, out var pageNode)) return;
-        treeSelectionSuppressed = true;
-        try
-        {
-            pageNode.IsExpanded = true;
-            TocTree.SelectedNode = anchor != null && sectionNodes.TryGetValue(slug + "#" + anchor, out var sectionNode)
-                ? sectionNode : pageNode;
-        }
-        finally { treeSelectionSuppressed = false; }
-    }
-
-    private void NavigateTo(string slug, string? anchor)
-    {
-        if (string.IsNullOrWhiteSpace(slug)) slug = currentSlug;
-        var pageExists = pages.Any(page => page.Slug == slug);
-        if (!pageExists) slug = currentSlug;
-        currentSlug = slug;
-        pendingAnchor = anchor;
-        SelectToc(slug, anchor);
-        UpdateNavigation();
-        if (!webReady)
-        {
-            pendingAnchor = anchor;
-            return;
-        }
-        var url = $"https://vidistudio.help/{slug}.html" + (string.IsNullOrEmpty(anchor) ? "" : "#" + Uri.EscapeDataString(anchor));
-        if (ContentView.Source?.ToString() == url)
-        {
-            ScrollTo(anchor);
-            return;
-        }
-        ContentView.Source = new Uri(url);
-    }
-
-    private void ScrollTo(string? anchor)
-    {
-        if (!webReady) return;
-        if (string.IsNullOrEmpty(anchor)) { _ = ContentView.ExecuteScriptAsync("window.scrollTo(0,0)"); return; }
-        _ = ContentView.ExecuteScriptAsync($"document.getElementById({JsonSerializer.Serialize(anchor)})?.scrollIntoView({{block:'start'}});");
-    }
+    private static bool IsGuide(string? address) =>
+        Uri.TryCreate(address, UriKind.Absolute, out var uri) && uri.GetLeftPart(UriPartial.Path).TrimEnd('/') == GuideUrl;
 
     private void Content_NavigationStarting(CoreWebView2 sender, CoreWebView2NavigationStartingEventArgs args)
     {
-        if (!Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri)) return;
-        if (uri.Host != "vidistudio.help")
-        {
-            if (uri.Scheme is "http" or "https")
-            {
-                args.Cancel = true;
-                OpenInBrowser(args.Uri);
-            }
-            return;
-        }
-        var slug = Path.GetFileNameWithoutExtension(uri.AbsolutePath);
-        if (!pages.Any(page => page.Slug == slug)) return;
-        currentSlug = slug;
-        pendingAnchor = string.IsNullOrEmpty(uri.Fragment) ? null : uri.Fragment.TrimStart('#');
-        SelectToc(slug, pendingAnchor);
+        if (IsGuide(args.Uri)) { navigationId = args.NavigationId; SetLoading(true); return; }
+        args.Cancel = true;
+        if (args.IsUserInitiated) OpenInBrowser(args.Uri);
     }
 
-    private async void Content_NavigationCompleted(CoreWebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
+    private void Content_NavigationCompleted(CoreWebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
     {
-        if (!args.IsSuccess)
+        if (closed || args.NavigationId != navigationId) return;
+        SetLoading(false);
+        if (args.WebErrorStatus == CoreWebView2WebErrorStatus.OperationCanceled) return;
+        if (!args.IsSuccess || args.HttpStatusCode >= 400)
         {
-            await ShowContentError("This Help page could not be displayed.", "The local Help page is missing or unreadable.");
+            ShowMessage(args.HttpStatusCode >= 400 ? "Documentation is temporarily unavailable." : "Documentation requires internet.");
             return;
         }
 #if DEBUG
         LoadedPageForSmokeTest = sender.Source;
 #endif
-        ApplyWebTheme();
-        ScrollTo(pendingAnchor);
-        pendingAnchor = null;
-        UpdateNavigation();
     }
 
-    private void Content_NewWindowRequested(CoreWebView2 sender, CoreWebView2NewWindowRequestedEventArgs args)
+    private void SetLoading(bool loading)
     {
-        args.Handled = true;
-        if (Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri) && uri.Host == "vidistudio.help")
-        {
-            OpenInBrowser(new Uri(Path.Combine(HelpFolder, Path.GetFileName(uri.AbsolutePath))).AbsoluteUri);
-            return;
-        }
-        OpenInBrowser(args.Uri);
+        LoadingRing.IsActive = loading;
+        LoadingRing.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private async Task ShowContentError(string title, string detail)
+    private void ShowMessage(string message)
     {
-        if (!webReady) return;
-        var html = $"<html><body style='font-family:Segoe UI;padding:2rem'><h1>{System.Net.WebUtility.HtmlEncode(title)}</h1><p>{System.Net.WebUtility.HtmlEncode(detail)}</p><p>Help files are installed with Vidi Studio. Reinstall the app if the Help folder is missing.</p></body></html>";
-        ContentView.NavigateToString(html);
-        await Task.CompletedTask;
+        SetLoading(false);
+        ContentView.Visibility = Visibility.Collapsed;
+        StatusMessage.Text = message;
     }
 
-    private int CurrentPageIndex() => pages.FindIndex(page => page.Slug == currentSlug);
-
-    private void UpdateNavigation()
+    private void OpenGuideInBrowser(object sender, RoutedEventArgs e)
     {
-        var index = CurrentPageIndex();
-        PreviousButton.IsEnabled = index > 0;
-        NextButton.IsEnabled = index >= 0 && index < pages.Count - 1;
-        PageIndicator.Text = index >= 0
-            ? $"{index + 1} of {pages.Count} · {pages[index].Title}"
-            : "";
+        var address = webReady ? ContentView.CoreWebView2.Source : null;
+        OpenInBrowser(IsGuide(address) ? address! : GuideUrl);
     }
 
-    private void Previous_Click(object sender, RoutedEventArgs e)
+    private static void OpenInBrowser(string address)
     {
-        var index = CurrentPageIndex();
-        if (index > 0) NavigateTo(pages[index - 1].Slug, null);
-    }
-
-    private void Next_Click(object sender, RoutedEventArgs e)
-    {
-        var index = CurrentPageIndex();
-        if (index >= 0 && index < pages.Count - 1) NavigateTo(pages[index + 1].Slug, null);
-    }
-
-    private static void OpenInBrowser(string uri)
-    {
-        try { Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true }); } catch { }
+        if (Uri.TryCreate(address, UriKind.Absolute, out var uri) && uri.Scheme is "https" or "http")
+            _ = Windows.System.Launcher.LaunchUriAsync(uri);
     }
 }

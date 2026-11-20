@@ -7,68 +7,20 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-
-        <Grid Padding="24,18,24,14" ColumnSpacing="18" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <StackPanel Spacing="3">
-                <TextBlock Text="Vidi Studio Help" FontSize="26" FontWeight="SemiBold"/>
-                <TextBlock Text="The complete guide to projects, descriptions, narration, exports, and keyboard shortcuts." Opacity=".72" TextWrapping="Wrap"/>
-            </StackPanel>
-
-        </Grid>
-
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="330"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-            <Border Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
-                <Grid Padding="16,14,16,10" RowSpacing="10">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <TextBox x:Name="SearchBox" PlaceholderText="Search chapters and topics" TextChanged="Search_Changed" AutomationProperties.Name="Search Help chapters and topics">
-                        <TextBox.Header>
-                            <TextBlock Text="Contents" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,2"/>
-                        </TextBox.Header>
-                    </TextBox>
-                    <TextBlock Grid.Row="1" x:Name="SearchStatus" Opacity=".65" FontSize="12" TextWrapping="Wrap"/>
-                    <TreeView Grid.Row="2" x:Name="TocTree" SelectionMode="Single" SelectionChanged="Toc_SelectionChanged" AutomationProperties.Name="Help table of contents">
-                        <TreeView.ItemTemplate>
-                            <DataTemplate>
-                                <Grid ColumnSpacing="8" Padding="2,3" MinHeight="28" AutomationProperties.Name="{Binding Content.Title}">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <FontIcon Glyph="{Binding Content.Icon}" FontSize="13" Opacity=".8" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="HelpTocTitle" Grid.Column="1" Text="{Binding Content.Title}" TextWrapping="Wrap" MaxWidth="220" FontSize="14" Foreground="{ThemeResource TextFillColorPrimaryBrush}" VerticalAlignment="Center"/>
-                                </Grid>
-                            </DataTemplate>
-                        </TreeView.ItemTemplate>
-                    </TreeView>
-                </Grid>
-            </Border>
-            <WebView2 Grid.Column="1" x:Name="ContentView" DefaultBackgroundColor="Transparent" AutomationProperties.Name="Help page content"/>
-        </Grid>
-
-        <Grid Grid.Row="2" Padding="22,10" ColumnSpacing="12" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <Button x:Name="PreviousButton" Click="Previous_Click" ToolTipService.ToolTip="Previous Help chapter" AutomationProperties.Name="Previous Help chapter">
-                <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE76B;" FontSize="13"/><TextBlock Text="Previous"/></StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,6" HorizontalAlignment="Right">
+            <ProgressRing x:Name="LoadingRing" Width="20" Height="20" IsActive="True"
+                          AutomationProperties.Name="Loading documentation"/>
+            <Button x:Name="BrowserButton" Content="Open in Browser" Click="OpenGuideInBrowser">
+                <Button.ContextFlyout>
+                    <MenuFlyout>
+                        <MenuFlyoutItem Text="Open in Browser" Click="OpenGuideInBrowser"/>
+                    </MenuFlyout>
+                </Button.ContextFlyout>
             </Button>
-            <TextBlock Grid.Column="1" x:Name="PageIndicator" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity=".65" FontSize="12" TextWrapping="Wrap"/>
-            <Button Grid.Column="2" x:Name="NextButton" Click="Next_Click" ToolTipService.ToolTip="Next Help chapter" AutomationProperties.Name="Next Help chapter">
-                <StackPanel Orientation="Horizontal" Spacing="7"><TextBlock Text="Next"/><FontIcon Glyph="&#xE76C;" FontSize="13"/></StackPanel>
-            </Button>
-        </Grid>
+        </StackPanel>
+        <WebView2 Grid.Row="1" x:Name="ContentView" AutomationProperties.Name="VidiStudio documentation"/>
+        <TextBlock Grid.Row="1" x:Name="StatusMessage" HorizontalAlignment="Center" VerticalAlignment="Center"
+                   Margin="12" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
     </Grid>
 </Window>

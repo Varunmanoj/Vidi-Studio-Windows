@@ -180,7 +180,7 @@ public sealed partial class SettingsDialog
         var helpPeer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(openHelp);
         ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)helpPeer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
         var help = App.HelpWindowForSmokeTest ?? throw new InvalidOperationException("Settings Help did not open the Help book.");
-        for (var attempt = 0; attempt < 100 && help.LoadedPageForSmokeTest == null; attempt++) await Task.Delay(100);
+        await help.VerifyGuideForSmokeTestAsync();
         if (!AppWindow.IsVisible || closed) throw new InvalidOperationException("Opening Help must preserve Settings, as on Mac.");
         help.Close();
         SelectSection(7);

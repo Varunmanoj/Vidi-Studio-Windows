@@ -66,7 +66,11 @@ public partial class App : Application
             helpWindow = new Views.HelpWindow(theme);
             helpWindow.Closed += (_, _) => helpWindow = null;
         }
-        else helpWindow.SetTheme(theme);
+        else
+        {
+            helpWindow.SetTheme(theme);
+            helpWindow.OpenGuide();
+        }
         helpWindow.Activate();
     }
 #if DEBUG

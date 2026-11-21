@@ -1,3 +1,11 @@
+## 2026-11-21 — Microsoft Store and GitHub drafts (1.0.359.0)
+
+Built x64 and ARM64 Store upload packages in Parallels Windows using Visual Studio Community 2026 MSBuild and the Windows SDK. The scripted StoreUpload build used the exact Name, Publisher and PublisherDisplayName from Vidi Studio's Partner Center Product Identity page, Store ID 9PMC3Z6XGJ4J. Both packages are in submission 1. A fresh read of Partner Center reported Packages Complete and showed both architectures and 1.0.359.0, with the submission In draft. Partner Center flagged the restricted capability `unvirtualizedResources` for approval before certification.
+
+The Store uploads, SHA-256 sums and validation report are under `dist/microsoft-store/1.0.359.0/`. Verified nested package integrity, the Store identity, operating system requirements, the matching app, speech and shell executable architectures, and the API-key-only YouTube Data API configuration. The exact packaged engine and FFmpeg payloads passed doctor and all 20 CLI tests on Windows 11 ARM64. Native x64 execution and Windows App Certification Kit validation remain unverified.
+
+The [Windows GitHub draft](https://github.com/Varunmanoj/Vidi-Studio-Windows/releases/tag/untagged-aae653afa4d780b3a621) targets the user's pushed commit `7b76527`, whose tree matches the source used to package. The x64 and ARM64 self-signed sideload ZIPs, installation instructions and checksums are under `dist/release/1.0.359.0/`. Verified nested MSIX signatures, architecture, ZIP integrity, the public test certificate, and GitHub's upload states, sizes and SHA-256 digests for all four assets. Finished Windows build tasks and staging directories were removed. The installed Windows package reports 1.0.359.0 ARM64 and Status Ok. Parallels auto-pause was restored.
+
 ## 2026-11-21 — YouTube link lookup without OAuth (1.0.359.0)
 
 Removed My YouTube Videos, YouTube account settings, account-backed caption downloads, and their menus and shortcuts. Public and unlisted link previews and video-details refresh use the publisher’s YouTube Data API key. The packaged configuration contains only that key. Saved transcripts and local-file import remain available. Legacy packaged Help and the published website guide and shortcut reference were synchronized. Mac and Windows version and menu/layout parity passed.

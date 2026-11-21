@@ -85,9 +85,8 @@ public sealed partial class SettingsDialog
         var originalSection=SelectedSection; var originalTarget=projectTarget; var originalAllow=allowClosedProjectTarget;
         try {
             draft["developerMode"]=true; UpdateDeveloperPromptsVisibility(); SetProjectTarget(model.Project);
-            foreach (var section in new[] {0,1,2,4,5,6,7,8}) {
+            foreach (var section in new[] {0,1,2,4,5,6,7}) {
                 NavigateForSmokeTest(section); await Task.Delay(150);
-                if (section == 8) SpeechItems<YouTubeAccountsPanel>(currentSectionPanel!).Single().PreviewAccountsForSmokeTest(new[] { new Services.YouTubeAccount("compact-account","","Example account","example@example.com","","","Example channel","","") });
                 foreach (var theme in new[] {"dark","light"}) {
                     ApplyWindowTheme(theme); await Task.Delay(100); layout.UpdateLayout();
                     var cards=SpeechItems<Border>(currentSectionPanel!).Where(b => b.Tag as string == "settings-card").ToArray();

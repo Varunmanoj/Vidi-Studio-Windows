@@ -13,8 +13,6 @@ public static class MenuIcons
             "Import video" or "New project" => "\uE710",
             "New project from video…" => "\uE714",
             "New YouTube project" or "New project from YouTube…" => "\uE71B",
-            "My YouTube Videos…" => "\uE714",
-            "YouTube Accounts…" => "\uE77B",
             "Open in YouTube" => "\uE8A7",
             "Video Details…" => "\uE946",
             "Table View" => "\uE80A",

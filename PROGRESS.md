@@ -1,3 +1,15 @@
+## 2026-11-21 — YouTube link lookup without OAuth (1.0.359.0)
+
+Removed My YouTube Videos, YouTube account settings, account-backed caption downloads, and their menus and shortcuts. Public and unlisted link previews and video-details refresh use the publisher’s YouTube Data API key. The packaged configuration contains only that key. Saved transcripts and local-file import remain available. Legacy packaged Help and the published website guide and shortcut reference were synchronized. Mac and Windows version and menu/layout parity passed.
+
+Built and inspected ARM64 Debug and self-contained Release packages. The installed Debug package passed GallerySettingsOnly, DialogsOnly and ContextMenusOnly in separate runs, including wide and compact layout and light/dark Settings. Replaced Debug with Release 1.0.359.0 and verified the installed window, a single package and Start entry, the packaged engine doctor, and 20 packaged-engine CLI tests. The Windows focused source suite passed 112 tests. Browser handoff fixtures passed on the Mac host and the browser extension remains at 1.0.349. No Windows x64 runtime check or public desktop package upload was performed.
+
+Evidence is in `build/youtube-data-only-359-*` logs. The matching Mac installation and public/unlisted Data API evidence are in the Mac progress log. The production guide was verified against Cloudflare deployment `097968b0-6861-4aa4-a3be-f6a85343f07e`.
+
+## 2026-11-21 — Microsoft Store draft cleanup
+
+Saved the US English listing in Partner Center submission 1. Deleted the Appearance screenshot that showed YouTube Accounts. Reopened the listing and verified the four remaining desktop screenshots and their captions. The product description and feature bullets now specify public or unlisted YouTube links and local caption or transcript files. The submission remains in draft.
+
 ## 2026-11-20 — Self-signed GitHub draft for 1.0.358
 
 Created the [v1.0.358 GitHub release draft](https://github.com/Varunmanoj/Vidi-Studio-Windows/releases/tag/untagged-2bf49ec2177c436cd192) at the packaged source commit 131e69c. Attached the self-signed x64 and ARM64 sideload ZIPs plus installation instructions and checksums. Verified the nested signed 1.0.358.0 MSIX files, matching architecture dependencies and public certificate in both ZIPs. GitHub reported all four assets uploaded, and their sizes and SHA-256 digests matched the local files. The draft contains zero Microsoft Store packages and remains unpublished while public trust, clean-machine validation and FFmpeg source and notices work are pending.

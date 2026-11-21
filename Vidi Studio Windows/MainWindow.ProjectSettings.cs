@@ -42,9 +42,9 @@ public sealed partial class MainWindow
             case "import-descriptions": await ImportExistingAssetsAsync(ImportScope.Descriptions); break;
             case "import-ad-audio": await ImportExistingAssetsAsync(ImportScope.ADAudio); break;
             case "import-assets": await ImportExistingAssetsAsync(); break;
+            case "youtube-details": await ShowYouTubeDetailsAsync(); break;
             case "import-original-audio": await ImportExistingAssetsAsync(ImportScope.OriginalAudio); break;
             case "review-audio-timing": await ImportOriginalAudioAsync(null); break;
-            case "youtube-captions": await ShowYouTubeDetailsAsync(true); break;
             case "export": await ShowAudioExportAsync(); break;
             case "rename-project": await RenameProjectAsync(project); break;
         }

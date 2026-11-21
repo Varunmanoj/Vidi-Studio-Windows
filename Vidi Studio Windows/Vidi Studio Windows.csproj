@@ -12,7 +12,7 @@
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
-    <Version>1.0.358</Version>
+    <Version>1.0.359</Version>
     <Product>Vidi Studio</Product>
     <AssemblyTitle>Vidi Studio</AssemblyTitle>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>
@@ -194,6 +194,19 @@
       <Content Include="$(PiperRuntimeDir)\**\*" Link="piper\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
-  <ItemGroup><Content Include="youtube-config.json" CopyToOutputDirectory="PreserveNewest" Condition="!Exists('..\Config\youtube-release.json')" /><Content Include="..\Config\youtube-release.json" Link="youtube-config.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\Config\youtube-release.json')" /></ItemGroup>
-</Project>
+  <ItemGroup Condition="!Exists('..\Config\youtube-release.json')">
+    <Content Include="youtube-config.json" CopyToOutputDirectory="Always" />
+  </ItemGroup>
 
+  <Target Name="PrepareYouTubeDataApiConfig" BeforeTargets="AssignTargetPaths"
+          Condition="Exists('..\Config\youtube-release.json') and '$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <YouTubePackageConfig>$(IntermediateOutputPath)youtube-config.json</YouTubePackageConfig>
+    </PropertyGroup>
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <Exec Command="powershell -NoProfile -NonInteractive -Command &quot;$ErrorActionPreference = 'Stop'; $config = Get-Content -LiteralPath '..\Config\youtube-release.json' -Raw | ConvertFrom-Json; @{ apiKey = [string]$config.apiKey } | ConvertTo-Json -Compress | Set-Content -LiteralPath '$(YouTubePackageConfig)' -Encoding ASCII&quot;" />
+    <ItemGroup>
+      <Content Include="$(YouTubePackageConfig)" Link="youtube-config.json" CopyToOutputDirectory="Always" />
+    </ItemGroup>
+  </Target>
+</Project>

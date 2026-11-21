@@ -106,27 +106,15 @@
         },
         {
           "id": "youtube-account-library",
-          "title": "Browse your YouTube videos and playlists"
+          "title": "Open a YouTube video from its link"
         },
         {
-          "id": "youtube-caption-import",
-          "title": "Use captions already on YouTube"
-        },
-        {
-          "id": "youtube-menu-and-keyboard-shortcuts",
-          "title": "YouTube menu and keyboard shortcuts"
-        },
-        {
-          "id": "youtube-loading-progress",
-          "title": "YouTube loading progress"
+          "id": "import-a-transcript-from-a-file",
+          "title": "Import a transcript from a file"
         },
         {
           "id": "youtube-information-saved-in-the-editor-inspector",
           "title": "YouTube information saved in the editor inspector"
-        },
-        {
-          "id": "youtube-list-and-table-layouts",
-          "title": "YouTube list and table layouts"
         },
         {
           "id": "open-an-imported-project-on-youtube",
@@ -741,10 +729,6 @@
           "title": "Help"
         },
         {
-          "id": "youtube-accounts",
-          "title": "YouTube Accounts"
-        },
-        {
           "id": "open-settings-for-a-project",
           "title": "Open settings for a project"
         },
@@ -917,10 +901,6 @@
           "title": "API key check results"
         },
         {
-          "id": "youtube-sign-in-is-not-configured",
-          "title": "YouTube sign-in is not configured"
-        },
-        {
           "id": "generated-text-uses-an-unexpected-language",
           "title": "Generated text uses an unexpected language"
         },
@@ -995,8 +975,8 @@
           "title": "Connection checks"
         },
         {
-          "id": "connected-youtube-accounts",
-          "title": "Connected YouTube accounts"
+          "id": "youtube-video-details",
+          "title": "YouTube video details"
         },
         {
           "id": "api-cache-lifetime",

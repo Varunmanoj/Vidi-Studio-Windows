@@ -23,9 +23,6 @@ namespace Vidi_Studio_Windows.Views;
 /// <summary>Inspects a source without creating a project or copying the video.</summary>
 public sealed class NewProjectDialog : ContentDialog
 {
-    public bool BrowseYouTubeRequested { get; private set; }
-    public bool ChooseYouTubeCaptions => chooseYouTubeCaptions.IsChecked == true && IsYouTube;
-    private readonly CheckBox chooseYouTubeCaptions = new() { Content = "Choose YouTube captions after creating" };
     private readonly Window owner;
     private readonly SettingsStore settings;
     private readonly RadioButton local = new() { GroupName = "project-source" };
@@ -116,10 +113,6 @@ public sealed class NewProjectDialog : ContentDialog
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(youtubeUrl,"YouTube video URL");
         youtubeRow.Children.Add(youtubeUrl);
         Grid.SetColumn(fetchDetails,1); youtubeRow.Children.Add(fetchDetails);
-        var browseYouTube = new Button { Content = "My YouTube Videos…" };
-        browseYouTube.Click += (_, _) => { BrowseYouTubeRequested = true; Hide(); };
-        youtubeFields.Children.Add(browseYouTube);
-        youtubeFields.Children.Add(chooseYouTubeCaptions);
         SettingsDialog.CompactRow(youtubeFields,"YouTube video URL",youtubeRow,true);
         youtubeFields.Children.Add(youtubePreview);
         youtubeFields.Children.Add(youtubeStatus);

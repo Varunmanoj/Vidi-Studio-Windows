@@ -1,4 +1,4 @@
-param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [switch]$SkipBuild, [switch]$FrozenEngine, [string]$AppDirectory, [switch]$RequirePackage, [int]$TimeoutSeconds = 180, [string]$SummaryFixture, [switch]$GallerySettingsOnly, [switch]$ContextMenusOnly, [switch]$JumpOnly, [switch]$ExportSoundOnly, [switch]$ProjectSearchOnly, [switch]$YouTubeLayoutOnly, [switch]$DialogsOnly)
+param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [switch]$SkipBuild, [switch]$FrozenEngine, [string]$AppDirectory, [switch]$RequirePackage, [int]$TimeoutSeconds = 180, [string]$SummaryFixture, [switch]$GallerySettingsOnly, [switch]$ContextMenusOnly, [switch]$JumpOnly, [switch]$ExportSoundOnly, [switch]$ProjectSearchOnly, [switch]$DialogsOnly)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $testRoot = Join-Path $projectRoot "build\ui-test-$Platform"
@@ -58,7 +58,6 @@ try {
     $env:VIDISTUDIO_UI_SMOKE_PROJECT = $folder
     $env:VIDISTUDIO_UI_SMOKE_REPORT = $report
     if ($DialogsOnly) { $env:VIDISTUDIO_UI_SMOKE_DIALOGS_ONLY = '1' }
-    if ($YouTubeLayoutOnly) { $env:VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY = '1' }
     if ($ProjectSearchOnly) { $env:VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY = '1' }
     if ($GallerySettingsOnly) { $env:VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY = '1' }
     if ($ExportSoundOnly) { $env:VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY = '1' }
@@ -84,7 +83,6 @@ public static class VidiActivation {
         if (!$installed) { throw 'Register the development package first.' }
         $payloadValues = @{VIDISTUDIO_UI_SMOKE_REPORT=$report;VIDISTUDIO_UI_SMOKE_PROJECT=$folder;VIDISTUDIO_CONFIG=$configFile}
         if ($DialogsOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_DIALOGS_ONLY = '1' }
-        if ($YouTubeLayoutOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY = '1' }
         if ($ProjectSearchOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY = '1' }
         if ($GallerySettingsOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY = '1' }
         if ($ExportSoundOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY = '1' }
@@ -127,7 +125,6 @@ public static class VidiPackageIdentity {
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_JUMP_ONLY -ErrorAction SilentlyContinue
-    Remove-Item Env:VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_DIALOGS_ONLY -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY -ErrorAction SilentlyContinue

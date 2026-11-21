@@ -25,11 +25,9 @@ public sealed partial class MainWindow
     {
         if (Model.Busy || Model.Project is not { } project) return;
         var dialog = new Views.ImportAssetsDialog(this, project, scope);
-        try {
-            var result = await ShowDialogAsync(dialog, 800, 760);
-            if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary)) return;
-            await ImportSelectedAssetsAsync(dialog.Selection, dialog.CombineRequested);
-        } finally { dialog.CleanupYouTubeCaptions(); }
+        var result = await ShowDialogAsync(dialog, 800, 760);
+        if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary)) return;
+        await ImportSelectedAssetsAsync(dialog.Selection, dialog.CombineRequested);
     }
 
     private async Task ImportSelectedAssetsAsync(ImportAssetSelection selection, bool combine)
@@ -47,7 +45,7 @@ public sealed partial class MainWindow
             string? transcriptTiming = null, descriptionTiming = null;
             if (selection.TranscriptPath is { } transcriptFile)
             {
-                var (proceed, timing) = await ReviewTimingBeforeImportAsync(transcriptFile, false, "narration", project, selection.CaptionProvenancePath != null);
+                var (proceed, timing) = await ReviewTimingBeforeImportAsync(transcriptFile, false, "narration", project);
                 if (!proceed) return;
                 transcriptTiming = timing;
                 if (timing != null) timingFiles.Add(timing);
@@ -70,7 +68,6 @@ public sealed partial class MainWindow
             if (selection.TranscriptPath is { } transcript)
             {
                 var arguments = new List<string> { "--input", transcript };
-                if (selection.CaptionProvenancePath is { } provenance) arguments.AddRange(new[] { "--caption-provenance", provenance });
                 if (transcriptTiming != null) arguments.AddRange(new[] { "--timing-input", transcriptTiming });
                 await RunImport("import-transcript", arguments);
             }
@@ -93,7 +90,7 @@ public sealed partial class MainWindow
         finally { foreach (var file in timingFiles) if (File.Exists(file)) File.Delete(file); }
     }
 
-    private async Task<(bool Proceed, string? Timing)> ReviewTimingBeforeImportAsync(string path, bool description, string mode, StudioProject project, bool requireComplete = false)
+    private async Task<(bool Proceed, string? Timing)> ReviewTimingBeforeImportAsync(string path, bool description, string mode, StudioProject project)
     {
         if (Path.GetExtension(path).Equals(".txt", StringComparison.OrdinalIgnoreCase))
         {
@@ -109,15 +106,15 @@ public sealed partial class MainWindow
             {
                 Content = new TextBlock
                 {
-                    Text = string.Join("\n\n", warnings) + (requireComplete ? "\n\nReview this caption track’s timing before importing. Your existing transcript is unchanged." : "\n\nYou can import anyway and edit transcript timings afterward."),
+                    Text = string.Join("\n\n", warnings) + "\n\nYou can import anyway and edit transcript timings afterward.",
                     TextWrapping = TextWrapping.Wrap
                 },
                 MaxHeight = 420
             },
-            PrimaryButtonText = requireComplete ? "" : "Import Anyway",
+            PrimaryButtonText = "Import Anyway",
             SecondaryButtonText = "Review Timing…",
             CloseButtonText = "Cancel",
-            DefaultButton = requireComplete ? ContentDialogButton.Secondary : ContentDialogButton.Primary
+            DefaultButton = ContentDialogButton.Primary
         };
         var result = await ShowDialogAsync(warningDialog, 720, 520);
         if (result == ContentDialogResult.Primary) return (true, null);

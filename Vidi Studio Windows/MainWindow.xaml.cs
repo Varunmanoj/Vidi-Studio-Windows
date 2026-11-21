@@ -541,7 +541,6 @@ public sealed partial class MainWindow : Window
         {
             var dialog = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings, youtube);
             var result = await ShowDialogAsync(dialog, 760, 900);
-            if (dialog.BrowseYouTubeRequested) { await ShowYouTubeBrowserAsync(); return; }
             if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary)) return;
             var imports = dialog.AssetSelection;
             List<EngineEvent> created;
@@ -562,7 +561,6 @@ public sealed partial class MainWindow : Window
             }
             ShowEditor();
             if (imports.HasAny) await ImportSelectedAssetsAsync(imports, dialog.CombineRequested);
-            if (dialog.ChooseYouTubeCaptions) await ShowYouTubeDetailsAsync(true);
         }
         catch (Exception ex) { await ShowError(ex); }
     }
@@ -2153,7 +2151,7 @@ public sealed partial class MainWindow : Window
         var section = ((sender as FrameworkElement)?.Tag as string) switch
         {
             "Projects" => 1, "Narration" => 2, "Gemini" or "Gemini API" => 3, "Developer prompts" => 4,
-            "Storage" => 5, "Help" => 6, "About" => 7, "YouTube Accounts" => 8, _ => 0
+            "Storage" => 5, "Help" => 6, "About" => 7, _ => 0
         };
         await ShowSettingsSectionAsync(section);
     }

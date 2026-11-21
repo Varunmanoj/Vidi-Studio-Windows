@@ -42,8 +42,8 @@ public sealed partial class MainWindow : Window
     private bool youtubeMetadataUpdating;
     private bool ready;
     private bool windowClosed;
-    private string? pendingVideoPath;
-    private readonly TaskCompletionSource<bool> sharedVideoWindowReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly bool openedAsEditor;
+    private readonly TaskCompletionSource<bool> windowReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Segment? highlightedSegment;
     private Segment? previewingSegment;
     private readonly HashSet<Segment> activeSegmentRows = new();
@@ -65,10 +65,12 @@ public sealed partial class MainWindow : Window
     private readonly Dictionary<UIElement, Visibility> fullScreenHidden = new();
     private Button? fullScreenExitButton;
     private Views.SettingsDialog? openSettings { get => App.SharedSettingsWindow; set => App.SharedSettingsWindow = value; }
+    internal bool IsProjectLibrary => !openedAsEditor && !desktopEditorVisible && !windowClosed;
     internal StudioProject? SettingsProject => desktopEditorVisible ? Model.Project : null;
     private double Position => Model.Project?.IsYouTube == true ? youtubePosition : video.PlaybackSession.Position.TotalSeconds;
     public MainWindow(string? folder = null)
     {
+        openedAsEditor = folder != null;
         readback = new SummaryReadback(Model.Engine, Model.Settings);
         onDeviceNarrator = new OnDeviceNarrator(Model.Settings, Model.Engine);
         onDeviceNarrator.Failed += message => Model.ReportStatus(message);
@@ -146,7 +148,7 @@ public sealed partial class MainWindow : Window
         {
             DeletionActivity.Changed -= DeletionActivityChanged;
             windowClosed = true;
-            sharedVideoWindowReady.TrySetResult(false);
+            windowReady.TrySetResult(false);
             ready = false;
             ConnectivityService.Shared.Changed -= ConnectivityChanged;
             if (fullScreenVideo) { try { ExitFullScreenVideo(); } catch (Exception ex) { Model.Engine.Log(ex.ToString()); } }
@@ -171,16 +173,24 @@ public sealed partial class MainWindow : Window
             if (Model.Settings.Get("showPreview", "true") == "false") PreviewPanel.Visibility = Visibility.Collapsed;
             ThumbnailImagesRow.Visibility = Model.Settings.Get("thumbnailImagesVisible", "false") == "true" ? Visibility.Visible : Visibility.Collapsed;
             YouTubeService.ExpireCaches(Model.Settings.Get("libraryPath"));
-            if (folder != null) { Model.Open(folder); ShowEditor(); }
+            if (folder != null)
+            {
+                try
+                {
+                    Model.Open(folder);
+                    await ShowEditorAsync();
+                }
+                catch (Exception ex)
+                {
+                    windowReady.TrySetResult(false);
+                    if (!windowClosed) await ShowError(ex);
+                    return;
+                }
+            }
             if (Model.Settings.Get("projectPresentation") == "grid") ToggleGrid_Click(this, new RoutedEventArgs());
             UpdateApiKeyUi();
             UpdateSectionOverlay(Model.IsAnalyzing);
-            if (pendingVideoPath is { } vidPath)
-            {
-                pendingVideoPath = null;
-                await OpenVideoFileAsync(vidPath);
-            }
-            sharedVideoWindowReady.TrySetResult(true);
+            windowReady.TrySetResult(true);
         };
 #if DEBUG
         Root.Loaded += async (_, _) => { if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_REPORT") is { } report && System.Threading.Interlocked.CompareExchange(ref smokeTestClaimed, 1, 0) == 0) await RunSmokeTestAsync(report); };
@@ -403,95 +413,79 @@ public sealed partial class MainWindow : Window
     }
     public async Task OpenVideoFileAsync(string videoPath)
     {
-        if (string.IsNullOrWhiteSpace(videoPath)) return;
-        if (!ready)
-        {
-            pendingVideoPath = videoPath;
-            return;
-        }
-
-        Activate();
-        BringToForeground();
-
+        if (string.IsNullOrWhiteSpace(videoPath) || !await windowReady.Task || windowClosed) return;
         if (!File.Exists(videoPath))
         {
             await ShowErrorMessage("Video Not Found", $"The selected video file could not be found:\n{videoPath}");
             return;
         }
 
-        if (Model.Busy)
+        await OpenSharedVideoAsync("Importing video…", "shared-file-opening", async () =>
+        {
+            Model.Reload();
+            var existing = Model.ExistingProjectForVideo(videoPath);
+            if (existing != null) return existing.Folder;
+
+            var imported = await Model.RunAsync("import-video",
+                new[] { "--video", videoPath, "--library", Model.Settings.Get("libraryPath") },
+                needsProject: false, throwOnProcessingError: true);
+            return imported.LastOrDefault(item => item.Data.TryGetProperty("project", out _))?.Data.GetProperty("project").GetString();
+        });
+    }
+
+    public async Task OpenYouTubeUrlAsync(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url) || !await windowReady.Task || windowClosed) return;
+        var videoId = SharedYouTubeLink.VideoId(url);
+        if (videoId == null)
+        {
+            await ShowErrorMessage("Unsupported Link", SharedYouTubeLink.InvalidMessage);
+            return;
+        }
+
+        await OpenSharedVideoAsync("Opening YouTube project…", "shared-youtube-opening", async () =>
+        {
+            Model.Reload();
+            var existing = Model.ExistingProjectForYouTube(url);
+            if (existing != null) return existing.Folder;
+
+            await Model.RunAsync("import-youtube", new[] { "--url", url, "--library", Model.Settings.Get("libraryPath") }, false);
+            return Model.Project is { } project && SharedYouTubeLink.VideoId(project.YoutubeURL) == videoId ? project.Folder : null;
+        });
+    }
+
+    private async Task OpenSharedVideoAsync(string message, string automationId, Func<Task<string?>> resolveProject)
+    {
+        if (Model.Busy || SharedVideoRing.IsActive)
         {
             await ShowErrorMessage("Vidi Studio Is Busy", "Wait for the current operation to finish, then open the video again.");
             return;
         }
 
-        try
-        {
-            Model.Reload();
-            var existing = Model.ExistingProjectForVideo(videoPath);
-            if (existing != null)
-            {
-                Model.Open(existing.Folder);
-                ShowEditor();
-                return;
-            }
-
-            await Model.RunAsync("import-video", new[] { "--video", videoPath, "--library", Model.Settings.Get("libraryPath") }, false);
-            if (Model.Project != null) ShowEditor();
-        }
-        catch (Exception ex)
-        {
-            await ShowError(ex);
-        }
-    }
-    public async Task OpenYouTubeUrlAsync(string url)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return;
-        var videoId = SharedYouTubeLink.VideoId(url);
-        if (videoId == null)
-        {
-            if (await sharedVideoWindowReady.Task) await ShowErrorMessage("Unsupported Link", SharedYouTubeLink.InvalidMessage);
-            return;
-        }
-        if (Model.Busy || SharedVideoRing.IsActive)
-        {
-            if (await sharedVideoWindowReady.Task) await ShowErrorMessage("Vidi Studio Is Busy", "Wait for the current operation to finish, then open the video again.");
-            return;
-        }
-        var progressClock = new System.Diagnostics.Stopwatch();
-        bool opened = false;
+        var progressClock = System.Diagnostics.Stopwatch.StartNew();
+        SharedVideoProgressText.Text = message;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(SharedVideoRing, message);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(SharedVideoRing, automationId);
         SharedVideoRing.IsActive = true;
         SharedVideoProgress.Visibility = Visibility.Visible;
         try
         {
-            if (!await sharedVideoWindowReady.Task || windowClosed) return;
-            progressClock.Start();
             Activate();
             BringToForeground();
             var peer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(SharedVideoProgressText);
             peer?.RaiseNotificationEvent(Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationKind.Other,
-                Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationProcessing.MostRecent, SharedVideoProgressText.Text, "shared-youtube-opening");
-            // Let layout and accessibility process the status before reading the library synchronously.
-            var rendered = new TaskCompletionSource<bool>();
-            if (DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => rendered.SetResult(true)))
+                Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationProcessing.MostRecent, message, automationId);
+            // Give layout and accessibility a turn before the library lookup.
+            var rendered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => rendered.TrySetResult(true)))
                 await rendered.Task;
             if (windowClosed) return;
-            Model.Reload();
-            var existing = Model.ExistingProjectForYouTube(url);
-            if (existing != null)
-            {
-                Model.Open(existing.Folder);
-                ShowEditor();
-                opened = true;
-                return;
-            }
 
-            await Model.RunAsync("import-youtube", new[] { "--url", url, "--library", Model.Settings.Get("libraryPath") }, false);
-            if (Model.Project != null && SharedYouTubeLink.VideoId(Model.Project.YoutubeURL) == videoId)
-            {
-                ShowEditor();
-                opened = true;
-            }
+            var folder = await resolveProject();
+            if (windowClosed || folder == null) return;
+            var remaining = TimeSpan.FromMilliseconds(450) - progressClock.Elapsed;
+            if (remaining > TimeSpan.Zero) await Task.Delay(remaining);
+            if (!windowClosed) App.OpenOrActivateEditor(folder);
         }
         catch (Exception ex)
         {
@@ -500,9 +494,6 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
-            // Keep a cached reopen visible long enough to perceive, even if the editor is ready immediately.
-            var remaining = TimeSpan.FromMilliseconds(450) - progressClock.Elapsed;
-            if (opened && !windowClosed && remaining > TimeSpan.Zero) await Task.Delay(remaining);
             SharedVideoRing.IsActive = false;
             SharedVideoProgress.Visibility = Visibility.Collapsed;
         }
@@ -527,7 +518,7 @@ public sealed partial class MainWindow : Window
     }
     private async void ImportVideo_Click(object sender, RoutedEventArgs e) => await ShowNewProjectDialogAsync(false);
     private async void OpenProject_Click(object sender, RoutedEventArgs e)
-    { if (Model.Busy) return; try { if (await PickFolder() is { } folder) { Model.Open(folder); ShowEditor(); } } catch (Exception ex) { await ShowError(ex); } }
+    { if (Model.Busy) return; try { if (await PickFolder() is { } folder) { Model.Open(folder); App.OpenOrActivateEditor(folder); } } catch (Exception ex) { await ShowError(ex); } }
     private async void YouTube_Click(object sender, RoutedEventArgs e) => await ShowNewProjectDialogAsync(true);
     private async Task ShowNewProjectDialogAsync(bool youtube)
     {
@@ -559,8 +550,9 @@ public sealed partial class MainWindow : Window
                     await ShowErrorMessage("Import Could Not Finish", Model.Status);
                 return;
             }
-            ShowEditor();
-            if (imports.HasAny) await ImportSelectedAssetsAsync(imports, dialog.CombineRequested);
+            var editor = App.OpenWindow(Model.Project.Folder);
+            if (imports.HasAny && await editor.windowReady.Task && !editor.windowClosed)
+                await editor.ImportSelectedAssetsAsync(imports, dialog.CombineRequested);
         }
         catch (Exception ex) { await ShowError(ex); }
     }

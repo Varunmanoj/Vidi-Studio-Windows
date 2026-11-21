@@ -28,6 +28,12 @@ public sealed partial class MainWindow
             var folder = Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT");
             if (folder == null) throw new InvalidOperationException("Smoke project is required.");
             Model.Open(folder);
+            if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_SHELL_OPEN_ONLY") == "1")
+            {
+                await VerifyShellProjectOpeningForSmokeTestAsync(folder);
+                await File.WriteAllTextAsync(report, "PASS: external local file import shows accessible progress, opens a separate editor, reuses it on repeat, and returns to the same All Projects window on Close Window.");
+                return;
+            }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY") == "1")
             {
                 ShowEditor();
@@ -1107,6 +1113,54 @@ public sealed partial class MainWindow
             }
         }
         finally { busy.SetValue(Model, original); openSettings?.Hide(); UpdateDesktopMenuStates(); }
+    }
+
+    private async Task VerifyShellProjectOpeningForSmokeTestAsync(string fixtureFolder)
+    {
+        var library = Path.GetDirectoryName(fixtureFolder)!;
+        if (!string.Equals(Path.GetFullPath(Model.Settings.Get("libraryPath")), Path.GetFullPath(library), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Shell-open smoke test must use the isolated project library.");
+        var source = Path.Combine(library, $"shell-open-{Guid.NewGuid():N}.mp4");
+        File.Copy(Path.Combine(fixtureFolder, "source.mp4"), source);
+        try
+        {
+            var opening = OpenVideoFileAsync(source);
+            if (!SharedVideoRing.IsActive || SharedVideoProgress.Visibility != Visibility.Visible ||
+                SharedVideoProgressText.Text != "Importing video…" ||
+                Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(SharedVideoRing) != "shared-file-opening")
+                throw new InvalidOperationException("The external file import did not expose progress.");
+            await opening;
+            if (SharedVideoRing.IsActive || SharedVideoProgress.Visibility != Visibility.Collapsed ||
+                !IsProjectLibrary || GalleryPanel.Visibility != Visibility.Visible)
+                throw new InvalidOperationException("The import did not return the library to its normal layout.");
+            var imported = Model.Project;
+            if (imported == null || imported.Folder == fixtureFolder)
+                throw new InvalidOperationException("The shell import did not create a separate project.");
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (!App.OpenEditorProjects.Any(project => project.Folder == imported.Folder) && DateTime.UtcNow < deadline)
+                await Task.Delay(50);
+            if (!App.OpenEditorProjects.Any(project => project.Folder == imported.Folder))
+                throw new InvalidOperationException("The shell import did not open an editor.");
+            var editor = App.EditorForProject(imported);
+            if (ReferenceEquals(editor, this) || !ReferenceEquals(App.ProjectLibrary(), this))
+                throw new InvalidOperationException("Opening the editor replaced All Projects.");
+
+            var count = App.WindowCountForSmokeTest;
+            await OpenVideoFileAsync(source);
+            if (App.WindowCountForSmokeTest != count || !ReferenceEquals(editor, App.EditorForProject(imported)))
+                throw new InvalidOperationException("A repeat shell activation opened a duplicate editor.");
+
+            var closed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            editor.Closed += (_, _) => closed.TrySetResult(true);
+            await editor.RunDesktopCommandAsync("close-window");
+            await closed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            for (var retry = 0; retry < 30 && !searchAnnouncementWindowActive; retry++) await Task.Delay(50);
+            if (!ReferenceEquals(App.ProjectLibrary(), this) || windowClosed ||
+                GalleryPanel.Visibility != Visibility.Visible || App.WindowCountForSmokeTest != count - 1 ||
+                !searchAnnouncementWindowActive)
+                throw new InvalidOperationException("File > Close Window did not return focus to All Projects.");
+        }
+        finally { File.Delete(source); }
     }
 
     private async Task VerifySettingsWindowLifetimeForSmokeTestAsync()

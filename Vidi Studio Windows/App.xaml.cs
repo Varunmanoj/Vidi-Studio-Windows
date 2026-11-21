@@ -17,6 +17,11 @@ namespace Vidi_Studio_Windows;
 public partial class App : Application
 {
     private static readonly List<MainWindow> Windows = new();
+#if VIDISTUDIO_STORE_RELEASE
+    internal static bool UsesLocalIntegrations => false;
+#else
+    internal static bool UsesLocalIntegrations => true;
+#endif
     internal static bool HasMainWindows => Windows.Count > 0;
     private static Views.HelpWindow? helpWindow;
     private static AppInstance? mainInstance;
@@ -39,11 +44,14 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
-        _ = Task.Run(() =>
+        if (UsesLocalIntegrations)
         {
-            try { LocalBrowserExtension.Refresh(); }
-            catch (Exception ex) { LogStartup("Local browser extension update failed: " + ex.Message); }
-        });
+            _ = Task.Run(() =>
+            {
+                try { LocalBrowserExtension.Refresh(); }
+                catch (Exception ex) { LogStartup("Local browser extension update failed: " + ex.Message); }
+            });
+        }
         UnhandledException += (_, e) =>
         {
             try { new Services.EngineClient(new Services.SettingsStore()).Log(e.Exception.ToString()); } catch { }
@@ -132,12 +140,12 @@ public partial class App : Application
         }
 #endif
 
-        if (launchArguments.Contains("--register-context-menu", StringComparison.OrdinalIgnoreCase))
+        if (UsesLocalIntegrations && launchArguments.Contains("--register-context-menu", StringComparison.OrdinalIgnoreCase))
         {
             Services.ShellIntegration.RegisterContextMenu();
             return;
         }
-        if (launchArguments.Contains("--unregister-context-menu", StringComparison.OrdinalIgnoreCase))
+        if (UsesLocalIntegrations && launchArguments.Contains("--unregister-context-menu", StringComparison.OrdinalIgnoreCase))
         {
             Services.ShellIntegration.UnregisterContextMenu();
             return;

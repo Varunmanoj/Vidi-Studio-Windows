@@ -1,3 +1,17 @@
+## 2026-11-21 — Microsoft Store packaging isolation (1.0.360.0)
+
+The previous staged Store manifest carried `unvirtualizedResources` and disabled registry and file-system write virtualization. The Store package now uses Windows' default isolation, receives Explorer, Open with, Share and browser handoff activation from its manifest, and uses the browser-store extensions. The Store build skips the legacy registry repair and app-managed unpacked extension updater. Those tools remain in direct-download and development builds.
+
+Built the unsigned ARM64 and x64 Store uploads in Parallels from the synchronized 1.0.360 sources. Both packages use the exact Partner Center identity and preserve their supported operating-system versions. Verified nested MSIX integrity, executable architectures, manifest extensions, the absence of the capability and both overrides, and the API-key-only YouTube configuration. The ARM64 Store package registered and launched on Windows 11. Its packaged engine doctor and 20 CLI tests passed, and startup left the sampled legacy Explorer registration and local browser extension unchanged. Native x64 execution and the Windows App Certification Kit remain unverified.
+
+Partner Center saved submission 1 with both 1.0.360.0 architectures replacing 1.0.359.0. The package section reports Complete, and neither Packages nor Submission Options requests `unvirtualizedResources`. The submission remains in draft. The listing text was left intact. Verified checksums and the manifest report are in `dist/microsoft-store/1.0.360.0/`.
+
+Menu, layout and focused manifest tests passed (77 total). The broader File Explorer test module also encountered an existing obsolete assertion for New Project labels in MainWindow.Commands.cs. No change was made to those commands.
+
+Installed and launched the direct-download ARM64 build at 1.0.360.0. Windows reports one package registration and Start entry. The installed engine passed doctor and 20 CLI tests. Removed the temporary builds and test tasks and restored Parallels auto-pause.
+
+The [Windows GitHub prerelease](https://github.com/Varunmanoj/Vidi-Studio-Windows/releases/tag/v1.0.360) targets `9d38601`. The self-signed x64 and ARM64 ZIPs, installation notes and checksums are in `dist/release/1.0.360.0/`. Verified all four uploaded sizes and SHA-256 digests before publishing as a prerelease in GitHub. Both public installer URLs returned HTTP 200. The landing and download page update was deployed separately through Cloudflare Pages from website commit `d137ea4`.
+
 ## 2026-11-21 — Microsoft Store and GitHub drafts (1.0.359.0)
 
 Built x64 and ARM64 Store upload packages in Parallels Windows using Visual Studio Community 2026 MSBuild and the Windows SDK. The scripted StoreUpload build used the exact Name, Publisher and PublisherDisplayName from Vidi Studio's Partner Center Product Identity page, Store ID 9PMC3Z6XGJ4J. Both packages are in submission 1. A fresh read of Partner Center reported Packages Complete and showed both architectures and 1.0.359.0, with the submission In draft. Partner Center flagged the restricted capability `unvirtualizedResources` for approval before certification.

@@ -64,12 +64,15 @@ public sealed partial class SettingsDialog
         AddText(tools,"Python executable","pythonPath","python.exe");
         AddExecutablePicker(tools,"FFmpeg executable","ffmpegPath");
         AddExecutablePicker(tools,"FFprobe executable","ffprobePath");
-        var repair = new Button { Content = "Repair legacy File Explorer context menu" };
-        repair.Click += (_,_) => {
-            try { Services.ShellIntegration.RegisterContextMenu(); status.Text="Legacy File Explorer context menu registered for video files."; }
-            catch (Exception ex) { status.Text="Could not register the legacy context menu: "+ex.Message; }
-        };
-        tools.Children.Add(GeminiRowDivider()); tools.Children.Add(repair);
+        if (App.UsesLocalIntegrations)
+        {
+            var repair = new Button { Content = "Repair legacy File Explorer context menu" };
+            repair.Click += (_,_) => {
+                try { Services.ShellIntegration.RegisterContextMenu(); status.Text="Legacy File Explorer context menu registered for video files."; }
+                catch (Exception ex) { status.Text="Could not register the legacy context menu: "+ex.Message; }
+            };
+            tools.Children.Add(GeminiRowDivider()); tools.Children.Add(repair);
+        }
         panel.Children.Add(storageAdvancedControls); UpdateAdvancedControlsVisibility();
         var diagnostics = CompactGroup(panel,"Diagnostics");
         var doctor = new Button { Content = "Check engine and media tools" };

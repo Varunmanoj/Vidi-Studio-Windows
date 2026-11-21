@@ -1142,8 +1142,12 @@ public sealed partial class MainWindow
     /// </summary>
     private void CloseWindowDeferred()
     {
-        DispatcherQueue.TryEnqueue(() =>
+        DispatcherQueue.TryEnqueue(async () =>
         {
+            if (windowClosed) return;
+            var wasEditor = desktopEditorVisible;
+            if (wasEditor && summaryEditMode && !await SaveSummaryChangesAsync()) return;
+            if (wasEditor) App.ProjectLibrary();
             try { Close(); }
             catch (Exception ex)
             {
@@ -1151,6 +1155,7 @@ public sealed partial class MainWindow
                 try { AppWindow.Destroy(); }
                 catch (Exception fallback) { Model.Engine.Log(fallback.ToString()); }
             }
+            if (wasEditor && windowClosed) App.ShowProjectLibrary();
         });
     }
 

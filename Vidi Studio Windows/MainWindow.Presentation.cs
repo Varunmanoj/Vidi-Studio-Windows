@@ -330,7 +330,9 @@ public sealed partial class MainWindow
         CaptionText.Text = DescriptionCaptionText.Text = ""; CaptionOverlay.Visibility = Visibility.Collapsed;
         ShowGallery_Click(this, new RoutedEventArgs());
     }
-    private async void ShowEditor()
+    private async void ShowEditor() => await ShowEditorAsync();
+
+    private async Task ShowEditorAsync()
     {
         if (Model.Project is { IsYouTube: true } openingProject) {
             try {

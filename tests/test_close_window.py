@@ -9,7 +9,7 @@ MENUS = (ROOT / 'Vidi Studio Windows' / 'MainWindow.Menus.cs').read_text(encodin
 class CloseWindowCommand(unittest.TestCase):
     def test_close_window_is_deferred_until_the_menu_handler_returns(self):
         self.assertIn('case "close-window": CloseWindowDeferred(); return;', MENUS)
-        self.assertIn('DispatcherQueue.TryEnqueue(() =>', MENUS)
+        self.assertIn('DispatcherQueue.TryEnqueue(async () =>', MENUS)
 
     def test_close_window_has_a_destroy_fallback(self):
         self.assertIn('try { Close(); }', MENUS)

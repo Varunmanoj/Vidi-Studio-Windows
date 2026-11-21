@@ -104,8 +104,27 @@ public partial class App : Application
         foreach (var window in Windows.ToArray()) window.RefreshAfterProjectDeletion();
     }
 
+    internal static MainWindow ProjectLibrary() =>
+        Windows.FirstOrDefault(window => window.IsProjectLibrary) ?? OpenWindow();
+
+    internal static void ShowProjectLibrary()
+    {
+        var library = ProjectLibrary();
+        library.Activate();
+        library.BringToForeground();
+    }
+
+    internal static MainWindow OpenOrActivateEditor(string folder)
+    {
+        var editor = Windows.FirstOrDefault(window => window.IsEditingFolder(folder)) ?? OpenWindow(folder);
+        editor.Activate();
+        editor.BringToForeground();
+        return editor;
+    }
+
     public static MainWindow OpenWindow(string? folder = null)
     {
+        if (folder != null) ProjectLibrary();
         var window = new MainWindow(folder);
         Windows.Add(window);
         System.ComponentModel.PropertyChangedEventHandler changed = (_, args) => { if (args.PropertyName == "Project") OpenProjectsChanged?.Invoke(); };
@@ -132,6 +151,7 @@ public partial class App : Application
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_JUMP_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_JUMP_ONLY"));
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY"));
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY"));
+            Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_SHELL_OPEN_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_SHELL_OPEN_ONLY"));
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY"));
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_DIALOGS_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_DIALOGS_ONLY"));
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY"));
@@ -180,7 +200,7 @@ public partial class App : Application
                     var request = ReadActivation(redirectedArgs, null);
                     dispatcher.TryEnqueue(async () =>
                     {
-                        var target = Windows.Contains(window) ? window : Windows.FirstOrDefault() ?? OpenWindow();
+                        var target = ProjectLibrary();
                         target.Activate();
                         target.BringToForeground();
                         await HandleIncomingActivationAsync(target, request);

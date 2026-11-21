@@ -1,3 +1,15 @@
+## 2026-11-21 — File and browser opening (1.0.361.0)
+
+File Explorer and browser activations route through All Projects. Local and YouTube opening use the accessible project-opening indicator, and the project opens in a separate or existing matching editor. File > Close Window returns to All Projects after successful closure and respects the summary-save guard.
+
+80 focused source and parity tests passed. The packaged ARM64 smoke test in Windows 11 on Parallels confirmed the local opening indicator, its accessible name, separate editor and library windows, editor reuse, and the File menu command returning focus to All Projects. The signed Release ARM64 package 1.0.361.0 installed and launched. Engine doctor and 20 installed engine CLI tests passed. One ARM64 package remains installed and registered. Native x64 runtime and a live Windows browser handoff were not exercised; x64 and ARM64 package inspection passed. The independent browser extension remains at 1.0.349.
+
+Built both self-signed evaluation ZIPs in Visual Studio on Parallels. The [Windows GitHub prerelease](https://github.com/Varunmanoj/Vidi-Studio-Windows/releases/tag/v1.0.361) targets source commit `8934221`. The two ZIPs, installation instructions and checksums matched the uploaded sizes and digests. Both public ZIP URLs returned HTTP 200. The website download page and desktop guide were deployed and the three installer buttons verified.
+
+The initial Store upload was rejected because the temporary version substitution changed the publisher ID. Repackaged both Store uploads with Microsoft MakeAppx, using the exact reserved publisher and preserving each build's application payload byte for byte, including its corresponding symbols archive. Both packages passed manifest, architecture, contents and digest checks, and neither declares `unvirtualizedResources`. Partner Center accepted and saved both 1.0.361.0 packages, replacing 1.0.360.0 for x64 and ARM64. Reopened Packages and verified both versions. The submission remains In draft and Packages is Complete.
+
+Evidence: `build/shell-opening-361-native.log`, `build/shell-opening-361-windows-install-Release.log`, `build/shell-opening-361-packaged-engine.log`, `build/distribution-361-windows.log`, `build/store-361-repack.log`, `dist/microsoft-store/1.0.361.0/package-validation.json`, and `/private/tmp/vidistudio-store-361-packages.jpg`. Removed temporary release staging and tasks and restored the VM's previous idle-pause setting.
+
 ## 2026-11-21 — Microsoft Store packaging isolation (1.0.360.0)
 
 The previous staged Store manifest carried `unvirtualizedResources` and disabled registry and file-system write virtualization. The Store package now uses Windows' default isolation, receives Explorer, Open with, Share and browser handoff activation from its manifest, and uses the browser-store extensions. The Store build skips the legacy registry repair and app-managed unpacked extension updater. Those tools remain in direct-download and development builds.

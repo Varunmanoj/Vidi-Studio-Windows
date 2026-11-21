@@ -20,7 +20,7 @@ public static class ShellIntegration
 
     public static bool IsContextMenuRegistered()
     {
-        if (!OperatingSystem.IsWindows()) return false;
+        if (!App.UsesLocalIntegrations || !OperatingSystem.IsWindows()) return false;
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Classes\SystemFileAssociations\video\shell\" + VerbKey);
@@ -31,7 +31,7 @@ public static class ShellIntegration
 
     public static void UpdateContextMenuState(bool hasActiveKey = true, string? exePath = null)
     {
-        if (!OperatingSystem.IsWindows()) return;
+        if (!App.UsesLocalIntegrations || !OperatingSystem.IsWindows()) return;
         try
         {
             exePath ??= Environment.ProcessPath;
@@ -43,7 +43,7 @@ public static class ShellIntegration
 
     public static void RegisterContextMenu(string? exePath = null)
     {
-        if (!OperatingSystem.IsWindows()) return;
+        if (!App.UsesLocalIntegrations || !OperatingSystem.IsWindows()) return;
         try
         {
             exePath ??= Environment.ProcessPath;
@@ -197,7 +197,7 @@ public static class ShellIntegration
 
     public static void UnregisterContextMenu()
     {
-        if (!OperatingSystem.IsWindows()) return;
+        if (!App.UsesLocalIntegrations || !OperatingSystem.IsWindows()) return;
         try
         {
             Registry.CurrentUser.DeleteSubKeyTree(@"Software\Classes\SystemFileAssociations\video\shell\" + VerbKey, false);

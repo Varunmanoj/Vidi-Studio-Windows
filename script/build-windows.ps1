@@ -1,7 +1,16 @@
-param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [ValidateSet('Debug','Release')][string]$Configuration = 'Debug', [switch]$Package, [switch]$Rebuild)
+param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [ValidateSet('Debug','Release')][string]$Configuration = 'Debug', [switch]$Package, [switch]$Rebuild, [switch]$Store)
 $ErrorActionPreference = 'Stop'
 $env:PYTHONUTF8 = '1'
 $projectRoot = Split-Path $PSScriptRoot -Parent
+if ($Store) {
+    if (!$Package -or $Configuration -ne 'Release') { throw 'Use -Store with -Package and -Configuration Release.' }
+    [xml]$manifest = Get-Content -LiteralPath (Join-Path $projectRoot 'Vidi Studio Windows/Package.appxmanifest') -Raw
+    if ($manifest.Package.Identity.Publisher -eq 'CN=personal' -or
+        $manifest.SelectSingleNode("//*[local-name()='Capability' and @Name='unvirtualizedResources']") -or
+        $manifest.SelectSingleNode("//*[local-name()='RegistryWriteVirtualization' or local-name()='FileSystemWriteVirtualization']")) {
+        throw 'Prepare the Store identity and virtualization defaults in the staged manifest with script/set-store-manifest.ps1.'
+    }
+}
 # Piper is bundled with the app; fetch and verify the runtime before MSBuild evaluates content.
 & (Join-Path $PSScriptRoot 'fetch-piper.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'The bundled Piper speech engine could not be prepared.' }
@@ -83,7 +92,11 @@ if ($vcTargets) {
     $vcTargetsArgs += "/p:VCTargetsPath=$vcTargetsPath"
 }
 $packageOptions = @()
-if ($Package) { $packageOptions = @('/p:GenerateAppxPackageOnBuild=true', '/p:AppxBundle=Never', '/p:UapAppxPackageBuildMode=SideloadOnly') }
+if ($Package) {
+    $mode = if ($Store) { 'StoreUpload' } else { 'SideloadOnly' }
+    $packageOptions = @('/p:GenerateAppxPackageOnBuild=true', '/p:AppxBundle=Never', "/p:UapAppxPackageBuildMode=$mode")
+    if ($Store) { $packageOptions += '/p:VidiStoreRelease=true' }
+}
 $target = if ($Rebuild) { '/t:Rebuild' } else { '/t:Build' }
 if ($Rebuild) {
     foreach ($cache in @((Join-Path $env:LOCALAPPDATA 'Temp\XamlCompiler'), (Join-Path $env:TEMP 'XamlCompiler'))) {

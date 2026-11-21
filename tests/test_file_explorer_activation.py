@@ -96,12 +96,16 @@ class TestFileExplorerActivation(unittest.TestCase):
         self.assertIn('--video "%1"', verb.attrib.get("Parameters", ""))
         self.assertEqual(verb.text, "Describe with Vidi Studio")
 
-        # Check unvirtualized resources capability and disabled write virtualization
+        # The development installer retains explicit access for its legacy Explorer commands.
         reg_virt = root.find(".//desktop6:RegistryWriteVirtualization", ns)
         self.assertIsNotNone(reg_virt)
         self.assertEqual(reg_virt.text, "disabled")
         unvirt = root.find(".//rescap:Capability[@Name='unvirtualizedResources']", ns)
         self.assertIsNotNone(unvirt)
+
+        fs_virt = root.find(".//desktop6:FileSystemWriteVirtualization", ns)
+        self.assertIsNotNone(fs_virt)
+        self.assertEqual(fs_virt.text, "disabled")
 
         # Check protocol definition
         protocol = root.find(".//uap:Extension[@Category='windows.protocol']/uap:Protocol", ns)
@@ -149,10 +153,27 @@ class TestFileExplorerActivation(unittest.TestCase):
         self.assertIn("VCTargetsPath", build_script)
         self.assertIn("DefaultPlatformToolset", (self.root / "README.md").read_text(encoding="utf-8"))
 
-        settings = (self.root / "Vidi Studio Windows" / "Views" / "SettingsDialog.cs").read_text(encoding="utf-8")
+        views = self.root / "Vidi Studio Windows" / "Views"
+        settings = (views / "SettingsDialog.Compact.cs").read_text(encoding="utf-8")
         self.assertIn("Repair legacy File Explorer context menu", settings)
-        self.assertIn("storageAdvancedControls.Children.Add(contextMenuButton)", settings)
-        self.assertIn("DeveloperModeEnabled", settings)
+        self.assertIn("tools.Children.Add(repair)", settings)
+        self.assertIn("UpdateAdvancedControlsVisibility", settings)
+        self.assertIn("DeveloperModeEnabled", (views / "SettingsDialog.cs").read_text(encoding="utf-8"))
+
+    def test_store_build_uses_manifest_registration_and_default_write_virtualization(self):
+        project = (self.root / "Vidi Studio Windows" / "Vidi Studio Windows.csproj").read_text()
+        build_script = (self.root / "script" / "build-windows.ps1").read_text()
+        manifest_script = (self.root / "script" / "set-store-manifest.ps1").read_text()
+        startup = self.app_xaml_cs_path.read_text()
+        shell = self.shell_integration_cs_path.read_text()
+        self.assertIn("VIDISTUDIO_STORE_RELEASE", project)
+        self.assertIn("'/p:VidiStoreRelease=true'", build_script)
+        for entry in ("unvirtualizedResources", "RegistryWriteVirtualization", "FileSystemWriteVirtualization"):
+            self.assertIn(entry, manifest_script)
+            self.assertIn(entry, build_script)
+        self.assertIn("RemoveChild", manifest_script)
+        self.assertIn("#if VIDISTUDIO_STORE_RELEASE\n    internal static bool UsesLocalIntegrations => false;", startup)
+        self.assertEqual(shell.count("!App.UsesLocalIntegrations || !OperatingSystem.IsWindows()"), 4)
 
     def test_app_handles_file_and_command_line_activation(self):
         source = self.app_xaml_cs_path.read_text(encoding="utf-8")

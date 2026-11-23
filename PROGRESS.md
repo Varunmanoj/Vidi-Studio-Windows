@@ -2571,3 +2571,130 @@ Reopened the saved listing and verified five captioned screenshots from the inst
 Revised the English storefront descriptions, seven feature bullets, seven search terms, and five image captions for discoverability and accessibility. The [asset gallery](docs/microsoft-store/README.md) provides Markdown alt text for every screenshot and app icon.
 
 Partner Center shows Properties, Store listings, Pricing and availability, and Age ratings as Complete. The draft price is zero for all 240 current markets, with future-market availability and public Store discovery enabled. Reopened and verified the certification notes for testing the local workflow without credentials. Generated and saved the IARC ratings after the user approved sharing publisher contact details and confirmed the required terms and age attestation. Verified ESRB Everyone, PEGI 3, and global IARC 3+. Submission 1 remains In draft. Packages is the only incomplete required section and upload is deferred at the user’s request.
+
+## 1.0.362 · Optional Vertex AI and Cloud Storage · 2026-11-23
+
+Settings > AI supports the existing Developer API connection, desktop Google OAuth with PKCE and a loopback callback, and a separate device-stored express key. The selected Cloud project supplies the signed-in inference resource and quota project. A project-owned object records its bucket, object name, generation and CRC32C. Upload and import retain a local video. Rename and delete use generation preconditions. The editor, gallery, filters and project context menus identify cloud videos and can open them in Cloud Console. Cloud settings fields support Copy and Clear. Google sign-in has an accessible connection indicator and a confirmed removal action.
+
+The external OAuth brand in vidistudio is in Testing. Both platform clients are configured. The private bucket vidistudio-391751953953-videos uses asia-south1 with uniform access and enforced public access prevention. Cloud Billing API confirmed billingEnabled=true. Local private client configuration files are ignored by Git.
+
+The packaged Mac engine completed browser sign-in, returned 36 Gemini publisher models, and processed a disposable private video with gemini-3.8-flash for transcription and summary. Upload, rename, bucket listing, owned-copy import, removal of the copy and removal of the original test project object succeeded. A catalog-listed older model returned HTTP 404. Initial Mac accessibility inspection found Google account connected, Reconnect Google Account, Remove Google sign-in, and both named Copy and Clear controls. The helper now has a stable Apple Development identity for future Keychain access. A later Mac live retest timed out waiting on Keychain. Windows OAuth timed out waiting for browser consent. An invalid express credential was rejected without printing its value. A working express key was unavailable.
+
+Mac regression run passed 92 tests across menu parity, UI layout, general desktop parity and cloud behavior. The native Windows gallery/settings suite exercised signed-in/express Settings, menus, themes and compact layouts. After correcting the import dialog’s radio selection, the separate packaged Windows dialog suite passed its native light/dark, resizing, cancellation and confirmation checks. Website guide and privacy edits are local. The Help build rendered 16 chapters for each platform and both outputs passed the cloud search and export-anchor check. No publication or production OAuth verification was performed.
+
+
+Final native checks found the signed-in green check through the Mac accessibility tree. On the installed Mac, copying and clearing each Cloud field disabled both actions when empty, pasting restored the exact value, and canceling Remove Google sign-in preserved the account. The owner’s project and bucket were saved in Settings. A later change limited the status line to the active Vertex connection. Separate processes on both desktops verified save, restart, replacement and removal using disposable OS credential-store entries. Both packaged client configurations matched their private JSON handoff files. The Google Cloud bucket listed no remaining test objects. The numbered synchronous Gemini speech models use 5-minute audio chunks and word timestamps; streamed speech models are excluded from file transcription. The native macOS helper is signed as com.vidistudio.processing-engine with the same Apple Development identity as the app.
+
+The final installed Mac 1.0.362/362 and its Safari, Share and Finder extensions passed signing and registration checks for team LLVWNNUV26. Spotlight and LaunchServices found one installed VidiStudio. The packaged engine passed 28 media and processing regressions. A separate live storage test used the CLI account to replace a disposable object, then verified analysis, rename and deletion refused the new generation and preserved the local project and replacement. The fixture was cleaned up.
+
+The final Windows ARM64 Debug package (1.0.362.0) was rebuilt and installed. The packaged GallerySettingsOnly and DialogsOnly suites passed. The Windows checkout passed 94 shared regression tests. The final MSIX and Mac ZIP each contain the client configuration from the corresponding private handoff file. Signed-in Windows cloud processing and successful express video processing still require live user credentials.
+
+Signed-in project browsing. New Project exposes Cloud Storage only after Google sign-in. New Project from Cloud Storage… in File and the All Projects toolbar opens the bucket picker directly. The picker lists the selected Cloud project's buckets, shows full file names, and creates an owned copy in the configured destination. The user can import the same stored video more than once. The recorded source generation must still match before download. Unit tests covered mixed MIME types and stale generation. A live test using explicit Cloud CLI credentials listed a nested MP4 and a text file, imported the video twice, and removed both project-owned copies while preserving the original. The fixture was cleaned up. The Mac and Windows checkouts passed 94 and 96 regression tests respectively. The updated Help passed the browser search and export-anchor checks.
+
+Final picker verification used the installed Windows ARM64 app with fixture bucket contents. The native gallery suite exercised signed-out and signed-in New Project, bucket selection, disabled creation for text files, and selection of the exact video name and generation. Screenshots show the source selector remains visible when switching to bucket browsing. Native context menu and dialog suites passed. The Mac package passed 28 processing regressions and signing/registration checks for all three extensions; final manual Mac bucket-picker inspection was blocked by the locked screen.
+
+## 1.0.363 · Accessible Vertex connection test · 2026-11-23
+
+After Test Connection succeeds, the Mac and Windows AI settings place a green checkmark beside the button. The icon has the accessible name “Vertex AI connection verified” and success triggers a native announcement. Retesting and changing the connection clear the old result. A live signed-in test on the installed Mac exposed a Test Connection button followed by a single named image in the accessibility tree. The Windows ARM64 Debug package passed its native Settings suite, including the initially hidden icon, simulated verified state, accessible name, button adjacency and reset when switching methods. Screen-reader speech output was not audited by listening.
+
+The installed Mac app and its Safari, Finder and Share extensions passed signing and registration checks for version 1.0.363, build 363, team LLVWNNUV26. Spotlight and LaunchServices found one installed copy. The installed engine passed 28 regression tests. The desktop menu and layout suites passed 75 tests in each checkout. The Windows app was installed as 1.0.363.0. The shared Help source now includes a generic seven-topic Vertex AI walkthrough. Both 17-chapter guide builds and browser navigation passed locally. Website publication is pending.
+
+## 1.0.364 · Vertex AI model pickers
+
+The signed-in and express pickers and their keyboard context menus group exact model IDs by task. File transcription and narration each have dedicated model families. The engine uses the same rules for compatible saved choices and replacements. The Windows checkout passed 99 shared regression tests. The ARM64 Debug MSIX built and its installed package reported 1.0.364.0 with one Start entry. Shared Help was updated and browser-tested locally.
+
+The 1.0.364 packaged dialog and gallery/settings suites passed on retry, including the new Vertex picker checks. The first gallery run failed an earlier project context-menu key-tip timing check.
+
+## 1.0.365 · Gemini 4 in Developer API Settings
+
+The Developer API picker and its context menu group available Gemini 4 versions after task filtering. Selecting the latest model recognizes major-only version numbers, and shared local and YouTube rows still synchronize their model choice. The Windows checkout passed 99 regression tests. The packaged ARM64 Debug app was installed as 1.0.365.0.
+
+The final packaged DialogsOnly and GallerySettingsOnly suites passed. The native Settings test used a fixture catalog to verify the Gemini 4 heading, its children, context-menu heading, task filtering and major-version ranking. The first gallery run stopped at an earlier project context-menu key-tip timing check. A separate rerun passed both suites. The installed package had one Start entry. Narrator speech output and native Windows x64 were not exercised.
+
+## 1.0.366 · Cloud Storage file details and views · 2026-11-23
+
+The bucket browser retains the file and generation across List and Table. Both views display the selected object details and thumbnail. The Inspector presents available recorded cloud metadata and the project’s thumbnail. The checkout passed 99 regressions. The ARM64 Debug MSIX built and installed as 1.0.366.0. Live Cloud Storage happy-path verification ran on the packaged Mac engine.
+
+The packaged ARM64 gallery/settings and dialog suites passed. The native fixture checked List and Table selection, the full cloud path, preserved generation and non-video selection gating. Windows reported exactly one installed package and one Start entry. Live bucket and image accessibility inspection ran on Mac.
+
+## 1.0.367 · Cloud Storage menu icons · 2026-11-23
+
+The Project and File menu commands and project context menus use the shared Segoe Fluent glyph mapping for cloud, open, rename, remove and upload. The bucket browser also shows icons for List, Table, Refresh and Load Thumbnail. The ARM64 Debug MSIX built and 1.0.367.0 installed with one Start entry. The packaged gallery/settings suite passed, including assertions for dedicated Cloud Storage project context icons. The checkout passed 78 menu and layout tests.
+
+The separate packaged dialog suite also passed. The first installation script stopped after packaging because it looked for a prior retry task that had never been created. The corrected install used the completed MSIX build and verified one registration and one Start entry.
+
+## 1.0.368 · Menu icon checks and design system · 2026-11-23
+
+Menu parity and the tracked pre-commit tests enforce icon declarations. The native menu smoke recursively requires specific icons for the populated menu bar and sampled project and editor context menus. Added missing icons in Settings, filters, selection, import, playback and dialog menus. The packaged ARM64 GallerySettingsOnly, ContextMenusOnly and DialogsOnly suites passed. Version 1.0.368.0 installed with one package and Start entry.
+
+## 1.0.372 · New Project sources and sign-in availability · 2026-11-23
+
+File lists New Project, New YouTube Project and New Cloud Project in that order. The Cloud Storage picker radio button, File command and All Projects toolbar entry stay visible and are disabled until Google sign-in. The Cloud command selects the bucket browser.
+
+Built and installed the ARM64 Debug package 1.0.372.0 in the Windows 11 VM and confirmed one app registration and Start entry. All 91 source regressions and the packaged GallerySettingsOnly and DialogsOnly suites passed. The gallery suite with both connection states verified File order and command availability, the preselected source for each enabled command, and that the disabled Cloud Storage radio exposes no upload or bucket controls. The signed-in fixture exercised bucket selection and the List and Table modes. Windows native x64, live Google OAuth and Narrator speech were not exercised. Restored idle auto-pause for the VM.
+
+## 1.0.375 · One toolbar action and fixed New Project dialog · 2026-11-24
+
+The All Projects toolbar uses one New Project button. Cloud Storage is available through the shared picker and the File menu after Google sign-in. The Windows companion window opens at one size for all sources, fits within the owner, and keeps the title and action row stationary while extra form content scrolls.
+
+Built and installed ARM64 Debug 1.0.375.0 in Windows 11 with one package registration and one Start entry. All 93 source regressions passed. The packaged DialogsOnly suite verified fixed outer size and position across Video File, YouTube, Cloud upload, and Cloud browsing in light and dark appearance. It also checked the title, the footer baseline, scrolled content, and native commands and cancellation. The first regression run caught the original internal shift. The final geometry assertions allow native horizontal button reflow inside the fixed action row and verify that controls remain within the dialog.
+
+The installed GallerySettingsOnly suite passed on retry after an intermittent live Help rendering error. The Windows checks used ARM64 and a fixture for Cloud Storage.
+
+## 1.0.377 · Compact New Project form and stable source labels · 2026-11-24
+
+Sized the Windows companion window for the default Video File form. The title, Project type controls and bottom actions share one layout across Video File, YouTube Video, Cloud upload and Cloud browsing. The source choices stay above the scrollable form. Removed spacing reserved for empty media details and reduced padding around the footer.
+
+Installed ARM64 1.0.377.0 with one package and Start entry. All 94 source regressions passed. Packaged DialogsOnly verified all four source selections in light and dark appearance. It checked fixed window bounds, stable source labels and buttons, local fields fully in view, and native scrolling for the longer forms. The light screenshots confirmed Project Location fits and the title, source picker and actions align across modes.
+
+The final packaged GallerySettingsOnly run also passed, including gallery toolbar geometry, the File commands, signed-out Cloud availability and the fixture bucket workflow. Native validation used Windows ARM64 with a Cloud fixture. Windows x64, live OAuth and Narrator speech output were not exercised.
+
+## 1.0.379 · Open Cloud Videos · 2026-11-24
+
+Added the File menu’s signed-in Cloud Storage browser with source project and bucket selection, search, sorting, List and Table, object details, available thumbnails, and Open in Editor. The browser and the existing project controls hide cloud mutation commands while object permissions are unverified or denied. The engine checks Google permissions and the recorded generation before changes.
+
+Built and installed ARM64 Debug 1.0.379.0 with one package registration and one Start entry. All 104 source regressions and packaged DialogsOnly, GallerySettingsOnly and ContextMenusOnly passed. The gallery fixture verified source selection, case-insensitive path search, size sorting, preservation of video selection across views, import target data, and hidden mutation actions without permission. Windows live OAuth, cloud mutations, x64 and Narrator speech were not exercised.
+
+## 1.0.380 · Import from the shared cloud browser · 2026-11-24
+
+Choose from Cloud Storage opens a companion cloud browser with the configured bucket selected. Open in Editor reports transfer bytes and the current import step in the browser, then closes both dialogs on success. Cancelling the browser returns to New Project. The shared browser retains thumbnail generation.
+
+Built and installed ARM64 Debug 1.0.380.0 with one package and one Start entry. All 104 source tests passed. Packaged DialogsOnly, GallerySettingsOnly and ContextMenusOnly passed. The native gallery fixture exercised the parent and child dialogs, configured source selection, initial import gating, byte and preparation progress, and closing both dialogs on success. It also exercised returning to New Project on cancellation. Windows live OAuth and import were not exercised.
+
+## 1.0.381 · Cloud project deletion and video-only browsing · 2026-11-24
+
+The Cloud Storage browser lists supported videos. Delete Project can use a known cloud reference after the local folder disappears. It checks object ownership, generation and delete permission before clearing the local entry, and keeps the project available if Google rejects the request.
+
+Built and installed ARM64 Debug 1.0.381.0 with one package and one Start entry. All 106 source tests and packaged DialogsOnly, GallerySettingsOnly and ContextMenusOnly passed. Shared engine tests cover a missing folder, already absent objects, changed generations and denied permissions. Live Google Cloud deletion ran on Mac.
+
+## 2026-11-24 · Project Overview after AD Transcript
+
+Overview is the fifth editor section in the picker, View and Project menus. Ctrl-4 opens AD Transcript and Ctrl-5 opens Overview. Project details, Transcript and Summary use named groups above Audio description details, Description origins and Create narration audio. The Summary group contains only availability and displayed character count for the selected saved result. Reordered the timed-editor, search, row-action and saved-result routing along with the visible picker.
+
+Built ARM64 Debug and verified installation 1.0.385.0 in Windows 11 in Parallels, with one registered package and one Start entry. Verified the installed assembly contains the metadata-only Summary assertion. The packaged GallerySettingsOnly and DialogsOnly suites passed. GallerySettingsOnly checks editor menu order and titles, Summary rows, accessibility group names, scrolling and side-by-side or stacked geometry in light and dark appearances at 1120 and 880 logical pixels. Icon, menu, UI and XAML checks passed. The focused source suite passed 91 tests and the final UI contract passed 40. Native x64 and spoken Narrator output were not exercised.
+
+Packaged ProjectSearchOnly and ContextMenusOnly also passed on 1.0.385.0, including AD Transcript prefix navigation, tab isolation and editor context-menu ordering.
+
+## 2026-11-24 · Source-specific AI models and Cloud Storage imports (1.0.385.0)
+
+Installed the synchronized ARM64 Debug package on Windows 11 in Parallels. One package and one Start entry report 1.0.385.0. The packaged Dialogs, Gallery and Settings, and Context Menus suites passed in the final build. The native fixtures exercised the cloud browser handoff, byte and step progress, the accessible editor transfer indicator, the checked capability-filtered Settings menus and independent saved source choices. Both providers show Local video and YouTube video. Cloud Storage video appears with Vertex AI Google sign-in. The source and menu/layout suites passed 117 checks. Restored the previous VM idle-pause setting.
+
+Windows uses the same engine rules as Mac for read access, generation, checksums, original Cloud Storage URIs, and cloud deletion ownership. Each open gallery evicts the deleted project before reloading. The private-bucket import and all three Vertex stages were verified live with the Mac packaged engine. Windows checks used the packaged native fixtures.
+
+Evidence is in `build/vertex-385-refresh-native-build.log`, `build/vertex-385-refresh-final-settings.log` and `build/cloud-source-models-385-tests.log`.
+
+## 1.0.386 · Editor preview tooltips and timeline collapse · 2026-11-24
+
+Added native tooltips for Show or Hide Preview and Full-Screen Video. The preview toggle now collapses both video and timeline and restores the video with the separate timeline choice. The existing View and Playback commands and Ctrl-Shift-V use the same preview action.
+
+Built and installed ARM64 Debug 1.0.386.0 on Windows 11 in Parallels. Verified one current package and Start entry and a passing packaged engine doctor. The installed GallerySettingsOnly suite passed, including tooltip names and text, the video and timeline collapse, reclaimed editor space and the separate timeline choice at 1120 and 880 logical pixels in light and dark appearances. Icon, menu and UI checks and 83 focused parity tests passed. Two older source assertions in test_editor_library_and_fullscreen still expect earlier sidebar event wiring and menu source formatting. Native x64 was not exercised.
+
+The separately launched packaged DialogsOnly and ContextMenusOnly suites also passed.
+
+## 1.0.387 · Windows editor button tooltips · 2026-11-24
+
+Show the section-specific Generate or Regenerate label and availability reason on hover, including when the action is disabled. Add describes the active section's import or creation options. Edit updates to Done while editing and lists Ctrl-Alt-E. Filled gaps in the timeline, editor, inspector, and narration controls.
+
+The installed Windows 11 ARM64 1.0.387.0 has one package and one Start entry. Packaged GallerySettingsOnly passed. It checks every rendered app-owned editor button for nonempty tooltip text across Transcript, Summary, Descriptions, AD Transcript and Overview at 1120 and 880 logical pixels in both appearances, plus the editable sections in Edit mode. Real Windows mouse moves verified that Generate, Add and Edit opened tooltip popups. The test returns the pointer and editor position and restores preview visibility. The XAML, icon, menu and UI checks and 85 focused source tests passed. An older import suite assertion about New Project menu source syntax failed independently of the tooltip changes. Native x64 was not exercised.
+
+Packaged dialog and context-menu regressions also passed in the final run. Restored the Windows VM idle-pause setting. Evidence is in build/tooltips-387-final3-verify.log.

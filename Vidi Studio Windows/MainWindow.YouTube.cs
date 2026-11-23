@@ -37,8 +37,9 @@ public sealed partial class MainWindow
                 YouTubeInspectorDetails.Children.Add(new Expander { Header = field.Item1, Content = new TextBlock { Text = display, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true }, HorizontalAlignment = HorizontalAlignment.Stretch });
             }
         }
-        var openYouTube = new Button { Content = "Open in YouTube" }; openYouTube.Click += (_, _) => OpenProjectInYouTube(project); YouTubeInspectorDetails.Children.Add(openYouTube);
+        var openYouTube = new Button { Content = "Open in YouTube" }; ToolTipService.SetToolTip(openYouTube, openYouTube.Content); openYouTube.Click += (_, _) => OpenProjectInYouTube(project); YouTubeInspectorDetails.Children.Add(openYouTube);
         var refresh = new Button { Content = "Refresh YouTube Details", IsEnabled = !youtubeInspectorRefreshing && Model.Idle };
+        ToolTipService.SetToolTip(refresh, refresh.Content);
         refresh.Click += async (_, _) => await RefreshYouTubeInspectorAsync(); YouTubeInspectorDetails.Children.Add(refresh);
         if (youtubeInspectorRefreshing) {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };

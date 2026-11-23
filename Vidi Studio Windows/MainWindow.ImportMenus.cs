@@ -13,7 +13,7 @@ public sealed partial class MainWindow
         var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         void Item(string label, Func<Task> action, bool enabled = true)
         {
-            var item = new MenuFlyoutItem { Text = label, IsEnabled = enabled };
+            var item = new MenuFlyoutItem { Text = label, IsEnabled = enabled, Icon = new FontIcon { Glyph = label.StartsWith("Import", StringComparison.Ordinal) ? "\uE896" : label == "Write Summary" ? "\uE70F" : "\uE710" } };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, label);
             item.Click += async (_, _) => await action();
             menu.Items.Add(item);
@@ -34,7 +34,7 @@ public sealed partial class MainWindow
                 menu.Items.Add(new MenuFlyoutSeparator());
                 Item("Import Descriptions…", () => ImportExistingAssetsAsync(Models.ImportScope.Descriptions));
                 break;
-            case 4:
+            case 3:
                 Item("Import Descriptions…", () => ImportExistingAssetsAsync(Models.ImportScope.Descriptions));
                 break;
             default:

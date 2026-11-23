@@ -378,3 +378,5 @@ Google API Clients/
 /Google Api Clients*/
 
 .DS_Store
+
+/Config/vertex-desktop.json

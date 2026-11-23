@@ -35,7 +35,7 @@ public sealed partial class MainWindow
 
     private async Task ShowSegmentSortAsync()
     {
-        while (!Model.Busy && Model.Project is { } project && Section.SelectedIndex is 0 or 2 or 4)
+        while (!Model.Busy && Model.Project is { } project && Section.SelectedIndex is 0 or 2 or 3)
         {
             ContentDialog? dialog = null;
             string? requestedResult = null;

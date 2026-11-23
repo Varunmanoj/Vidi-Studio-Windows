@@ -38,8 +38,8 @@ public sealed partial class SettingsDialog
 {
     private void SetVoiceSampleMenu(Button button, string id, Func<bool> canPlay, Action play, Func<bool> active, Action stop) {
         var menu = MenuAccessKeys.Create();
-        var start = new MenuFlyoutItem { Text = "Play Sample", Tag = id + "-play" };
-        var stopItem = new MenuFlyoutItem { Text = "Stop Sample", Tag = id + "-stop" };
+        var start = new MenuFlyoutItem { Text = "Play Sample", Tag = id + "-play", Icon = new FontIcon { Glyph = "\uE768" } };
+        var stopItem = new MenuFlyoutItem { Text = "Stop Sample", Tag = id + "-stop", Icon = new FontIcon { Glyph = "\uE71A" } };
         start.Click += (_,_) => { if (canPlay()) play(); };
         stopItem.Click += (_,_) => { if (active()) stop(); };
         menu.Opening += (_,_) => { start.IsEnabled = canPlay(); stopItem.IsEnabled = active(); };

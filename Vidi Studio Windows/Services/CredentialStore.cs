@@ -11,6 +11,8 @@ namespace Vidi_Studio_Windows.Services;
 /// </summary>
 internal static class CredentialStore
 {
+    internal static bool HasGoogleSignIn => CredentialSlot.Exists("com.vidistudio.vertex-oauth");
+    internal static readonly CredentialSlot Vertex = new("VidiStudio/VertexExpressKey", "Vertex AI express API key");
     internal static readonly CredentialSlot ElevenLabs = new("VidiStudio/ElevenLabsApiKey", "ElevenLabs API key");
     internal static readonly CredentialSlot Sarvam = new("VidiStudio/SarvamApiKey", "Sarvam API key");
     private static readonly CredentialSlot Gemini = new("VidiStudio/GeminiApiKey", "Gemini API key");
@@ -87,6 +89,13 @@ internal sealed class CredentialSlot
             cached = null;
             loaded = true;
         }
+    }
+
+    internal static bool Exists(string target)
+    {
+        if (!CredRead(target, CredTypeGeneric, 0, out var credential)) return false;
+        CredFree(credential);
+        return true;
     }
 
     private string? ReadFromStore()

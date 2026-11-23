@@ -181,7 +181,7 @@ public sealed partial class ExportDialog
     {
         if (element is CheckBox toggle) {
             var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
-            var item = new ToggleMenuFlyoutItem { Text = toggle.Content?.ToString() ?? "Select", IsChecked = toggle.IsChecked == true, IsEnabled = toggle.IsEnabled };
+            var item = new ToggleMenuFlyoutItem { Text = toggle.Content?.ToString() ?? "Select", IsChecked = toggle.IsChecked == true, IsEnabled = toggle.IsEnabled, Icon = new FontIcon { Glyph = "\uE767" } };
             item.Click += (_, _) => toggle.IsChecked = item.IsChecked;
             menu.Opening += (_, _) => item.IsChecked = toggle.IsChecked == true;
             menu.Items.Add(item); toggle.ContextFlyout = menu;
@@ -190,7 +190,7 @@ public sealed partial class ExportDialog
             for (var i = 0; i < picker.Items.Count; i++) {
                 var index = i;
                 var value = picker.Items[i];
-                var item = new ToggleMenuFlyoutItem { Text = value is ComboBoxItem row ? Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(row) is { Length: > 0 } accessible ? accessible : row.Content?.ToString() ?? "" : value?.ToString() ?? "", IsChecked = picker.SelectedIndex == i, IsEnabled = picker.IsEnabled && (value is not ComboBoxItem option || option.IsEnabled) };
+                var item = new ToggleMenuFlyoutItem { Text = value is ComboBoxItem row ? Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(row) is { Length: > 0 } accessible ? accessible : row.Content?.ToString() ?? "" : value?.ToString() ?? "", IsChecked = picker.SelectedIndex == i, IsEnabled = picker.IsEnabled && (value is not ComboBoxItem option || option.IsEnabled), Icon = new FontIcon { Glyph = "\uE7F4" } };
                 item.Click += (_, _) => picker.SelectedIndex = index;
                 menu.Items.Add(item);
             }

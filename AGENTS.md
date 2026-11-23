@@ -1,5 +1,9 @@
 # VidiStudio Windows agent guide
 
+Follow the shared [VidiStudio design system](../DESIGN.md). Use consistent icon meanings across platforms, with visible labels and accessible names. Every app-owned menu action, submenu and toggle needs a meaningful icon, including in Settings, dialogs and context menus. Run `python3 script/check_menu_icons.py` and the menu parity checks, then verify affected menus in the installed apps.
+
+Update the shared [DESIGN.md](../DESIGN.md) in the same task whenever you change the app's design or interaction. Document the affected layout and behavior, availability, keyboard and screen-reader expectations, and platform differences.
+
 Native WinUI 3 desktop application for Windows 10 version 1809+ (x64) and Windows 11+ (ARM64) in `Vidi Studio Windows.slnx`. `Vidi Studio Windows/` owns the native XAML UI, view models, and engine invocation. `engine/vidistudio_engine.py` owns all project processing, storage, and writes. `SpeechHost/` (`SpeechHost.csproj`) provides isolated speech synthesis across ARM64, x64, and x86. The sibling `VidiStudio Mac` repository is the reference desktop implementation; keep feature, export, and UI parity with Mac (`docs/FEATURE_PARITY.md`, `script/check-mac-export-parity.py`).
 
 Project data lives in portable local folders with relative paths. Credentials live only in the user config outside projects. No Firebase, Firestore, authentication, or embedded website. Gemini runs only in the Python engine; keep API keys out of argv, logs, and project JSON.

@@ -290,7 +290,7 @@ public sealed partial class SettingsDialog
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, id);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(toggle, label);
             var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
-            var choice = new ToggleMenuFlyoutItem { Text = label, Tag = id + "-menu" };
+            var choice = new ToggleMenuFlyoutItem { Text = label, Tag = id + "-menu", Icon = new FontIcon { Glyph = "\uE7F4" } };
             menu.Opening += (_, _) => choice.IsChecked = toggle.IsOn;
             choice.Click += (_, _) => toggle.IsOn = choice.IsChecked;
             menu.Items.Add(choice); toggle.ContextFlyout = menu;
@@ -308,7 +308,7 @@ public sealed partial class SettingsDialog
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(searchHighlight, "search-highlight");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(searchHighlight, "Highlight search matches");
         var searchHighlightMenu = MenuAccessKeys.Create();
-        var searchHighlightChoice = new ToggleMenuFlyoutItem { Text = "Highlight search matches", Tag = "search-highlight-menu" };
+        var searchHighlightChoice = new ToggleMenuFlyoutItem { Text = "Highlight search matches", Tag = "search-highlight-menu", Icon = new FontIcon { Glyph = "\uE891" } };
         searchHighlightMenu.Opening += (_, _) => searchHighlightChoice.IsChecked = searchHighlight.IsOn;
         searchHighlightChoice.Click += (_, _) => searchHighlight.IsOn = searchHighlightChoice.IsChecked;
         searchHighlightMenu.Items.Add(searchHighlightChoice); searchHighlight.ContextFlyout = searchHighlightMenu;
@@ -317,7 +317,7 @@ public sealed partial class SettingsDialog
         var searchColor = appearanceColorButtons["searchHighlightColor"];
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(searchColor, "search-highlight-color");
         var searchColorMenu = MenuAccessKeys.Create();
-        var searchColorChoice = new MenuFlyoutItem { Text = "Search Highlight Color…", Tag = "search-highlight-color-menu" };
+        var searchColorChoice = new MenuFlyoutItem { Text = "Search Highlight Color…", Tag = "search-highlight-color-menu", Icon = new FontIcon { Glyph = "\uE790" } };
         searchColorChoice.Click += (_, _) => searchColor.Flyout.ShowAt(searchColor);
         searchColorMenu.Items.Add(searchColorChoice); searchColor.ContextFlyout = searchColorMenu;
         card.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb(24, 128, 128, 128)), CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Child = searchPreview });
@@ -333,7 +333,7 @@ public sealed partial class SettingsDialog
         }
         restoreHighlights.Click += (_, _) => RestoreHighlights();
         var restoreHighlightMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
-        var restoreHighlightItem = new MenuFlyoutItem { Text = "Restore Highlight Defaults", Tag = "restore-highlight-defaults-menu" };
+        var restoreHighlightItem = new MenuFlyoutItem { Text = "Restore Highlight Defaults", Tag = "restore-highlight-defaults-menu", Icon = new FontIcon { Glyph = "\uE7A7" } };
         restoreHighlightItem.Click += (_, _) => RestoreHighlights();
         restoreHighlightMenu.Items.Add(restoreHighlightItem); restoreHighlights.ContextFlyout = restoreHighlightMenu;
         card.Children.Add(restoreHighlights);

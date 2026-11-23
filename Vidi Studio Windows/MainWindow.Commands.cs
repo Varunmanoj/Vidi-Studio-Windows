@@ -9,6 +9,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using Vidi_Studio_Windows.Models;
 using Windows.System;
 
@@ -327,7 +329,8 @@ public sealed partial class MainWindow
             editorBrowser != desktopEditorVisible || !Model.Projects.Any(p => p.Folder == project.Folder) ||
             editorBrowser && HasUnsavedLanguageSummary) return false;
         var usable = !project.IntegrityPlaceholder && project.Integrity?.ManifestUnreadable != true && project.Integrity?.FolderMissing != true;
-        if (id is "delete-project" or "trash-project" or "remove-from-list") return true;
+        if (id is "delete-project" or "trash-project") return CanDeleteProjectVideo(project);
+        if (id == "remove-from-list") return true;
         if (id == "open-configuration") return Model.Settings.GetBool("developerMode") && File.Exists(Path.Combine(project.Folder, "project.json"));
         if (id == "show-in-finder") return Directory.Exists(project.Folder);
         if (id is "open-gallery-window" or "open-editor-window" or "open-project-here") return true;
@@ -343,10 +346,125 @@ public sealed partial class MainWindow
         };
     }
 
+    private bool cloudBrowserOpen;
+    private async Task OpenCloudVideosAsync()
+    {
+        if (!CanRunDesktopCommand("open-cloud-videos")) return;
+        if (await BrowseCloudVideosAsync(this, Model.Settings.Get("libraryPath"), selectConfiguredBucket: false) is { } project)
+            App.OpenWindow(project.Folder);
+    }
+
+    private async Task<StudioProject?> BrowseCloudVideosAsync(Window owner, string library, bool selectConfiguredBucket)
+    {
+        if (cloudBrowserOpen || Model.Busy || !Model.Settings.GetBool("vertexConnected")) return null;
+        cloudBrowserOpen = true;
+        UpdateDesktopMenuStates();
+        try
+        {
+            var dialog = new Views.CloudVideosDialog(owner, Root.ActualTheme, Model.Settings, selectConfiguredBucket)
+            {
+                ImportVideo = async (selection, progress, cancellation) =>
+                {
+                    if (cancellation.IsCancellationRequested || Model.Busy || !Model.Settings.GetBool("vertexConnected")) return null;
+                    using var cancelImport = cancellation.Register(Model.Cancel);
+                    using var activity = new CloudImportActivity();
+                    var args = selection.Arguments("cloud-import").Skip(1).Concat(new[] { "--library", library });
+                    List<EngineEvent> created;
+                    try
+                    {
+                        created = await Model.RunAsync("cloud-import", args, needsProject: false,
+                            throwOnProcessingError: true, observeProgress: update =>
+                            {
+                                activity.Update(update);
+                                progress(update);
+                            });
+                    }
+                    catch (ProcessingException) when (cancellation.IsCancellationRequested)
+                    {
+                        return null;
+                    }
+                    if (created.Any(item => item.Data.TryGetProperty("project", out _)) && Model.Project is { CloudVideo: not null } project)
+                        return project;
+                    if (!cancellation.IsCancellationRequested) throw new InvalidOperationException(Model.Status);
+                    return null;
+                }
+            };
+            await Views.WindowedDialog.ShowAsync(dialog, owner, 820, 820);
+            return dialog.ImportedProject;
+        }
+        catch (Exception ex) { await ShowError(ex); return null; }
+        finally { cloudBrowserOpen = false; UpdateDesktopMenuStates(); }
+    }
+
+    private readonly Dictionary<Views.CloudVideoSelection, Views.CloudPermissions> projectCloudPermissions = new();
+    private readonly HashSet<(int Session, Views.CloudVideoSelection Object)> checkingCloudPermissions = new();
+    private int cloudPermissionSession;
+
+    private Views.CloudVideoSelection? CloudPermissionKey(StudioProject? project)
+    {
+        if (!Model.Settings.GetBool("vertexConnected") || project is not { OwnsCloudVideo: true, CloudVideo: { } cloud } ||
+            !cloud.TryGetValue("project", out var id) || id != Model.Settings.Get("vertexProject") ||
+            !cloud.TryGetValue("bucket", out var bucket) || bucket != Model.Settings.Get("vertexBucket") ||
+            !cloud.TryGetValue("object", out var name) || !cloud.TryGetValue("generation", out var generation)) return null;
+        return new(id, bucket, name, generation);
+    }
+
+    private Views.CloudPermissions VerifiedCloudPermissions(StudioProject? project) =>
+        CloudPermissionKey(project) is { } key ? projectCloudPermissions.GetValueOrDefault(key) : default;
+
+    private bool CanDeleteProjectVideo(StudioProject? project) =>
+        project?.OwnsCloudVideo != true || VerifiedCloudPermissions(project).Delete;
+
+    private async Task CheckProjectCloudPermissionsAsync(StudioProject? project)
+    {
+        var session = cloudPermissionSession;
+        if (CloudPermissionKey(project) is not { } key || !checkingCloudPermissions.Add((session, key))) return;
+        try
+        {
+            var permissions = await Views.CloudPermissions.CheckAsync(Model.Settings, key.Bucket, key.Name, CancellationToken.None);
+            if (windowClosed || session != cloudPermissionSession || CloudPermissionKey(project) != key) return;
+            projectCloudPermissions[key] = permissions;
+            UpdateDesktopMenuStates();
+        }
+        finally { checkingCloudPermissions.Remove((session, key)); }
+    }
+
+    private (string Id, string Title)[] CloudActions(StudioProject p)
+    {
+        if (p.CloudVideo == null) return new[] { ("cloud-upload", "Upload Video to Cloud Storage…") };
+        _ = CheckProjectCloudPermissionsAsync(p);
+        var permissions = VerifiedCloudPermissions(p);
+        var actions = new List<(string Id, string Title)> { ("cloud-open", "Open Video in Google Cloud Console") };
+        if (permissions.Rename) actions.Add(("cloud-rename", "Rename Cloud Video…"));
+        if (permissions.Delete) actions.Add(("cloud-remove", "Remove Cloud Video…"));
+        return actions.ToArray();
+    }
+
+    private async System.Threading.Tasks.Task<bool> RunCloudOperationAsync(string id, StudioProject p, string[]? extra=null) {
+        if (!Model.Idle) return false;
+        if (Model.Project?.Folder != p.Folder) Model.Open(p.Folder);
+        try {
+            var events = await Model.RunAsync(id,extra,throwOnProcessingError:true);
+            return events.Any(e => e.Data.TryGetProperty("progress",out var progress) && progress.GetDouble() == 1 && e.Data.TryGetProperty("project",out _));
+        } catch (Exception e) { await ShowError(e); return false; }
+    }
+
+    private async System.Threading.Tasks.Task CloudActionAsync(string id, StudioProject p) {
+        if (!Model.Idle || (id == "cloud-upload" && !Model.Settings.GetBool("vertexConnected")) || !CloudActions(p).Any(a=>a.Id==id)) return;
+        if (id=="cloud-open") { if (p.CloudConsoleUrl is Uri url) await Windows.System.Launcher.LaunchUriAsync(url); return; }
+        if (id=="cloud-rename") {
+            var name=new TextBox { Header="Video filename",Text=System.IO.Path.GetFileName(p.CloudVideo!["object"]) };
+            if (await ShowDialogAsync(Dialog("Rename Cloud Video",name))==ContentDialogResult.Primary)
+                await RunCloudOperationAsync(id,p,new[]{"--name",name.Text});
+        } else if (await Confirm(id=="cloud-upload"?"Upload video to Cloud Storage?":"Remove cloud video?",
+            id=="cloud-upload"?Model.Settings.Get("vertexBucket"):"The verified local video will be kept.",id=="cloud-upload"?"Upload":"Remove")) await RunCloudOperationAsync(id,p);
+    }
+
     private async System.Threading.Tasks.Task RunProjectContextCommandAsync(string id, StudioProject project, bool editorBrowser)
     {
         // Recheck the captured target and prerequisites when a flyout outlives its context.
         if (!CanRunProjectContextCommand(id, project, editorBrowser)) return;
+        if (id.StartsWith("cloud-")) { await CloudActionAsync(id,project); return; }
         switch (id) {
         case "open-project-here": await SwitchProjectAsync(project); return;
         case "open-gallery-window":
@@ -392,6 +510,8 @@ public sealed partial class MainWindow
             Item("open-project-here", "Open in This Window");
             if (YouTubeService.ProjectWatchURL(project.YoutubeURL) != null) Item("youtube-open-browser");
             Item("open-editor-window", "Open in New Window");
+            if (!project.IsYouTube && (project.CloudVideo!=null || Model.Settings.GetBool("vertexConnected")))
+                foreach (var action in CloudActions(project)) Item(action.Id,action.Title);
             Item("project-settings");
             menu.Items.Add(new MenuFlyoutSeparator());
             Item("remove-from-list");
@@ -403,6 +523,8 @@ public sealed partial class MainWindow
             menu.Items.Add(new MenuFlyoutSeparator());
             Item("rename-project", "Rename");
             if (YouTubeService.ProjectWatchURL(project.YoutubeURL) != null) Item("youtube-open-browser");
+            if (!project.IsYouTube && (project.CloudVideo!=null || Model.Settings.GetBool("vertexConnected")))
+                foreach (var action in CloudActions(project)) Item(action.Id,action.Title);
             Item("project-settings");
             Item("show-in-finder", "Open in Project Folder");
             if (Model.Settings.GetBool("developerMode")) Item("open-configuration", "Open Project Configuration");
@@ -425,12 +547,18 @@ public sealed partial class MainWindow
         menu.Opening += (_, _) => {
             void Refresh(IEnumerable<MenuFlyoutItemBase> entries) {
                 foreach (var entry in entries) {
-                    if (entry is MenuFlyoutItem item && item.Tag is string id) item.IsEnabled = CanRunProjectContextCommand(id, project, editorBrowser);
+                    if (entry is MenuFlyoutItem item && item.Tag is string id)
+                    {
+                        item.IsEnabled = CanRunProjectContextCommand(id, project, editorBrowser);
+                        if (id is "delete-project" or "trash-project")
+                            item.Visibility = CanDeleteProjectVideo(project) ? Visibility.Visible : Visibility.Collapsed;
+                    }
                     if (entry is MenuFlyoutSubItem group) { group.IsEnabled = Model.Idle && !project.IntegrityPlaceholder; Refresh(group.Items); }
                 }
             }
             Refresh(menu.Items);
         };
+        AssignMenuAccessKeys(menu.Items);
         return menu;
     }
     private void RemoveListedProject_Click(object sender, RoutedEventArgs e)
@@ -540,6 +668,7 @@ public sealed partial class MainWindow
                 menu.Items.Add(item);
             }
         }
+        AssignMenuAccessKeys(menu.Items);
         return menu;
     }
     private static string[] EditorActionIds(int sectionIndex, bool editing, bool editingSummary) => sectionIndex switch
@@ -548,13 +677,13 @@ public sealed partial class MainWindow
         1 when editingSummary => new[] { "segment-edit-mode" },
         1 => new[] { "segment-edit-mode", "generate-summary", "delete-current" },
         2 when editing => new[] { "add", "segment-edit-selected", "segment-select-all", "segment-deselect-all", "segment-delete-selected", "undo", "redo", "-", "synthesize-tts", "synthesize-changed" },
-        3 => new[] { "synthesize-tts", "synthesize-changed" },
-        4 when editing => new[] { "segment-edit-selected", "segment-select-all", "segment-deselect-all", "segment-delete-selected", "undo", "redo", "-", "synthesize-tts", "synthesize-changed" },
+        4 => new[] { "synthesize-tts", "synthesize-changed" },
+        3 when editing => new[] { "segment-edit-selected", "segment-select-all", "segment-deselect-all", "segment-delete-selected", "undo", "redo", "-", "synthesize-tts", "synthesize-changed" },
         _ => Array.Empty<string>()
     };
     private void SegmentMore_Click(object sender, RoutedEventArgs e)
     {
-        if (Section.SelectedIndex is 0 or 2 or 4 && !editMode) return;
+        if (Section.SelectedIndex is 0 or 2 or 3 && !editMode) return;
         if (sender is FrameworkElement element)
         {
             var menu = SegmentMenu(element.Tag as Segment, moreActionsOnly: true);

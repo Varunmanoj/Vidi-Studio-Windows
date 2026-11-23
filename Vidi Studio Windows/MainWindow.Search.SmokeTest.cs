@@ -31,7 +31,7 @@ public sealed partial class MainWindow
         Check(Section.SelectedIndex == 0 && IsProjectSearching && ProjectSearchResults.Visibility == Visibility.Visible, $"Ordinary search: section={Section.SelectedIndex}, searching={IsProjectSearching}, view={ProjectSearchResults.Visibility}, text={EditorSearch.Text}, ready={ready}, project={searchProjectID}.");
         Check(searchGroups.SelectMany(g => g.Hits).Count() == 2 && searchGroups.Any(g => g.Result.State == "draft"), "Older and draft transcript matches are missing.");
         Check(Segments.Visibility == Visibility.Collapsed && EditToolbar.Visibility == Visibility.Collapsed && !CanRunDesktopCommand("segment-edit-mode"), "Search must be read-only.");
-        foreach (var (prefix, index) in new[] { ("SuM", 1), ("des", 2), ("AdT", 4), ("Tr", 0) })
+        foreach (var (prefix, index) in new[] { ("SuM", 1), ("des", 2), ("AdT", 3), ("Tr", 0) })
         {
             EditorSearch.Text = "";
             Section.SelectedIndex = index == 0 ? 1 : 0;
@@ -45,7 +45,7 @@ public sealed partial class MainWindow
             EditorSearch.Text += ":"; await Task.Delay(100);
             Check(Section.SelectedIndex == index && !IsProjectSearching, "Prefix colon must not require a search term.");
         }
-        foreach (var (prefix, index, count) in new[] { ("SUM : Beacon", 1, 2), ("des:beacon", 2, 2), ("AdT: Beacon", 4, 4), ("Tr: Beacon", 0, 2) })
+        foreach (var (prefix, index, count) in new[] { ("SUM : Beacon", 1, 2), ("des:beacon", 2, 2), ("AdT: Beacon", 3, 4), ("Tr: Beacon", 0, 2) })
         {
             EditorSearch.Text = prefix; await Task.Delay(100);
             Check(Section.SelectedIndex == index && searchGroups.Sum(g => g.Hits.Count) == count, "Prefix navigation/scope mismatch: " + prefix);

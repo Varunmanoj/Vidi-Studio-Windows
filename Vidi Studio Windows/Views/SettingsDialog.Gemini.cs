@@ -37,8 +37,7 @@ public sealed partial class SettingsDialog
 {
     private readonly List<GeminiModelOption> availableModels = new();
     private readonly Dictionary<string, ComboBox> modelSelectors = new();
-    private readonly List<(string Stage, ComboBox Selector)> modelSelectorRows = new();
-    private bool synchronizingModelSelection;
+    private readonly List<(VertexModelRow Row, ComboBox Selector)> modelSelectorRows = new();
 
     private TextBlock apiKeyStatusText = new();
     private FontIcon? apiStatusIcon;
@@ -60,11 +59,114 @@ public sealed partial class SettingsDialog
         if (models) modelSelectorRows.First().Selector.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0 });
         else sectionHost.ChangeView(null,0,null,true);
     }
+    internal async Task VerifyVertexConnectionForSmokeTestAsync(Func<Task> capture)
+    {
+        var previousProvider = draft["aiProvider"]?.DeepClone();
+        var previousAuth = draft["vertexAuth"]?.DeepClone();
+        var previousCatalog = draft["vertexCatalog"]?.DeepClone();
+        var previousModels = draft["vertexModels"]?.DeepClone();
+        try {
+            draft["aiProvider"] = "vertex";
+            draft["vertexAuth"] = "signin";
+            draft["vertexCatalog"] = new JsonArray("gemini-3.5-transcribe", "gemini-3.5-transcribe-preview", "gemini-3.5-transcribe-live",
+                "gemini-3.8-flash", "gemini-3.8-flash-tts", "gemini-3.1-flash-image", "gemini-4-neon");
+            draft["vertexModels"] = new JsonObject { ["transcript"] = "gemini-3.8-flash" };
+            NavigateForSmokeTest(3);
+            RebuildAiPage(currentSectionPanel!);
+            await Task.Delay(150);
+            layout.UpdateLayout();
+            var panel = currentSectionPanel!;
+            ComboBox Stage(string stage) => SpeechItems<ComboBox>(panel).Single(c =>
+                Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(c) == "vertex-model-" + stage);
+            var transcript = Stage("transcript");
+            var speechIds = new[] { "gemini-3.5-transcribe", "gemini-3.5-transcribe-preview" };
+            if (!transcript.Items.OfType<ComboBoxItem>().Where(c => c.IsEnabled).Select(c => c.Tag as string).SequenceEqual(speechIds)
+                || transcript.SelectedItem is not ComboBoxItem { Tag: "gemini-3.5-transcribe" }
+                || transcript.ContextFlyout is not MenuFlyout choices || !choices.Items.OfType<ToggleMenuFlyoutItem>().Select(m => m.Text).SequenceEqual(speechIds))
+                throw new InvalidOperationException("File transcription choices, menu or migrated selection differ.");
+            transcript.SelectedIndex = 2;
+            if (SettingsStore.GetString(draft["vertexModels"]?["transcript"]) != speechIds[1])
+                throw new InvalidOperationException("Transcription preview selection was lost.");
+            if (Stage("summary").Items.OfType<ComboBoxItem>().Count(c => c.IsEnabled) != 2
+                || Stage("tts_audio").Items.OfType<ComboBoxItem>().Count(c => c.IsEnabled) != 1)
+                throw new InvalidOperationException("Video or narration picker admitted a different capability.");
+            var cloudVideo = Stage("cloud_video");
+            var cloudModels = new[] { "gemini-3.8-flash", "gemini-4-neon" };
+            if (!cloudVideo.Items.OfType<ComboBoxItem>().Where(c => c.IsEnabled).Select(c => c.Tag as string).SequenceEqual(cloudModels)
+                || cloudVideo.ContextFlyout is not MenuFlyout cloudMenu
+                || !cloudMenu.Items.OfType<ToggleMenuFlyoutItem>().Select(item => item.Text).SequenceEqual(cloudModels)
+                || cloudMenu.Items.OfType<ToggleMenuFlyoutItem>().Any(item => item.Icon == null))
+                throw new InvalidOperationException("Cloud Storage needs video-capable choices and an icon-bearing context menu.");
+            cloudVideo.SelectedItem = cloudVideo.Items.OfType<ComboBoxItem>().Single(c => c.Tag as string == cloudModels[1]);
+            if (SettingsStore.GetString(draft["vertexModels"]?["cloud_video"]) != cloudModels[1] ||
+                draft["vertexModels"]?["youtube_transcript"] != null)
+                throw new InvalidOperationException("Cloud Storage and YouTube must save independent selections.");
+            foreach (var stage in new[] { "summary", "audio_descriptions", "screen_text", "text_rewrite", "tts_audio" })
+            {
+                var localStage = Stage(stage);
+                foreach (var source in new[] { "youtube", "cloud" })
+                {
+                    var sourceStage = Stage(source + "_" + stage);
+                    if (sourceStage.Items.OfType<ComboBoxItem>().Count(c => c.IsEnabled) !=
+                        localStage.Items.OfType<ComboBoxItem>().Count(c => c.IsEnabled) ||
+                        sourceStage.ContextFlyout is not MenuFlyout)
+                        throw new InvalidOperationException("Each source needs capability-filtered task pickers and menus.");
+                }
+            }
+            var account = SpeechItems<TextBlock>(panel).Single(t => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(t) == "vertex-signin-status");
+            bool connected = CredentialStore.HasGoogleSignIn;
+            if (account.Text != (connected ? "Google account connected" : "Signed out"))
+                throw new InvalidOperationException("OAuth badge does not match the saved Windows connection.");
+            if (connected && account.Parent is StackPanel badge && !badge.Children.OfType<FontIcon>().Any(f => f.Glyph == "\uE73E"))
+                throw new InvalidOperationException("Connected OAuth account must show a check.");
+            foreach (var label in new[] { "Google Cloud project ID", "Cloud Storage bucket" }) {
+                var field = SpeechItems<TextBox>(panel).Single(f => Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(f) == label);
+                var parent = (Grid)field.Parent;
+                var buttons = parent.Children.OfType<Button>().ToArray();
+                var names = buttons.Select(b => Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(b)).ToArray();
+                if (!names.SequenceEqual(new[] {"Copy " + label, "Clear " + label}) || buttons.Any(b => b.IsEnabled != (field.Text.Length > 0)))
+                    throw new InvalidOperationException("Cloud field actions or availability differ: " + label);
+                if (Grid.GetColumn(buttons[0]) != 1 || Grid.GetColumn(buttons[1]) != 2 || parent.ContextFlyout is not MenuFlyout menu || menu.Items.Count != 2)
+                    throw new InvalidOperationException("Cloud field actions need adjacent buttons and keyboard menus.");
+            }
+            FontIcon TestBadge() => SpeechItems<FontIcon>(panel).Single(icon =>
+                Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(icon) == "vertex-test-status");
+            if (TestBadge().Visibility != Visibility.Collapsed) throw new InvalidOperationException("Untested Vertex connection shows a success icon");
+            RebuildAiPage(panel, vertexVerified: true);
+            await Task.Delay(100);
+            var verified = TestBadge();
+            if (verified.Visibility != Visibility.Visible || verified.Glyph != "\uE73E" ||
+                Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(verified) != "Vertex AI connection verified" ||
+                verified.Parent is not StackPanel testRow || !testRow.Children.OfType<Button>().Any(button => button.Content as string == "Test Connection"))
+                throw new InvalidOperationException("Vertex success needs a named checkmark next to Test Connection");
+            await capture();
+            draft["vertexAuth"] = "express";
+            RebuildAiPage(panel);
+            await Task.Delay(100);
+            if (SpeechItems<ComboBox>(panel).Any(c => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(c) == "vertex-model-cloud_video"))
+                throw new InvalidOperationException("Private Cloud Storage model choices belong to Google sign-in.");
+            var expressIds = SpeechItems<ComboBox>(panel).Select(c => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(c)).ToArray();
+            if (expressIds.Contains("vertex-model-transcript") || expressIds.Contains("vertex-model-tts_audio") ||
+                !Stage("local_video").IsEnabled || !Stage("youtube_imported_audio").IsEnabled || !Stage("summary").IsEnabled)
+                throw new InvalidOperationException("Express pickers must reflect its model capabilities.");
+            if (TestBadge().Visibility != Visibility.Collapsed) throw new InvalidOperationException("Switching authentication retained the test result");
+            if (SpeechItems<PasswordBox>(panel).Count() != 1 || !SpeechItems<Button>(panel).Any(b => b.Content as string == "Use Google sign-in"))
+                throw new InvalidOperationException("Express key and explicit Google sign-in backup must be available.");
+        }
+        finally {
+            draft["vertexCatalog"] = previousCatalog;
+            draft["vertexModels"] = previousModels;
+            draft["aiProvider"] = previousProvider;
+            draft["vertexAuth"] = previousAuth;
+            RebuildAiPage(currentSectionPanel!);
+        }
+    }
+
     internal void VerifyGeminiGroupsForSmokeTest()
     {
         layout.UpdateLayout();
         var cards = SpeechItems<Border>(currentSectionPanel!).Where(b => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(b).StartsWith("gemini-section-",StringComparison.Ordinal)).ToArray();
-        if (cards.Length != 6) throw new InvalidOperationException("Gemini sections must use six compact grouped cards.");
+        if (cards.Length != 7) throw new InvalidOperationException("Gemini sections must use seven compact grouped cards.");
         foreach (var card in cards) {
             if (card.Background is not SolidColorBrush brush) throw new InvalidOperationException("Gemini cards must use their theme fill.");
             var c = brush.Color;
@@ -133,7 +235,7 @@ public sealed partial class SettingsDialog
         {
             var configData = draft.DeepClone().AsObject();
             var enteredKey = SettingsStore.GetString(draft["apiKey"]).Trim();
-            if (!string.IsNullOrEmpty(enteredKey)) configData["apiKey"] = enteredKey;
+            foreach (var secret in new[] { "apiKey", "sarvamApiKey", "elevenlabsApiKey" }) configData.Remove(secret);
             await File.WriteAllTextAsync(config, configData.ToJsonString(Models.Json.Options), cancellation);
             return await model.Engine.RunAsync(new[] { command }, configPath: config, cancellation: cancellation,
                 apiKey: enteredKey);
@@ -191,7 +293,7 @@ public sealed partial class SettingsDialog
         AddGeminiRow(group,"Default Language for New Projects",field);
     }
 
-    private void BuildGemini(StackPanel panel)
+    private void BuildGemini(StackPanel panel, bool vertexVerified = false)
     {
         // These display-only controls belong to the newly constructed page.
         // Unloaded WinUI controls can no longer expose Parent for detachment.
@@ -199,12 +301,22 @@ public sealed partial class SettingsDialog
         planPillText = new TextBlock(); planDetailsSubtitle = new TextBlock();
 
         var titleRows = new StackPanel();
-        titleRows.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Gemini", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }));
+        titleRows.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "AI", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }));
         var titleCard = GeminiSettingsCard(titleRows);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(titleCard,"gemini-title-card");
         panel.Children.Add(titleCard);
 
+        var connection = AddGeminiGroup(panel, "AI provider");
+        var provider = new ComboBox { ItemsSource = new[] { "Gemini Developer API", "Vertex AI" },
+            SelectedIndex = SettingsStore.GetString(draft["aiProvider"]) == "vertex" ? 1 : 0 };
+        AddChoiceMenu(provider);
+        AddGeminiRow(connection, "Provider", provider, true);
+        provider.SelectionChanged += (_, _) => {
+            draft["aiProvider"] = provider.SelectedIndex == 1 ? "vertex" : "developer";
+            RebuildAiPage(panel);
+        };
         BuildOutputLanguages(panel);
+        if (provider.SelectedIndex == 1) { BuildVertex(panel, vertexVerified); return; }
 
         var topStack = AddGeminiGroup(panel,"Connect to Gemini");
 
@@ -388,22 +500,14 @@ public sealed partial class SettingsDialog
             }
         };
 
-        // Local video group matching Mac
         modelSelectors.Clear();
         modelSelectorRows.Clear();
-        var local = AddGeminiGroup(panel, "Local video");
-        AddModelSelector(local, "transcript", "Speech transcription");
-        AddModelSelector(local, "summary", "Video summaries");
-        AddModelSelector(local, "audio_descriptions", "Audio descriptions");
-        AddModelSelector(local, "screen_text", "On-screen text");
-        AddModelSelector(local, "text_rewrite", "Description rewrites");
-        AddModelSelector(local, "tts_audio", "Gemini narration");
-
-        // YouTube video group matching Mac
-        var youtube = AddGeminiGroup(panel, "YouTube video");
-        AddModelSelector(youtube, "youtube_transcript", "YouTube video model");
-        AddModelSelector(youtube, "transcript", "Imported audio transcription");
-        AddModelSelector(youtube, "audio_descriptions", "Audio descriptions with imported audio");
+        foreach (var group in VertexPolicy.Value.ProjectModelGroups.Where(group => !group.SignInOnly))
+        {
+            var projectRows = AddGeminiGroup(panel, group.Title);
+            foreach (var row in group.Rows)
+                AddModelSelector(projectRows, row);
+        }
 
         // Advanced group
         var advanced = new StackPanel { Spacing = 0 };
@@ -456,6 +560,237 @@ public sealed partial class SettingsDialog
             UpdatePlanDisplay(null, "", 0);
         }
     }
+
+    private void RebuildAiPage(StackPanel panel, bool vertexVerified = false)
+    {
+        if (!ApplyPreferences()) return;
+        checkDebounceTimer?.Stop();
+        apiKeyCheckRevision++;
+        status.Text = "";
+        modelSelectors.Clear();
+        modelSelectorRows.Clear();
+        panel.Children.Clear();
+        panel.Children.Add(new ConnectivityNotice());
+        BuildGemini(panel, vertexVerified);
+        panel.DispatcherQueue.TryEnqueue(() => sectionHost.ChangeView(null, 0, null, true));
+    }
+
+    private static void AddChoiceMenu(ComboBox selector)
+    {
+        var menu = MenuAccessKeys.Create();
+        menu.Opening += (_, _) => {
+            menu.Items.Clear();
+            foreach (var choice in selector.Items.OfType<string>()) {
+                var item = new ToggleMenuFlyoutItem { Text = choice, IsChecked = Equals(selector.SelectedItem, choice), Icon = new FontIcon { Glyph = "\uE713" } };
+                item.Click += (_, _) => selector.SelectedItem = choice;
+                menu.Items.Add(item);
+            }
+            MenuAccessKeys.Assign(menu.Items);
+        };
+        selector.ContextFlyout = menu;
+    }
+
+    private void AddCloudField(StackPanel rows, string label, string setting, Action changed)
+    {
+        var field = new TextBox { Text = SettingsStore.GetString(draft[setting]) };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(field, label);
+        var row = new Grid { ColumnSpacing = 6 };
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.Children.Add(field);
+        var menu = MenuAccessKeys.Create();
+        void AddAction(string name, Symbol symbol, System.Action execute)
+        {
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var button = new Button { Content = new SymbolIcon(symbol), IsEnabled = field.Text.Length > 0 };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
+            ToolTipService.SetToolTip(button, name);
+            var item = new MenuFlyoutItem { Text = name, IsEnabled = button.IsEnabled, Icon = new SymbolIcon(symbol) };
+            button.Click += (_, _) => execute();
+            item.Click += (_, _) => execute();
+            field.TextChanged += (_, _) => item.IsEnabled = button.IsEnabled = field.Text.Length > 0;
+            Grid.SetColumn(button, row.ColumnDefinitions.Count - 1);
+            row.Children.Add(button);
+            menu.Items.Add(item);
+        }
+        field.TextChanged += (_, _) => { draft[setting] = field.Text; changed(); };
+        AddAction("Copy " + label, Symbol.Copy, () => {
+            var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            data.SetText(field.Text);
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+        });
+        AddAction("Clear " + label, Symbol.Delete, () => field.Text = "");
+        row.ContextFlyout = menu;
+        AddGeminiRow(rows, label, row, true);
+    }
+
+    private void BuildVertex(StackPanel panel, bool verified)
+    {
+        var rows = AddGeminiGroup(panel, "Vertex AI");
+        bool express = SettingsStore.GetString(draft["vertexAuth"]) == "express";
+        var auth = new ComboBox { ItemsSource = new[] { "Google sign-in", "Express API key" }, SelectedIndex = express ? 1 : 0 };
+        AddChoiceMenu(auth);
+        AddGeminiRow(rows, "Authentication", auth, true);
+        auth.SelectionChanged += (_, _) => { draft["vertexAuth"] = auth.SelectedIndex == 1 ? "express" : "signin"; RebuildAiPage(panel); };
+        const string verifiedLabel = "Vertex AI connection verified";
+        var check = (FontIcon)Microsoft.UI.Xaml.Markup.XamlReader.Load("<FontIcon xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Glyph='&#xE73E;' FontSize='18' Foreground='{ThemeResource SystemFillColorSuccessBrush}'/>");
+        check.Visibility = verified ? Visibility.Visible : Visibility.Collapsed;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(check, "vertex-test-status");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(check, verifiedLabel);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(check, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Control);
+        ToolTipService.SetToolTip(check, verifiedLabel);
+        void ClearCheck() => check.Visibility = Visibility.Collapsed;
+        var actions = new CompactActionsPanel();
+        var result = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetLiveSetting(result, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
+        Button Action(string label, Action run) {
+            var button = new Button { Content = label };
+            button.Click += (_, _) => run();
+            var menu = MenuAccessKeys.Create();
+            var item = new MenuFlyoutItem { Text = label, Icon = MenuIcons.Create(label) };
+            item.Click += (_, _) => { if (button.IsEnabled) run(); };
+            menu.Items.Add(item);
+            button.ContextFlyout = menu;
+            actions.Children.Add(button);
+            return button;
+        }
+        async Task Run(string command) {
+            ClearCheck();
+            result.Text = "";
+            if (!ApplyPreferences()) return;
+            var enabled = SpeechItems<Control>(panel).Where(control => control.IsEnabled).ToArray();
+            foreach (var control in enabled) control.IsEnabled = false;
+            try {
+                var events = await model.Engine.RunAsync(new[] { command });
+                bool passed = command == "vertex-check" && events.Any(e => e.Data.TryGetProperty("vertexModels", out _));
+                foreach (var entry in events) {
+                    result.Text = passed ? "" : entry.Message;
+                    if (entry.Data.TryGetProperty("vertexConnected", out var connected)) draft["vertexConnected"] = connected.GetBoolean();
+                    if (!express && entry.Data.TryGetProperty("vertexModels", out var catalog))
+                        draft["vertexCatalog"] = JsonNode.Parse(catalog.GetRawText());
+                }
+                var peer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(result);
+                peer?.RaiseNotificationEvent(Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationKind.ActionCompleted,
+                    Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationProcessing.MostRecent, passed ? verifiedLabel : result.Text, "vertex-connection");
+                if (ApplyPreferences() && events.Any(e => e.Data.TryGetProperty("vertexModels", out _) || e.Data.TryGetProperty("vertexConnected", out _))) {
+                    if (command is "vertex-connect" or "vertex-disconnect")
+                        App.ApplySettingsChanges(new[] { "vertexConnected" });
+                    RebuildAiPage(panel, passed);
+                    status.Text = result.Text;
+                }
+            } catch (Exception ex) { result.Text = ex.Message; }
+            finally { foreach (var control in enabled) control.IsEnabled = true; }
+        }
+        if (express) {
+            var key = new PasswordBox();
+            AddGeminiRow(rows, "Vertex AI express API key", key, true);
+            var remove = new Button();
+            var save = Action("Save Key", () => {
+                if (string.IsNullOrWhiteSpace(key.Password)) return;
+                if (CredentialStore.Vertex.Write(key.Password)) { ClearCheck(); key.Password = ""; result.Text = "Express key saved"; remove.IsEnabled = true; model.RefreshConnectivity(); }
+                else result.Text = "Could not save the key";
+            });
+            save.IsEnabled = false;
+            key.PasswordChanged += (_, _) => save.IsEnabled = !string.IsNullOrWhiteSpace(key.Password);
+            remove = Action("Remove Key", () => {
+                if (CredentialStore.Vertex.Write("")) { ClearCheck(); result.Text = "Key removed"; remove.IsEnabled = false; model.RefreshConnectivity(); }
+                else result.Text = "Could not remove the key";
+            });
+            remove.IsEnabled = CredentialStore.Vertex.ContainsValue();
+            if (remove.IsEnabled) result.Text = "Express key saved";
+            Action("Use Google sign-in", () => auth.SelectedIndex = 0);
+        } else {
+            AddCloudField(rows, "Google Cloud project ID", "vertexProject", ClearCheck);
+            AddCloudField(rows, "Cloud Storage bucket", "vertexBucket", ClearCheck);
+            bool connected = CredentialStore.HasGoogleSignIn;
+            draft["vertexConnected"] = connected;
+            var account = new TextBlock { Text = connected ? "Google account connected" : "Signed out" };
+            var badge = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            if (connected) badge.Children.Add(new FontIcon { Glyph = "\uE73E", Foreground = new SolidColorBrush(Color.FromArgb(255, 16, 150, 75)) });
+            badge.Children.Add(account);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(account, "vertex-signin-status");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetLiveSetting(account, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
+            rows.Children.Add(badge);
+            Action(connected ? "Reconnect Google Account" : "Sign in with Google", async () => await Run("vertex-connect"));
+            Action("Remove Google sign-in", async () => {
+                var confirm = new ContentDialog { Title = "Remove Google sign-in from this PC?", PrimaryButtonText = "Remove Google sign-in", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
+                if (await WindowedDialog.ShowAsync(confirm, this, 460, 250) == ContentDialogResult.Primary) await Run("vertex-disconnect");
+            }).IsEnabled = connected;
+        }
+        rows.Children.Add(actions);
+        var test = new Button { Content = "Test Connection" };
+        test.Click += async (_, _) => await Run("vertex-check");
+        var testMenu = MenuAccessKeys.Create();
+        var testItem = new MenuFlyoutItem { Text = "Test Connection", Icon = new FontIcon { Glyph = "\uE73E" } };
+        testItem.Click += async (_, _) => await Run("vertex-check");
+        testMenu.Items.Add(testItem);
+        test.ContextFlyout = testMenu;
+        var testRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        testRow.Children.Add(test);
+        testRow.Children.Add(check);
+        rows.Children.Add(testRow);
+        rows.Children.Add(result);
+        var policy = VertexPolicy.Value;
+        var catalog = express ? policy.ExpressModels : (draft["vertexCatalog"] as JsonArray)?
+            .Select(row => SettingsStore.GetString(row is JsonObject ? row["name"] : row)).ToArray() ?? Array.Empty<string>();
+        string modelKey = express ? "vertexExpressModels" : "vertexModels";
+        draft[modelKey] ??= new JsonObject();
+        void AddVertexModelRow(StackPanel groupRows, VertexModelRow row)
+        {
+            var capability = policy.Stages[row.Stage];
+            var selector = new ComboBox { PlaceholderText = express ? "Unavailable in express mode" : "No compatible models" };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(selector, "vertex-model-" + row.Id);
+            var items = new SortedDictionary<string, ComboBoxItem>(StringComparer.Ordinal);
+            var menu = MenuAccessKeys.Create();
+            foreach (var group in policy.Groups.Where(g => g.Capability == capability)) {
+                var names = catalog.Where(id => Regex.IsMatch(id, group.Pattern)).Distinct().OrderBy(id => id, StringComparer.Ordinal).ToArray();
+                if (names.Length == 0) continue;
+                AddModelGroupHeading(selector, menu, group.Title);
+                foreach (var id in names) {
+                    var choice = new ComboBoxItem { Content = id, Tag = id };
+                    selector.Items.Add(choice);
+                    items.Add(id, choice);
+                    var entry = new ToggleMenuFlyoutItem { Text = id, Icon = new FontIcon { Glyph = "\uE945" } };
+                    entry.Click += (_, _) => selector.SelectedItem = choice;
+                    menu.Opening += (_, _) => entry.IsChecked = Equals(selector.SelectedItem, choice);
+                    menu.Items.Add(entry);
+                }
+            }
+            var saved = new[] { SettingsStore.GetString(draft[modelKey]?[row.Id]),
+                                SettingsStore.GetString(draft[modelKey]?[row.Fallback ?? row.Stage]) };
+            var selected = saved.Concat(policy.Preferred[capability]).FirstOrDefault(items.ContainsKey) ?? items.Keys.FirstOrDefault();
+            if (selected != null) selector.SelectedItem = items[selected];
+            selector.IsEnabled = items.Count > 0;
+            selector.SelectionChanged += (_, change) => {
+                if (selector.SelectedItem is not ComboBoxItem { Tag: string id }) return;
+                var preferences = draft[modelKey]!;
+                // Keep inherited choices stable when their previous default is edited.
+                if (change.RemovedItems.FirstOrDefault() is ComboBoxItem { Tag: string previous })
+                    foreach (var dependent in policy.ProjectModelGroups.SelectMany(group => group.Rows)
+                        .Where(dependent => dependent.Id != row.Id && (dependent.Fallback ?? dependent.Stage) == row.Id && preferences[dependent.Id] == null))
+                        preferences[dependent.Id] = previous;
+                preferences[row.Id] = id;
+            };
+            selector.ContextFlyout = menu;
+            AddGeminiRow(groupRows, row.Label, selector, true);
+        }
+        foreach (var group in policy.ProjectModelGroups.Where(group => !express || !group.SignInOnly))
+        {
+            var modelRows = AddGeminiGroup(panel, group.Title);
+            foreach (var row in group.Rows.Where(row => !express || !row.SignInOnly))
+                AddVertexModelRow(modelRows, row);
+        }
+    }
+
+    private sealed record VertexModelGroup(string Title, string Capability, string Pattern);
+    private sealed record VertexModelRow(string Id, string Stage, string Label, string? Fallback, bool SignInOnly);
+    private sealed record VertexProjectGroup(string Title, bool SignInOnly, VertexModelRow[] Rows);
+    private sealed record VertexModelPolicy(string[] ExpressModels, Dictionary<string, string> Stages,
+        VertexModelGroup[] Groups, Dictionary<string, string[]> Preferred, VertexProjectGroup[] ProjectModelGroups);
+    private static readonly Lazy<VertexModelPolicy> VertexPolicy = new(() => {
+        using var defaults = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "engine", "ai-defaults.json")));
+        return defaults.RootElement.GetProperty("vertexModelPolicy").Deserialize<VertexModelPolicy>(
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+    });
 
     private void UpdatePlanDisplay(bool? valid, string plan, int modelCount, string errorMsg = "", bool checking = false)
     {
@@ -679,22 +1014,56 @@ public sealed partial class SettingsDialog
         return !new[] { "tts", "transcribe", "image", "embedding", "live", "computer-use", "robotics", "research" }.Any(Contains);
     }
 
+    private static readonly string[] DeveloperGroupTitles =
+        { "Latest", "Flash", "Flash-Lite", "Pro", "Gemini 4", "Omni", "Speech and transcription", "Other models" };
+
+    private static string DeveloperModelGroup(string id)
+    {
+        if (Regex.IsMatch(id, @"^(?:models/)?gemini-4(?:[.-]|$)")) return "Gemini 4";
+        if (id.Contains("latest")) return "Latest";
+        if (id.Contains("tts") || id.Contains("transcribe")) return "Speech and transcription";
+        if (id.Contains("flash-lite")) return "Flash-Lite";
+        if (id.Contains("pro")) return "Pro";
+        if (id.Contains("omni")) return "Omni";
+        return id.Contains("flash") ? "Flash" : "Other models";
+    }
+
+    private static void AddModelGroupHeading(ComboBox selector, MenuFlyout menu, string title)
+    {
+        selector.Items.Add(new ComboBoxItem { Content = ScreenReaderHeading.Mark(new TextBlock { Text = title }), IsEnabled = false });
+        // Menu heading: a category label has no action.
+        menu.Items.Add(new MenuFlyoutItem { Text = title, IsEnabled = false });
+    }
+
     private void ApplyGeminiModelChoices()
     {
-        foreach (var (stage, selector) in modelSelectorRows)
+        foreach (var (row, selector) in modelSelectorRows)
         {
-            var current = SettingsStore.GetString(draft["models"]?[stage]);
-            var choices = availableModels.Where(option => SupportsModelStage(stage, option.Id)).ToList();
-            selector.ItemsSource = null;
+            var current = SettingsStore.GetString(draft["models"]?[row.Id]);
+            var inherited = SettingsStore.GetString(draft["models"]?[row.Fallback ?? row.Stage]);
+            var choices = availableModels.Where(option => SupportsModelStage(row.Stage, option.Id)).ToList();
             selector.Items.Clear();
-            selector.ItemsSource = choices;
-            var preferred = stage switch
+            var groups = choices.ToLookup(option => DeveloperModelGroup(option.Id));
+            var menu = MenuAccessKeys.Create();
+            foreach (var title in DeveloperGroupTitles.Where(groups.Contains)) {
+                AddModelGroupHeading(selector, menu, title);
+                foreach (var option in groups[title].OrderBy(m => m.Label, StringComparer.CurrentCultureIgnoreCase)) {
+                    selector.Items.Add(option);
+                    var entry = new ToggleMenuFlyoutItem { Text = option.Label, Icon = new FontIcon { Glyph = "\uE945" } };
+                    entry.Click += (_, _) => selector.SelectedItem = option;
+                    menu.Opening += (_, _) => entry.IsChecked = Equals(selector.SelectedItem, option);
+                    menu.Items.Add(entry);
+                }
+            }
+            selector.ContextFlyout = menu;
+            var preferred = row.Stage switch
             {
                 "transcript" => new[] { "gemini-3.5-transcribe" },
                 "tts_audio" => new[] { "gemini-3.8-flash-lite-tts", "gemini-3.8-flash-tts", "gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts" },
                 _ => Array.Empty<string>()
             };
             selector.SelectedItem = choices.FirstOrDefault(option => option.Id == current)
+                ?? choices.FirstOrDefault(option => option.Id == inherited)
                 ?? preferred.Concat(new[] { "gemini-3.8-flash", "gemini-3.5-flash", "gemini-2.5-flash" })
                     .Select(id => choices.FirstOrDefault(option => option.Id == id)).FirstOrDefault(option => option != null)
                 ?? choices.FirstOrDefault();
@@ -703,28 +1072,17 @@ public sealed partial class SettingsDialog
         }
     }
 
-    private void AddModelSelector(StackPanel panel, string stage, string label)
+    private void AddModelSelector(StackPanel panel, VertexModelRow row)
     {
         var selector = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, MinWidth = 0 };
-        modelSelectors.TryAdd(stage, selector);
-        modelSelectorRows.Add((stage, selector));
+        modelSelectors.Add(row.Id, selector);
+        modelSelectorRows.Add((row, selector));
         selector.SelectionChanged += (_, _) =>
         {
-            if (synchronizingModelSelection) return;
-            if (selector.SelectedItem is GeminiModelOption chosen && chosen.Id.Length > 0 && SupportsModelStage(stage, chosen.Id))
-            {
-                draft["models"]!.AsObject()[stage] = chosen.Id;
-                synchronizingModelSelection = true;
-                try
-                {
-                    foreach (var (peerStage, peer) in modelSelectorRows)
-                        if (peerStage == stage && peer != selector)
-                            peer.SelectedItem = (peer.ItemsSource as IEnumerable<GeminiModelOption>)?.FirstOrDefault(option => option.Id == chosen.Id);
-                }
-                finally { synchronizingModelSelection = false; }
-            }
+            if (selector.SelectedItem is GeminiModelOption chosen && chosen.Id.Length > 0 && SupportsModelStage(row.Stage, chosen.Id))
+                draft["models"]!.AsObject()[row.Id] = chosen.Id;
         };
-        AddGeminiRow(panel,label,selector,true);
+        AddGeminiRow(panel, row.Label, selector, true);
     }
 
     private Task RefreshGeminiModelsAsync() => CheckApiKeyAndPlanAsync();
@@ -734,17 +1092,17 @@ public sealed partial class SettingsDialog
         if (availableModels.Count == 0) { status.Text = "Load the Gemini catalog first."; return; }
         static (int Major, int Minor, int Patch, int Alias) Rank(string id)
         {
-            var version = Regex.Match(id, @"gemini-(\d+)\.(\d+)(?:\.(\d+))?");
+            var version = Regex.Match(id, @"gemini-(\d+)(?:\.(\d+))?(?:\.(\d+))?");
             int Parse(Group group) => int.TryParse(group.Value, out var number) ? number : 0;
             return (Parse(version.Groups[1]), Parse(version.Groups[2]), Parse(version.Groups[3]), id.Contains("latest", StringComparison.OrdinalIgnoreCase) ? 1 : 0);
         }
-        foreach (var (stage, selector) in modelSelectorRows)
+        foreach (var (row, selector) in modelSelectorRows)
         {
-            var options = ((IEnumerable<GeminiModelOption>?)selector.ItemsSource)?.Where(item => availableModels.Any(available => available.Id == item.Id)).ToList();
+            var options = selector.Items.OfType<GeminiModelOption>().Where(item => availableModels.Any(available => available.Id == item.Id)).ToList();
             if (options is not { Count: > 0 }) continue;
             var latest = options.OrderByDescending(option => Rank(option.Id)).First();
             selector.SelectedItem = latest;
-            draft["models"]!.AsObject()[stage] = latest.Id;
+            draft["models"]!.AsObject()[row.Id] = latest.Id;
         }
         status.Text = "Selected the newest available version in each model category. Review choices before saving.";
     }
@@ -767,14 +1125,36 @@ public sealed partial class SettingsDialog
             ApplyGeminiModelChoices(); // Repeated refresh must preserve filtering and valid selections.
             foreach (var (stage, selector) in modelSelectors)
             {
-                var expected = stage == "transcript" ? "gemini-3.5-transcribe" : stage == "tts_audio" ? "gemini-3.8-flash-lite-tts" : "gemini-3.8-flash";
-                var choices = ((IEnumerable<GeminiModelOption>)selector.ItemsSource).ToList();
+                var capabilityStage = modelSelectorRows.Single(row => row.Selector == selector).Row.Stage;
+                var expected = capabilityStage == "transcript" ? "gemini-3.5-transcribe" :
+                    capabilityStage == "tts_audio" ? "gemini-3.8-flash-lite-tts" : "gemini-3.8-flash";
+                var choices = selector.Items.OfType<GeminiModelOption>().ToList();
                 if (choices.Count != 1 || choices[0].Id != expected || (selector.SelectedItem as GeminiModelOption)?.Id != expected)
                     throw new InvalidOperationException("Unsuitable Gemini model offered for " + stage);
             }
             SelectLatestModels();
             if (SettingsStore.GetString(draft["models"]?["transcript"]) != "gemini-3.5-transcribe")
                 throw new InvalidOperationException("Latest model selection bypassed transcription filtering.");
+            foreach (var id in new[] { "gemini-4-neon", "gemini-4-argon" })
+                availableModels.Add(new GeminiModelOption(id, CleanModelName(id, id)));
+            ApplyGeminiModelChoices();
+            var summary = modelSelectors["summary"];
+            var groupItems = summary.Items.Cast<object>().SkipWhile(item =>
+                item is not ComboBoxItem { Content: TextBlock { Text: "Gemini 4" } }).Skip(1).TakeWhile(item => item is GeminiModelOption)
+                .Cast<GeminiModelOption>().Select(option => option.Id);
+            if (!groupItems.SequenceEqual(new[] { "gemini-4-argon", "gemini-4-neon" }) ||
+                modelSelectors["transcript"].Items.OfType<GeminiModelOption>().Any(option => option.Id.StartsWith("gemini-4-")) ||
+                summary.ContextFlyout is not MenuFlyout groupedMenu || !groupedMenu.Items.OfType<MenuFlyoutItem>().Any(item => item.Text == "Gemini 4"))
+                throw new InvalidOperationException("Developer Gemini 4 grouping or task filtering differs.");
+            var youtubeSummary = modelSelectors["youtube_summary"];
+            youtubeSummary.SelectedItem = youtubeSummary.Items.OfType<GeminiModelOption>().Single(option => option.Id == "gemini-4-neon");
+            if (SettingsStore.GetString(draft["models"]?["youtube_summary"]) != "gemini-4-neon" ||
+                SettingsStore.GetString(draft["models"]?["summary"]) == "gemini-4-neon" ||
+                modelSelectors.Keys.Any(key => key.StartsWith("cloud_", StringComparison.Ordinal)))
+                throw new InvalidOperationException("Developer API needs independent Local and YouTube models.");
+            SelectLatestModels();
+            if (summary.SelectedItem is not GeminiModelOption newest || !newest.Id.StartsWith("gemini-4-"))
+                throw new InvalidOperationException("Latest model selection ignored the major-only version.");
             availableModels.RemoveAll(option => option.Id.Contains("transcribe"));
             ApplyGeminiModelChoices();
             if ((modelSelectors["transcript"].SelectedItem as GeminiModelOption)?.Id != "gemini-3.8-flash")

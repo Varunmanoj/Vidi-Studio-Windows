@@ -14,14 +14,14 @@
             <Button x:Name="RetryButton" Content="Retry" Click="RetryGuide" Visibility="Collapsed">
                 <Button.ContextFlyout>
                     <MenuFlyout>
-                        <MenuFlyoutItem Text="Retry" Click="RetryGuide"/>
+                        <MenuFlyoutItem Text="Retry" Click="RetryGuide"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE72C;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
                     </MenuFlyout>
                 </Button.ContextFlyout>
             </Button>
             <Button x:Name="BrowserButton" Content="Open in Browser" Click="OpenGuideInBrowser">
                 <Button.ContextFlyout>
                     <MenuFlyout>
-                        <MenuFlyoutItem Text="Open in Browser" Click="OpenGuideInBrowser"/>
+                        <MenuFlyoutItem Text="Open in Browser" Click="OpenGuideInBrowser"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A7;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
                     </MenuFlyout>
                 </Button.ContextFlyout>
             </Button>

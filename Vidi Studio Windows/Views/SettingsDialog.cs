@@ -313,7 +313,7 @@ public sealed partial class SettingsDialog : Window
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(heading, "settings-page-title");
         Grid.SetRow(heading, 1); Grid.SetColumn(heading, 1); layout.Children.Add(heading);
         var sections = new ListView { SelectionMode = ListViewSelectionMode.Single };
-        var labels = new[] { "Appearance", "Projects", "Narration", "Gemini", "Developer prompts", "Storage", "Help", "About" };
+        var labels = new[] { "Appearance", "Projects", "Narration", "AI", "Developer prompts", "Storage", "Help", "About" };
         var glyphs = new[] { "\uE790", "\uE8F1", "\uE767", "\uE734", "\uE8F2", "\uE8B7", "\uE897", "\uE946" };
         // Keep section IDs stable for menu/navigation callers while matching the Mac sidebar order.
         foreach (var i in Enumerable.Range(0, labels.Length))
@@ -624,8 +624,8 @@ public sealed partial class SettingsDialog : Window
         ConfigureCompactToggle(toggle);
         toggle.Toggled += (_, _) => draft[key] = toggle.IsOn;
         var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
-        var choice = new ToggleMenuFlyoutItem { Text = label, Tag = menuId };
-        var previewItem = new MenuFlyoutItem { Tag = id + "-preview-menu" };
+        var choice = new ToggleMenuFlyoutItem { Text = label, Tag = menuId, Icon = new FontIcon { Glyph = "\uE767" } };
+        var previewItem = new MenuFlyoutItem { Tag = id + "-preview-menu", Icon = new FontIcon { Glyph = "\uE768" } };
         previewItem.Click += (_, _) => ToggleSoundPreview(resource);
         menu.Opening += (_, _) => { choice.IsChecked = toggle.IsOn; UpdateSoundPreviewControls(); };
         choice.Click += (_, _) => toggle.IsOn = choice.IsChecked;
@@ -635,7 +635,7 @@ public sealed partial class SettingsDialog : Window
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(preview, id + "-preview");
         preview.Click += (_, _) => ToggleSoundPreview(resource);
         var previewMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
-        var matchingPreviewItem = new MenuFlyoutItem { Tag = id + "-preview-button-menu" };
+        var matchingPreviewItem = new MenuFlyoutItem { Tag = id + "-preview-button-menu", Icon = new FontIcon { Glyph = "\uE768" } };
         matchingPreviewItem.Click += (_, _) => ToggleSoundPreview(resource);
         previewMenu.Items.Add(matchingPreviewItem);
         previewMenu.Opening += (_, _) => { matchingPreviewItem.Text = PreviewSoundTitle(resource, label); };
@@ -736,7 +736,7 @@ public sealed partial class SettingsDialog : Window
         IconButtonContent.Set(restoreSpeech, "Restore Defaults", Symbol.Refresh);
         restoreSpeech.Click += (_, _) => RestoreSpeechDefaults();
         var restoreMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
-        var restoreItem = new MenuFlyoutItem { Text = "Restore Defaults", Tag = "restore-speech-defaults-menu" };
+        var restoreItem = new MenuFlyoutItem { Text = "Restore Defaults", Tag = "restore-speech-defaults-menu", Icon = new FontIcon { Glyph = "\uE7A7" } };
         restoreItem.Click += (_, _) => RestoreSpeechDefaults();
         restoreMenu.Items.Add(restoreItem); restoreSpeech.ContextFlyout = restoreMenu;
         speechGroup.Children.Add(restoreSpeech);
@@ -773,7 +773,7 @@ public sealed partial class SettingsDialog : Window
         sampleRows.Children.Add(GeminiRowDivider()); sampleRows.Children.Add(controls);
         _ = RefreshVoices();
     }
-    private bool HasDraftApiKey => !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"])) &&
+    private bool HasDraftApiKey => SettingsStore.GetString(draft["aiProvider"]) == "vertex" ? (SettingsStore.GetString(draft["vertexAuth"]) != "express" && CredentialStore.HasGoogleSignIn) : !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"])) &&
         SettingsStore.GetString(draft["apiKeyValid"], "true") != "false" &&
         SettingsStore.GetString(draft["apiPlan"], "") != "invalid";
     private void VoiceSampleChanged() { if (!closed) { UpdateSampleControls(); UpdateSarvamSampleControls(); UpdateSummarySampleControls(); if(elevenCard?.Visibility == Visibility.Visible) RenderElevenRows(); } }

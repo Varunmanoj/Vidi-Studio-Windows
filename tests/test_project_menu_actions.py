@@ -26,7 +26,7 @@ class ProjectMenuActions(unittest.TestCase):
         action = source.split('private async Task DeleteProjectAsync(', 1)[1].split('private void RefreshProjectIntegrity()', 1)[0]
         self.assertIn('if (!await Confirm(title, message, action)) return;', action)
         self.assertIn('if (!await Model.DeleteProjectFolderAsync(p)) return;', action)
-        self.assertIn('App.CloseEditorsForDeletedProject(p.Folder);', action)
+        self.assertIn('App.CloseEditorsForDeletedProject(p);', action)
         model = (PROJECT / 'ViewModels/StudioViewModel.cs').read_text(encoding='utf-8')
         recycling = (PROJECT / 'Services/DeletionActivity.cs').read_text(encoding='utf-8')
         self.assertIn('await DeletionActivity.RecycleAsync(project.Folder)', model)

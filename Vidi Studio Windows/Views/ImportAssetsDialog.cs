@@ -107,7 +107,14 @@ public sealed class ImportAssetsPicker : UserControl
 
     private static void AddMode(RadioButtons box, params string[] options)
     {
-        foreach (var option in options) box.Items.Add(new TextBlock { Text = option, TextWrapping = TextWrapping.Wrap, MaxWidth = 420 });
+        var group = Guid.NewGuid().ToString("N");
+        foreach (var option in options) {
+            var index = box.Items.Count;
+            var choice = new RadioButton { GroupName = group, Content = new TextBlock { Text = option, TextWrapping = TextWrapping.Wrap, MaxWidth = 420 } };
+            AutomationProperties.SetName(choice, option);
+            choice.Checked += (_, _) => { if (box.SelectedIndex != index) box.SelectedIndex = index; };
+            box.Items.Add(choice);
+        }
         box.SelectedIndex = 0;
     }
 

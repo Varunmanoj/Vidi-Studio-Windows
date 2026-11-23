@@ -292,6 +292,12 @@ public sealed class StudioProject : INotifyPropertyChanged
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Source { get; set; } = "";
+    public Dictionary<string,string>? CloudVideo { get; set; }
+    [JsonIgnore] public bool ReferencesCloudVideo => CloudVideo?.GetValueOrDefault("ownership") == "referenced";
+    [JsonIgnore] public bool OwnsCloudVideo => CloudVideo != null && !ReferencesCloudVideo;
+    [JsonIgnore] public Uri? CloudConsoleUrl => CloudVideo != null && CloudVideo.TryGetValue("bucket",out var bucket)
+        && CloudVideo.TryGetValue("object",out var name)
+        ? new Uri("https://console.cloud.google.com/storage/browser/_details/" + Uri.EscapeDataString(bucket) + "/" + string.Join("/",name.Split('/').Select(Uri.EscapeDataString))) : null;
     public string? SourceType { get; set; }
     [JsonPropertyName("youtubeMetadata")] public JsonElement? YouTubeMetadata { get; set; }
     [JsonPropertyName("youtubeCaptionSource")] public JsonElement? YouTubeCaptionSource { get; set; }

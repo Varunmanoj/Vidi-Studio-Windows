@@ -45,7 +45,7 @@ public sealed partial class MainWindow
     private void UpdateADAudioReadiness(Models.StudioProject project)
     {
         var section = Section.SelectedIndex;
-        var view = section == 3 ? project.OverviewProject : project;
+        var view = section == 4 ? project.OverviewProject : project;
         var active = view.ContentStatus(section, view.SelectedLanguage);
         inspectorActiveAudioReadiness.Visibility = active == null ? Visibility.Collapsed : Visibility.Visible;
         if (active != null) SetInspectorStatusIcon(inspectorActiveAudioReadiness, active.Complete, active.AccessibleName);

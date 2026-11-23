@@ -195,7 +195,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         try { if (Directory.Exists(library)) libraryFolders.AddRange(Directory.EnumerateDirectories(library)); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         { Status = "The project library is unavailable. Choose a project location in Settings → Storage."; }
-        var folders = ProjectFolderIdentity.DistinctFolders(libraryFolders.Concat(externalFolders))
+        var knownCloudFolders = knownProjects.Where(entry => entry.Value.CloudVideo != null).Select(entry => entry.Key);
+        var folders = ProjectFolderIdentity.DistinctFolders(libraryFolders.Concat(externalFolders).Concat(knownCloudFolders))
             .Where(folder => !projectListVisibility.IsRemoved(folder)).ToList();
         var currentFolders = new HashSet<string>(folders, StringComparer.OrdinalIgnoreCase);
         foreach (var stale in knownProjects.Keys.Where(folder => !currentFolders.Contains(folder)).ToList())
@@ -220,7 +221,12 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             }
             var exists = stamp.FolderExists;
             var project = StudioProject.TryLoad(folder);
-            if (project == null && exists && ProjectIntegrityAuditor.FolderLooksLikeProject(folder))
+            if (project == null && cached?.CloudVideo != null)
+            {
+                project = cached;
+                project.IntegrityPlaceholder = true;
+            }
+            else if (project == null && exists && ProjectIntegrityAuditor.FolderLooksLikeProject(folder))
                 project = StudioProject.DamagedPlaceholder(folder);
             else if (project == null && !exists && knownFolder)
                 project = StudioProject.DamagedPlaceholder(folder);
@@ -241,7 +247,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         if (LanguageFilter != "all" && !languageOptions.Any(language => language.Id == LanguageFilter)) LanguageFilter = "all";
         var desired = loaded.Where(p =>
                 p.Name.Contains(search, StringComparison.CurrentCultureIgnoreCase)
-                && (source == "all" || p.IsYouTube == (source == "youtube")) && p.MatchesLanguage(LanguageFilter))
+                && (source == "all" || (p.IsYouTube ? "youtube" : p.CloudVideo != null ? "cloud" : "local") == source) && p.MatchesLanguage(LanguageFilter))
             .ToList();
         ApplyProjectList(ProjectListSort.Apply(desired, ProjectSort, Settings.Data["projectLastOpened"] as System.Text.Json.Nodes.JsonObject).ToList());
         appliedSearch = search;
@@ -269,7 +275,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         var folders = ProjectFolderIdentity.DistinctFolders(Directory.Exists(library)
                 ? Directory.EnumerateDirectories(library).Concat(externalFolders)
                 : externalFolders)
-            .Where(folder => !projectListVisibility.IsRemoved(folder)).ToList();
+            .Concat(knownProjects.Where(entry => entry.Value.CloudVideo != null).Select(entry => entry.Key))
+            .Where(folder => !projectListVisibility.IsRemoved(folder)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var current = new HashSet<string>(folders, StringComparer.OrdinalIgnoreCase);
         if (knownProjects.Keys.Any(folder => !current.Contains(folder)))
         {
@@ -372,11 +379,12 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     /// <summary>Removes a project entry whose folder no longer exists.</summary>
     public void ForgetProject(StudioProject project)
     {
-        externalFolders.Remove(project.Folder);
-        SaveExternalFolders();
+        LoadExternalFolders();
+        if (externalFolders.Remove(project.Folder)) SaveExternalFolders();
         knownProjects.Remove(project.Folder);
         projectStamps.Remove(project.Folder);
-        Projects.Remove(project);
+        foreach (var entry in Projects.Where(item => string.Equals(item.Folder, project.Folder, StringComparison.OrdinalIgnoreCase)).ToArray())
+            Projects.Remove(entry);
         if (Project != null && string.Equals(Project.Folder, project.Folder, StringComparison.OrdinalIgnoreCase))
             Project = null;
     }
@@ -617,11 +625,45 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             report.Warnings.Add($"{p.UnknownNarrationCount} narration segment(s) have no recorded source and are labelled Unknown voice.");
         return report;
     }
+    public Func<string, string, string, Task<bool>>? ConfirmCloudAction { get; set; }
     public async Task<List<EngineEvent>> RunAsync(string command, IEnumerable<string>? extra = null, bool needsProject = true,
-        bool throwOnProcessingError = false)
+        bool throwOnProcessingError = false, Action<EngineEvent>? observeProgress = null)
     {
         if (Busy) return new();
         if (needsProject && Project == null) { Status = "Open a project first."; return new(); }
+        bool vertexVideoTask = needsProject && Project is { IsYouTube: false } &&
+            command is ("analyze" or "regenerate-all" or "analyze-video" or "transcribe" or "generate-summary" or "generate-ad-cues"
+                or "reanalyze-segment" or "reanalyze-transcript-segment");
+        if (vertexVideoTask && Project?.ReferencesCloudVideo == true && Settings.Get("aiProvider") != "vertex")
+        {
+            var error = new ProcessingException("Choose Vertex AI with Google sign-in in Settings > AI to analyze this Cloud Storage video.");
+            Status = error.Message;
+            if (throwOnProcessingError) throw error;
+            return new();
+        }
+        bool vertexSpeechTask = Settings.Get("ttsMode") == "gemini" && command is ("synthesize-tts" or "synthesize-speech" or "preview-tts");
+        if (Settings.Get("aiProvider") == "vertex" && Settings.Get("vertexAuth") == "express" && (vertexVideoTask || vertexSpeechTask)) {
+            string stage = command == "generate-summary" ? "summary" : command is ("generate-ad-cues" or "reanalyze-segment") ? "audio_descriptions" : "youtube_transcript";
+            string modelId = SettingsStore.GetString(Settings.Data["vertexExpressModels"]?[stage], "gemini-3-flash-preview");
+            long limit = modelId.StartsWith("gemini-3") ? 256_000_000 : 15_000_000;
+            if (vertexSpeechTask || Project?.CloudVideo != null || (Project is { HasLocalSource: true } local && new FileInfo(local.Resolve(local.Source)).Length > limit)) {
+                string projectId = vertexVideoTask && Project?.ReferencesCloudVideo == true
+                    ? Project.CloudVideo?.GetValueOrDefault("project") ?? "" : Settings.Get("vertexProject");
+                if (!CredentialStore.HasGoogleSignIn || projectId.Length == 0) throw new InvalidOperationException("Connect Google and choose a Cloud project in Settings > AI for this task.");
+                if (ConfirmCloudAction == null || !await ConfirmCloudAction("Use Google sign-in?", $"Vertex AI will use project “{projectId}”.", "Use Google sign-in")) return new();
+                Settings.Set("vertexAuth", "signin");
+                Settings.Save();
+            }
+        }
+        if (Settings.Get("aiProvider") == "vertex" && vertexVideoTask && Project is { } cloudProject) {
+            if (Settings.Get("vertexAuth") != "express" && cloudProject.CloudVideo == null) {
+                if (!Settings.GetBool("vertexConnected")) throw new InvalidOperationException("Sign in with Google in Settings > AI.");
+                if (ConfirmCloudAction == null || !await ConfirmCloudAction("Upload video to Cloud Storage?", Settings.Get("vertexBucket"), "Upload")) return new();
+                if (Project?.Id != cloudProject.Id) return new();
+                await RunAsync("cloud-upload", throwOnProcessingError: true);
+                if (Project?.Id != cloudProject.Id || Project.CloudVideo == null) return new();
+            }
+        }
         if (needsProject && Project is { } languageProject) {
             var suppliedLanguage = extra?.ToList() ?? new List<string>();
             if (!suppliedLanguage.Contains("--language")) suppliedLanguage.AddRange(new[] { "--language", languageProject.OperationLanguage(command) });
@@ -721,6 +763,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             if (extra != null) args.AddRange(extra);
             var result = await Engine.RunAsync(args, new Progress<EngineEvent>(e =>
             {
+                observeProgress?.Invoke(e);
                 Status = e.Data.TryGetProperty("error", out var errorFlag) && errorFlag.ValueKind == System.Text.Json.JsonValueKind.True
                     ? new ProcessingException(e.Message, command: command).DisplayMessage(Settings.GetBool("developerMode"), Settings.Get("apiKey"))
                     : e.Message;

@@ -23,6 +23,7 @@ public sealed class SettingsStore
         if (Data["ttsMode"] == null || Get("ttsMode") == "system") Set("ttsMode", "windows-core");
         if (Data["libraryPath"] == null) Set("libraryPath", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VidiStudio Projects"));
         if (NormalizeNarrationPlayback() | NormalizeSpeechEngine() | NormalizeSummaryVoice()) Save();
+        Data["vertexConnected"] = CredentialStore.HasGoogleSignIn;
         if (MigrateApiKeyToCredentialStore()) Save();
     }
     /// <summary>
@@ -46,8 +47,10 @@ public sealed class SettingsStore
             if (item.Value is JsonObject child && target[item.Key] is JsonObject existing) Merge(existing, child);
             else target[item.Key] = item.Value?.DeepClone();
     }
-    public bool HasApiKey => !string.IsNullOrWhiteSpace(Get("apiKey")) && Get("apiKeyValid", "true") != "false" && Get("apiPlan", "") != "invalid";
-    public bool IsApiKeyInvalid => !string.IsNullOrWhiteSpace(Get("apiKey")) && (Get("apiKeyValid", "") == "false" || Get("apiPlan", "") == "invalid");
+    public bool HasApiKey => Get("aiProvider") == "vertex"
+        ? (Get("vertexAuth") == "express" ? CredentialStore.Vertex.ContainsValue() : GetBool("vertexConnected"))
+        : !string.IsNullOrWhiteSpace(Get("apiKey")) && Get("apiKeyValid", "true") != "false" && Get("apiPlan", "") != "invalid";
+    public bool IsApiKeyInvalid => Get("aiProvider") != "vertex" && !string.IsNullOrWhiteSpace(Get("apiKey")) && (Get("apiKeyValid", "") == "false" || Get("apiPlan", "") == "invalid");
     public string ApiPlan => Get("apiPlan", "auto");
     public void Reload()
     {
@@ -62,6 +65,7 @@ public sealed class SettingsStore
         if (Data["ttsMode"] == null || Get("ttsMode") == "system") Set("ttsMode", "windows-core");
         if (Data["libraryPath"] == null) Set("libraryPath", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "VidiStudio Projects"));
         if (NormalizeNarrationPlayback() | NormalizeSpeechEngine() | NormalizeSummaryVoice()) Save();
+        Data["vertexConnected"] = CredentialStore.HasGoogleSignIn;
         if (MigrateApiKeyToCredentialStore()) Save();
     }
     public static string GetString(JsonNode? node, string fallback = "")

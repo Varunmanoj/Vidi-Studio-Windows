@@ -8,7 +8,7 @@ The existing-asset, provenance, Markdown, narration-source, and export work keep
 - TXT timing dialog: Distribute Evenly, Auto-time with Gemini, start/end fields, Save Timing.
 - Summary toolbar: history, inline, headings, blocks, lists, insert, clear, preview, Markdown Help, provenance picker, undo/redo.
 - Description rows: provenance badge, overlap badge, narration preview, More options/context menu, Import narration audio.
-- AD Overview narration sources/warnings and Voice review dialogs.
+- Overview narration sources/warnings and Voice review dialogs.
 - Export dialog source picker and described-export controls.
 - Disabled controls explain prerequisites in their tooltip.
 
@@ -19,3 +19,7 @@ The existing-asset, provenance, Markdown, narration-source, and export work keep
 ## Exceptions
 
 Native menu-bar items and system ContentDialog buttons do not expose custom hover tooltips; standard labels and UIA names are used.
+
+- Editor toolbar preview buttons: Show or Hide Preview follows the visible state and lists Ctrl+Shift+V. Full-Screen Video lists Ctrl+Alt+F and Escape.
+
+- The Windows native editor smoke test checks all app-owned buttons in the rendered editor in each section, including viewing and editing states. Generate, Add, and Edit also have a real pointer-hover test.

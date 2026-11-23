@@ -13,7 +13,7 @@ public sealed partial class MainWindow
 {
     private static void FilterActionMenu(Button button, string title, Action action)
     {
-        var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create(); var item = new MenuFlyoutItem { Text = title };
+        var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create(); var item = new MenuFlyoutItem { Text = title, Icon = new FontIcon { Glyph = title.Contains("Remove") ? "\uE738" : "\uE710" } };
         item.Click += (_, _) => action(); menu.Items.Add(item); button.ContextFlyout = menu;
     }
     private StackPanel BuildSegmentRangeFilterControls(List<Segment> rows, SegmentRangeFilter draft, double duration, Action changed)
@@ -27,7 +27,7 @@ public sealed partial class MainWindow
         var modeMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         foreach (var index in Enumerable.Range(0, modes.Length))
         {
-            var item = new ToggleMenuFlyoutItem { Text = titles[index], Tag = "filter-mode-" + modes[index] };
+            var item = new ToggleMenuFlyoutItem { Text = titles[index], Tag = "filter-mode-" + modes[index], Icon = new FontIcon { Glyph = "\uE71C" } };
             item.Click += (_, _) => mode.SelectedIndex = index;
             modeMenu.Opening += (_, _) => item.IsChecked = draft.Mode == modes[index];
             modeMenu.Items.Add(item);
@@ -61,7 +61,7 @@ public sealed partial class MainWindow
                     }
                     check.Checked += (_, _) => Update(); check.Unchecked += (_, _) => Update();
                     var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
-                    var item = new ToggleMenuFlyoutItem { Text = label, Tag = "filter-segment-number-menu" };
+                    var item = new ToggleMenuFlyoutItem { Text = label, Tag = "filter-segment-number-menu", Icon = new FontIcon { Glyph = "\uE8FD" } };
                     item.Click += (_, _) => check.IsChecked = item.IsChecked;
                     menu.Opening += (_, _) => item.IsChecked = check.IsChecked == true;
                     menu.Items.Add(item); check.ContextFlyout = menu;
@@ -74,7 +74,7 @@ public sealed partial class MainWindow
                 foreach (var range in draft.NumberRanges.ToArray())
                 {
                     var group = new StackPanel { Spacing = 8 };
-                    if (Section.SelectedIndex == 4)
+                    if (Section.SelectedIndex == 3)
                     {
                         var type = new ComboBox { Header = "Segment type", ItemsSource = new[] { "Transcript", "Audio description" }, SelectedIndex = range.IsDescription ? 1 : 0 };
                         type.SelectionChanged += (_, _) => { range.IsDescription = type.SelectedIndex == 1; Render(); changed(); };
@@ -114,7 +114,7 @@ public sealed partial class MainWindow
                 var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
                 foreach (var contained in new[] { false, true })
                 {
-                    var item = new ToggleMenuFlyoutItem { Text = contained ? "Fully inside a time range" : "Overlaps a time range" };
+                    var item = new ToggleMenuFlyoutItem { Text = contained ? "Fully inside a time range" : "Overlaps a time range", Icon = new FontIcon { Glyph = "\uE823" } };
                     item.Click += (_, _) => matching.SelectedIndex = contained ? 1 : 0;
                     menu.Opening += (_, _) => item.IsChecked = draft.Contained == contained; menu.Items.Add(item);
                 }

@@ -26,12 +26,12 @@ public sealed partial class MainWindow
 
     private ContentControl? activeLanguagePanelHost;
     private readonly List<(Control control, bool requiresEdit)> languageControls = new();
-    private bool LanguageEditMode => Section.SelectedIndex == 1 ? summaryEditMode : Section.SelectedIndex is 0 or 2 or 4 && editMode;
+    private bool LanguageEditMode => Section.SelectedIndex == 1 ? summaryEditMode : Section.SelectedIndex is 0 or 2 or 3 && editMode;
     private bool HasUnsavedLanguageSummary => summaryEditMode && (NormalizeSummaryText(SummaryEditorBox.Text) != NormalizeSummaryText(Model.Project?.Summary)
         || (SummaryProvenance.SelectedIndex switch { 0 => "ai", 1 => "imported", 2 => "manual", _ => Model.Project?.SummaryOrigin }) != Model.Project?.SummaryOrigin);
     private string[] CurrentLanguageKinds => Section.SelectedIndex switch {
         0 => new[] { "transcript" }, 1 => new[] { "summary" },
-        2 or 3 => new[] { "descriptions", "adAudio" }, 4 => new[] { "transcript", "descriptions" }, _ => Array.Empty<string>() };
+        2 or 4 => new[] { "descriptions", "adAudio" }, 3 => new[] { "transcript", "descriptions" }, _ => Array.Empty<string>() };
     private void RegisterLanguageControl(Control control, bool requiresEdit) {
         languageControls.Add((control, requiresEdit)); UpdateLanguageControlStates();
     }
@@ -39,6 +39,7 @@ public sealed partial class MainWindow
         foreach (var (control, requiresEdit) in languageControls) {
             if (control is Button edit && edit.Tag as string == "segment-edit-mode") {
                 edit.Content = DesktopCommandTitle("segment-edit-mode");
+                ToolTipService.SetToolTip(edit, edit.Content);
                 edit.IsEnabled = CanRunDesktopCommand("segment-edit-mode");
                 continue;
             }
@@ -109,6 +110,7 @@ public sealed partial class MainWindow
         var editing = settingsContext ? editingSettings : LanguageEditMode;
         var kinds = settingsContext ? new[] { "transcript", "summary", "descriptions", "adAudio" } : CurrentLanguageKinds;
         void Register(Control control, bool needsEdit) {
+            if (control is Button { Content: string label } button) ToolTipService.SetToolTip(button, label);
             if (!settingsContext) RegisterLanguageControl(control, needsEdit);
             else control.IsEnabled = !Model.Busy && !HasUnsavedLanguageSummary && (!needsEdit || editing);
         }
@@ -133,19 +135,21 @@ public sealed partial class MainWindow
         panel.Children.Add(language);
         if (!settingsContext) {
             var copyAll = new Button { Content = CurrentSectionCopyTitle, IsEnabled = CanCopyLanguageResults };
+            ToolTipService.SetToolTip(copyAll, copyAll.Content);
             copyAll.Click += async (_, _) => await RunDesktopCommandAsync("copy-to", copyCurrentSectionOnly: true); panel.Children.Add(copyAll);
         }
         if (settingsContext) {
             var edit = new Button { Content = editing ? "Finish Editing Languages" : "Edit Languages", IsEnabled = !Model.Busy && !HasUnsavedLanguageSummary };
+            ToolTipService.SetToolTip(edit, edit.Content);
             edit.Click += (_, _) => setSettingsEditing?.Invoke(!editing); panel.Children.Add(edit);
-        } else if (Section.SelectedIndex is 0 or 1 or 2 or 4) {
+        } else if (Section.SelectedIndex is 0 or 1 or 2 or 3) {
             var edit = new Button { Content = DesktopCommandTitle("segment-edit-mode"), Tag = "segment-edit-mode" };
             edit.Click += async (_, _) => await RunDesktopCommandAsync("segment-edit-mode");
             Register(edit, false); panel.Children.Add(edit);
         }
         if (HasUnsavedLanguageSummary) panel.Children.Add(new TextBlock { Text = "Save or cancel summary edits first.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
         foreach (var kind in kinds) {
-            var viewingOverview = !settingsContext && Section.SelectedIndex == 3;
+            var viewingOverview = !settingsContext && Section.SelectedIndex == 4;
             var code = viewingOverview ? project.OverviewLanguageCode : project.SelectedLanguage;
             var rows = project.SavedResults.Where(r => r.Kind == kind && r.Language == code).OrderByDescending(r => r.CreatedAt).ToList();
             if (rows.Count == 0) {
@@ -199,6 +203,7 @@ public sealed partial class MainWindow
             if (path == null || !File.Exists(project.Resolve(path))) return;
             var relative = path;
             var preview = new Button { Content = title };
+            ToolTipService.SetToolTip(preview, title);
             preview.Click += (_, _) => { narrationPlayer.Pause(); narrationPlayer.Source = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(project.Resolve(relative))); narrationPlayer.Play(); };
             body.Children.Add(preview);
         }

@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -47,6 +48,7 @@ public sealed partial class MainWindow : Window
     private Segment? highlightedSegment;
     private Segment? previewingSegment;
     private readonly HashSet<Segment> activeSegmentRows = new();
+    private bool timelineVisible = true;
     private bool timelineScrubbing;
     private bool playheadDragging;
     private bool fullScreenVideo;
@@ -75,6 +77,7 @@ public sealed partial class MainWindow : Window
         onDeviceNarrator = new OnDeviceNarrator(Model.Settings, Model.Engine);
         onDeviceNarrator.Failed += message => Model.ReportStatus(message);
         InitializeComponent();
+        Model.ConfirmCloudAction = Confirm;
         EditorSearch.TextChanging += (_, _) => UpdateEditorSearch();
         ProjectSplitView.RegisterPropertyChangedCallback(SplitView.IsPaneOpenProperty, (_, _) => SyncPanelVisibilityToggles());
         InspectorSplitView.RegisterPropertyChangedCallback(SplitView.IsPaneOpenProperty, (_, _) => SyncPanelVisibilityToggles());
@@ -93,6 +96,7 @@ public sealed partial class MainWindow : Window
         };
         projectSettingsContext.Items.Add(projectSettingsItem);
         projectSettingsContext.Opening += (_, _) => projectSettingsItem.IsEnabled = CanRunDesktopCommand("project-settings");
+        AssignMenuAccessKeys(projectSettingsContext.Items);
         EditorWorkspace.ContextFlyout = projectSettingsContext;
         SummaryPlayButton.ContextFlyout = SummaryReadingMenu();
 
@@ -104,6 +108,7 @@ public sealed partial class MainWindow : Window
         ActiveExports.Observe(Model);
         Model.PropertyChanged += UpdateStatusFooter;
         DeletionActivity.Changed += DeletionActivityChanged;
+        CloudImportActivity.Changed += DeletionActivityChanged;
         Model.YouTubeAudioRecoveryRequested += RecoverYouTubeAudioExportAsync;
         Model.ConnectivityNotification += ShowConnectivityNoticeAsync;
         Views.WindowAppearance.ApplyIcon(this);
@@ -147,6 +152,7 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             DeletionActivity.Changed -= DeletionActivityChanged;
+            CloudImportActivity.Changed -= DeletionActivityChanged;
             windowClosed = true;
             windowReady.TrySetResult(false);
             ready = false;
@@ -170,7 +176,7 @@ public sealed partial class MainWindow : Window
             ready = true;
             Model.Reload();
             ApplyTheme();
-            if (Model.Settings.Get("showPreview", "true") == "false") PreviewPanel.Visibility = Visibility.Collapsed;
+            ApplyPreviewVisibility(Model.Settings.Get("showPreview", "true") != "false");
             ThumbnailImagesRow.Visibility = Model.Settings.Get("thumbnailImagesVisible", "false") == "true" ? Visibility.Visible : Visibility.Collapsed;
             YouTubeService.ExpireCaches(Model.Settings.Get("libraryPath"));
             if (folder != null)
@@ -227,24 +233,27 @@ public sealed partial class MainWindow : Window
 
     private void UpdateProcessingChrome()
     {
-        StatusText.Visibility = DeletionActivity.Message != null ? Visibility.Collapsed : Visibility.Visible;
+        var deletionMessage = DeletionActivity.Message;
         var analyzing = Model.IsAnalyzing;
         var synthesizing = Model.IsSynthesizingNarration;
-        var deleting = DeletionActivity.Message != null;
-        var activeStage = analyzing || synthesizing || deleting;
+        var deleting = deletionMessage != null;
+        var editorBusy = analyzing || synthesizing || deleting;
+        var cloudImport = desktopEditorVisible && !editorBusy ? CloudImportActivity.Current : default;
+        var importing = cloudImport.Message != null;
+        StatusText.Visibility = deleting || importing ? Visibility.Collapsed : Visibility.Visible;
         if (StatusRing != null)
         {
-            StatusRing.IsActive = activeStage;
-            StatusRing.Visibility = activeStage ? Visibility.Visible : Visibility.Collapsed;
+            StatusRing.IsActive = editorBusy || (importing && cloudImport.Fraction == null);
+            StatusRing.Visibility = StatusRing.IsActive ? Visibility.Visible : Visibility.Collapsed;
         }
         if (StatusStageTitle != null)
         {
-            StatusStageTitle.Text = DeletionActivity.Message ?? (activeStage ? Model.ProcessingStageTitle : "");
-            StatusStageTitle.Visibility = activeStage ? Visibility.Visible : Visibility.Collapsed;
+            StatusStageTitle.Text = deletionMessage ?? cloudImport.Message ?? (editorBusy ? Model.ProcessingStageTitle : "");
+            StatusStageTitle.Visibility = editorBusy || importing ? Visibility.Visible : Visibility.Collapsed;
         }
         if (CancelProcessingButton != null)
         {
-            CancelProcessingButton.Visibility = activeStage && !deleting ? Visibility.Visible : Visibility.Collapsed;
+            CancelProcessingButton.Visibility = editorBusy && !deleting ? Visibility.Visible : Visibility.Collapsed;
         }
         if (InspectorNarrationProgressPanel != null)
         {
@@ -272,9 +281,13 @@ public sealed partial class MainWindow : Window
             EditorWorkspace.IsEnabled = Model.Idle || analyzing || synthesizing;
         }
         if (ContentTransferProgressBar != null) {
-            ContentTransferProgressBar.Visibility = Model.Busy && Model.ContentTransferCommand != null ? Visibility.Visible : Visibility.Collapsed;
-            ContentTransferProgressBar.IsIndeterminate = Model.ContentTransferProgress == null;
-            ContentTransferProgressBar.Value = Model.ContentTransferProgress ?? 0;
+            var cloudDownload = cloudImport.Fraction;
+            var copying = Model.Busy && Model.ContentTransferCommand != null;
+            ContentTransferProgressBar.Visibility = cloudDownload.HasValue || copying ? Visibility.Visible : Visibility.Collapsed;
+            ContentTransferProgressBar.IsIndeterminate = !cloudDownload.HasValue && Model.ContentTransferProgress == null;
+            ContentTransferProgressBar.Value = cloudDownload ?? Model.ContentTransferProgress ?? 0;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ContentTransferProgressBar,
+                cloudDownload.HasValue ? "Cloud video download progress" : "Copy or translation progress");
         }
         UpdateSectionOverlay(analyzing);
         UpdateDesktopMenuStates();
@@ -308,8 +321,8 @@ public sealed partial class MainWindow : Window
             0 => new[] { "transcript" },
             1 => new[] { "summary" },
             2 => new[] { "descriptions" },
-            3 => new[] { "descriptions" },
-            4 => new[] { "transcript", "descriptions" },
+            4 => new[] { "descriptions" },
+            3 => new[] { "transcript", "descriptions" },
             _ => Array.Empty<string>()
         };
         return Model.StateFor(keys);
@@ -520,9 +533,9 @@ public sealed partial class MainWindow : Window
     private async void OpenProject_Click(object sender, RoutedEventArgs e)
     { if (Model.Busy) return; try { if (await PickFolder() is { } folder) { Model.Open(folder); App.OpenOrActivateEditor(folder); } } catch (Exception ex) { await ShowError(ex); } }
     private async void YouTube_Click(object sender, RoutedEventArgs e) => await ShowNewProjectDialogAsync(true);
-    private async Task ShowNewProjectDialogAsync(bool youtube)
+    private async Task ShowNewProjectDialogAsync(bool youtube, bool fromStorage = false)
     {
-        if (Model.Busy) return;
+        if (Model.Busy || cloudBrowserOpen || (fromStorage && !Model.Settings.GetBool("vertexConnected"))) return;
         if (summaryEditMode)
         {
             if (!await SaveSummaryChangesAsync()) return;
@@ -530,16 +543,26 @@ public sealed partial class MainWindow : Window
         }
         try
         {
-            var dialog = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings, youtube);
-            var result = await ShowDialogAsync(dialog, 760, 900);
-            if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary)) return;
+            var dialog = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings, youtube, fromStorage)
+            {
+                BrowseCloudVideo = (owner, library) => BrowseCloudVideosAsync(owner, library, selectConfiguredBucket: true)
+            };
+            var result = await ShowDialogAsync(dialog, Views.NewProjectDialog.WindowWidth, Views.NewProjectDialog.WindowHeight);
             var imports = dialog.AssetSelection;
+            if (dialog.ImportedCloudProject is { } cloudProject)
+            {
+                var cloudEditor = App.OpenWindow(cloudProject.Folder);
+                if (imports.HasAny && await cloudEditor.windowReady.Task && !cloudEditor.windowClosed)
+                    await cloudEditor.ImportSelectedAssetsAsync(imports, false);
+                return;
+            }
+            if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary)) return;
             List<EngineEvent> created;
             if (dialog.IsYouTube)
                 created = await Model.RunAsync("import-youtube", new[] { "--url", dialog.YouTubeUrl, "--library", dialog.LibraryPath },
                     needsProject: false, throwOnProcessingError: true);
             else if (dialog.VideoPath is { } path)
-                created = await Model.RunAsync("import-video", new[] { "--video", path, "--library", dialog.LibraryPath },
+                created = await Model.RunAsync(dialog.IsCloud ? "cloud-create" : "import-video", new[] { "--video", path, "--library", dialog.LibraryPath },
                     needsProject: false, throwOnProcessingError: true);
             else return;
             // Cancelled processing returns no events and leaves the previous project selected.
@@ -558,7 +581,7 @@ public sealed partial class MainWindow : Window
     }
     private void Search_Changed(object sender, TextChangedEventArgs e) { if (ready) Filter(); }
     private void Filter_Changed(object sender, SelectionChangedEventArgs e) { if (ready) Filter(); }
-    private void Filter() => Model.Reload(Search.Text, SourceFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", _ => "all" });
+    private void Filter() => Model.Reload(Search.Text, SourceFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", 3 => "cloud", _ => "all" });
     private bool changingProject;
     private async void Project_Changed(object sender, SelectionChangedEventArgs e)
     {
@@ -700,9 +723,8 @@ public sealed partial class MainWindow : Window
         EditorSectionActions.Visibility = Visibility.Visible;
         if (IsProjectSearching) { RenderProjectSearch(); return; }
         if (IsImportedCombinedTranscript) { RenderImportedCombinedTranscript(); return; }
-        Segments.Visibility = Section.SelectedIndex is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        Segments.Visibility = Section.SelectedIndex is 0 or 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
         SummaryView.Visibility = Section.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
-        Overview.Visibility = Visibility.Collapsed;
         ExportList.Visibility = Visibility.Collapsed;
         IEnumerable<Segment> rows = Section.SelectedIndex switch
         {
@@ -711,7 +733,7 @@ public sealed partial class MainWindow : Window
             _ => p.Transcript.Concat(p.Cues).OrderBy(c => c.Start)
         };
         rows = ApplySegmentSort(rows);
-        Segments.ItemsSource = segmentFilter.IsActive && Section.SelectedIndex is 0 or 2 or 4
+        Segments.ItemsSource = segmentFilter.IsActive && Section.SelectedIndex is 0 or 2 or 3
             ? rows.Where(segment => segmentFilter.Matches(segment, HasSegmentAudio(p, segment)) || ValidationKey(segment) == validationHighlightKey || ValidationKey(segment) == searchRevealedKey).ToList()
             : rows;
         RefreshEditingRows();
@@ -728,8 +750,6 @@ public sealed partial class MainWindow : Window
         if (Section.SelectedIndex == 1 && readback.State is SummaryReadbackState.Playing or SummaryReadbackState.Paused)
             HighlightReadbackSentence(ReadbackSentence.Text);
         RenderTracks();
-        var usable = p.Cues.Count(c => c.AudioReady);
-        Overview.Text = $"Audio Description overview\n\n{p.Cues.Count} description segments\n{usable} narration files ready\n{p.Cues.Count - usable} missing or changed\n{p.Cues.Sum(c => c.End - c.Start):F1} seconds of description time";
         PopulateExportGroups(ExportGroups, p);
         foreach (var active in activeSegmentRows) active.IsActive = false;
         activeSegmentRows.Clear();
@@ -943,7 +963,7 @@ public sealed partial class MainWindow : Window
     }
     private void UpdateActiveSegment(bool forceScroll = false)
     {
-        if (Section.SelectedIndex is not (0 or 2 or 4) || Segments.ItemsSource is not IEnumerable<Segment> rows) return;
+        if (Section.SelectedIndex is not (0 or 2 or 3) || Segments.ItemsSource is not IEnumerable<Segment> rows) return;
         var currentRows = rows.Where(c => c.Start <= Position && Position < c.End).ToArray();
         var current = currentRows.FirstOrDefault();
         var nextActive = Follow.IsOn ? currentRows.ToHashSet() : new HashSet<Segment>();
@@ -1064,6 +1084,15 @@ public sealed partial class MainWindow : Window
 
     private async Task DeleteProjectAsync(StudioProject p)
     {
+        if (p.OwnsCloudVideo && !VerifiedCloudPermissions(p).Delete)
+        {
+            await CheckProjectCloudPermissionsAsync(p);
+            if (!VerifiedCloudPermissions(p).Delete)
+            {
+                await ShowErrorMessage("Cloud Video Permission Required", "Google Cloud must confirm permission to delete the project’s video.");
+                return;
+            }
+        }
         var folderExists = Directory.Exists(p.Folder);
         var damaged = p.Integrity?.IsDamaged == true || p.IntegrityPlaceholder;
         var title = folderExists
@@ -1075,9 +1104,28 @@ public sealed partial class MainWindow : Window
                 : $"Move {p.Name} and all its media to the Recycle Bin?")
             : $"The project folder for {p.Name} no longer exists. Remove its entry from VidiStudio?";
         var action = folderExists ? "Move to Recycle Bin" : "Remove project";
+        if (p.OwnsCloudVideo) message += " The project-owned video will also be deleted from Google Cloud Storage.";
+        else if (p.ReferencesCloudVideo) message += " The original Cloud Storage video will remain in its bucket.";
         if (!await Confirm(title, message, action)) return;
         try
         {
+            if (p.OwnsCloudVideo && p.CloudVideo is { } cloud)
+            {
+                var events = await Model.RunAsync("cloud-delete-project-video", new[]
+                {
+                    "--project", p.Folder, "--cloud-owner", p.Id,
+                    "--source-project", cloud["project"], "--source-bucket", cloud["bucket"],
+                    "--name", cloud["object"], "--source-generation", cloud["generation"]
+                }, needsProject: false, throwOnProcessingError: true);
+                if (!events.Any(e => e.Data.TryGetProperty("cloudProjectVideoDeleted", out var deleted) &&
+                    deleted.ValueKind == JsonValueKind.True)) return;
+            }
+            if (StudioProject.TryLoad(p.Folder) is { } currentProject &&
+                (currentProject.Id != p.Id || currentProject.OwnsCloudVideo))
+            {
+                await ShowErrorMessage("Project Changed", "Refresh the local project before trying again.");
+                return;
+            }
             var deletingLoadedProject = Model.Project is { } current
                 && string.Equals(current.Folder, p.Folder, StringComparison.OrdinalIgnoreCase);
             if (deletingLoadedProject)
@@ -1085,7 +1133,7 @@ public sealed partial class MainWindow : Window
                 StopProjectPlayback(); video.Source = null; speech.Source = null; narrationPlayer.Source = null;
             }
             if (!await Model.DeleteProjectFolderAsync(p)) return;
-            App.CloseEditorsForDeletedProject(p.Folder);
+            App.CloseEditorsForDeletedProject(p);
             if (!windowClosed) { RefreshGalleryCount(); UpdateProjectIntegrityUi(); }
         }
         catch (Exception ex) { await ShowError(ex); }
@@ -1104,9 +1152,11 @@ public sealed partial class MainWindow : Window
         Close();
     }
 
-    internal void RefreshAfterProjectDeletion()
+    internal void RefreshAfterProjectDeletion(StudioProject project)
     {
-        if (!windowClosed && Model.Idle) { Model.Reload(); RefreshGalleryCount(); UpdateProjectIntegrityUi(); }
+        if (windowClosed) return;
+        Model.ForgetProject(project);
+        if (Model.Idle) { Model.Reload(); RefreshGalleryCount(); UpdateProjectIntegrityUi(); }
     }
 
     private void RefreshProjectIntegrity()
@@ -1122,7 +1172,7 @@ public sealed partial class MainWindow : Window
         if (EditorWorkspace.Visibility == Visibility.Visible)
             Model.RefreshProjectIntegrity();
         if (GalleryPanel.Visibility == Visibility.Visible &&
-            Model.ReloadIfProjectsChanged(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", _ => "all" }))
+            Model.ReloadIfProjectsChanged(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", 3 => "cloud", _ => "all" }))
             RefreshGalleryCount();
         UpdateProjectIntegrityUi();
     }
@@ -1484,7 +1534,7 @@ public sealed partial class MainWindow : Window
 
     private async Task EditSegment(Segment? existing, string? initialText = null)
     {
-        if (Model.Busy || Section.SelectedIndex is not (0 or 2 or 4) || Model.Project is not { } p) return;
+        if (Model.Busy || Section.SelectedIndex is not (0 or 2 or 3) || Model.Project is not { } p) return;
         var isDescription = existing?.IsDescription ?? (Section.SelectedIndex != 0);
         var maxDuration = p.Duration;
         var initialStart = existing?.Start ?? Position;
@@ -1728,7 +1778,7 @@ public sealed partial class MainWindow : Window
         }
         showIssue.Click += (_, _) => ShowValidationIssue();
         var issueMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
-        var issueMenuItem = new MenuFlyoutItem { Tag = "show-validation-issue-menu" };
+        var issueMenuItem = new MenuFlyoutItem { Tag = "show-validation-issue-menu", Icon = new FontIcon { Glyph = "\uE946" } };
         issueMenuItem.Click += (_, _) => ShowValidationIssue();
         issueMenu.Items.Add(issueMenuItem);
         issueMenu.Opening += (_, _) => { issueMenuItem.Text = ValidationTitle(); issueMenuItem.IsEnabled = showIssue.Visibility == Visibility.Visible; };
@@ -1799,7 +1849,7 @@ public sealed partial class MainWindow : Window
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(returnToEdit, "validation-return-to-edit");
                 returnToEdit.Click += (_, _) => returnRequested.TrySetResult(true);
                 var returnMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
-                var returnItem = new MenuFlyoutItem { Text = "Return to Edit" };
+                var returnItem = new MenuFlyoutItem { Text = "Return to Edit", Icon = new FontIcon { Glyph = "\uE70F" } };
                 returnItem.Click += (_, _) => returnRequested.TrySetResult(true);
                 returnMenu.Items.Add(returnItem);
                 returnToEdit.ContextFlyout = returnMenu;
@@ -1931,7 +1981,7 @@ public sealed partial class MainWindow : Window
         if (!hasDifferentVoice) return true;
         return await Confirm(
             "Generate narration with a different voice?",
-            $"This project already contains narration generated using {string.Join(", ", existingLabels)}. You have selected {Model.CurrentNarrationSummary()}. Proceeding will result in different narration voices across the project, which will be detailed in AD Overview. Do you want to proceed with generating narration?",
+            $"This project already contains narration generated using {string.Join(", ", existingLabels)}. You have selected {Model.CurrentNarrationSummary()}. Proceeding will result in different narration voices across the project, which will be detailed in Overview. Do you want to proceed with generating narration?",
             "Proceed");
     }
 
@@ -1995,7 +2045,7 @@ public sealed partial class MainWindow : Window
         var evt = result.FirstOrDefault(x => x.Data.TryGetProperty("screenText", out _));
         if (evt != null) {
             var text = evt.Data.GetProperty("screenText").GetString() ?? "";
-            if (Section.SelectedIndex is 0 or 2 or 4) { Section.SelectedIndex = 2; await EditSegment(null, text); }
+            if (Section.SelectedIndex is 0 or 2 or 3) { Section.SelectedIndex = 2; await EditSegment(null, text); }
             else await ShowDialogAsync(new ContentDialog { Title = "Screen Text", Content = new TextBox { Text = text, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap }, CloseButtonText = "Close" }, 600, 450);
         }
     }
@@ -2094,11 +2144,31 @@ public sealed partial class MainWindow : Window
     }
     private void TogglePreview_Click(object sender, RoutedEventArgs e)
     {
-        PreviewPanel.Visibility = PreviewPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
-        Model.Settings.Set("showPreview", PreviewPanel.Visibility == Visibility.Visible ? "true" : "false"); Model.Settings.Save();
+        ExitFullScreenVideo();
+        var showPreview = PreviewPanel.Visibility != Visibility.Visible;
+        ApplyPreviewVisibility(showPreview);
+        Model.Settings.Set("showPreview", showPreview ? "true" : "false");
+        Model.Settings.Save();
+    }
+
+    private void ApplyPreviewVisibility(bool showPreview)
+    {
+        PreviewPanel.Visibility = showPreview ? Visibility.Visible : Visibility.Collapsed;
+        UpdateTimelineVisibility();
+        var action = showPreview ? "Hide" : "Show";
+        AutomationProperties.SetName(PreviewToggleButton, $"{action} Preview");
+        ToolTipService.SetToolTip(PreviewToggleButton, $"{action} video preview ({DesktopShortcuts["preview"].Text})");
         UpdateSummaryZoomControls();
     }
-    private void ToggleTimeline_Click(object sender, RoutedEventArgs e) => TimelinePanel.Visibility = TimelinePanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+
+    private void ToggleTimeline_Click(object sender, RoutedEventArgs e)
+    {
+        timelineVisible = !timelineVisible;
+        UpdateTimelineVisibility();
+    }
+
+    private void UpdateTimelineVisibility() =>
+        TimelinePanel.Visibility = timelineVisible && PreviewPanel.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
     private void ToggleThumbnailImages_Click(object sender, RoutedEventArgs e)
     {
         ThumbnailImagesRow.Visibility = ThumbnailImagesRow.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
@@ -2108,6 +2178,11 @@ public sealed partial class MainWindow : Window
     }
     internal void ApplySettingsChanges(System.Collections.Generic.IReadOnlyCollection<string> changed)
     {
+        if (changed.Any(name => name.StartsWith("vertex", StringComparison.Ordinal)))
+        {
+            cloudPermissionSession++;
+            projectCloudPermissions.Clear();
+        }
         Model.Settings.Reload();
         Model.NotifySettingsChanged();
         if (changed.Contains("theme")) App.PreviewTheme(Model.Settings.Get("theme", "system"));
@@ -2299,6 +2374,25 @@ public sealed partial class MainWindow : Window
         UpdateApiKeyUi(); UpdateDesktopMenuStates(); UpdatePlaybackControls(); UpdateSummaryControls();
     }
 
+    private void UpdateEditorGenerationTooltip()
+    {
+        var action = AutomationProperties.GetName(GenerateCurrent);
+        string? reason = null;
+        if (!GenerateCurrent.IsEnabled)
+        {
+            reason = Model.OnlineReason("transcribe") ?? (Model.IsApiKeyInvalid
+                ? "Update your Gemini API key in Settings."
+                : !Model.HasApiKey ? "Configure an AI provider in Settings."
+                : Model.AiIssueTitle ?? "Available when processing finishes.");
+        }
+        var label = reason == null ? action : $"{action} {reason}";
+        GenerateCurrentToolTip.Content = label;
+        GenerateUnavailableToolTip.Content = label;
+        GenerateUnavailableHoverTarget.Visibility = GenerateCurrent.IsEnabled ? Visibility.Collapsed : Visibility.Visible;
+        ToolTipService.SetToolTip(InspectorGenerate, label);
+        AutomationProperties.SetHelpText(GenerateCurrent, reason ?? "");
+    }
+
     private void UpdateApiKeyUi()
     {
         UpdateEditorProjectButtons();
@@ -2369,8 +2463,8 @@ public sealed partial class MainWindow : Window
             ToolTipService.SetToolTip(button, string.IsNullOrEmpty(tooltip) ? null : tooltip);
         }
 
-        SetAiButton(GenerateCurrent);
-        SetAiButton(InspectorGenerate);
+        GenerateCurrent.IsEnabled = InspectorGenerate.IsEnabled = canUseAi;
+        UpdateEditorGenerationTooltip();
         UpdateEmptySectionActions();
         OverviewGenerateAllAudioButton.Content = project?.AllADAudioTitle ?? "Generate All AD Audio";
         OverviewGenerateChangedAudioButton.Content = "Generate Missing or Changed AD Audio";

@@ -64,14 +64,14 @@ public sealed partial class MainWindow
         {
             0 => project.Transcript,
             2 => project.Cues,
-            4 => project.Transcript.Concat(project.Cues).OrderBy(segment => segment.Start),
+            3 => project.Transcript.Concat(project.Cues).OrderBy(segment => segment.Start),
             _ => Array.Empty<Models.Segment>()
         };
     }
 
     private async Task ShowSegmentFilterAsync()
     {
-        while (!Model.Busy && Model.Project is { } project && Section.SelectedIndex is 0 or 2 or 4)
+        while (!Model.Busy && Model.Project is { } project && Section.SelectedIndex is 0 or 2 or 3)
         {
             var rows = UnfilteredSectionRows().ToList();
             var origins = rows.Select(segment => segment.Origin).Distinct().ToList();
@@ -101,7 +101,7 @@ public sealed partial class MainWindow
                 boxes.Add(box); panel.Children.Add(box);
             }
             ComboBox? audio = null;
-            if (Section.SelectedIndex is 2 or 4)
+            if (Section.SelectedIndex is 2 or 3)
             {
                 audio = new ComboBox { Header = "Audio", MinWidth = 220, ItemsSource = new[] { "All descriptions", "Has audio", "Missing audio" },
                     SelectedIndex = segmentFilter.Audio switch { "withAudio" => 1, "withoutAudio" => 2, _ => 0 } };

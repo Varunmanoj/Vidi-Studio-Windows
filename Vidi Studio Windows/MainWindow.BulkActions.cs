@@ -48,9 +48,9 @@ public sealed partial class MainWindow
                 : $"{narrationLabel}. Generates audio for the selected descriptions only, one after another, using the current voice. Existing narration remains available. A new alternative is saved for review; choose Keep Both, Replace Selected, or Discard New. Transcript segments are not narrated.");
         BulkShiftButton.IsEnabled = count > 0 && Model.Idle;
         SelectionMenuButton.IsEnabled = Segments.Items.Count > 0 && Model.Idle;
-        SelectTranscriptsItem.Visibility = Section.SelectedIndex is 0 or 4 ? Visibility.Visible : Visibility.Collapsed;
-        SelectDescriptionsItem.Visibility = Section.SelectedIndex is 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
-        var descriptionsVisible = Section.SelectedIndex is 2 or 4;
+        SelectTranscriptsItem.Visibility = Section.SelectedIndex is 0 or 3 ? Visibility.Visible : Visibility.Collapsed;
+        SelectDescriptionsItem.Visibility = Section.SelectedIndex is 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
+        var descriptionsVisible = Section.SelectedIndex is 2 or 3;
         SelectDescriptionsAudioItem.Visibility = descriptionsVisible ? Visibility.Visible : Visibility.Collapsed;
         SelectDescriptionsMissingAudioItem.Visibility = descriptionsVisible ? Visibility.Visible : Visibility.Collapsed;
         var originChoices = UnfilteredSectionRows().Select(segment => segment.Origin).Distinct()
@@ -58,7 +58,7 @@ public sealed partial class MainWindow
         SelectOriginItem.Items.Clear();
         foreach (var origin in originChoices)
         {
-            var item = new MenuFlyoutItem { Text = OriginLabel(origin), Tag = origin };
+            var item = new MenuFlyoutItem { Text = OriginLabel(origin), Tag = origin, Icon = new FontIcon { Glyph = "\uE71C" } };
             item.Click += SelectOrigin_Click;
             SelectOriginItem.Items.Add(item);
         }
@@ -112,7 +112,7 @@ public sealed partial class MainWindow
         var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         foreach (var (id, label) in BulkOrigins)
         {
-            var item = new MenuFlyoutItem { Text = label, Tag = id };
+            var item = new MenuFlyoutItem { Text = label, Tag = id, Icon = new FontIcon { Glyph = "\uE8EC" } };
             item.Click += async (_, _) =>
             {
                 if (Model.Project is not { } project) return;

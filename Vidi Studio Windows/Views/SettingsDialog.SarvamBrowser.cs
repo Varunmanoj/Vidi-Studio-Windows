@@ -56,7 +56,7 @@ public sealed partial class SettingsDialog
                     }
                     choice.Checked += (_,_) => SelectVoice();
                     var menu = MenuAccessKeys.Create();
-                    var select = new ToggleMenuFlyoutItem { Text = "Select " + voice.Label, IsChecked = selectedId == voice.Id };
+                    var select = new ToggleMenuFlyoutItem { Text = "Select " + voice.Label, IsChecked = selectedId == voice.Id, Icon = new FontIcon { Glyph = "\uE77B" } };
                     select.Click += (_,_) => SelectVoice(); menu.Items.Add(select); choice.ContextFlyout = menu;
                     layout.Children.Add(choice);
                     var actions = new StackPanel { Spacing = 4 };
@@ -97,8 +97,8 @@ public sealed partial class SettingsDialog
         search.TextChanged += (_,_) => { sarvamVoiceSearch = search.Text; if (clearButton != null) clearButton.IsEnabled = search.Text.Length > 0; Render(); };
         search.KeyDown += (_,args) => { if (args.Key == Windows.System.VirtualKey.Escape) { search.Text = ""; args.Handled = true; } };
         var searchMenu = MenuAccessKeys.Create();
-        var focus = new MenuFlyoutItem { Text = "Search voices", Tag = "sarvam-search-focus" }; focus.Click += (_,_) => search.Focus(FocusState.Programmatic); searchMenu.Items.Add(focus);
-        var clear = new MenuFlyoutItem { Text = "Clear voice search", Tag = "sarvam-search-clear" }; clear.Click += (_,_) => search.Text = ""; searchMenu.Items.Add(clear); search.ContextFlyout = searchMenu;
+        var focus = new MenuFlyoutItem { Text = "Search voices", Tag = "sarvam-search-focus", Icon = new FontIcon { Glyph = "\uE721" } }; focus.Click += (_,_) => search.Focus(FocusState.Programmatic); searchMenu.Items.Add(focus);
+        var clear = new MenuFlyoutItem { Text = "Clear voice search", Tag = "sarvam-search-clear", Icon = new FontIcon { Glyph = "\uE711" } }; clear.Click += (_,_) => search.Text = ""; searchMenu.Items.Add(clear); search.ContextFlyout = searchMenu;
         var clearHost = new StackPanel(); Grid.SetColumn(clearHost,2); searchBox.Children.Add(clearHost);
         clearButton = SpeechAction(clearHost,"Clear voice search","sarvam-search-clear-icon",() => search.Text = "",search.Text.Length > 0);
         clearButton.Content = new FontIcon { Glyph = "\uE711", FontSize = 14 };

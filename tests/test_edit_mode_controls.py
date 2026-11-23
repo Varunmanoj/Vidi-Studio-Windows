@@ -18,7 +18,7 @@ class EditModeControls(unittest.TestCase):
 
     def test_mode_and_section_changes_refresh_header_visibility(self):
         source = (ROOT/'Vidi Studio Windows/MainWindow.Presentation.cs').read_text()
-        self.assertIn('var timedSection = Section.SelectedIndex is 0 or 2 or 4;', source)
+        self.assertIn('var timedSection = Section.SelectedIndex is 0 or 2 or 3;', source)
         self.assertIn('EditorMoreButton.Visibility = !timedSection || editMode ? Visibility.Visible : Visibility.Collapsed;', source)
         refresh = source.split('private void RefreshEditingRows()', 1)[1].split('private void UpdateSegmentMoreVisibility()', 1)[0]
         self.assertIn('UpdateSegmentMoreVisibility();', refresh)
@@ -29,7 +29,7 @@ class EditModeControls(unittest.TestCase):
     def test_hidden_more_command_is_guarded_without_disabling_context_menu(self):
         source = (ROOT/'Vidi Studio Windows/MainWindow.Commands.cs').read_text()
         more = source.split('private void SegmentMore_Click', 1)[1].split('private void SegmentContext_Requested', 1)[0]
-        self.assertIn('if (Section.SelectedIndex is 0 or 2 or 4 && !editMode) return;', more)
+        self.assertIn('if (Section.SelectedIndex is 0 or 2 or 3 && !editMode) return;', more)
         context = source.split('private void SegmentContext_Requested', 1)[1].split('private void Track_SizeChanged', 1)[0]
         self.assertNotIn('!editMode', context)
 

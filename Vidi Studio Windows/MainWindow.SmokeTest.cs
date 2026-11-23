@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Input;
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Vidi_Studio_Windows.Services;
@@ -46,7 +47,7 @@ public sealed partial class MainWindow
             {
                 await VerifyGalleryAndSettingsLayoutForSmokeTestAsync(report);
                 await VerifySettingsWindowLifetimeForSmokeTestAsync();
-                await File.WriteAllTextAsync(report, "PASS: Help/About shared groups, Jump to Time reference and retained expansion, short FFmpeg/license rows and license actions, editor/gallery About menu while idle/processing and minimized, Help keeps Settings open, light/dark opaque Help caption hover/pressed colors; native inspector disclosure names and expanded/collapsed states; shared project language first, no per-section targets or review filter; spoken gallery/timeline durations; named inspector heading/actions/toggles and Start/End boundaries in all three segment tabs; aligned gallery controls and centered search at wide, compact and narrow widths in light/dark; Settings stable navigation, headings and bounded scrolling; Settings stays open with another main window, closes after the final main window and saves pending preferences.");
+                await File.WriteAllTextAsync(report, "PASS: Cloud browse handoff, configured bucket, import byte and step progress, and dialog completion; Help/About shared groups, Jump to Time reference and retained expansion, short FFmpeg/license rows and license actions, editor/gallery About menu while idle/processing and minimized, Help keeps Settings open, light/dark opaque Help caption hover/pressed colors; native inspector disclosure names and expanded/collapsed states; shared project language first, no per-section targets or review filter; spoken gallery/timeline durations; named inspector heading/actions/toggles and Start/End boundaries in all three segment tabs; aligned gallery controls and centered search at wide, compact and narrow widths in light/dark; editor preview tooltips, video and timeline collapse, and timeline preference restoration; tooltip coverage across all five editor sections and native pointer hover on Generate, Add, and Edit; Settings stable navigation, headings and bounded scrolling; Settings stays open with another main window, closes after the final main window and saves pending preferences.");
                 return;
             }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY") == "1")
@@ -225,7 +226,7 @@ public sealed partial class MainWindow
             VerifyRemoveFromListForSmokeTest();
             VerifyEditorActionMenusForSmokeTest();
             var originalSection = Section.SelectedIndex;
-            foreach (var sectionIndex in new[] { 0, 2, 4 })
+            foreach (var sectionIndex in new[] { 0, 2, 3 })
             {
                 Section.SelectedIndex = sectionIndex;
                 if (editMode) EditMode_Click(this, new RoutedEventArgs());
@@ -343,7 +344,7 @@ public sealed partial class MainWindow
             await VerifySegmentSelectionForSmokeTestAsync(report);
             await VerifyTimecodePickerForSmokeTestAsync(report);
             PreviewTheme(originalTheme);
-            Section.SelectedIndex = 4; Seek(2.5); await Task.Delay(100); UpdateActiveSegment(true);
+            Section.SelectedIndex = 3; Seek(2.5); await Task.Delay(100); UpdateActiveSegment(true);
             if (highlightedSegment?.Id != "a1" || !highlightedSegment.IsActive)
                 throw new InvalidOperationException("AD Transcript follow highlight did not synchronize with video time.");
             Model.Project!.Transcript[0].End = 3;
@@ -486,7 +487,7 @@ public sealed partial class MainWindow
             foreach (var index in new[] { 1, 2, 3, 4 }) {
                 Section.SelectedIndex = index; UpdateSectionPresentation();
                 if (NarrationActions.Visibility != Visibility.Visible || !InspectorSpeechLanguage.Text.StartsWith("Language: ") ||
-                    InspectorNarrationControls.Visibility != (index is 2 or 4 ? Visibility.Visible : Visibility.Collapsed))
+                    InspectorNarrationControls.Visibility != (index is 2 or 3 ? Visibility.Visible : Visibility.Collapsed))
                     throw new InvalidOperationException("Speech engine/language/voice inspector visibility is inconsistent.");
             }
             Section.SelectedIndex = 2; UpdateSectionPresentation();
@@ -575,7 +576,7 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("All Projects table row was not rendered.");
             var cachedGalleryProject = Model.Projects[0];
             Model.RefreshProjectIntegrity();
-            if (Model.ReloadIfProjectsChanged(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", _ => "all" }) ||
+            if (Model.ReloadIfProjectsChanged(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", 3 => "cloud", _ => "all" }) ||
                 Model.Projects.Count != 1 || !ReferenceEquals(cachedGalleryProject, Model.Projects[0]))
                 throw new InvalidOperationException("An unchanged gallery was rebuilt while the app remained open.");
             Model.Reload();
@@ -731,7 +732,8 @@ public sealed partial class MainWindow
             openSettings.Hide(); await openFromButton;
             PreviewTheme("dark");
             var newProject = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings);
-            var newProjectDisplay = ShowDialogAsync(newProject, 700, 820); await Task.Delay(100);
+            var newProjectDisplay = ShowDialogAsync(newProject, Views.NewProjectDialog.WindowWidth, Views.NewProjectDialog.WindowHeight);
+            await Task.Delay(100);
             if (newProjectDisplay.IsCompleted) await newProjectDisplay;
             PreviewTheme("light"); await Task.Delay(80);
             if (newProject.ActualTheme != ElementTheme.Light) throw new InvalidOperationException("An open New Project dialog did not switch to light appearance.");
@@ -969,7 +971,7 @@ public sealed partial class MainWindow
                     throw new InvalidOperationException("Created exports were not grouped with matching format icons.");
             }
             var previousSection = Section.SelectedIndex;
-            Section.SelectedIndex = 4;
+            Section.SelectedIndex = 3;
             await Task.Delay(100);
             await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, "export-groups.png"));
             Section.SelectedIndex = previousSection;
@@ -1197,6 +1199,8 @@ public sealed partial class MainWindow
             Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(GalleryImport) != "New Project" ||
             Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(GalleryOpenProject) != "Open Project Folder")
             throw new InvalidOperationException("Gallery creation/folder actions need native icons and accessible names.");
+        if (!GalleryToolbarActions.Children.OfType<Button>().SequenceEqual(new[] { GalleryImport, GalleryOpenProject }))
+            throw new InvalidOperationException("The gallery action group must contain New Project and Open Project Folder.");
         var searchCenter = GallerySearchHost.TransformToVisual(GalleryToolbar).TransformPoint(new Windows.Foundation.Point(GallerySearchHost.ActualWidth / 2, 0));
         var searchBottom = GallerySearchHost.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0, GallerySearchHost.ActualHeight)).Y;
         if (Math.Abs(searchCenter.X - GalleryToolbar.ActualWidth / 2) > 1 ||
@@ -1237,8 +1241,70 @@ public sealed partial class MainWindow
 
     private async Task VerifyGalleryAndSettingsLayoutForSmokeTestAsync(string report)
     {
+        ShowGallery_Click(this, new RoutedEventArgs());
+        // Run the File actions through their normal command dispatcher and inspect the opened dialog.
+        var originalConnection = Model.Settings.Data["vertexConnected"]?.DeepClone();
+        try {
+            foreach (var connected in new[] { false, true }) {
+                Model.Settings.Data["vertexConnected"] = connected;
+                UpdateDesktopMenuStates();
+                var file = MainMenu.Items.Single(menu => menu.Title == "File");
+                var expected = new[] { "new-project", "new-youtube-project", "new-cloud-project" };
+                var entries = file.Items.OfType<MenuFlyoutItem>().Where(row => row.Visibility == Visibility.Visible)
+                    .Take(expected.Length).ToArray();
+                if (!entries.Select(row => row.Tag as string).SequenceEqual(expected) || entries[2].IsEnabled != connected)
+                    throw new InvalidOperationException("File must show all project commands and disable New Cloud Project before sign-in.");
+                var browserEntry = file.Items.OfType<MenuFlyoutItem>().FirstOrDefault(row => row.Tag as string == "open-cloud-videos");
+                if (browserEntry is not { Visibility: Visibility.Visible } || browserEntry.IsEnabled != connected ||
+                    file.Items.IndexOf(browserEntry) != file.Items.IndexOf(entries[2]) + 1)
+                    throw new InvalidOperationException("Open Cloud Videos must follow New Cloud Project and require Google sign-in.");
+                foreach (var id in expected) {
+                    // Closing each companion window can reload the real connection state.
+                    Model.Settings.Data["vertexConnected"] = connected;
+                    if (id == "new-cloud-project" && !connected) {
+                        if (CanRunDesktopCommand(id))
+                            throw new InvalidOperationException("A signed-out File command must be disabled: " + id);
+                        await RunDesktopCommandAsync(id).WaitAsync(TimeSpan.FromSeconds(3));
+                        continue;
+                    }
+                    var ready = new TaskCompletionSource<Views.NewProjectDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    void Capture(ContentDialog dialog, Window _) {
+                        if (dialog is Views.NewProjectDialog newProject) ready.TrySetResult(newProject);
+                    }
+                    Views.WindowedDialog.ReadyToShow += Capture;
+                    if (!CanRunDesktopCommand(id) || Model.Busy)
+                        throw new InvalidOperationException("File project command is unavailable in an idle gallery: " + id);
+                    var command = RunDesktopCommandAsync(id);
+                    Views.NewProjectDialog? projectDialog = null;
+                    try {
+                        var first = await Task.WhenAny(ready.Task, command).WaitAsync(TimeSpan.FromSeconds(20));
+                        if (first != ready.Task)
+                            throw new InvalidOperationException("File project command completed without opening its dialog: " + id + ", Cloud connected: " + Model.Settings.GetBool("vertexConnected"));
+                        projectDialog = await ready.Task;
+                        projectDialog.VerifyInitialSourceForSmokeTest(id);
+                    } finally {
+                        Views.WindowedDialog.ReadyToShow -= Capture;
+                        projectDialog?.Hide();
+                        await command.WaitAsync(TimeSpan.FromSeconds(15));
+                    }
+                }
+            }
+        } finally {
+            Model.Settings.Data["vertexConnected"] = originalConnection;
+            UpdateDesktopMenuStates();
+        }
+        var browserSettings = new SettingsStore();
+        browserSettings.Data["vertexConnected"] = true;
+        browserSettings.Data["vertexProject"] = "fixture-destination";
+        browserSettings.Data["vertexBucket"] = "fixture-output";
+        var browser = new Views.CloudVideosDialog(this, Root.ActualTheme, browserSettings);
+        browser.UseFixtureForSmokeTest();
+        var browsing = ShowDialogAsync(browser, 820, 820);
+        try { await browser.VerifyBrowserForSmokeTestAsync(); }
+        finally { browser.Hide(); await browsing; }
         await VerifyAccessibleMediaForSmokeTestAsync();
         await VerifyMenuAccessForSmokeTestAsync(report);
+        VerifyCloudImportEditorProgressForSmokeTest();
         await VerifyInspectorDisclosureForSmokeTestAsync();
         await VerifyEditorSectionToolbarForSmokeTestAsync(report);
         await VerifyAboutMenuForSmokeTestAsync();
@@ -1260,6 +1326,21 @@ public sealed partial class MainWindow
                 VerifyGalleryToolbarBoundsForSmokeTest();
                 await CaptureSmokeImage(Root, Path.Combine(Path.GetDirectoryName(report)!, $"gallery-toolbar-{theme}-{width}.png"));
             }
+        }
+        var cloudPickerSettings = new SettingsStore();
+        cloudPickerSettings.Data["vertexBucket"] = "qa-destination";
+        cloudPickerSettings.Data["vertexProject"] = "qa-project";
+        foreach (var connected in new[] { false, true }) {
+            cloudPickerSettings.Data["vertexConnected"] = connected;
+            var picker = new Views.NewProjectDialog(this, Root.ActualTheme, cloudPickerSettings);
+            var showing = ShowDialogAsync(picker, Views.NewProjectDialog.WindowWidth, Views.NewProjectDialog.WindowHeight);
+            try {
+                for (var i = 0; i < 100 && !picker.IsLoaded && !showing.IsCompleted; i++) await Task.Delay(40);
+                if (showing.IsCompleted) throw new InvalidOperationException("New Project closed before inspecting cloud options");
+                await picker.VerifyCloudBrowserForSmokeTestAsync(connected, Models.StudioProject.Load(Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT")!));
+                if (connected) await showing.WaitAsync(TimeSpan.FromSeconds(10));
+                else await CaptureSmokeImage((FrameworkElement)picker.Content, Path.Combine(Path.GetDirectoryName(report)!, "cloud-new-project-signed-out.png"));
+            } finally { picker.Hide(); await showing; }
         }
         var display = RunDesktopCommandAsync("settings");
         for (var attempt = 0; attempt < 100 && openSettings == null; attempt++) await Task.Delay(20);
@@ -1291,6 +1372,8 @@ public sealed partial class MainWindow
                 }
                 PreviewTheme(originalTheme);
             });
+            settings.VerifyGeminiModelFiltering();
+            await settings.VerifyVertexConnectionForSmokeTestAsync(() => CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, "settings-vertex-signin.png")));
             ShowEditor();
             try {
                 await settings.VerifyCompactPagesForSmokeTestAsync((section, theme) =>
@@ -1363,9 +1446,12 @@ public sealed partial class MainWindow
             {
                 PreviewTheme(initialTheme);
                 var (deleteDialog, boxes) = CreateDeleteGeneratedDialog();
+                var cloudSettings = new SettingsStore();
+                cloudSettings.Data["vertexConnected"] = true;
                 var dialogs = new (ContentDialog Dialog, int Width, int Height, string Image)[]
                 {
-                    (new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings), 700, 820, "new-project-window"),
+                    (new Views.NewProjectDialog(this, Root.ActualTheme, cloudSettings), Views.NewProjectDialog.WindowWidth,
+                        Views.NewProjectDialog.WindowHeight, "new-project-window"),
                     (new Views.ExportDialog(Model), 1040, 760, "export-window"),
                     (deleteDialog, 620, 820, "delete-generated-window"),
                     (new ContentDialog { Title = "Action could not finish", CloseButtonText = "Close",
@@ -1378,6 +1464,42 @@ public sealed partial class MainWindow
                     await Task.Delay(350);
                     await VerifyDialogThemesForSmokeTestAsync(dialog, report, image);
                     VerifyCompactDialogLayout(dialog);
+                    if (dialog is Views.NewProjectDialog newProject)
+                    {
+                        var window = dialogPresentationVerifier!.WindowFor(dialog).AppWindow;
+                        var size = window.Size;
+                        var position = window.Position;
+                        var root = (UIElement)dialog.XamlRoot.Content;
+                        var title = DialogElements(dialog).OfType<TextBlock>().First(element => element.Text == "New Project");
+                        var cancel = FindButton(dialog, "Cancel") ?? throw new InvalidOperationException("Missing Cancel button.");
+                        var titleOrigin = title.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point());
+                        var cancelOrigin = cancel.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point());
+                        var labels = newProject.SourceLabelsForSmokeTest;
+                        var labelOrigins = labels.Select(label => label.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point())).ToArray();
+                        var location = FindButton(dialog, "Choose Project Location…") ?? throw new InvalidOperationException("Missing project location button.");
+                        var locationBottom = location.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point(0, location.ActualHeight)).Y;
+                        if (!newProject.LocalFormFitsForSmokeTest || cancelOrigin.Y - locationBottom is < 0 or > 64)
+                            throw new InvalidOperationException($"Unexpected local form spacing above actions: {cancelOrigin.Y - locationBottom}.");
+                        static bool StaysInPlace(Windows.Foundation.Point before, Windows.Foundation.Point after) =>
+                            Math.Abs(before.X - after.X) <= 1 && Math.Abs(before.Y - after.Y) <= 1;
+                        await newProject.VerifySourceSwitchesForSmokeTestAsync(async source =>
+                        {
+                            var titleNow = title.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point());
+                            var cancelNow = cancel.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point());
+                            if (!window.Size.Equals(size) || !window.Position.Equals(position) ||
+                                !StaysInPlace(titleOrigin, titleNow) || !StaysInPlace(cancelOrigin, cancelNow))
+                                throw new InvalidOperationException(
+                                    $"The {source} project source moved the window, title or actions. " +
+                                    $"Size {size.Width}×{size.Height} to {window.Size.Width}×{window.Size.Height}, " +
+                                    $"position {position.X},{position.Y} to {window.Position.X},{window.Position.Y}, " +
+                                    $"title {titleOrigin} to {titleNow}, Cancel {cancelOrigin} to {cancelNow}.");
+                            for (var i = 0; i < labels.Length; i++)
+                                if (!StaysInPlace(labelOrigins[i], labels[i].TransformToVisual(root).TransformPoint(new Windows.Foundation.Point())))
+                                    throw new InvalidOperationException($"The {source} project source moved source label {i}.");
+                            VerifyCompactDialogLayout(dialog);
+                            await CaptureSmokeImage((FrameworkElement)root, Path.Combine(Path.GetDirectoryName(report)!, $"new-project-{source}-{initialTheme}.png"));
+                        });
+                    }
                     if (ReferenceEquals(dialog, deleteDialog))
                     {
                         if (dialog.IsPrimaryButtonEnabled) throw new InvalidOperationException("Delete was enabled without a selection.");
@@ -1529,7 +1651,7 @@ public sealed partial class MainWindow
         var manifest = await File.ReadAllBytesAsync(manifestPath);
         try
         {
-            foreach (var section in new[] { 0, 2, 4 })
+            foreach (var section in new[] { 0, 2, 3 })
             foreach (var editing in new[] { false, true })
             {
                 Section.SelectedIndex = section;
@@ -1640,7 +1762,7 @@ public sealed partial class MainWindow
         foreach (var theme in new[] { "dark", "light" })
         {
             PreviewTheme(theme);
-            foreach (var section in new[] { 0, 2, 4 })
+            foreach (var section in new[] { 0, 2, 3 })
             {
                 Section.SelectedIndex = section;
                 if (!editMode) EditMode_Click(this, new RoutedEventArgs());
@@ -1665,7 +1787,7 @@ public sealed partial class MainWindow
                 // Theme/layout changes may recycle the container during SelectionChanged.
                 if (Segments.SelectedItems.Count != 1 || !Segments.SelectedItems.Contains(selectedItem))
                     throw new InvalidOperationException($"Selecting a segment row did not update the edit selection: theme={theme}, section={section}, count={Segments.SelectedItems.Count}, row={row.Content?.GetType().Name}, items={Segments.Items.Count}, selected={row.IsSelected}, same={ReferenceEquals(Segments.Items[0], row.Content)}.");
-                if (section == 4)
+                if (section == 3)
                 {
                     var second = (Microsoft.UI.Xaml.Controls.ListViewItem)Segments.ContainerFromIndex(1);
                     second.IsSelected = true;
@@ -1891,7 +2013,7 @@ public sealed partial class MainWindow
             Section.SelectedIndex = 1; summaryEditMode = false;
             var reading = SummaryReadingMenu();
             if (!Entries(reading.Items).SequenceEqual(new[] { "Read from Start", "Read from Selection", "Read Selected Text Only", "-", "Edit Summary…", "-", "Stop" })) throw new InvalidOperationException("Summary reading menu differs.");
-            foreach (var section in new[] { 0, 2, 4 }) {
+            foreach (var section in new[] { 0, 2, 3 }) {
                 Section.SelectedIndex = section;
                 foreach (var row in section == 0 ? project.Transcript : project.Cues) {
                     var menu = SegmentMenu(row);
@@ -1906,7 +2028,7 @@ public sealed partial class MainWindow
                     if (!more.SequenceEqual(expectedMore.Where(id => RowCommandVisible(id, row.IsDescription)))) throw new InvalidOperationException("More Actions differs from Mac.");
                 }
             }
-            Section.SelectedIndex = 3;
+            Section.SelectedIndex = 4;
             var background = (MenuFlyout)EditorWorkspace.ContextFlyout;
             background.ShowAt(EditorWorkspace); await Task.Delay(150);
             if (background.Items.OfType<MenuFlyoutItem>().Any(item => item.Tag as string == "copy-to" && item.Visibility == Visibility.Visible)) throw new InvalidOperationException("Overview context must omit Copy and Translate.");
@@ -2147,7 +2269,7 @@ public sealed partial class MainWindow
                     Verify("segment-edit-mode");
                     summaryEditMode = false;
                 }
-                else if (section == 3) Verify("synthesize-tts", "synthesize-changed");
+                else if (section == 4) Verify("synthesize-tts", "synthesize-changed");
                 else
                 {
                     Verify();
@@ -2363,7 +2485,7 @@ public sealed partial class MainWindow
     {
         var previousSection = Section.SelectedIndex; var previousEdit = editMode;
         try {
-            foreach (var tab in new[] { 0, 2, 4 }) {
+            foreach (var tab in new[] { 0, 2, 3 }) {
                 Section.SelectedIndex = tab; editMode = false;
                 if (CanRunDesktopCommand("add") != (tab is 0 or 2)) throw new InvalidOperationException("View mode must allow adding segments in Transcript and Descriptions.");
                 var row = tab == 0 ? Model.Project?.Transcript.FirstOrDefault() : Model.Project?.Cues.FirstOrDefault();
@@ -2413,9 +2535,9 @@ public sealed partial class MainWindow
             foreach (var tab in new[] { 0, 1, 2, 3, 4 }) {
                 Section.SelectedIndex = tab;
                 UpdateADAudioReadiness(project);
-                var view = tab == 3 ? project.OverviewProject : project;
+                var view = tab == 4 ? project.OverviewProject : project;
                 var expected = view.ContentStatus(tab, project.SelectedLanguage)!;
-                if (tab == 3 && !OverviewVoice.Text.Contains("\n" + InspectorSpeechLanguage.Text + "\n")) throw new InvalidOperationException("AD Overview must use the same selected voice language and dialect as the inspector.");
+                if (tab == 4 && !OverviewVoice.Text.Contains("\n" + InspectorSpeechLanguage.Text + "\n")) throw new InvalidOperationException("Overview must use the same selected voice language and dialect as the inspector.");
                 var ad = tab is 2 or 3 or 4;
                 if (expected.Title.Contains("AD audio") != ad) throw new InvalidOperationException("Inspector status leaked another tab's content.");
                 if (Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(inspectorActiveAudioReadiness) != expected.AccessibleName)
@@ -2505,10 +2627,10 @@ public sealed partial class MainWindow
             (Id: "generate-ad-cues", Tabs: new[] { 2 }), (Id: "import-transcript", Tabs: new[] { 0 }),
             (Id: "import-summary", Tabs: new[] { 1 }), (Id: "import-descriptions", Tabs: new[] { 2 }),
             (Id: "synthesize-tts", Tabs: new[] { 2, 3, 4 }), (Id: "review-narration-issues", Tabs: new[] { 2, 3, 4 }),
-            (Id: "narration", Tabs: new[] { 2, 4 }), (Id: "add", Tabs: new[] { 0, 2 }),
-            (Id: "undo", Tabs: new[] { 0, 2 }), (Id: "import-ad-audio", Tabs: new[] { 2, 4 }),
-            (Id: "summary-play", Tabs: new[] { 1 }), (Id: "caption-ad-transcript", Tabs: new[] { 2, 4 }),
-            (Id: "segment-select-all", Tabs: new[] { 0, 2, 4 }), (Id: "segment-delete-selected", Tabs: new[] { 0, 2, 4 })
+            (Id: "narration", Tabs: new[] { 2, 3 }), (Id: "add", Tabs: new[] { 0, 2 }),
+            (Id: "undo", Tabs: new[] { 0, 2 }), (Id: "import-ad-audio", Tabs: new[] { 2, 3 }),
+            (Id: "summary-play", Tabs: new[] { 1 }), (Id: "caption-ad-transcript", Tabs: new[] { 2, 3 }),
+            (Id: "segment-select-all", Tabs: new[] { 0, 2, 3 }), (Id: "segment-delete-selected", Tabs: new[] { 0, 2, 3 })
         };
         try
         {
@@ -2542,7 +2664,7 @@ public sealed partial class MainWindow
                     foreach (var (name, group) in desktopMenuGroups)
                     {
                         bool? visible = name switch {
-                            "Summary Reading" => tab == 1 && !editing, "Segments" => tab is 0 or 2 or 4,
+                            "Summary Reading" => tab == 1 && !editing, "Segments" => tab is 0 or 2 or 3,
                             "Narration" or "Narration Audio" => tab is 2 or 3 or 4,
                             "AD Segment Generation" => tab == 2, "YouTube" => youtube, _ => null
                         };
@@ -2857,6 +2979,29 @@ public sealed partial class MainWindow
         var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
         encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, bytes);
         await encoder.FlushAsync();
+    }
+
+    private void VerifyCloudImportEditorProgressForSmokeTest()
+    {
+        if (!desktopEditorVisible) throw new InvalidOperationException("The editor must be open for Cloud Storage progress.");
+        using (var cloudImport = new CloudImportActivity())
+        {
+            UpdateProcessingChrome();
+            if (StatusStageTitle.Text != "Checking Cloud Storage access…" || !StatusRing.IsActive)
+                throw new InvalidOperationException("The editor must show the access check before downloading.");
+            cloudImport.Update(new EngineEvent("Downloading video: 50 of 100 bytes", .5, JsonSerializer.SerializeToElement(new { progress = .5 })));
+            UpdateProcessingChrome();
+            if (ContentTransferProgressBar.Visibility != Visibility.Visible || ContentTransferProgressBar.Value != .5 ||
+                Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(ContentTransferProgressBar) != "Cloud video download progress")
+                throw new InvalidOperationException("The editor must expose the download fraction with an accessible name.");
+            cloudImport.Update(new EngineEvent("Verifying the downloaded video…", null, JsonSerializer.SerializeToElement(new { })));
+            UpdateProcessingChrome();
+            if (StatusStageTitle.Text != "Verifying the downloaded video…" || ContentTransferProgressBar.Visibility != Visibility.Collapsed)
+                throw new InvalidOperationException("The editor must show verification after the byte transfer.");
+        }
+        UpdateProcessingChrome();
+        if (ContentTransferProgressBar.Visibility != Visibility.Collapsed || StatusRing.IsActive)
+            throw new InvalidOperationException("Cloud Storage progress must clear when the operation finishes.");
     }
 }
 #endif

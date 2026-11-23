@@ -338,6 +338,8 @@ internal static class WindowedDialog
     {
         CompactDialogLayout.PrepareDialog(dialog);
         var window = new Window { Title = dialog.Title?.ToString() ?? "Vidi Studio" };
+        var newProject = dialog as NewProjectDialog;
+        if (newProject != null) newProject.CompanionWindow = window;
 #if DEBUG
         Preparing?.Invoke(dialog, window);
 #endif
@@ -513,6 +515,7 @@ internal static class WindowedDialog
             layout.Dispose();
             dialog.Hide();
             root.Children.Remove(dialog);
+            if (newProject != null) newProject.CompanionWindow = null;
             window.Closed -= OnClosed;
             if (!closed) window.Close();
         }
@@ -529,6 +532,7 @@ internal static class WindowedDialog
         private readonly Window owner;
         private readonly FrameworkElement? content;
         private readonly FrameworkElement? inner;
+        private readonly bool keepsSize;
         private Border? card;
         private bool disposed;
         private bool observing;
@@ -541,6 +545,7 @@ internal static class WindowedDialog
             this.owner = owner;
             content = dialog.Content as FrameworkElement;
             inner = (dialog.Content as ScrollViewer)?.Content as FrameworkElement;
+            keepsSize = dialog is NewProjectDialog;
         }
 
         internal void MeasureHiddenWindow()
@@ -566,6 +571,17 @@ internal static class WindowedDialog
                 await NextLayoutTurnAsync();
                 if (disposed) return;
                 MeasureHiddenWindow();
+                if (keepsSize)
+                {
+                    // Keep the title and action buttons anchored to the window as the form changes.
+                    card ??= content is null ? null : FindCard(content, root);
+                    if (card is null) continue;
+                    card.Width = Math.Min(card.MaxWidth, root.Width - card.Margin.Left - card.Margin.Right);
+                    card.Height = Math.Min(card.MaxHeight, root.Height - card.Margin.Top - card.Margin.Bottom);
+                    if (FindTemplateElement<Grid>(card, "CommandSpace") is { } commands)
+                        commands.Width = card.Width;
+                    break;
+                }
                 if (!FitToContent() && pass > 0) break;
             }
             if (disposed) return;
@@ -627,7 +643,7 @@ internal static class WindowedDialog
 
         internal void ObserveContentChanges()
         {
-            if (disposed || observing) return;
+            if (keepsSize || disposed || observing) return;
             observing = true;
             if (content is not null) content.SizeChanged += ContentSizeChanged;
             if (inner is not null) inner.SizeChanged += ContentSizeChanged;
@@ -683,14 +699,27 @@ internal static class WindowedDialog
         if (FindTemplateElement<Grid>(dialog, "DialogSpace") is { } dialogSpace)
             dialogSpace.CornerRadius = new CornerRadius(0);
         if (FindTemplateElement<Grid>(dialog, "CommandSpace") is { } commands)
+        {
             commands.Background = transparent;
+            if (dialog is NewProjectDialog)
+                commands.Padding = new Thickness(commands.Padding.Left, 12, commands.Padding.Right, commands.Padding.Bottom);
+        }
         if (FindTemplateElement<ScrollViewer>(dialog, "ContentScrollViewer") is { } contentScroller)
         {
+            // New Project supplies its own scrolling form. Keep the template's title stationary.
+            if (dialog is NewProjectDialog)
+            {
+                contentScroller.VerticalScrollMode = ScrollMode.Disabled;
+                contentScroller.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+                contentScroller.VerticalContentAlignment = VerticalAlignment.Stretch;
+            }
             if (contentScroller.Content is Grid contentGrid)
             {
                 contentGrid.Background = transparent;
                 // Remove the title/content separator that the template would otherwise draw.
                 contentGrid.BorderThickness = new Thickness(0);
+                if (dialog is NewProjectDialog)
+                    contentGrid.Padding = new Thickness(contentGrid.Padding.Left, contentGrid.Padding.Top, contentGrid.Padding.Right, 8);
             }
             else if (contentScroller.Content is Panel contentPanel)
             {

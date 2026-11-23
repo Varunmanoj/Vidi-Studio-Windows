@@ -69,9 +69,9 @@ public sealed partial class MainWindow
         }
         searchAnnouncementTimer.Start();
     }
-    private static readonly string[] SearchSections = { "transcript", "summary", "descriptions", "ad-overview", "ad-transcript" };
+    private static readonly string[] SearchSections = { "transcript", "summary", "descriptions", "ad-transcript", "ad-overview" };
     private string SearchSection => SearchSections[Math.Clamp(Section?.SelectedIndex ?? 0, 0, 4)];
-    private bool IsImportedCombinedTranscript => Section?.SelectedIndex == 4 && Model.Project?.ImportedADTranscript is { Mode: "combined", Segments.Count: > 0 };
+    private bool IsImportedCombinedTranscript => Section?.SelectedIndex == 3 && Model.Project?.ImportedADTranscript is { Mode: "combined", Segments.Count: > 0 };
     private bool IsProjectSearching => desktopEditorVisible && ProjectSearchQuery.Parse(EditorSearch?.Text ?? "").Applies(SearchSection);
     private ProjectSearchHit? SelectedSearchHit => (SearchMatches?.SelectedItem as ListViewItem)?.Tag as ProjectSearchHit;
 
@@ -118,7 +118,7 @@ public sealed partial class MainWindow
     }
     private void HideNormalSearchContent()
     {
-        Segments.Visibility = SummaryView.Visibility = Overview.Visibility = ExportList.Visibility = EmptySectionActions.Visibility = Visibility.Collapsed;
+        Segments.Visibility = SummaryView.Visibility = OverviewPanel.Visibility = ExportList.Visibility = EmptySectionActions.Visibility = Visibility.Collapsed;
         SectionProcessingOverlay.Visibility = EditToolbar.Visibility = Visibility.Collapsed;
         EditorSectionActions.Visibility = Visibility.Collapsed;
     }
@@ -146,11 +146,12 @@ public sealed partial class MainWindow
                 panel.Children.Add(text);
                 var title = group.Result.State == "draft" ? "Review Draft…" : "Open Result";
                 var button = new Button { Content = title, IsEnabled = Model.Idle && !HasUnsavedLanguageSummary && !searchOpening, Tag = hit };
+                ToolTipService.SetToolTip(button, title);
                 button.Click += async (_, _) => await OpenSearchHitAsync(hit);
                 panel.Children.Add(button);
                 var item = new ListViewItem { Content = panel, Tag = hit, HorizontalContentAlignment = HorizontalAlignment.Stretch };
-                var flyout = new MenuFlyout();
-                var open = new MenuFlyoutItem { Text = title, IsEnabled = button.IsEnabled };
+                var flyout = Views.MenuAccessKeys.Create();
+                var open = new MenuFlyoutItem { Text = title, IsEnabled = button.IsEnabled, Icon = new FontIcon { Glyph = "\uE8A7" } };
                 open.Click += async (_, _) => await OpenSearchHitAsync(hit);
                 flyout.Items.Add(open); item.ContextFlyout = flyout;
                 SearchMatches.Items.Add(item);

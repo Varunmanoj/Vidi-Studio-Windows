@@ -29,6 +29,7 @@ public sealed partial class MainWindow
             };
             menu.Items.Add(item);
         }
+        AssignMenuAccessKeys(menu.Items);
         return menu;
     }
 

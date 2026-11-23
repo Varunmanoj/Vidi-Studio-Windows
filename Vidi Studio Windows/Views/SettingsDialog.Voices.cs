@@ -109,8 +109,8 @@ public sealed partial class SettingsDialog
     private void ConfigurePiperSampleMenu(TextBox sample)
     {
         piperSampleMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
-        piperPlaySampleMenuItem = new MenuFlyoutItem { Text = "Play Sample", Tag = "piper-settings-play-sample" };
-        piperStopSampleMenuItem = new MenuFlyoutItem { Text = "Stop Sample", Tag = "piper-settings-stop-sample" };
+        piperPlaySampleMenuItem = new MenuFlyoutItem { Text = "Play Sample", Tag = "piper-settings-play-sample", Icon = new FontIcon { Glyph = "\uE768" } };
+        piperStopSampleMenuItem = new MenuFlyoutItem { Text = "Stop Sample", Tag = "piper-settings-stop-sample", Icon = new FontIcon { Glyph = "\uE71A" } };
         AutomationProperties.SetAutomationId(piperPlaySampleMenuItem, "piper-settings-play-sample");
         AutomationProperties.SetAutomationId(piperStopSampleMenuItem, "piper-settings-stop-sample");
         piperPlaySampleMenuItem.Click += async (_, _) => await PlayPiperSampleAsync(sample.Text);

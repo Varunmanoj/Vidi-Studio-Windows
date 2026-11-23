@@ -10,13 +10,13 @@ namespace Vidi_Studio_Windows.Models;
 
 public static class SearchResultStatus
 {
-    public static string SectionName(string section) => section switch { "transcript" => "Transcript", "summary" => "Summary", "descriptions" => "Descriptions", "ad-transcript" => "AD Transcript", "ad-overview" => "AD Overview", _ => section };
+    public static string SectionName(string section) => section switch { "transcript" => "Transcript", "summary" => "Summary", "descriptions" => "Descriptions", "ad-transcript" => "AD Transcript", "ad-overview" => "Overview", _ => section };
     public static string Editor(ProjectSearchQuery query, string section, int count)
     {
         var title = SectionName(section);
         if (query.Term.Length == 0) return query.Section == null ? $"Search cleared. All {title} content shown." : $"{SectionName(query.Section)}. All content shown.";
         if (query.Section is { } scope && scope != section) return $"{title}. Search is limited to {SectionName(scope)}.";
-        if (section == "ad-overview") return "AD Overview. Search is available in the four text tabs.";
+        if (section == "ad-overview") return "Overview. Search is available in the four text tabs.";
         return count == 0 ? $"No search results in {title}." : $"{count} search {(count == 1 ? "result" : "results")} in {title}.";
     }
     public static string Gallery(string query, int count)

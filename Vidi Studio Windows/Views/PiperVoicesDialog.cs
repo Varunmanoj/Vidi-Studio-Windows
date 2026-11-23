@@ -268,8 +268,8 @@ public sealed class PiperVoicesDialog : ContentDialog
             "Plays a short sample published with this voice. The preview needs the internet; a downloaded voice itself works offline.");
         state.Sample.Click += async (_, _) => await ToggleSampleAsync(voice);
         var sampleMenu = MenuAccessKeys.Create();
-        var play = new MenuFlyoutItem { Text = "Play Sample" };
-        var stop = new MenuFlyoutItem { Text = "Stop Sample" };
+        var play = new MenuFlyoutItem { Text = "Play Sample", Icon = new FontIcon { Glyph = "\uE768" } };
+        var stop = new MenuFlyoutItem { Text = "Stop Sample", Icon = new FontIcon { Glyph = "\uE71A" } };
         play.Click += async (_,_) => { if (!VoiceSampleSession.Busy && state.Sample.IsEnabled) await ToggleSampleAsync(voice); };
         stop.Click += (_,_) => { if (sampleVoiceId != null || sampleLoadingId != null) StopSample("Sample stopped."); };
         sampleMenu.Opening += (_,_) => { play.IsEnabled = !VoiceSampleSession.Busy && state.Sample.IsEnabled; stop.IsEnabled = sampleVoiceId != null || sampleLoadingId != null; };

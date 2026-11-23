@@ -48,7 +48,7 @@ public sealed partial class SettingsDialog
         Closed+=(_,_)=>{model.PropertyChanged-=changed;elevenTimer.Stop();elevenQueryTimer.Stop();StopElevenDemo();elevenPlayer?.Dispose();};
         elevenControls.Children.Add(ScreenReaderHeading.Mark(new TextBlock{Text="ElevenLabs Voices",FontSize=18}));
         var password=new PasswordBox{Password=elevenKey};AutomationProperties.SetAutomationId(password,"elevenlabs-api-key");AutomationProperties.SetName(password,"ElevenLabs API key");
-        var passwordMenu=MenuAccessKeys.Create();var edit=new MenuFlyoutItem{Text="Edit ElevenLabs API Key"};AutomationProperties.SetAutomationId(edit,"elevenlabs-key-edit");edit.Click+=(_,_)=>password.Focus(FocusState.Programmatic);passwordMenu.Items.Add(edit);password.ContextFlyout=passwordMenu;
+        var passwordMenu=MenuAccessKeys.Create();var edit=new MenuFlyoutItem{Text="Edit ElevenLabs API Key", Icon = new FontIcon { Glyph = "\uE70F" }};AutomationProperties.SetAutomationId(edit,"elevenlabs-key-edit");edit.Click+=(_,_)=>password.Focus(FocusState.Programmatic);passwordMenu.Items.Add(edit);password.ContextFlyout=passwordMenu;
         var row=new Grid{ColumnSpacing=8};row.ColumnDefinitions.Add(new ColumnDefinition());row.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});row.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
         var icon=ApiKeyStatusIcon(elevenStatus,"elevenlabs-key-status");
         var deleteHost=new StackPanel();
@@ -125,8 +125,8 @@ public sealed partial class SettingsDialog
     {
         var field=new TextBox{Text=text,PlaceholderText=title};AutomationProperties.SetName(field,title);AutomationProperties.SetAutomationId(field,id);
         field.TextChanged+=(_,_)=>change(field.Text);
-        var menu=MenuAccessKeys.Create();var focusItem=new MenuFlyoutItem{Text="Focus "+title};AutomationProperties.SetAutomationId(focusItem,id+"-focus");focusItem.Click+=(_,_)=>field.Focus(FocusState.Programmatic);menu.Items.Add(focusItem);
-        var clear=new MenuFlyoutItem{Text="Clear "+title};AutomationProperties.SetAutomationId(clear,id+"-clear");clear.Click+=(_,_)=>field.Text="";menu.Items.Add(clear);field.ContextFlyout=menu;FullWidthVoiceSearch(field);parent.Children.Add(field);
+        var menu=MenuAccessKeys.Create();var focusItem=new MenuFlyoutItem{Text="Focus "+title, Icon = new FontIcon { Glyph = "\uE721" }};AutomationProperties.SetAutomationId(focusItem,id+"-focus");focusItem.Click+=(_,_)=>field.Focus(FocusState.Programmatic);menu.Items.Add(focusItem);
+        var clear=new MenuFlyoutItem{Text="Clear "+title, Icon = new FontIcon { Glyph = "\uE711" }};AutomationProperties.SetAutomationId(clear,id+"-clear");clear.Click+=(_,_)=>field.Text="";menu.Items.Add(clear);field.ContextFlyout=menu;FullWidthVoiceSearch(field);parent.Children.Add(field);
     }
     private void ScheduleElevenQuery(){elevenQueryTimer?.Stop();elevenQueryTimer?.Start();}
     private void BuildElevenFields()
@@ -154,7 +154,7 @@ public sealed partial class SettingsDialog
         var reset=SpeechAction(actions,"Reset Voice Filters","elevenlabs-filters-reset",()=>{elevenSearch="";elevenFilters.Clear();elevenSort=elevenSource=="library"?"trending":"name";BuildElevenFields();ScheduleElevenQuery();});SpeechActionsRow(actions,"elevenlabs-browser-actions",more,reset);elevenFields.Children.Add(actions);
         elevenFields.Children.Add(ScreenReaderHeading.Mark(new TextBlock{Text="Voice Controls",FontSize=16}));
         foreach(var field in (profile["controls"] as JsonArray??new()).Select(n=>ES(n))) {
-            if(field=="speakerBoost") {var toggle=new ToggleSwitch{IsOn=SettingsStore.GetBool(profile[field],true)};toggle.Toggled+=(_,_)=>profile[field]=toggle.IsOn;AutomationProperties.SetAutomationId(toggle,"elevenlabs-speaker-boost");var menu=MenuAccessKeys.Create();var item=new ToggleMenuFlyoutItem{Text="Speaker boost"};item.Click+=(_,_)=>toggle.IsOn=!toggle.IsOn;menu.Opening+=(_,_)=>item.IsChecked=toggle.IsOn;menu.Items.Add(item);toggle.ContextFlyout=menu;AddSettingsRow(elevenFields,"Speaker boost",toggle);continue;}
+            if(field=="speakerBoost") {var toggle=new ToggleSwitch{IsOn=SettingsStore.GetBool(profile[field],true)};toggle.Toggled+=(_,_)=>profile[field]=toggle.IsOn;AutomationProperties.SetAutomationId(toggle,"elevenlabs-speaker-boost");var menu=MenuAccessKeys.Create();var item=new ToggleMenuFlyoutItem{Text="Speaker boost", Icon = new FontIcon { Glyph = "\uE767" }};item.Click+=(_,_)=>toggle.IsOn=!toggle.IsOn;menu.Opening+=(_,_)=>item.IsChecked=toggle.IsOn;menu.Items.Add(item);toggle.ContextFlyout=menu;AddSettingsRow(elevenFields,"Speaker boost",toggle);continue;}
             if(field=="stabilityMode"){SpeechChoiceControl(elevenFields,"Stability","elevenlabs-stability-mode",SettingsStore.GetDouble(profile[field],.5).ToString("0.0",System.Globalization.CultureInfo.InvariantCulture),new[]{("0.0","Creative"),("0.5","Natural"),("1.0","Robust")},value=>profile[field]=double.Parse(value,System.Globalization.CultureInfo.InvariantCulture));continue;}
             var title=field switch{"speed"=>"Speaking speed","style"=>"Style emphasis","cloneStrength"=>"Clone strength",_=>System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(field)};
             SpeechAdjustmentControl(elevenFields,title,field=="cloneStrength"?"elevenlabs-clone-strength":"elevenlabs-"+field,profile,field,field=="speed"?1:field=="similarity"?.75:field=="stability"?.5:0,field=="speed"?.7:0,field=="speed"?1.2:1,percentage:field is "stability" or "similarity" or "style" or "cloneStrength");
@@ -227,7 +227,7 @@ public sealed partial class SettingsDialog
             var select=new RadioButton{Content=new TextBlock{Text=detail,TextWrapping=TextWrapping.Wrap},IsChecked=selected,GroupName="elevenlabs-voices",HorizontalAlignment=HorizontalAlignment.Stretch,HorizontalContentAlignment=HorizontalAlignment.Stretch};
             AutomationProperties.SetAutomationId(select,"elevenlabs-select-"+id);AutomationProperties.SetName(select,(elevenSource=="library"?"Add & select ":"Select ")+ES(voice["name"])+", "+detail);ToolTipService.SetToolTip(select,(elevenSource=="library"?"Add & select ":"Select ")+ES(voice["name"]));
             select.Checked+=async(_,_)=>await Choose();
-            var menu=MenuAccessKeys.Create();var selection=new ToggleMenuFlyoutItem{Text="Select "+ES(voice["name"]),IsChecked=selected};selection.Click+=async(_,_)=>await Choose();menu.Items.Add(selection);select.ContextFlyout=menu;
+            var menu=MenuAccessKeys.Create();var selection=new ToggleMenuFlyoutItem{Text="Select "+ES(voice["name"]),IsChecked=selected, Icon = new FontIcon { Glyph = "\uE77B" }};selection.Click+=async(_,_)=>await Choose();menu.Items.Add(selection);select.ContextFlyout=menu;
             var row=new Grid{ColumnSpacing=10};row.ColumnDefinitions.Add(new ColumnDefinition());row.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});row.Children.Add(select);
             var play=ElevenDemoButton(voice);Grid.SetColumn(play,1);row.Children.Add(play);family.Children.Add(row);
             if(!play.IsEnabled&&ES(voice["preview"]).Length==0&&(voice["variants"] as JsonArray??new()).Count==0)family.Children.Add(new TextBlock{Text="Sample unavailable",Opacity=.7});

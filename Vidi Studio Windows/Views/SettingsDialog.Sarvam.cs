@@ -94,7 +94,7 @@ public sealed partial class SettingsDialog
         var menu = MenuAccessKeys.Create();
         foreach (var option in options)
         {
-            var item = new ToggleMenuFlyoutItem { Text = option.Label, Tag = id + "-" + option.Id };
+            var item = new ToggleMenuFlyoutItem { Text = option.Label, Tag = id + "-" + option.Id, Icon = new FontIcon { Glyph = "\uE8FD" } };
             AutomationProperties.SetAutomationId(item, id + "-" + option.Id);
             item.Click += (_, _) => picker.SelectedItem = picker.Items.Cast<ComboBoxItem>().First(i => (string)i.Tag == option.Id);
             menu.Opening += (_, _) => item.IsChecked = picker.SelectedItem is ComboBoxItem selected && (string)selected.Tag == option.Id;
@@ -116,7 +116,7 @@ public sealed partial class SettingsDialog
             ("decrease", "Decrease " + title, () => slider.Value = Math.Max(low, slider.Value - step)),
             ("reset", "Restore Default", () => slider.Value = initial) })
         {
-            var item = new MenuFlyoutItem { Text = label, Tag = id + "-" + suffix };
+            var item = new MenuFlyoutItem { Text = label, Tag = id + "-" + suffix, Icon = new FontIcon { Glyph = suffix == "increase" ? "\uE710" : suffix == "decrease" ? "\uE738" : "\uE7A7" } };
             AutomationProperties.SetAutomationId(item, id + "-" + suffix); item.Click += (_, _) => action();
             menu.Opening += (_, _) => item.IsEnabled = suffix == "reset" || (suffix == "increase" ? slider.Value < high : slider.Value > low);
             menu.Items.Add(item);
@@ -134,7 +134,7 @@ public sealed partial class SettingsDialog
         AutomationProperties.SetAutomationId(button, id);
         button.Click += (_, _) => { if (button.IsEnabled) action(); };
         var menu = MenuAccessKeys.Create();
-        var item = new MenuFlyoutItem { Text = label, Tag = id };
+        var item = new MenuFlyoutItem { Text = label, Tag = id, Icon = MenuIcons.Create(label) };
         AutomationProperties.SetAutomationId(item,id);
         item.Click += (_, _) => { if (button.IsEnabled) action(); };
         menu.Opening += (_, _) => item.IsEnabled = button.IsEnabled;
@@ -157,7 +157,7 @@ public sealed partial class SettingsDialog
         if (sarvamKeyChecking) keyStatus.Text = "Checking API key…"; else if (sarvamKeyMessage.Length > 0) keyStatus.Text = sarvamKeyMessage;
         password.PasswordChanged += (_, _) => { sarvamKeyMessage = ""; sarvamKeyTimer?.Stop(); if (password.Password.Trim().Length > 0) sarvamKeyTimer?.Start(); StopSarvamDemo(); draft["sarvamApiKey"] = password.Password.Trim(); UpdateSarvamSampleControls(); draft["sarvamKeyStatus"] = "unverified"; keyStatus.Text = password.Password.Length == 0 ? "No API key" : "API key saved — unverified"; if (deleteKeyButton != null) deleteKeyButton.IsEnabled = password.Password.Length > 0; if (sarvamCheckKeyButton != null) sarvamCheckKeyButton.IsEnabled = password.Password.Trim().Length > 0 && !sarvamKeyChecking; };
         var keyMenu = MenuAccessKeys.Create();
-        var editKey = new MenuFlyoutItem { Text = "Edit Sarvam API Key", Tag = "sarvam-key-edit" };
+        var editKey = new MenuFlyoutItem { Text = "Edit Sarvam API Key", Tag = "sarvam-key-edit", Icon = new FontIcon { Glyph = "\uE70F" } };
         editKey.Click += (_, _) => password.Focus(FocusState.Programmatic); keyMenu.Items.Add(editKey);
         password.ContextFlyout = keyMenu; sarvamControls.Children.Add(password); sarvamControls.Children.Add(keyStatus);
         deleteKeyButton = SpeechAction(sarvamControls,"Delete Sarvam API Key…","sarvam-key-delete", async () => {
@@ -208,7 +208,7 @@ public sealed partial class SettingsDialog
             SpeechAdjustmentControl(sarvamControls,"Loudness","sarvam-loudness",profile,"loudness",1,.3,3);
             var toggle = new ToggleSwitch { Header = "Normalize text", IsOn = SettingsStore.GetBool(profile["preprocessing"]) };
             toggle.Toggled += (_, _) => profile["preprocessing"] = toggle.IsOn;
-            var menu = MenuAccessKeys.Create(); var item = new ToggleMenuFlyoutItem { Text = "Normalize text", Tag = "sarvam-preprocessing" };
+            var menu = MenuAccessKeys.Create(); var item = new ToggleMenuFlyoutItem { Text = "Normalize text", Tag = "sarvam-preprocessing", Icon = new FontIcon { Glyph = "\uE767" } };
             item.Click += (_, _) => toggle.IsOn = item.IsChecked; menu.Opening += (_, _) => item.IsChecked = toggle.IsOn;
             menu.Items.Add(item); toggle.ContextFlyout = menu; sarvamControls.Children.Add(toggle);
         }
@@ -388,7 +388,7 @@ public sealed partial class SettingsDialog
             search.TextChanged += (_,_) => { summaryVoiceSearch = search.Text; Render(); }; holder.Children.Add(search);
             var clear = SpeechAction(holder,"Clear voice search","summary-search-clear",() => search.Text = "");
             if (clear.ContextFlyout is MenuFlyout searchMenu) {
-                var focus = new MenuFlyoutItem { Text = "Search voices", Tag = "summary-search-focus" };
+                var focus = new MenuFlyoutItem { Text = "Search voices", Tag = "summary-search-focus", Icon = new FontIcon { Glyph = "\uE721" } };
                 focus.Click += (_,_) => search.Focus(FocusState.Programmatic); searchMenu.Items.Add(focus);
             }
             SpeechChoiceControl(holder,"Sort by","summary-voice-sort",summaryVoiceSort,new[] {("language","Language (A–Z)"),("name","Voice name (A–Z)")},value => { summaryVoiceSort = value; Render(); });

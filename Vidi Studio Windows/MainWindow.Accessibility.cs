@@ -3,6 +3,8 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -31,7 +33,17 @@ public sealed partial class MainWindow
             {
                 var items = entries.Where(item => item is MenuFlyoutItem or MenuFlyoutSubItem).ToArray();
                 if (items.Any(item => string.IsNullOrWhiteSpace(item.AccessKey)) || items.Select(item => item.AccessKey).Distinct().Count() != items.Length)
-                    throw new InvalidOperationException("Submenu access keys must be present and unique within their scope.");
+                    throw new InvalidOperationException("Submenu access keys must be present and unique within their scope: " +
+                        string.Join(", ", items.Select(item => (item is MenuFlyoutItem action ? action.Text : ((MenuFlyoutSubItem)item).Text) + "=" + item.AccessKey)));
+                foreach (var item in items) {
+                    var (title, icon) = item switch {
+                        MenuFlyoutItem command => (command.Text, command.Icon),
+                        MenuFlyoutSubItem submenu => (submenu.Text, submenu.Icon),
+                        _ => ("", null)
+                    };
+                    if (icon == null || icon is FontIcon font && (string.IsNullOrWhiteSpace(font.Glyph) || font.Glyph == "\uE712" && title != "More Actions"))
+                        throw new InvalidOperationException("Menu command needs a visible icon: " + title);
+                }
                 foreach (var sub in items.OfType<MenuFlyoutSubItem>()) VerifyKeys(sub.Items);
             }
             foreach (var menu in menus) VerifyKeys(menu.Items);
@@ -43,6 +55,19 @@ public sealed partial class MainWindow
             LeaveMenuAccess();
             if (Microsoft.UI.Xaml.Input.AccessKeyManager.IsDisplayModeEnabled) throw new InvalidOperationException("Menu exit left key tips visible.");
             var project = Model.Project ?? throw new InvalidOperationException("Context menu fixture missing.");
+            var cloudRecord = project.CloudVideo;
+            try {
+                project.CloudVideo = new() { ["bucket"] = "fixture", ["object"] = "preview.mp4" };
+                foreach (var (id, _) in CloudActions(project)) {
+                    var command = ProjectMenu(project).Items.OfType<MenuFlyoutItem>().Single(item => Equals(item.Tag, id));
+                    if (command.Icon is not FontIcon { Glyph: var glyph } || glyph.Length == 0 || glyph == "\uE712")
+                        throw new InvalidOperationException("Cloud context command needs a specific icon: " + id);
+                }
+                if (DesktopCommandIcon("cloud-upload") is not FontIcon { Glyph: "\uE898" } ||
+                    DesktopCommandIcon("new-cloud-project") is not FontIcon { Glyph: "\uE753" })
+                    throw new InvalidOperationException("Cloud upload or New Project command icon is missing.");
+            }
+            finally { project.CloudVideo = cloudRecord; }
             var contexts = editor
                 ? new[] { SegmentMenu(project.Transcript.First()), (MenuFlyout)EditorWorkspace.ContextFlyout, SummaryReadingMenu() }
                 : new[] { ProjectMenu(project) };
@@ -107,6 +132,189 @@ public sealed partial class MainWindow
         ShowGallery_Click(this, new RoutedEventArgs());
     }
 
+    private async Task VerifyPreviewToolbarForSmokeTestAsync()
+    {
+        var originalPreview = PreviewPanel.Visibility == Visibility.Visible;
+        var originalTimeline = timelineVisible;
+        var originalSetting = Model.Settings.Get("showPreview", "true");
+        try
+        {
+            timelineVisible = true;
+            ApplyPreviewVisibility(true);
+            Root.UpdateLayout();
+            var parent = (Grid)PreviewPanel.Parent;
+            double ToolbarTop() => EditorSectionToolbar.TransformToVisual(parent).TransformPoint(new Windows.Foundation.Point()).Y;
+            var shownTop = ToolbarTop();
+            var previewPeer = FrameworkElementAutomationPeer.CreatePeerForElement(PreviewToggleButton)!;
+            var fullScreenPeer = FrameworkElementAutomationPeer.CreatePeerForElement(FullScreenVideoButton)!;
+            if (previewPeer.GetName() != "Hide Preview" ||
+                ToolTipService.GetToolTip(PreviewToggleButton) as string != "Hide video preview (Ctrl+Shift+V)" ||
+                fullScreenPeer.GetName() != "Full-screen video" ||
+                ToolTipService.GetToolTip(FullScreenVideoButton) is not string fullScreenTip || !fullScreenTip.Contains("Press Esc to return"))
+                throw new InvalidOperationException("The editor preview buttons must have accessible names and tooltips.");
+
+            ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)previewPeer.GetPattern(PatternInterface.Invoke)).Invoke();
+            for (var attempt = 0; attempt < 50 && PreviewPanel.Visibility == Visibility.Visible; attempt++) await Task.Delay(20);
+            Root.UpdateLayout();
+            if (PreviewPanel.Visibility != Visibility.Collapsed || TimelinePanel.Visibility != Visibility.Collapsed ||
+                ToolbarTop() >= shownTop || previewPeer.GetName() != "Show Preview" ||
+                ToolTipService.GetToolTip(PreviewToggleButton) as string != "Show video preview (Ctrl+Shift+V)" ||
+                Model.Settings.Get("showPreview", "true") != "false")
+                throw new InvalidOperationException("Hide Preview must collapse the video and timeline and reclaim editor space.");
+
+            await RunDesktopCommandAsync("preview");
+            if (PreviewPanel.Visibility != Visibility.Visible || TimelinePanel.Visibility != Visibility.Visible)
+                throw new InvalidOperationException("Show Preview must restore both panels when the timeline is enabled.");
+
+            await RunDesktopCommandAsync("toggle-timeline");
+            await RunDesktopCommandAsync("preview");
+            await RunDesktopCommandAsync("preview");
+            if (PreviewPanel.Visibility != Visibility.Visible || TimelinePanel.Visibility != Visibility.Collapsed ||
+                DesktopCommandTitle("toggle-timeline") != "Show Timeline")
+                throw new InvalidOperationException("Showing the preview must preserve the separate Hide Timeline choice.");
+
+            await RunDesktopCommandAsync("preview");
+            await RunDesktopCommandAsync("toggle-timeline");
+            if (TimelinePanel.Visibility != Visibility.Collapsed)
+                throw new InvalidOperationException("The timeline must stay collapsed while the preview is hidden.");
+            await RunDesktopCommandAsync("preview");
+            if (TimelinePanel.Visibility != Visibility.Visible)
+                throw new InvalidOperationException("The restored preview must use the latest timeline choice.");
+        }
+        finally
+        {
+            timelineVisible = originalTimeline;
+            ApplyPreviewVisibility(originalPreview);
+            Model.Settings.Set("showPreview", originalSetting);
+            Model.Settings.Save();
+        }
+    }
+
+    private void VerifyEditorButtonTooltipsForSmokeTest()
+    {
+        IEnumerable<FrameworkElement> EditorElements(FrameworkElement element)
+        {
+            if (element.Visibility != Visibility.Visible) yield break;
+            yield return element;
+            IEnumerable<FrameworkElement> children = element switch
+            {
+                Panel panel => panel.Children.OfType<FrameworkElement>(),
+                Border { Child: FrameworkElement content } => new[] { content },
+                SplitView split => new[] { split.Pane, split.Content }.OfType<FrameworkElement>(),
+                Expander { IsExpanded: true, Content: FrameworkElement content } => new[] { content },
+                Expander => Array.Empty<FrameworkElement>(),
+                ScrollViewer { Content: FrameworkElement content } => new[] { content },
+                InfoBar { IsOpen: true, ActionButton: FrameworkElement action } => new[] { action },
+                ListViewBase list => Enumerable.Range(0, list.Items.Count)
+                    .Select(index => (list.ContainerFromIndex(index) as ContentControl)?.ContentTemplateRoot).OfType<FrameworkElement>(),
+                ContentControl { Content: FrameworkElement content } => new[] { content },
+                _ => Array.Empty<FrameworkElement>()
+            };
+            foreach (var child in children.SelectMany(EditorElements)) yield return child;
+        }
+
+        var buttons = EditorElements(EditorWorkspace).OfType<Microsoft.UI.Xaml.Controls.Primitives.ButtonBase>().ToArray();
+        if (buttons.Length < 5) throw new InvalidOperationException("Tooltip audit did not reach the rendered editor buttons.");
+        foreach (var button in buttons)
+        {
+            var tooltip = ToolTipService.GetToolTip(button);
+            var label = (tooltip as ToolTip)?.Content as string ?? tooltip as string;
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                var name = FrameworkElementAutomationPeer.CreatePeerForElement(button)?.GetName();
+                throw new InvalidOperationException($"Missing tooltip in {EditorSectionTitle}: {button.Name} {name}.");
+            }
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TooltipTestPoint { public int X; public int Y; }
+
+    [DllImport("user32.dll", EntryPoint = "GetCursorPos")]
+    private static extern bool GetTooltipTestCursor(out TooltipTestPoint point);
+
+    [DllImport("user32.dll", EntryPoint = "SetCursorPos")]
+    private static extern bool MoveTooltipTestCursor(int x, int y);
+
+    [DllImport("user32.dll", EntryPoint = "ClientToScreen")]
+    private static extern bool MapTooltipClientPoint(IntPtr window, ref TooltipTestPoint point);
+
+    [DllImport("user32.dll", EntryPoint = "mouse_event")]
+    private static extern void SendTooltipMouseMove(uint flags, int x, int y, uint data, UIntPtr extra);
+
+    [DllImport("user32.dll", EntryPoint = "WindowFromPoint")]
+    private static extern IntPtr TooltipWindowAt(TooltipTestPoint point);
+
+    [DllImport("user32.dll", EntryPoint = "GetAncestor")]
+    private static extern IntPtr TooltipRootWindow(IntPtr window, uint flag);
+
+    [DllImport("user32.dll", EntryPoint = "SetForegroundWindow")]
+    private static extern bool FocusTooltipTestWindow(IntPtr window);
+
+    private async Task VerifyEditorActionHoverForSmokeTestAsync()
+    {
+        if (!GetTooltipTestCursor(out var original)) throw new InvalidOperationException("Cannot read the Windows test pointer.");
+        var window = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var originalPosition = AppWindow.Position;
+        var originalPreview = PreviewPanel.Visibility == Visibility.Visible;
+        var workArea = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary).WorkArea;
+        TooltipTestPoint Hover(FrameworkElement element)
+        {
+            var center = element.TransformToVisual(Root).TransformPoint(
+                new Windows.Foundation.Point(element.ActualWidth / 2, element.ActualHeight / 2));
+            var scale = Root.XamlRoot.RasterizationScale;
+            var point = new TooltipTestPoint { X = (int)(center.X * scale), Y = (int)(center.Y * scale) };
+            if (!MapTooltipClientPoint(window, ref point) || !MoveTooltipTestCursor(point.X, point.Y))
+                throw new InvalidOperationException("Cannot hover over " + element.Name);
+            SendTooltipMouseMove(1, 1, 0, 0, UIntPtr.Zero); // Send a native move after positioning the cursor.
+            return point;
+        }
+
+        try
+        {
+            AppWindow.Move(new Windows.Graphics.PointInt32(workArea.X + 16, workArea.Y + 16));
+            ApplyPreviewVisibility(false);
+            Activate();
+            FocusTooltipTestWindow(window);
+            await Task.Delay(300);
+            Root.UpdateLayout();
+            var controls = new[]
+            {
+                (EditorAddButton, EditorAddToolTip),
+                (EditModeButton, EditModeToolTip),
+                (GenerateCurrent, GenerateCurrent.IsEnabled ? GenerateCurrentToolTip : GenerateUnavailableToolTip)
+            };
+            foreach (var (button, tooltip) in controls)
+            {
+                Hover(EditorSectionHeading);
+                await Task.Delay(200);
+                var target = ReferenceEquals(tooltip, GenerateUnavailableToolTip) ? (FrameworkElement)GenerateUnavailableHoverTarget : button;
+                var entered = false;
+                void PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs args) => entered = true;
+                target.PointerEntered += PointerEntered;
+                try
+                {
+                    var point = Hover(button);
+                    for (var attempt = 0; attempt < 32 && !tooltip.IsOpen; attempt++) await Task.Delay(75);
+                    if (!tooltip.IsOpen)
+                    {
+                        GetTooltipTestCursor(out var cursor);
+                        var inEditor = TooltipRootWindow(TooltipWindowAt(point), 2) == window;
+                        throw new InvalidOperationException(
+                            $"Hover did not open the tooltip for {button.Name} (pointer entered: {entered}, editor under pointer: {inEditor}, cursor {cursor.X},{cursor.Y}, target {point.X},{point.Y}).");
+                    }
+                }
+                finally { target.PointerEntered -= PointerEntered; }
+            }
+        }
+        finally
+        {
+            ApplyPreviewVisibility(originalPreview);
+            AppWindow.Move(originalPosition);
+            MoveTooltipTestCursor(original.X, original.Y);
+        }
+    }
+
     private async Task VerifyEditorSectionToolbarForSmokeTestAsync(string report)
     {
         ShowEditor(); await Task.Delay(150);
@@ -125,9 +333,33 @@ public sealed partial class MainWindow
                 foreach (var width in new[] { 1120, 880 })
                 {
                     AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(width * scale), (int)(760 * scale)));
+                    await Task.Delay(100);
+                    await VerifyPreviewToolbarForSmokeTestAsync();
                     for (var index = 0; index < 5; index++)
                     {
                         Section.SelectedIndex = index; UpdateSectionPresentation(); await Task.Delay(100); Root.UpdateLayout();
+                        VerifyEditorButtonTooltipsForSmokeTest();
+                        if (index == 4)
+                        {
+                            var panels = new[] { OverviewProjectDetails, OverviewTranscript, OverviewSummary, OverviewStatistics, OriginStatistics };
+                            var groups = new[] { OverviewProjectGroup, OverviewTranscriptGroup, OverviewSummaryGroup, OverviewDescriptionGroup, OverviewOriginGroup };
+                            var names = new[] { "Project details", "Transcript", "Summary", "Audio description details", "Description origins" };
+                            for (int i = 0; i < panels.Length; i++)
+                            {
+                                if (FrameworkElementAutomationPeer.CreatePeerForElement(groups[i])?.GetName() != names[i] || panels[i].ActualWidth <= 0 ||
+                                    panels[i].Children.Count == 0 || OverviewPanel.ScrollableHeight <= 0)
+                                    throw new InvalidOperationException("Overview group is missing, empty or inaccessible: " + names[i]);
+                            }
+                            var summaryLabels = OverviewSummary.Children.OfType<Grid>()
+                                .Select(row => ((TextBlock)row.Children[0]).Text);
+                            if (OverviewSummary.Children.Count != 2 || !summaryLabels.SequenceEqual(new[] { "Summary status", "Summary characters" }))
+                                throw new InvalidOperationException("Overview Summary must contain only status and character count.");
+                            var transcript = OverviewTranscript.TransformToVisual(OverviewPanel).TransformPoint(new Windows.Foundation.Point());
+                            var summary = OverviewSummary.TransformToVisual(OverviewPanel).TransformPoint(new Windows.Foundation.Point());
+                            if (OverviewTextPair.ActualWidth >= 656 ? summary.X <= transcript.X || Math.Abs(summary.Y - transcript.Y) > 1
+                                : summary.Y < transcript.Y + OverviewTranscript.ActualHeight || Math.Abs(summary.X - transcript.X) > 1)
+                                throw new InvalidOperationException("Transcript and Summary groups did not reflow at this editor width.");
+                        }
                         var languagePanel = LanguageResultsPanel.Children.OfType<StackPanel>().Single();
                         var language = languagePanel.Children.OfType<Control>().FirstOrDefault() as ComboBox
                             ?? throw new InvalidOperationException("Inspector language must be the first control.");
@@ -163,6 +395,28 @@ public sealed partial class MainWindow
                     }
                 }
             }
+            foreach (var index in new[] { 0, 1, 2, 3 })
+            {
+                Section.SelectedIndex = index;
+                if (index == 1) SetSummaryEditMode(true);
+                else EditMode_Click(this, new RoutedEventArgs());
+                try
+                {
+                    await Task.Delay(100);
+                    Root.UpdateLayout();
+                    VerifyEditorButtonTooltipsForSmokeTest();
+                    if (EditModeToolTip.Content is not string tip || !tip.StartsWith("Done editing", StringComparison.Ordinal))
+                        throw new InvalidOperationException("The editor tooltip must change to Done when editing.");
+                }
+                finally
+                {
+                    if (index == 1) SetSummaryEditMode(false);
+                    else EditMode_Click(this, new RoutedEventArgs());
+                }
+            }
+            Section.SelectedIndex = 0;
+            UpdateSectionPresentation();
+            await VerifyEditorActionHoverForSmokeTestAsync();
             ContentDialog? opened = null;
             void Observe(ContentDialog dialog, Window window) { opened = dialog; }
             Views.WindowedDialog.Preparing += Observe;
@@ -244,8 +498,8 @@ public sealed partial class MainWindow
 
     private async Task VerifyEditorSectionMenusAndTitlesForSmokeTestAsync()
     {
-        var ids = new[] { "transcript", "summary", "descriptions", "ad-overview", "ad-transcript" };
-        var titles = new[] { "Transcript", "Summary", "Descriptions", "AD Overview", "AD Transcript" };
+        var ids = new[] { "transcript", "summary", "descriptions", "ad-transcript", "ad-overview" };
+        var titles = new[] { "Transcript", "Summary", "Descriptions", "AD Transcript", "Overview" };
         foreach (var menuName in new[] { "View", "Project" })
         {
             var menu = editorMenus.Single(menu => menu.Title == menuName).Items.OfType<MenuFlyoutSubItem>().Single(group => group.Text == "Editor Sections");
@@ -315,7 +569,7 @@ public sealed partial class MainWindow
         var previousSection = Section.SelectedIndex;
         try
         {
-            foreach (var section in new[] { 0, 2, 4 })
+            foreach (var section in new[] { 0, 2, 3 })
             {
                 Section.SelectedIndex = section; RenderSection(); await Task.Delay(200); Root.UpdateLayout();
                 if (Narration.Visibility == Visibility.Visible && PeerName(Narration) != "Narration")

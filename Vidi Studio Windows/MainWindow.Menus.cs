@@ -68,18 +68,18 @@ public sealed partial class MainWindow
         MenuBarItem[] Layout() => new[]
         {
             Menu("File",
-                Command("new-project"), Command("open-project"), Command("open-gallery-window", libraryOnly: true), Separator(), Command("youtube-open-browser"), Separator(), Command("export"), Separator(),
+                Command("new-project"), Command("new-youtube-project"), Command("new-cloud-project"), Command("open-cloud-videos"), Command("open-project"), Command("open-gallery-window", libraryOnly: true), Separator(), Command("youtube-open-browser"), Separator(), Command("export"), Separator(),
                 Command("delete-project"), Command("delete-content"), Separator(), Command("remove-from-list"), Separator(), Command("open-editor-window"), Command("settings"), Command("project-settings"), Command("close-window")),
             Menu("Edit", Command("focus-search"), Command("clear-search"), Command("open-search-result"), Separator(), Command("rename-project", libraryOnly: true),
                 Command("copy-to"), Command("segment-edit-mode"), Separator(),
                 Command("segment-select-all"), Command("segment-deselect-all"), Separator(),
                 Command("segment-one-edit"), Command("segment-one-play"), Command("segment-one-skip"), Command("segment-one-synthesize"), Command("segment-one-rewrite"), Command("segment-one-import-audio"), Command("segment-one-delete-audio"), Command("segment-one-reanalyze"), Command("segment-delete-selected")),
             Menu("View",
-                Submenu("Filter Projects by Source", Command("projects-source-all"), Command("projects-source-local"), Command("projects-source-youtube")),
+                Submenu("Filter Projects by Source", Command("projects-source-all"), Command("projects-source-local"), Command("projects-source-youtube"), Command("projects-source-cloud")),
                 LibraryLanguageMenu(),
                 Submenu("Sort Projects", Command("projects-sort-opened"), Command("projects-sort-name"), Command("projects-sort-duration"), Command("projects-sort-type")),
                 Command("projects-reset-filters"), Separator(),
-                Submenu("Editor Sections", Command("transcript"), Command("summary"), Command("descriptions"), Command("ad-overview"), Command("ad-transcript")), Separator(),
+                Submenu("Editor Sections", Command("transcript"), Command("summary"), Command("descriptions"), Command("ad-transcript"), Command("ad-overview")), Separator(),
                 ProjectLanguageMenu(), Separator(), SavedResultsMenu(), Separator(),
                 Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("toggle-thumbnail-images"),
                 Command("summary-zoom-in"), Command("summary-zoom-out"), Command("summary-zoom-reset"), Command("filter-segments"), Command("clear-segment-filter"),
@@ -96,9 +96,10 @@ public sealed partial class MainWindow
                     Command("summary-previous-paragraph"), Command("summary-next-paragraph"), Separator(),
                     Command("summary-from-start"), Command("summary-from-selection"), Command("summary-read-selection"))),
             Menu("Project",
+                Submenu("Cloud Storage", Command("cloud-upload"), Command("cloud-open"), Command("cloud-rename"), Command("cloud-remove")),
                 Command("open-selected-project"), Separator(),
                 Command("language-results"),
-                Submenu("Editor Sections", Command("transcript"), Command("summary"), Command("descriptions"), Command("ad-overview"), Command("ad-transcript")),
+                Submenu("Editor Sections", Command("transcript"), Command("summary"), Command("descriptions"), Command("ad-transcript"), Command("ad-overview")),
                 Submenu("Segments", Command("segment-edit-mode"), Command("add"), Separator(), Command("reanalyze-selection"),
                     Command("segment-select-all"), Command("segment-deselect-all"), Command("segment-edit-selected"), Command("segment-delete-selected"), Separator(),
                     Command("follow"), Command("undo"), Command("redo")),
@@ -227,8 +228,8 @@ public sealed partial class MainWindow
         ["transcript"] = (VirtualKey.Number1, VirtualKeyModifiers.Control, "Ctrl+1"),
         ["summary"] = (VirtualKey.Number2, VirtualKeyModifiers.Control, "Ctrl+2"),
         ["descriptions"] = (VirtualKey.Number3, VirtualKeyModifiers.Control, "Ctrl+3"),
-        ["ad-overview"] = (VirtualKey.Number4, VirtualKeyModifiers.Control, "Ctrl+4"),
-        ["ad-transcript"] = (VirtualKey.Number5, VirtualKeyModifiers.Control, "Ctrl+5"),
+        ["ad-transcript"] = (VirtualKey.Number4, VirtualKeyModifiers.Control, "Ctrl+4"),
+        ["ad-overview"] = (VirtualKey.Number5, VirtualKeyModifiers.Control, "Ctrl+5"),
         ["segment-edit-mode"] = (VirtualKey.E, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+E"),
         ["reanalyze-selection"] = (VirtualKey.R, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+R"),
         ["add"] = (VirtualKey.N, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "Ctrl+Shift+N"),
@@ -281,7 +282,7 @@ public sealed partial class MainWindow
             menu.Items.Clear();
             foreach (var language in new[] { new Models.OutputLanguage("all", "All Languages") }.Concat(Model.ProjectFilterLanguages))
             {
-                var item = new ToggleMenuFlyoutItem { Text = language.Title, IsChecked = Model.LanguageFilter == language.Id };
+                var item = new ToggleMenuFlyoutItem { Text = language.Title, IsChecked = Model.LanguageFilter == language.Id, Icon = new FontIcon { Glyph = "\uE8F2" } };
                 item.Click += (_, _) => {
                     if (desktopEditorVisible) return;
                     if (language.Id != "all" && !Model.ProjectFilterLanguages.Any(option => option.Id == language.Id)) return;
@@ -301,13 +302,13 @@ public sealed partial class MainWindow
     }
 
     private string SavedResultsMenuTitle => Section.SelectedIndex switch {
-        0 => "Transcript Saved Results", 1 => "Summary Saved Results", 2 or 3 => "Description Saved Results",
-        4 => "AD Transcript Saved Results", _ => "Saved Results"
+        0 => "Transcript Saved Results", 1 => "Summary Saved Results", 2 or 4 => "Description Saved Results",
+        3 => "AD Transcript Saved Results", _ => "Saved Results"
     };
 
     private MenuFlyoutSubItem SavedResultsMenu()
     {
-        var menu = new MenuFlyoutSubItem { Text = SavedResultsMenuTitle, Tag = "saved-results" };
+        var menu = new MenuFlyoutSubItem { Text = SavedResultsMenuTitle, Tag = "saved-results", Icon = new FontIcon { Glyph = "\uE8A5" } };
         savedResultMenus.Add(menu);
         return menu;
     }
@@ -349,7 +350,7 @@ public sealed partial class MainWindow
             menu.IsEnabled = enabled; menu.Items.Clear();
             foreach (var choice in choices) {
                 var projectID = project!.Id;
-                var item = new ToggleMenuFlyoutItem { Text = choice.Title, Tag = "project-language-" + choice.Id, IsChecked = choice.Id == project.SelectedLanguage, IsEnabled = enabled };
+                var item = new ToggleMenuFlyoutItem { Text = choice.Title, Tag = "project-language-" + choice.Id, IsChecked = choice.Id == project.SelectedLanguage, IsEnabled = enabled, Icon = new FontIcon { Glyph = "\uE8F2" } };
                 item.Click += async (_, _) => {
                     item.IsChecked = Model.Project?.SelectedLanguage == choice.Id;
                     if (!CanRunDesktopCommand("project-language") || Model.Project?.Id != projectID || !Model.Project.AvailableViewingLanguages.Contains(choice.Id) || Model.Project.SelectedLanguage == choice.Id) return;
@@ -427,7 +428,7 @@ public sealed partial class MainWindow
             foreach (var item in desktopMenuItems.TryGetValue(id, out var zoomItems) ? zoomItems : new List<MenuFlyoutItem>())
                 item.Visibility = desktopEditorVisible && Section.SelectedIndex == 1 && !summaryEditMode ? Visibility.Visible : Visibility.Collapsed;
         UpdateSummaryZoomControls();
-        var timedSection = desktopEditorVisible && Section.SelectedIndex is 0 or 2 or 4;
+        var timedSection = desktopEditorVisible && Section.SelectedIndex is 0 or 2 or 3;
         foreach (var item in new[] { "filter-segments", "sort-segments" }.SelectMany(id => desktopMenuItems.TryGetValue(id, out var filterItems) ? filterItems : new List<MenuFlyoutItem>()))
             item.Visibility = timedSection ? Visibility.Visible : Visibility.Collapsed;
         foreach (var item in desktopMenuItems.TryGetValue("clear-segment-filter", out var clearFilterItems) ? clearFilterItems : new List<MenuFlyoutItem>())
@@ -459,7 +460,7 @@ public sealed partial class MainWindow
             {
                 group.Text = Section.SelectedIndex switch
                 {
-                    0 => "Sort Transcripts…", 2 => "Sort Descriptions…", 4 => "Sort AD Transcript…", _ => "Sort Segments"
+                    0 => "Sort Transcripts…", 2 => "Sort Descriptions…", 3 => "Sort AD Transcript…", _ => "Sort Segments"
                 };
                 group.Visibility = timedSection && desktopEditorVisible ? Visibility.Visible : Visibility.Collapsed;
             }
@@ -467,7 +468,7 @@ public sealed partial class MainWindow
             {
                 var mode = Model.Settings.Get("captionDisplayMode", "off");
                 group.Text = "Transcript Overlay: " + (mode == "combined" ? "AD Transcript" : mode == "transcript" ? "Transcript" : mode == "descriptions" ? "Descriptions" : "Off");
-                group.Visibility = desktopEditorVisible && (Section.SelectedIndex is 0 or 2 or 4) ? Visibility.Visible : Visibility.Collapsed;
+                group.Visibility = desktopEditorVisible && (Section.SelectedIndex is 0 or 2 or 3) ? Visibility.Visible : Visibility.Collapsed;
             }
         }
         foreach (var menu in galleryMenus.Concat(editorMenus)) {
@@ -496,6 +497,20 @@ public sealed partial class MainWindow
 
     private bool LibraryCommandVisible(string id)
     {
+        if (id is "new-project" or "new-youtube-project" or "new-cloud-project") return true;
+        if (id == "open-cloud-videos") return true;
+        if ((id is "delete-project" or "trash-project") && !CanDeleteProjectVideo(ProjectManagementTarget())) return false;
+        if (id.StartsWith("cloud-"))
+        {
+            var project = ProjectManagementTarget();
+            return id switch
+            {
+                "cloud-upload" => Model.Settings.GetBool("vertexConnected"),
+                "cloud-rename" => VerifiedCloudPermissions(project).Rename,
+                "cloud-remove" => VerifiedCloudPermissions(project).Delete,
+                _ => project?.CloudVideo != null
+            };
+        }
         if (id == "youtube-open-browser") return ProjectManagementTarget()?.IsYouTube == true;
         if (id is "focus-search" or "clear-search") return true;
         if (desktopEditorVisible) return !id.StartsWith("projects-", StringComparison.Ordinal) && id != "open-selected-project" && EditorCommandVisible(id);
@@ -551,7 +566,7 @@ public sealed partial class MainWindow
         return id switch
         {
             "rename-project" => !project.IntegrityPlaceholder && project.Integrity?.ManifestUnreadable != true && project.Integrity?.FolderMissing != true,
-            "trash-project" => true,
+            "trash-project" => CanDeleteProjectVideo(project),
             "show-in-finder" => Directory.Exists(project.Folder),
             "open-configuration" => Model.Settings.GetBool("developerMode") && File.Exists(Path.Combine(project.Folder, "project.json")),
             _ => false
@@ -573,12 +588,12 @@ public sealed partial class MainWindow
             "generate-summary" or "import-summary" or "delete-summary" => Section.SelectedIndex == 1,
             "generate-ad-cues" or "import-descriptions" or "delete-descriptions" => Section.SelectedIndex == 2,
             "synthesize-tts" or "synthesize-changed" or "review-narration-issues" or "review-narration-voices" or "delete-narration" => Section.SelectedIndex is 2 or 3 or 4,
-            "import-ad-audio" or "narration" or "caption-ad-transcript" => Section.SelectedIndex is 2 or 4,
+            "import-ad-audio" or "narration" or "caption-ad-transcript" => Section.SelectedIndex is 2 or 3,
             "add" or "reanalyze-selection" or "undo" or "redo" => Section.SelectedIndex is 0 or 2,
             "segment-select-all" or "segment-deselect-all" or "segment-edit-selected" or "segment-delete-selected" or "follow"
                 or "filter-segments" or "clear-segment-filter" or "sort-segments" or "clear-segment-sort" or "sort-start" or "sort-duration-asc" or "sort-duration-desc" or "sort-origin"
-                or "caption-cycle" or "caption-off" or "caption-transcript" => Section.SelectedIndex is 0 or 2 or 4,
-            "copy-to" or "segment-edit-mode" => Section.SelectedIndex is 0 or 1 or 2 or 4,
+                or "caption-cycle" or "caption-off" or "caption-transcript" => Section.SelectedIndex is 0 or 2 or 3,
+            "copy-to" or "segment-edit-mode" => Section.SelectedIndex is 0 or 1 or 2 or 3,
             "delete-current" => Section.SelectedIndex is 0 or 1 or 2,
             "youtube-details" or "youtube-refresh" or "import-original-audio" => Model.Project?.IsYouTube == true,
             _ => true
@@ -598,16 +613,16 @@ public sealed partial class MainWindow
 
     private bool SegmentBelongsToCurrentTab(Models.Segment segment)
     {
-        return Model.Project is { } p && Section.SelectedIndex is 0 or 2 or 4 &&
-            (Section.SelectedIndex == 4 || segment.IsDescription == (Section.SelectedIndex == 2)) &&
+        return Model.Project is { } p && Section.SelectedIndex is 0 or 2 or 3 &&
+            (Section.SelectedIndex == 3 || segment.IsDescription == (Section.SelectedIndex == 2)) &&
             (segment.IsDescription ? p.Cues : p.Transcript).Any(row => row.Id == segment.Id);
     }
 
     private bool RowCommandVisible(string id, bool? description)
     {
-        if (Section.SelectedIndex is not (0 or 2 or 4)) return false;
-        if (description.HasValue && Section.SelectedIndex != 4 && description.Value != (Section.SelectedIndex == 2)) return false;
-        var effectiveDescription = description ?? (Section.SelectedIndex == 4 ? (bool?)null : Section.SelectedIndex == 2);
+        if (Section.SelectedIndex is not (0 or 2 or 3)) return false;
+        if (description.HasValue && Section.SelectedIndex != 3 && description.Value != (Section.SelectedIndex == 2)) return false;
+        var effectiveDescription = description ?? (Section.SelectedIndex == 3 ? (bool?)null : Section.SelectedIndex == 2);
         return id switch {
             "segment-one-edit" or "segment-one-play" or "segment-one-skip" or "segment-one-delete" => true,
             "segment-one-preview" or "segment-one-preview-stop" or "segment-one-synthesize" or "segment-one-rewrite" or "segment-one-import-audio" or "segment-one-delete-audio" => effectiveDescription != false,
@@ -634,7 +649,7 @@ public sealed partial class MainWindow
     private string SegmentCommandTitle(string id, Models.Segment? segment = null)
     {
         segment ??= SingleSelectedSegment();
-        var description = segment?.IsDescription ?? (Section.SelectedIndex == 4 ? (bool?)null : Section.SelectedIndex == 2);
+        var description = segment?.IsDescription ?? (Section.SelectedIndex == 3 ? (bool?)null : Section.SelectedIndex == 2);
         var title = description == true ? "Audio description" : description == false ? "Transcript" : "Segment";
         return id switch {
             "segment-one-edit" => $"Edit {title}{(title == "Segment" ? "" : " Segment")}…",
@@ -651,7 +666,7 @@ public sealed partial class MainWindow
     private string CurrentSectionCopyTitle => Section.SelectedIndex switch
     {
         0 => "Copy and Translate Transcript…", 1 => "Copy and Translate Summary…",
-        2 or 3 => "Copy and Translate Descriptions…", 4 => "Copy and Translate AD Transcript…",
+        2 or 4 => "Copy and Translate Descriptions…", 3 => "Copy and Translate AD Transcript…",
         _ => "Copy and Translate…"
     };
 
@@ -660,8 +675,8 @@ public sealed partial class MainWindow
         if (!currentSectionOnly) return new[] { "transcript", "summary", "descriptions" };
         return Section.SelectedIndex switch
         {
-            0 => new[] { "transcript" }, 1 => new[] { "summary" }, 2 or 3 => new[] { "descriptions" },
-            4 => new[] { "transcript", "descriptions" }, _ => Array.Empty<string>()
+            0 => new[] { "transcript" }, 1 => new[] { "summary" }, 2 or 4 => new[] { "descriptions" },
+            3 => new[] { "transcript", "descriptions" }, _ => Array.Empty<string>()
         };
     }
 
@@ -678,6 +693,8 @@ public sealed partial class MainWindow
 
     private bool CanRunDesktopCommand(string id)
     {
+        if (id.StartsWith("cloud-"))
+            return ProjectManagementTarget() is { } cloudProject && Model.Idle && !cloudProject.IsYouTube && (cloudProject.CloudVideo != null || Model.Settings.GetBool("vertexConnected")) && CloudActions(cloudProject).Any(a=>a.Id==id);
         if (validationShowcaseActive) return false;
         if (windowClosed) return false;
         if (id == "focus-search") return !searchOpening && (desktopEditorVisible ? EditorSearch.Visibility == Visibility.Visible && Model.Project != null : GallerySearchHost.Visibility == Visibility.Visible);
@@ -700,7 +717,7 @@ public sealed partial class MainWindow
         if (!desktopEditorVisible && id is "open-selected-project" or "open-gallery-window" or "export" or "delete-project" or "delete-content" or "prepare-video" or "analyze" or "transcribe" or "generate-summary" or "generate-ad-cues")
         {
             if (SelectedGalleryProject() is not { } selected) return false;
-            if (id == "delete-project") return true;
+            if (id == "delete-project") return CanDeleteProjectVideo(selected);
             if (selected.IntegrityPlaceholder || selected.Integrity?.ManifestUnreadable == true || selected.Integrity?.FolderMissing == true) return false;
             return id switch {
                 "delete-content" => selected.SavedResults.Count > 0 || selected.Exports.Count > 0 || selected.Thumbnails.Count > 0 || selected.Cues.Count > 0 || selected.HasTranscript || selected.HasSummary,
@@ -710,7 +727,10 @@ public sealed partial class MainWindow
                 _ => true
             };
         }
-        if (id == "new-project") return true;
+        if (id == "new-cloud-project" && cloudBrowserOpen) return false;
+        if (id == "new-cloud-project") return Model.Settings.GetBool("vertexConnected");
+        if (id == "open-cloud-videos") return !cloudBrowserOpen && Model.Settings.GetBool("vertexConnected");
+        if (id is "new-project" or "new-youtube-project") return !cloudBrowserOpen;
         if (id is "rename-project" or "trash-project" or "show-in-finder" or "open-configuration") return CanManageProject(id);
         if (id == "remove-from-list") return SelectedBrowserProject() != null;
         if (id is "open-project" or "close-window") return true;
@@ -719,8 +739,8 @@ public sealed partial class MainWindow
         if (!desktopEditorVisible || Model.Project is not { } p) return false;
         if (id.StartsWith("segment-one-", StringComparison.Ordinal)) return CanRunSingleSegmentCommand(id);
         if (p.IsYouTube && (id is "play" or "back" or "forward" or "jump-to-time") && !ConnectivityService.Shared.Available(OnlineService.YouTube)) return id == "play" && IsVideoPlaying();
-        if (Section.SelectedIndex == 3 && !p.OverviewMatchesEditingResult && id is "synthesize-tts" or "synthesize-changed" or "review-narration-issues" or "review-narration-voices") return false;
-        var timed = Section.SelectedIndex is 0 or 2 or 4;
+        if (Section.SelectedIndex == 4 && !p.OverviewMatchesEditingResult && id is "synthesize-tts" or "synthesize-changed" or "review-narration-issues" or "review-narration-voices") return false;
+        var timed = Section.SelectedIndex is 0 or 2 or 3;
         var hasTranscript = p.HasTranscript || ExtraFlag(p, "transcriptGenerated");
         var canDescribe = p.SavedResults.Any(r => r.Kind == "transcript" && r.State == "saved") && p.SavedResults.Any(r => r.Kind == "summary" && r.State == "saved");
         var ai = Model.CanUseAI;
@@ -728,7 +748,7 @@ public sealed partial class MainWindow
         switch (id)
         {
             case "jump-to-time": return double.IsFinite(p.Duration) && p.Duration > 0;
-            case "delete-project": return !HasUnsavedLanguageSummary;
+            case "delete-project": return !HasUnsavedLanguageSummary && CanDeleteProjectVideo(p);
             case "delete-content": return !HasUnsavedLanguageSummary && !p.IntegrityPlaceholder;
             case "rename-project": return !p.IntegrityPlaceholder && p.Integrity?.ManifestUnreadable != true && p.Integrity?.FolderMissing != true;
             case "import-assets":
@@ -747,12 +767,12 @@ public sealed partial class MainWindow
             case "segment-deselect-all": case "segment-edit-selected": return timed && editMode && Segments.SelectedItems.Count > 0;
             case "undo": return HasHistory(Section.SelectedIndex == 0 ? "transcriptUndoStack" : "undoStack");
             case "redo": return HasHistory(Section.SelectedIndex == 0 ? "transcriptRedoStack" : "redoStack");
-            case "narration": return (Section.SelectedIndex is 2 or 4) && p.Cues.Count > 0;
+            case "narration": return (Section.SelectedIndex is 2 or 3) && p.Cues.Count > 0;
             case "follow": return timed && Segments.Items.Count > 0;
             case "caption-cycle": case "caption-ad-transcript": return timed && (p.HasTranscript || p.Cues.Count > 0);
             case "caption-transcript": return timed && p.HasTranscript;
-            case "clear-segment-filter": return Section.SelectedIndex is 0 or 2 or 4 && segmentFilter.IsActive;
-            case "clear-segment-sort": return Section.SelectedIndex is 0 or 2 or 4 && segmentSort != "start";
+            case "clear-segment-filter": return Section.SelectedIndex is 0 or 2 or 3 && segmentFilter.IsActive;
+            case "clear-segment-sort": return Section.SelectedIndex is 0 or 2 or 3 && segmentSort != "start";
             case "filter-segments":
             case "sort-segments":
             case "sort-start":
@@ -804,17 +824,18 @@ public sealed partial class MainWindow
         return id switch
         {
             "open-selected-project" => "Open Selected Project", "open-gallery-window" => "Open in New Window",
-            "projects-source-all" => "All Projects", "projects-source-local" => "Local Video Projects", "projects-source-youtube" => "YouTube Projects",
+            "cloud-upload" => "Upload Video to Cloud Storage…", "cloud-open" => "Open Video in Google Cloud Console", "cloud-rename" => "Rename Cloud Video…", "cloud-remove" => "Remove Cloud Video…",
+            "projects-source-all" => "All Projects", "projects-source-local" => "Local Videos", "projects-source-cloud" => "Cloud Storage Videos", "projects-source-youtube" => "YouTube Videos",
             "projects-reset-filters" => "Reset Project Filters",
             "projects-sort-opened" => "Last Opened", "projects-sort-name" => "Name (A–Z)",
             "projects-sort-duration" => "Duration (Longest First)", "projects-sort-type" => "Type (Local, then YouTube)",
             "delete-project" => "Delete Project…", "delete-content" => "Choose What to Delete…",
             "remove-from-list" => "Remove from List",
-            "new-project" => "New Project…", "open-project" => "Open Project Folder…", "export" => "Export…",
+            "open-cloud-videos" => "Open Cloud Videos…", "new-cloud-project" => "New Cloud Project…", "new-youtube-project" => "New YouTube Project…", "new-project" => "New Project…", "open-project" => "Open Project Folder…", "export" => "Export…",
             "open-editor-window" => "Open Editor in New Window", "settings" => "Settings…", "close-window" => "Close Window",
             "help" => "VidiStudio Help", "website" => "VidiStudio Website", "about" => "About VidiStudio",
             "preview" => PreviewPanel.Visibility == Visibility.Visible ? "Hide Preview" : "Show Preview",
-            "toggle-timeline" => TimelinePanel.Visibility == Visibility.Visible ? "Hide Timeline" : "Show Timeline",
+            "toggle-timeline" => timelineVisible ? "Hide Timeline" : "Show Timeline",
             "toggle-thumbnail-images" => ThumbnailImagesRow.Visibility == Visibility.Visible ? "Hide Thumbnail Images" : "Show Thumbnail Images",
             "show-projects" => ProjectSplitView.IsPaneOpen ? "Hide Project List" : "Show Project List",
             "show-inspector" => InspectorSplitView.IsPaneOpen ? "Hide Inspector" : "Show Inspector",
@@ -834,10 +855,10 @@ public sealed partial class MainWindow
             "copy-to" => "Copy and Translate…",
             "language-results" => "Language and Saved Results…",
             "transcript" => "Show Transcript", "summary" => "Show Summary", "descriptions" => "Show Descriptions",
-            "ad-overview" => "Show AD Overview", "ad-transcript" => "Show AD Transcript",
+            "ad-overview" => "Show Overview", "ad-transcript" => "Show AD Transcript",
             "segment-edit-mode" => Section.SelectedIndex == 1 ? (summaryEditMode ? "Done Editing Summary" : "Edit Summary")
                 : editMode ? "Done Editing Segments" : Section.SelectedIndex switch
-                    { 0 => "Edit Transcript Segments", 2 => "Edit Audio Description Segments", 4 => "Edit AD Transcript Segments", _ => "Edit Segments" },
+                    { 0 => "Edit Transcript Segments", 2 => "Edit Audio Description Segments", 3 => "Edit AD Transcript Segments", _ => "Edit Segments" },
             "add" => Section.SelectedIndex switch { 0 => "Add Transcript Segment", 2 => "Add Audio Description Segment", _ => "Add Segment" },
             "reanalyze-selection" => "Re-Analyze a Video Section", "segment-select-all" => "Select All Segments", "segment-deselect-all" => "Deselect All Segments",
             "segment-edit-selected" => "Edit Selected Segments…", "segment-delete-selected" => "Delete Selected Segments…",
@@ -861,7 +882,7 @@ public sealed partial class MainWindow
             "import-original-audio" => "Import Original Audio…", "import-ad-audio" => "Import AD Audio…",
             "filter-segments" => Section.SelectedIndex switch
             {
-                0 => "Filter Transcript…", 2 => "Filter Descriptions…", 4 => "Filter AD Transcript…", _ => "Filter Segments…"
+                0 => "Filter Transcript…", 2 => "Filter Descriptions…", 3 => "Filter AD Transcript…", _ => "Filter Segments…"
             },
             "clear-segment-filter" => "Clear Filter", "clear-segment-sort" => "Clear Sort",
             "sort-segments" => "Sort Options…",
@@ -898,6 +919,7 @@ public sealed partial class MainWindow
             "caption-off" => Model.Settings.Get("captionDisplayMode", "off") == "off",
             "caption-transcript" => Model.Settings.Get("captionDisplayMode") == "transcript",
             "projects-source-all" => GalleryFilter.SelectedIndex == 0,
+            "projects-source-cloud" => GalleryFilter.SelectedIndex == 3,
             "projects-source-local" => GalleryFilter.SelectedIndex == 1,
             "projects-source-youtube" => GalleryFilter.SelectedIndex == 2,
             "projects-sort-opened" => Model.ProjectSort == "opened", "projects-sort-name" => Model.ProjectSort == "name",
@@ -957,7 +979,7 @@ public sealed partial class MainWindow
             "segment-edit-mode" or "segment-edit-selected" => "Edit selected", "segment-select-all" => "Select all", "segment-deselect-all" => "Deselect all",
             "undo" => "Undo", "redo" => "Redo", "analyze" or "Analysis" or "reanalyze-selection" => "Analyze video",
             "prepare-video" => "Refresh video details", "transcribe" or "transcript" => "Transcript", "generate-summary" or "summary" => "Summary",
-            "generate-ad-cues" or "descriptions" => "Descriptions", "ad-overview" => "AD Overview", "ad-transcript" => "AD Transcript",
+            "generate-ad-cues" or "descriptions" => "Descriptions", "ad-overview" => "Overview", "ad-transcript" => "AD Transcript",
             _ => id
         });
     }
@@ -987,6 +1009,11 @@ public sealed partial class MainWindow
     private async Task RunDesktopCommandAsync(string id, bool copyCurrentSectionOnly = false)
     {
         if (!CanRunDesktopCommand(id)) return;
+        switch (id) {
+            case "cloud-open": case "cloud-rename": case "cloud-remove": case "cloud-upload":
+                if (ProjectManagementTarget() is { } cloudProject) await CloudActionAsync(id, cloudProject);
+                return;
+        }
         if (id == "focus-search") { FocusSearch(); return; }
         if (id == "clear-search") { ClearSearch(); return; }
         if (id == "open-search-result") { if (SelectedSearchHit is { } hit) await OpenSearchHitAsync(hit); return; }
@@ -1004,6 +1031,7 @@ public sealed partial class MainWindow
             case "clear-search": ClearSearch(); break;
             case "open-search-result": if (SelectedSearchHit is { } searchHit) await OpenSearchHitAsync(searchHit); break;
             case "projects-source-all": GalleryFilter.SelectedIndex = 0; break;
+            case "projects-source-cloud": GalleryFilter.SelectedIndex = 3; break;
             case "projects-source-local": GalleryFilter.SelectedIndex = 1; break;
             case "projects-source-youtube": GalleryFilter.SelectedIndex = 2; break;
             case "projects-sort-opened": Model.ProjectSort = "opened"; FilterGallery(); break;
@@ -1016,11 +1044,14 @@ public sealed partial class MainWindow
             case "copy-to":
                 var selected = Segments.SelectedItems.OfType<Models.Segment>().ToArray();
                 var segmentIDs = selected.GroupBy(s => s.IsDescription ? "descriptions" : "transcript").ToDictionary(g => g.Key, g => g.Select(s => s.Id).ToArray());
-                await ShowCopyToAsync(initialKinds: CopyDefaultKinds(copyCurrentSectionOnly), segmentIDs: Section.SelectedIndex is 0 or 2 or 4 ? segmentIDs : null);
+                await ShowCopyToAsync(initialKinds: CopyDefaultKinds(copyCurrentSectionOnly), segmentIDs: Section.SelectedIndex is 0 or 2 or 3 ? segmentIDs : null);
                 break;
             case "language-results":
                 await ShowLanguageResultsDialogAsync();
                 break;
+            case "open-cloud-videos": await OpenCloudVideosAsync(); break;
+            case "new-cloud-project": await ShowNewProjectDialogAsync(youtube: false, fromStorage: true); break;
+            case "new-youtube-project": await ShowNewProjectDialogAsync(youtube: true); break;
             case "new-project": await ShowNewProjectDialogAsync(false); break;
             case "youtube-open-browser":
                 if (ProjectManagementTarget() is { } youtubeProject) OpenProjectInYouTube(youtubeProject);
@@ -1072,8 +1103,8 @@ public sealed partial class MainWindow
             case "transcript": Section.SelectedIndex = 0; break;
             case "summary": Section.SelectedIndex = 1; break;
             case "descriptions": Section.SelectedIndex = 2; break;
-            case "ad-overview": Section.SelectedIndex = 3; break;
-            case "ad-transcript": Section.SelectedIndex = 4; break;
+            case "ad-overview": Section.SelectedIndex = 4; break;
+            case "ad-transcript": Section.SelectedIndex = 3; break;
             case "segment-edit-mode": EditMode_Click(this, e); break;
             case "add": case "reanalyze-selection": await EditSegment(null); break;
             case "segment-select-all": SelectAll_Click(this, e); break;

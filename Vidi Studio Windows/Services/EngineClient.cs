@@ -52,6 +52,10 @@ public sealed class EngineClient
             // The Gemini key is held in Windows Credential Manager and handed to the engine per
             // process in the environment; it is never written to the config file on disk.
             if (geminiKey.Length > 0) start.Environment["VIDISTUDIO_API_KEY"] = geminiKey;
+            start.Environment.Remove("VIDISTUDIO_VERTEX_KEY");
+            if (settings.Get("aiProvider") == "vertex" && settings.Get("vertexAuth") == "express"
+                && CredentialStore.Vertex.Read() is { Length: > 0 } vertexKey)
+                start.Environment["VIDISTUDIO_VERTEX_KEY"] = vertexKey;
             var sarvamKey = settings.Get("sarvamApiKey").Trim();
             var elevenlabsKey = settings.Get("elevenlabsApiKey").Trim();
             if (sarvamKey.Length > 0) start.Environment["VIDISTUDIO_SARVAM_API_KEY"] = sarvamKey;

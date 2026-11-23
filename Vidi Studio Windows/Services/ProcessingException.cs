@@ -13,9 +13,7 @@ public sealed class ProcessingException : Exception
     public ProcessingException(string diagnostic, string? recoveryAction = null, string? command = null)
         : base(recoveryAction == "choose-original-audio"
             ? "YouTube audio could not be retrieved. Choose a matching audio file to retry this export. Existing exports are unchanged."
-            : command == "generate-summary"
-                ? "The summary could not be created. Your transcript is safe. Please try again."
-                : UserMessage(diagnostic, command))
+            : UserMessage(diagnostic, command))
     {
         RecoveryAction = recoveryAction;
         Diagnostic = diagnostic;
@@ -33,10 +31,40 @@ public sealed class ProcessingException : Exception
 
     private static string UserMessage(string diagnostic, string? command)
     {
+        if (diagnostic.Contains("storage.objects.get", StringComparison.OrdinalIgnoreCase) &&
+            diagnostic.Contains("gcp-sa-aiplatform", StringComparison.OrdinalIgnoreCase))
+            return "Ask your Google Cloud administrator to grant the Vertex AI service agent read access to this video, then retry.";
+        if (command == "generate-summary")
+            return "The summary could not be created. Your transcript is safe. Please try again.";
+
         if (IsDuplicateProjectFailure(diagnostic, command))
             return command == "import-video"
                 ? "A project with this video filename already exists. Open it from All Projects, or rename the file if it’s a different video."
                 : "A project for this YouTube video already exists. Open it from All Projects.";
+
+        if (command is "cloud-import" or "cloud-preview")
+        {
+            return diagnostic switch
+            {
+                "Google Cloud denied permission to download this video. Check Google sign-in and your access to the object." or
+                "VidiStudio could not verify download permission. Check your connection and Google Cloud access, then retry." or
+                "The selected file has changed. Refresh the file list and choose it again." or
+                "The selected video is no longer available in Cloud Storage. Refresh the file list." or
+                "Downloaded video checksum did not match Cloud Storage. Retry the import." or
+                "Choose a supported Cloud Storage video." or
+                "The selected video exceeds the supported import size." or
+                "Choose a bucket in the selected Google Cloud project." or
+                "Use Google sign-in in Settings > AI to connect your account." => diagnostic,
+                _ => "Check Google sign-in, your access to the selected video, and your connection. Then try again."
+            };
+        }
+        if (command == "cloud-delete-project-video")
+        {
+            if (diagnostic.Contains("changed", StringComparison.OrdinalIgnoreCase) ||
+                diagnostic.Contains("newer cloud video", StringComparison.OrdinalIgnoreCase))
+                return "The cloud video changed. Refresh the project and check its video in Cloud Storage before trying again.";
+            return "Couldn’t delete the cloud video. Check Google sign-in, the project and bucket, and your permission to delete the video. Then try again.";
+        }
 
         // Only known validation messages can cross from engine diagnostics into UI.
         if (Regex.IsMatch(diagnostic, @"^AD segment \d+ takes [\d.]+s but has [\d.]+s\. Shorten its text or extend its gap\.$")) return diagnostic;
@@ -49,6 +77,7 @@ public sealed class ProcessingException : Exception
             "Create and synthesize AD segments before exporting.",
             "Some descriptions have missing or outdated narration. Synthesize narration or confirm an incomplete export.",
             "The source video has no audio track to export.",
+            "Choose Vertex AI with Google sign-in in Settings > AI to analyze this Cloud Storage video.",
             "YouTube audio could not be downloaded. Check your connection and that the video is public, then try again. If YouTube blocks the download, import your original video as a local project and export its described audio instead.",
             "YouTube audio download timed out. Try again, or import your original video.",
             "YouTube audio duration does not match this project. The video may have been edited. Refresh its transcript and descriptions, or import the matching original video.",

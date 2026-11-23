@@ -12,7 +12,9 @@ try {
     if (Test-Path -LiteralPath $sslPolicy) { $sslData = @('--add-data', ($sslPolicy + ';.')) }
     $oldErrorPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    & $Python -m PyInstaller --noconfirm --onedir --name vidistudio-engine --distpath dist/windows --workpath build/engine --specpath build --add-data "$engineProjectRoot/engine/ai-defaults.json;." --add-data "$engineProjectRoot/engine/sarvam-voices.json;." --collect-all google.genai --collect-submodules sarvamai --copy-metadata sarvamai --collect-all yt_dlp --collect-all yt_dlp_ejs --copy-metadata yt-dlp --copy-metadata yt-dlp-ejs @sslData engine/vidistudio_engine.py 2>&1 | ForEach-Object { Write-Host $_ }
+    $vertexData = @()
+    if (Test-Path Config/vertex-desktop.json) { $vertexData = @('--add-data', "$engineProjectRoot/Config/vertex-desktop.json;.") }
+    & $Python -m PyInstaller --noconfirm --onedir --name vidistudio-engine --distpath dist/windows --workpath build/engine --specpath build --add-data "$engineProjectRoot/engine/ai-defaults.json;." --add-data "$engineProjectRoot/engine/sarvam-voices.json;." @vertexData --collect-all keyring --collect-all google_crc32c --collect-all google.genai --collect-submodules sarvamai --copy-metadata sarvamai --collect-all yt_dlp --collect-all yt_dlp_ejs --copy-metadata yt-dlp --copy-metadata yt-dlp-ejs @sslData engine/vidistudio_engine.py 2>&1 | ForEach-Object { Write-Host $_ }
     $engineBuildExit = $LASTEXITCODE
     $ErrorActionPreference = $oldErrorPreference
     if ($engineBuildExit -ne 0) { throw 'Engine packaging failed.' }

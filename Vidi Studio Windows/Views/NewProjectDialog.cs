@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System;
 using System.Diagnostics;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -23,14 +24,35 @@ namespace Vidi_Studio_Windows.Views;
 /// <summary>Inspects a source without creating a project or copying the video.</summary>
 public sealed class NewProjectDialog : ContentDialog
 {
+    internal const int WindowWidth = 760;
+    internal const int WindowHeight = 544;
+
     private readonly Window owner;
     private readonly SettingsStore settings;
+    private readonly CompactActionsPanel sourceOptions = new() { VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock sourceLabel = new() { Text = "Project type", VerticalAlignment = VerticalAlignment.Center };
+    private readonly ScrollViewer form = new()
+    {
+        HorizontalContentAlignment = HorizontalAlignment.Stretch,
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+    };
     private readonly RadioButton local = new() { GroupName = "project-source" };
+    private readonly RadioButton cloud = new() { GroupName = "project-source", Content = "Cloud Storage" };
+    private readonly StackPanel cloudModeFields = new();
+    private readonly Grid videoFileRow = new() { ColumnSpacing = 12 };
+    private readonly ComboBox cloudMode = new() { Header = "Video source", ItemsSource = new[] { "Upload Local Video", "Choose from Cloud Storage" }, SelectedIndex = 0 };
+    private readonly Button browseCloud = new() { HorizontalAlignment = HorizontalAlignment.Right };
+    private bool browsing;
+    internal Window? CompanionWindow { get; set; }
+    internal Func<Window, string, Task<StudioProject?>>? BrowseCloudVideo { get; set; }
+    internal StudioProject? ImportedCloudProject { get; private set; }
+    public bool IsCloud => cloud.IsChecked == true;
     private readonly RadioButton youtube = new() { GroupName = "project-source" };
-    private readonly StackPanel localFields = new() { Spacing = 12, Width = 630 };
-    private readonly StackPanel youtubeFields = new() { Spacing = 12, Width = 630 };
+    private readonly StackPanel localFields = new() { Spacing = 12 };
+    private readonly StackPanel youtubeFields = new() { Spacing = 12 };
     private readonly TextBlock selectedFile = new() { Text = "No video selected", Opacity = .7, TextWrapping = TextWrapping.Wrap };
-    private readonly TextBlock details = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock details = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
     private readonly MediaPlayerElement preview = new() { Height = 160, AreTransportControlsEnabled = true, Visibility = Visibility.Collapsed };
     private readonly TextBox youtubeUrl = new() { PlaceholderText = "https://youtu.be/…", Header = "YouTube video URL", Width = 470, HorizontalAlignment = HorizontalAlignment.Left };
     private readonly Button fetchDetails = new() { Content = "Fetch Details", Width = 120, VerticalAlignment = VerticalAlignment.Bottom };
@@ -53,8 +75,8 @@ public sealed class NewProjectDialog : ContentDialog
         OriginalAudioTranscription = originalAssets.Selection.OriginalAudioTranscription
     };
     public bool CombineRequested { get; private set; }
-    private readonly Border youtubePreview = new() { Visibility = Visibility.Collapsed, Width = 630, CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Background = new SolidColorBrush(Windows.UI.Color.FromArgb(24, 128, 128, 128)) };
-    private readonly TextBlock youtubeStatus = new() { Width = 630, TextWrapping = TextWrapping.Wrap, Opacity = .7 };
+    private readonly Border youtubePreview = new() { Visibility = Visibility.Collapsed, CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Background = new SolidColorBrush(Windows.UI.Color.FromArgb(24, 128, 128, 128)) };
+    private readonly TextBlock youtubeStatus = new() { TextWrapping = TextWrapping.Wrap, Opacity = .7, Visibility = Visibility.Collapsed };
     private readonly TextBlock sourceHeading = new() { Text = "Video File", FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(2, 4, 0, 0) };
     private static readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private CancellationTokenSource? inspection;
@@ -65,11 +87,69 @@ public sealed class NewProjectDialog : ContentDialog
     public string? VideoPath { get; private set; }
     public string YouTubeUrl => youtubeUrl.Text.Trim();
 #if DEBUG
+    internal void VerifyInitialSourceForSmokeTest(string command)
+    {
+        bool matches = command switch {
+            "new-project" => local.IsChecked == true && videoFileRow.Visibility == Visibility.Visible,
+            "new-youtube-project" => IsYouTube && youtubeFields.Visibility == Visibility.Visible,
+            "new-cloud-project" => IsCloud && cloudMode.SelectedIndex == 1 && browseCloud.Visibility == Visibility.Visible,
+            _ => false
+        };
+        if (!matches || IsPrimaryButtonEnabled)
+            throw new InvalidOperationException("New Project opened with the wrong source or enabled creation prematurely: " + command);
+    }
+
+    internal async Task VerifyCloudBrowserForSmokeTestAsync(bool connected, StudioProject project)
+    {
+        if (cloud.Visibility != Visibility.Visible || cloud.IsEnabled != connected)
+            throw new InvalidOperationException("Cloud Storage must be visible and enabled only after Google sign-in.");
+        if (!connected) {
+            if (cloudModeFields.Visibility != Visibility.Collapsed || browseCloud.Visibility != Visibility.Collapsed)
+                throw new InvalidOperationException("Cloud transfer controls shown before sign-in.");
+            return;
+        }
+        var attempts = 0;
+        BrowseCloudVideo = async (window, library) =>
+        {
+            if (library != LibraryPath) throw new InvalidOperationException("Cloud import lost the selected project location.");
+            if (++attempts == 1) return null;
+            var browser = new CloudVideosDialog(window, ActualTheme, settings, selectConfiguredBucket: true);
+            browser.UseFixtureForSmokeTest();
+            var showing = WindowedDialog.ShowAsync(browser, window, 820, 820);
+            try { await browser.VerifyConfiguredImportForSmokeTestAsync(project); }
+            finally { browser.Hide(); await showing; }
+            return browser.ImportedProject;
+        };
+        cloud.IsChecked = true;
+        cloudMode.SelectedIndex = 1;
+        await Task.Yield();
+        if (attempts != 1 || browseCloud.Visibility != Visibility.Visible || videoFileRow.Visibility != Visibility.Collapsed || IsPrimaryButtonEnabled)
+            throw new InvalidOperationException("Choosing an existing cloud video must open the separate browser.");
+        if (ImportedCloudProject != null)
+            throw new InvalidOperationException("Cancelling the browser must keep New Project available to retry.");
+        await BrowseCloudVideosAsync();
+        if (attempts != 2 || ImportedCloudProject != project)
+            throw new InvalidOperationException("New Project did not accept the project from the separate browser.");
+    }
     internal async Task InspectVideoForSmokeTestAsync(string path) => await InspectVideoAsync(await StorageFile.GetFileFromPathAsync(path));
     internal string DetailsForSmokeTest => details.Text;
     internal FrameworkElement YouTubeFieldsForSmokeTest => youtubeFields;
     internal void SetAssetsForSmokeTest(ImportAssetSelection selection) { importDescription.IsChecked = true; assets.SetFilesForSmokeTest(selection); }
-    internal void ScrollToAssetsForSmokeTest() { if (Content is ScrollViewer scroll) scroll.ChangeView(null, scroll.ScrollableHeight, null, true); }
+    internal void ScrollToAssetsForSmokeTest() => form.ChangeView(null, form.ScrollableHeight, null, true);
+    internal FrameworkElement[] SourceLabelsForSmokeTest => new FrameworkElement[] { sourceLabel, local, youtube, cloud, sourceHeading };
+    internal bool LocalFormFitsForSmokeTest => form.ScrollableHeight <= 1;
+    internal async Task VerifySourceSwitchesForSmokeTestAsync(Func<string, Task> verifyBounds)
+    {
+        foreach (var (name, choice, mode) in new[] { ("youtube", youtube, 0), ("upload", cloud, 0), ("bucket", cloud, 1), ("local", local, 0) })
+        {
+            cloudMode.SelectedIndex = mode;
+            choice.IsChecked = true;
+            await Task.Delay(150);
+            if (choice == youtube && form.ScrollableHeight <= 0)
+                throw new InvalidOperationException("The YouTube form must scroll in the fixed window.");
+            await verifyBounds(name);
+        }
+    }
     internal void SelectYouTubeForSmokeTest(string url) { youtube.IsChecked = true; youtubeUrl.Text = url; UpdateYouTubeDetails(); }
     internal void SetYouTubeDetailsForSmokeTest(string title)
     {
@@ -79,7 +159,7 @@ public sealed class NewProjectDialog : ContentDialog
     }
 #endif
 
-    public NewProjectDialog(Window owner, ElementTheme theme, SettingsStore settings, bool openYouTube = false)
+    public NewProjectDialog(Window owner, ElementTheme theme, SettingsStore settings, bool openYouTube = false, bool openCloud = false)
     {
         this.owner = owner; this.settings = settings;
         Loaded += (_, _) => ConnectivityService.Shared.Changed += ConnectivityChanged;
@@ -90,18 +170,35 @@ public sealed class NewProjectDialog : ContentDialog
         Resources["ContentDialogMaxWidth"] = 760d;
         Resources["ContentDialogMaxHeight"] = 1000d;
         Title = "New Project"; PrimaryButtonText = "Create Project"; CloseButtonText = "Cancel";
+        FullSizeDesired = true;
         DefaultButton = ContentDialogButton.Primary;
         local.VerticalContentAlignment = VerticalAlignment.Center;
         youtube.VerticalContentAlignment = VerticalAlignment.Center;
+        cloud.VerticalContentAlignment = VerticalAlignment.Center;
         local.Content = SourceLabel("\uE8B2", "Video File");
         youtube.Content = SourceLabel("\uE768", "YouTube Video");
+        cloud.Content = SourceLabel("\uE753", "Cloud Storage");
+        cloud.IsEnabled = settings.GetBool("vertexConnected");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(cloud, "Cloud Storage");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(cloud, "Cloud Storage requires Google sign-in in AI settings.");
         var chooser = new Button { Content = SourceLabel("\uE8B7", "Choose Video…"), HorizontalAlignment = HorizontalAlignment.Right };
         chooser.Click += async (_, _) => await ChooseVideoAsync();
-        var fileRow = new Grid { ColumnSpacing = 12, Width = 630 };
+        var fileRow = videoFileRow;
         fileRow.ColumnDefinitions.Add(new ColumnDefinition());
         fileRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         fileRow.Children.Add(new TextBlock { Text = "Video file", VerticalAlignment = VerticalAlignment.Center });
         Grid.SetColumn(chooser, 1); fileRow.Children.Add(chooser);
+        cloudModeFields.Children.Add(cloudMode);
+        browseCloud.Content = SourceLabel("\uE753", "Choose from Cloud Storage…");
+        browseCloud.Click += async (_, _) => await BrowseCloudVideosAsync();
+        var cloudMenu = MenuAccessKeys.Create();
+        var browseItem = new MenuFlyoutItem { Text = "Choose from Cloud Storage…", Icon = MenuIcons.Create("open-cloud-videos") };
+        browseItem.Click += async (_, _) => await BrowseCloudVideosAsync();
+        cloudMenu.Opening += (_, _) => browseItem.IsEnabled = CanBrowseCloud;
+        cloudMenu.Items.Add(browseItem);
+        browseCloud.ContextFlyout = cloudMenu;
+        cloudModeFields.Children.Add(browseCloud);
+        localFields.Children.Add(cloudModeFields);
         localFields.Children.Add(fileRow);
         localFields.Children.Add(selectedFile);
         localFields.Children.Add(preview);
@@ -117,36 +214,45 @@ public sealed class NewProjectDialog : ContentDialog
         youtubeFields.Children.Add(youtubePreview);
         youtubeFields.Children.Add(youtubeStatus);
         fetchDetails.Click += async (_, _) => await FetchYouTubeDetailsAsync();
-        var sourceOptions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
         sourceOptions.Children.Add(local); sourceOptions.Children.Add(youtube);
-        var sourceRow = new StackPanel { Spacing = 6, Width = 630 };
+        sourceOptions.Children.Add(cloud);
+        cloud.Checked += (_,_) => UpdateSource();
+        cloudMode.SelectionChanged += async (_, _) =>
+        {
+            UpdateSource();
+            if (IsLoaded && cloudMode.SelectedIndex == 1) await BrowseCloudVideosAsync();
+        };
         var sourceChoices = new Grid { ColumnSpacing=16, Tag="dialog-form-row", MinHeight=36 };
         sourceChoices.ColumnDefinitions.Add(new ColumnDefinition { Width=GridLength.Auto });
         sourceChoices.ColumnDefinitions.Add(new ColumnDefinition());
         sourceChoices.RowDefinitions.Add(new RowDefinition { Height=GridLength.Auto });
         sourceChoices.RowDefinitions.Add(new RowDefinition { Height=GridLength.Auto });
-        var sourceLabel = new TextBlock { Text="Project type", VerticalAlignment=VerticalAlignment.Center };
-        sourceOptions.VerticalAlignment=VerticalAlignment.Center;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(sourceOptions,"Project type");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetLabeledBy(sourceOptions,sourceLabel);
         sourceChoices.Children.Add(sourceLabel);Grid.SetColumn(sourceOptions,1);sourceChoices.Children.Add(sourceOptions);
         sourceChoices.SizeChanged += (_,args) => {
-            var narrow=args.NewSize.Width<360;
+            var narrow=args.NewSize.Width<520;
             Grid.SetColumnSpan(sourceLabel,narrow?2:1);Grid.SetRow(sourceOptions,narrow?1:0);
             Grid.SetColumn(sourceOptions,narrow?0:1);Grid.SetColumnSpan(sourceOptions,narrow?2:1);
-            sourceChoices.RowSpacing=narrow?8:0;sourceOptions.HorizontalAlignment=narrow?HorizontalAlignment.Left:HorizontalAlignment.Right;
+            sourceChoices.RowSpacing=narrow?8:0;
         };
-        sourceRow.Children.Add(sourceChoices);
-        var contents = new StackPanel { Spacing = 14, Width = 660 };
-        contents.Children.Add(new ConnectivityNotice());
-        contents.Children.Add(CompactDialogLayout.Card(sourceRow,"Project source"));
+        var layout = new Grid();
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition());
+        layout.Children.Add(new ConnectivityNotice());
+        var sourceCard = CompactDialogLayout.Card(sourceChoices, "Project source");
+        sourceCard.Margin = new Thickness(0, 0, 0, 14);
+        Grid.SetRow(sourceCard, 1); layout.Children.Add(sourceCard);
+
+        var contents = new StackPanel { Spacing = 14 };
         contents.Children.Add(sourceHeading);
         localCard = CompactDialogLayout.Card(localFields,"Video file");
         youtubeCard = CompactDialogLayout.Card(youtubeFields,"YouTube video");
         contents.Children.Add(localCard);
         contents.Children.Add(youtubeCard);
         contents.Children.Add(new TextBlock { Text = "Audio Description", FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(2, 4, 0, 0) });
-        var audioPanel = new StackPanel { Spacing = 6, Width = 630 };
+        var audioPanel = new StackPanel { Spacing = 6 };
         audioPanel.Children.Add(createDescription);
         audioPanel.Children.Add(importDescription);
 
@@ -163,7 +269,7 @@ public sealed class NewProjectDialog : ContentDialog
         createDescription.Checked += (_, _) => UpdateCreationState();
         importDescription.Checked += (_, _) => UpdateCreationState();
         ToolTipService.SetToolTip(importDescription, "Choose existing transcript, summary, AD transcript, or AD audio files before creating the project");
-        var location = new StackPanel { Width = 630, Spacing = 6 };
+        var location = new StackPanel { Spacing = 6 };
         var chooseLocation = new Button { Content = "Choose Project Location…" };
         ToolTipService.SetToolTip(chooseLocation, "Choose the parent folder; a new project folder is created inside it");
         chooseLocation.Click += async (_, _) =>
@@ -183,13 +289,20 @@ public sealed class NewProjectDialog : ContentDialog
         locationRow.Children.Add(libraryLocation); Grid.SetColumn(chooseLocation,1); locationRow.Children.Add(chooseLocation);
         location.Children.Add(locationRow);
         contents.Children.Add(CompactDialogLayout.Card(location,"Project location"));
-        Content = new ScrollViewer { Content = contents, MaxHeight = 650, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        form.Content = contents;
+        Grid.SetRow(form, 2); layout.Children.Add(form);
+        Content = layout;
+        details.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) => UpdateLocalDetailsVisibility());
+        youtubeStatus.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) =>
+            youtubeStatus.Visibility = string.IsNullOrEmpty(youtubeStatus.Text) ? Visibility.Collapsed : Visibility.Visible);
         local.Checked += (_, _) => UpdateSource(); youtube.Checked += (_, _) => UpdateSource();
         youtubeUrl.TextChanged += (_, _) => UpdateYouTubeDetails();
         PrimaryButtonClick += (_, args) => { if (!IsPrimaryButtonEnabled) args.Cancel = true; };
         SecondaryButtonClick += (_, args) => { args.Cancel = !IsSecondaryButtonEnabled; CombineRequested = !args.Cancel; };
         Closing += (_, _) => { inspection?.Cancel(); youtubeInspection?.Cancel(); preview.Source = null; };
-        if (openYouTube) youtube.IsChecked = true; else local.IsChecked = true;
+        Opened += (_, _) => UpdateSource();
+        if (openCloud && cloud.IsEnabled) { cloudMode.SelectedIndex = 1; cloud.IsChecked = true; }
+        else if (openYouTube) youtube.IsChecked = true; else local.IsChecked = true;
         UpdateSource();
     }
 
@@ -202,15 +315,66 @@ public sealed class NewProjectDialog : ContentDialog
     }
     private void UpdateSource()
     {
+        var selectObject = IsCloud && cloudMode.SelectedIndex == 1;
+        cloudModeFields.Visibility = IsCloud ? Visibility.Visible : Visibility.Collapsed;
+        browseCloud.Visibility = selectObject ? Visibility.Visible : Visibility.Collapsed;
+        browseCloud.IsEnabled = CanBrowseCloud;
+        selectedFile.Visibility = selectObject ? Visibility.Collapsed : Visibility.Visible;
+        preview.Visibility = !selectObject && validLocal ? Visibility.Visible : Visibility.Collapsed;
+        videoFileRow.Visibility = selectObject ? Visibility.Collapsed : Visibility.Visible;
+        UpdateLocalDetailsVisibility();
         localCard.Visibility = IsYouTube ? Visibility.Collapsed : Visibility.Visible;
         youtubeCard.Visibility = IsYouTube ? Visibility.Visible : Visibility.Collapsed;
-        sourceHeading.Text = IsYouTube ? "YouTube Video" : "Video File";
+        sourceHeading.Text = IsCloud ? "Cloud Storage" : IsYouTube ? "YouTube Video" : "Video File";
         if (IsYouTube) preview.MediaPlayer?.Pause();
         fetchDetails.IsEnabled = ValidYouTubeId(YouTubeUrl) != null && youtubeInspection == null && ConnectivityService.Shared.Available(OnlineService.YouTube);
         ToolTipService.SetToolTip(fetchDetails, ConnectivityService.Shared.Reason(OnlineService.YouTube) ?? "Fetch video details");
         assets.SetContext(IsYouTube, false);
         UpdateCreationState();
     }
+
+    private void UpdateLocalDetailsVisibility()
+    {
+        details.Visibility = videoFileRow.Visibility == Visibility.Visible && !string.IsNullOrEmpty(details.Text)
+            ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private bool CanBrowseCloud => !browsing && IsCloud && cloudMode.SelectedIndex == 1 &&
+        settings.GetBool("vertexConnected") && BrowseCloudVideo != null && CompanionWindow != null;
+
+    private async Task BrowseCloudVideosAsync()
+    {
+        if (!CanBrowseCloud || BrowseCloudVideo is not { } browse || CompanionWindow is not { } window) return;
+        browsing = true;
+        form.IsEnabled = local.IsEnabled = youtube.IsEnabled = cloud.IsEnabled = browseCloud.IsEnabled = false;
+        try
+        {
+            ImportedCloudProject = await browse(window, LibraryPath);
+            if (ImportedCloudProject != null) Hide();
+        }
+        finally
+        {
+            browsing = false;
+            form.IsEnabled = local.IsEnabled = youtube.IsEnabled = true;
+            cloud.IsEnabled = settings.GetBool("vertexConnected");
+            UpdateSource();
+        }
+    }
+
+    internal static string CloudFileSize(string? value) =>
+        long.TryParse(value, out var bytes) ? $"{bytes:N0} bytes" : "—";
+
+    internal static void AddCloudMetadata(Action<string, string> add, string? size, string? type,
+        string? storageClass, string? created, string? updated)
+    {
+        if (size != null) add("File size", CloudFileSize(size));
+        if (type != null) add("Content type", type);
+        if (storageClass != null) add("Storage class", storageClass);
+        if (created != null) add("Created", FormatDate(created));
+        if (updated != null) add("Updated", FormatDate(updated));
+        static string FormatDate(string value) => DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out var date) ? date.LocalDateTime.ToString("g") : value;
+    }
+
     private void UpdateCreationState()
     {
         if (assets == null) return;
@@ -218,6 +382,7 @@ public sealed class NewProjectDialog : ContentDialog
         originalAssetsCard.Visibility = IsYouTube ? Visibility.Visible : Visibility.Collapsed;
         descriptionGuidance.Text = ImportAssetsAfterCreation ? "Choose existing files below. Text timing is reviewed before import. Combining audio is optional." : "Generate a transcript, summary, and descriptions after creating the project.";
         var sourceReady = IsYouTube ? fetchedYouTubeId != null && fetchedYouTubeId == ValidYouTubeId(YouTubeUrl) && ConnectivityService.Shared.Available(OnlineService.YouTube) : validLocal;
+        if (IsCloud) sourceReady = settings.GetBool("vertexConnected") && !string.IsNullOrWhiteSpace(settings.Get("vertexBucket")) && cloudMode.SelectedIndex == 0 && validLocal;
         var assetsReady = !ImportAssetsAfterCreation || !assets.Selection.HasAny || assets.CanImport;
         IsPrimaryButtonEnabled = sourceReady && assetsReady && !string.IsNullOrWhiteSpace(LibraryPath);
         PrimaryButtonText = ImportAssetsAfterCreation ? "Create Project & Open Editor" : "Create Project";

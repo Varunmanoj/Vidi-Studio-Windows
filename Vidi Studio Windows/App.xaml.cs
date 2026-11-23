@@ -96,12 +96,12 @@ public partial class App : Application
     internal static MainWindow EditorForProject(Models.StudioProject project) => Windows.OfType<MainWindow>()
         .FirstOrDefault(w => string.Equals(w.SettingsProject?.Folder, project.Folder, StringComparison.OrdinalIgnoreCase)) ?? OpenWindow(project.Folder);
 
-    internal static void CloseEditorsForDeletedProject(string folder)
+    internal static void CloseEditorsForDeletedProject(Models.StudioProject project)
     {
-        var editors = Windows.Where(window => window.IsEditingFolder(folder)).ToArray();
+        var editors = Windows.Where(window => window.IsEditingFolder(project.Folder)).ToArray();
         if (editors.Length > 0 && editors.Length == Windows.Count) OpenWindow();
         foreach (var editor in editors) editor.CloseDeletedProjectEditor();
-        foreach (var window in Windows.ToArray()) window.RefreshAfterProjectDeletion();
+        foreach (var window in Windows.ToArray()) window.RefreshAfterProjectDeletion(project);
     }
 
     internal static MainWindow ProjectLibrary() =>

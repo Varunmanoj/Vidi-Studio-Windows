@@ -36,7 +36,7 @@ public sealed partial class SettingsDialog
         reference.Expanding += (_, _) => shortcutReferenceExpanded = true;
         reference.Collapsed += (_, _) => shortcutReferenceExpanded = false;
         var menu = MenuAccessKeys.Create();
-        var toggle = new ToggleMenuFlyoutItem { Text = "Keyboard shortcut reference", Tag = "settings-shortcut-reference" };
+        var toggle = new ToggleMenuFlyoutItem { Text = "Keyboard shortcut reference", Tag = "settings-shortcut-reference", Icon = new FontIcon { Glyph = "\uE765" } };
         toggle.Click += (_, _) => reference.IsExpanded = toggle.IsChecked;
         menu.Opening += (_, _) => toggle.IsChecked = reference.IsExpanded;
         menu.Items.Add(toggle); reference.ContextFlyout = menu;
@@ -69,7 +69,7 @@ public sealed partial class SettingsDialog
         var license = new Button { Content = "Open FFmpeg License" };
         license.Click += async (_, _) => await OpenFfmpegLicenseAsync();
         var licenseMenu = MenuAccessKeys.Create();
-        var openLicense = new MenuFlyoutItem { Text = "Open FFmpeg License", Tag = "about-ffmpeg-license" };
+        var openLicense = new MenuFlyoutItem { Text = "Open FFmpeg License", Tag = "about-ffmpeg-license", Icon = new FontIcon { Glyph = "\uE8A5" } };
         openLicense.Click += async (_, _) => await OpenFfmpegLicenseAsync();
         licenseMenu.Items.Add(openLicense); license.ContextFlyout = licenseMenu;
         group.Children.Add(license);
@@ -118,7 +118,7 @@ public sealed partial class SettingsDialog
         var button = new Button { Content = title };
         button.Click += async (_, _) => await Open();
         var menu = MenuAccessKeys.Create();
-        var action = new MenuFlyoutItem { Text = title, Tag = id };
+        var action = new MenuFlyoutItem { Text = title, Tag = id, Icon = new FontIcon { Glyph = "\uE8A5" } };
         action.Click += async (_, _) => await Open();
         menu.Items.Add(action); button.ContextFlyout = menu;
         return button;

@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -371,7 +372,7 @@ public sealed partial class MainWindow
     private void FilterGallery()
     {
         var selected = SelectedGalleryProject();
-        Model.Reload(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", _ => "all" });
+        Model.Reload(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", 3 => "cloud", _ => "all" });
         if (selected != null && Model.Projects.Contains(selected))
         {
             GalleryGrid.SelectedItem = selected;
@@ -393,22 +394,46 @@ public sealed partial class MainWindow
     }
     private void GalleryProject_Click(object sender, ItemClickEventArgs e) { if (e.ClickedItem is StudioProject p) App.OpenWindow(p.Folder); }
     private async void NewProject_Click(object sender, RoutedEventArgs e) => await ShowNewProjectDialogAsync(false);
+    private int editorActionHoverVersion;
+
+    private async void EditorActionTooltip_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (e.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse ||
+            sender is not FrameworkElement owner || ToolTipService.GetToolTip(owner) is not ToolTip tooltip) return;
+        var version = ++editorActionHoverVersion;
+        await Task.Delay(500);
+        if (version != editorActionHoverVersion || !owner.IsLoaded || owner.Visibility != Visibility.Visible || owner.XamlRoot == null) return;
+        // Keep the native tooltip available when WinUI does not start its hover timer.
+        if (!tooltip.IsOpen)
+        {
+            tooltip.XamlRoot ??= owner.XamlRoot;
+            tooltip.IsOpen = true;
+        }
+    }
+
+    private void EditorActionTooltip_Dismiss(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        editorActionHoverVersion++;
+        if (sender is FrameworkElement owner && ToolTipService.GetToolTip(owner) is ToolTip { IsOpen: true } tooltip)
+            tooltip.IsOpen = false;
+    }
+
     private void SetEditModeButton(bool editing)
     {
         EditModeButton.Content = new FontIcon { Glyph = editing ? "\uE73E" : "\uE70F" };
         var section = Section.SelectedIndex switch
         {
-            0 => "transcript segments", 1 => "summary", 2 => "Audio Description segments", 4 => "AD Transcript segments", _ => "this section"
+            0 => "transcript segments", 1 => "summary", 2 => "Audio Description segments", 3 => "AD Transcript segments", _ => "this section"
         };
         var label = editing ? $"Done editing {section}" : $"Edit {section}";
-        ToolTipService.SetToolTip(EditModeButton, label);
+        EditModeToolTip.Content = $"{label} ({DesktopShortcuts["segment-edit-mode"].Text})";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditModeButton, label);
     }
 
     private void UpdateEditorActionVisibility()
     {
         // Keep the section's generation shortcut available beside Add, including with the inspector open.
-        GenerateCurrent.Visibility = Section.SelectedIndex <= 2
+        GenerateCurrentGroup.Visibility = GenerateCurrent.Visibility = Section.SelectedIndex <= 2
             ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -424,7 +449,7 @@ public sealed partial class MainWindow
         EmptySectionTitle.Text = $"Your {name.ToLowerInvariant()} appears here";
         EmptySectionGenerate.Content = $"Generate {name}";
         EmptySectionGenerate.IsEnabled = CanRunDesktopCommand(index switch { 0 => "transcribe", 1 => "generate-summary", _ => "generate-ad-cues" });
-        ToolTipService.SetToolTip(EmptySectionGenerate, ToolTipService.GetToolTip(GenerateCurrent));
+        ToolTipService.SetToolTip(EmptySectionGenerate, GenerateCurrentToolTip.Content);
         EmptySectionImport.Content = index switch { 0 => "Import Transcript…", 1 => "Import Summary…", _ => "Import Descriptions…" };
         EmptySectionImport.IsEnabled = Model.Idle;
     }
@@ -469,7 +494,7 @@ public sealed partial class MainWindow
     }
     private void UpdateSegmentMoreVisibility()
     {
-        var timedSection = Section.SelectedIndex is 0 or 2 or 4;
+        var timedSection = Section.SelectedIndex is 0 or 2 or 3;
         EditorMoreButton.Visibility = !timedSection || editMode ? Visibility.Visible : Visibility.Collapsed;
     }
     // Older generated XAML can still reference the pre-rename handler during
@@ -529,7 +554,7 @@ public sealed partial class MainWindow
     }
     private string EditorSectionTitle => Section.SelectedIndex switch
     {
-        1 => "Summary", 2 => "Descriptions", 3 => "AD Overview", 4 => "AD Transcript", _ => "Transcript"
+        1 => "Summary", 2 => "Descriptions", 4 => "Overview", 3 => "AD Transcript", _ => "Transcript"
     };
     private void UpdateEditorWindowTitle()
     {
@@ -538,14 +563,26 @@ public sealed partial class MainWindow
         Title = ProjectTitle.Text + " — Vidi Studio";
     }
 
+    private void OverviewPair_SizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        var grid = (Grid)sender;
+        var compact = args.NewSize.Width < 656;
+        var secondGroup = (FrameworkElement)grid.Children[1];
+        Grid.SetRow(secondGroup, compact ? 1 : 0);
+        Grid.SetColumn(secondGroup, compact ? 0 : 1);
+        grid.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        grid.ColumnSpacing = compact ? 0 : 16;
+        grid.RowSpacing = compact ? 16 : 0;
+    }
+
     private void UpdateSectionPresentation()
     {
         if (Model.Project is not { } p) return;
         var index = Section.SelectedIndex;
         UpdateEditorWindowTitle();
-        foreach (var segment in p.Transcript.Concat(p.Cues)) segment.ShowKind = index == 4;
+        foreach (var segment in p.Transcript.Concat(p.Cues)) segment.ShowKind = index == 3;
         // Reset the source so row templates see the combined-view labels.
-        var name = index switch { 0 => "Transcript", 1 => "Summary", 2 => "Audio Descriptions", 3 => "Narration", 4 => "AD Transcript", _ => "AD Transcript" };
+        var name = index switch { 0 => "Transcript", 1 => "Summary", 2 => "Audio Descriptions", 4 => "Narration", 3 => "AD Transcript", _ => "AD Transcript" };
         var existing = index switch { 0 => p.Transcript.Count > 0, 1 => p.Summary.Length > 0, 2 => p.Cues.Count > 0, _ => false };
         var generateLabel = (existing ? "Regenerate " : "Generate ") + name + "…";
         var generateIcon = index switch { 0 => "Generate transcript", 1 => "Generate summary", _ => "Generate descriptions" };
@@ -556,8 +593,8 @@ public sealed partial class MainWindow
         };
         GenerateCurrent.Content = Views.MenuIcons.Create(generateIcon);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(InspectorGenerate, generateLabel);
-        ToolTipService.SetToolTip(GenerateCurrent, generateLabel);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(GenerateCurrent, generateLabel);
+        UpdateEditorGenerationTooltip();
         InspectorGenerate.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
         UpdateEditorActionVisibility();
         EditorSectionHeading.Text = EditorSectionTitle;
@@ -568,32 +605,50 @@ public sealed partial class MainWindow
         ContextActions.Visibility = index <= 2 ? Visibility.Visible : Visibility.Collapsed;
         InspectorRewriteButton.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
         NarrationActions.Visibility = index is 1 or 2 or 3 or 4 ? Visibility.Visible : Visibility.Collapsed;
-        InspectorNarrationControls.Visibility = index is 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        InspectorNarrationControls.Visibility = index is 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
         UpdateInspectorSpeechInfo();
         Narration.Visibility = index is 2 or 3 or 4 ? Visibility.Visible : Visibility.Collapsed;
-        Follow.Visibility = index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
-        EditModeButton.Visibility = index is 0 or 1 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
-        EditorAddButton.Visibility = index is 0 or 1 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
-        if (CaptionOverlayButton != null) CaptionOverlayButton.Visibility = index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        Follow.Visibility = index is 0 or 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
+        EditModeButton.Visibility = index is 0 or 1 or 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
+        EditorAddButton.Visibility = index is 0 or 1 or 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
+        var addLabel = index switch
+        {
+            0 => "Add or import transcript segments",
+            1 => "Write or import a summary",
+            2 => "Add or import audio descriptions",
+            _ => "Import audio descriptions"
+        };
+        EditorAddToolTip.Content = addLabel;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditorAddButton, addLabel);
+        if (CaptionOverlayButton != null) CaptionOverlayButton.Visibility = index is 0 or 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
         SetEditModeButton((index == 1 ? summaryEditMode : editMode));
-        EditToolbar.Visibility = editMode && index is 0 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        EditToolbar.Visibility = editMode && index is 0 or 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
         UpdateBulkActionState();
-        OverviewPanel.Visibility = index == 3 ? Visibility.Visible : Visibility.Collapsed;
+        OverviewPanel.Visibility = index == 4 ? Visibility.Visible : Visibility.Collapsed;
         var overview = p.OverviewProject;
-        DescriptionStatisticsSection.Visibility = index is 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
+        DescriptionStatisticsSection.Visibility = index is 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
         DescriptionStatistics.Children.Clear();
-        AddInfo(DescriptionStatistics, "Total AD characters", (index == 3 ? overview : p).DescriptionCharacterCount.ToString("N0"));
-        DescriptionStatistics.Children.Add(ADAudioReadinessRow((index == 3 ? overview : p).AudioReadiness(p.SelectedLanguage)));
+        AddInfo(DescriptionStatistics, "Total AD characters", (index == 4 ? overview : p).DescriptionCharacterCount.ToString("N0"));
+        DescriptionStatistics.Children.Add(ADAudioReadinessRow((index == 4 ? overview : p).AudioReadiness(p.SelectedLanguage)));
         UpdateADAudioReadiness(p);
         OverviewStatistics.Children.Clear(); OriginStatistics.Children.Clear();
-        AddInfo(OverviewStatistics, "Viewing language", OutputLanguage.Label(p.OverviewLanguageCode));
+        OverviewProjectDetails.Children.Clear();
+        AddInfo(OverviewProjectDetails, "Project name", p.Name);
+        AddInfo(OverviewProjectDetails, "Project type", p.IsYouTube ? "YouTube Video" : p.CloudVideo != null ? "Cloud Storage" : "Local Video");
+        AddInfo(OverviewProjectDetails, "Video duration", p.DurationLabel, NarrationTimeFormat.SpokenProjectDuration(p.Duration));
+        AddInfo(OverviewProjectDetails, "Viewing language", OutputLanguage.Label(p.OverviewLanguageCode));
+        OverviewTranscript.Children.Clear();
+        AddInfo(OverviewTranscript, "Spoken transcript segments", overview.Transcript.Count.ToString("N0"));
+        AddInfo(OverviewTranscript, "Transcript characters", overview.Transcript.Sum(row => new StringInfo(row.Text).LengthInTextElements).ToString("N0"));
+        OverviewSummary.Children.Clear();
+        AddInfo(OverviewSummary, "Summary status", string.IsNullOrWhiteSpace(overview.Summary) ? "Unavailable" : "Available");
+        AddInfo(OverviewSummary, "Summary characters", new StringInfo(overview.Summary).LengthInTextElements.ToString("N0"));
         AddInfo(OverviewStatistics, "Description segments", overview.Cues.Count.ToString());
         AddInfo(OverviewStatistics, "Total AD characters", overview.DescriptionCharacterCount.ToString("N0"));
         AddInfo(OverviewStatistics, "Narration audio ready", overview.Cues.Count(c => c.AudioReady).ToString());
         AddInfo(OverviewStatistics, "Audio needs updating", overview.Cues.Count(c => c.AudioNeedsRegeneration).ToString());
         AddInfo(OverviewStatistics, "Audio missing", overview.Cues.Count(c => !c.AudioReady && !c.AudioNeedsRegeneration).ToString());
         AddInfo(OverviewStatistics, "Description time", TimeSpan.FromSeconds(overview.Cues.Sum(c => c.End - c.Start)).ToString(@"mm\:ss"));
-        AddInfo(OverviewStatistics, "Spoken transcript segments", overview.Transcript.Count.ToString());
         var voiceReport = Model.NarrationVoiceUsageReport(overview);
         var voiceStat = voiceReport == null || voiceReport.AllSegments.Count == 0
             ? "None"
@@ -668,8 +723,35 @@ public sealed partial class MainWindow
         UpdateAudioSourcePanel();
         ProjectDetails.Children.Clear(); VideoDetails.Children.Clear(); YouTubeInspectorDetails.Children.Clear(); InspectorExports.Children.Clear();
         YouTubeDetailsSection.Visibility = p.IsYouTube ? Visibility.Visible : Visibility.Collapsed;
-        AddInfo(ProjectDetails, "Name", p.Name); AddInfo(ProjectDetails, "Type", p.IsYouTube ? "YouTube" : "Local Video");
+        AddInfo(ProjectDetails, "Name", p.Name); AddInfo(ProjectDetails, "Type", p.IsYouTube ? "YouTube" : p.CloudVideo != null ? "Cloud Storage" : "Local Video");
         AddInfo(ProjectDetails, "Folder", p.Folder);
+        if (p.CloudVideo is { } cloud) {
+            var bucket = cloud.GetValueOrDefault("bucket") ?? "";
+            var objectName = cloud.GetValueOrDefault("object") ?? "";
+            var thumbnail = p.ThumbnailUri;
+            if (thumbnail != null) {
+                var image = new Image { Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(thumbnail),
+                    Width = 112, Height = 64, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(image, "Cloud video thumbnail");
+                ProjectDetails.Children.Add(image);
+            }
+            AddInfo(ProjectDetails, "Filename", objectName.Split('/').Last());
+            AddInfo(ProjectDetails, "Storage source", p.ReferencesCloudVideo ? "Existing bucket video" : "Project-owned video");
+            AddInfo(ProjectDetails, "Vertex AI project", cloud.GetValueOrDefault("project") ?? "");
+            AddInfo(ProjectDetails, "Bucket", bucket);
+            AddInfo(ProjectDetails, "Cloud path", $"gs://{bucket}/{objectName}");
+            Views.NewProjectDialog.AddCloudMetadata((label, value) => AddInfo(ProjectDetails, label, value),
+                cloud.GetValueOrDefault("size"), cloud.GetValueOrDefault("contentType"), cloud.GetValueOrDefault("storageClass"),
+                cloud.GetValueOrDefault("created"), cloud.GetValueOrDefault("updated"));
+        }
+        if (!p.IsYouTube && (p.CloudVideo != null || Model.Settings.GetBool("vertexConnected"))) {
+            foreach (var action in CloudActions(p)) {
+                var button = new Button { Content = action.Title };
+                ToolTipService.SetToolTip(button, action.Title);
+                button.Click += async (_,_) => await CloudActionAsync(action.Id,p);
+                ProjectDetails.Children.Add(button);
+            }
+        }
         AddInfo(VideoDetails, "Source", p.IsYouTube ? p.YoutubeURL ?? "" : Path.GetFileName(p.Source));
         AddInfo(VideoDetails, "Duration", NarrationTimeFormat.ProjectDuration(p.Duration), NarrationTimeFormat.SpokenProjectDuration(p.Duration));
         AddInfo(VideoDetails, "Resolution", p.IsYouTube && p.Width <= 0 ? "Not available from YouTube" : $"{p.Width} × {p.Height}");
@@ -789,6 +871,13 @@ public sealed partial class MainWindow
     private void UpdateAvailability()
     {
         if (Model.Project is not { } p) return;
+        bool vertex = Model.Settings.Get("aiProvider") == "vertex";
+        PrepareAnalysisButton.Visibility = RefreshAnalysisButton.Visibility = vertex ? Visibility.Collapsed : Visibility.Visible;
+        if (vertex && !p.IsYouTube) {
+            AnalysisAvailability.Text = p.CloudVideo != null ? "Private Cloud Storage video" :
+                Model.Settings.Get("vertexAuth") == "express" ? "Local video for Vertex AI express mode" : "Upload to Cloud Storage for Vertex AI";
+            return;
+        }
         if (p.IsYouTube) { AnalysisAvailability.Text = "YouTube is accessed through its public link."; return; }
         if (p.Extra?.TryGetValue("geminiVideo", out var state) == true && state.ValueKind == JsonValueKind.Object)
         {

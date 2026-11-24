@@ -529,12 +529,14 @@ public sealed class NewProjectDialog : ContentDialog
     {
         SelectedYouTubeVideo = video;
         fetchedYouTubeId = video.Id;
-        ShowYouTubePreview(video.Id, video.Title, video.Channel, video.Thumbnail, video.Visibility);
+        ShowYouTubePreview(video.Id, video.Title, video.Channel, video.Thumbnail, video.Visibility, video.PreviewAccount);
         youtubeStatus.Text = "";
     }
 
     private void UpdateYouTubeDetails()
     {
+        // The picker sets the URL and its fetched preview together.
+        if (SelectedYouTubeVideo?.Url == YouTubeUrl) return;
         youtubeInspection?.Cancel(); youtubeInspection = null;
         SelectedYouTubeVideo = null;
         fetchedYouTubeId = null; youtubePreview.Visibility = Visibility.Collapsed;
@@ -573,17 +575,18 @@ public sealed class NewProjectDialog : ContentDialog
             request.Dispose();
         }
     }
-    private void ShowYouTubePreview(string id, string title, string author, string thumbnail, string visibility = "")
+    private void ShowYouTubePreview(string id, string title, string author, string thumbnail, string visibility = "", YouTubeAccount? account = null)
     {
         var card = new Grid { ColumnSpacing = 10 };
         card.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(148) }); card.ColumnDefinitions.Add(new ColumnDefinition());
         var image = new Image { Width = 148, Height = 84, Stretch = Stretch.UniformToFill };
-        if (Uri.TryCreate(thumbnail, UriKind.Absolute, out var imageUrl) && imageUrl.Scheme == "https") image.Source = new BitmapImage(imageUrl);
+        if (YouTubeVideo.SafeThumbnailUri(thumbnail) is { } imageUrl) image.Source = new BitmapImage(imageUrl);
         card.Children.Add(image);
         var information = new StackPanel { Spacing = 5, VerticalAlignment = VerticalAlignment.Center };
         information.Children.Add(new TextBlock { Text = "Project name", Opacity = .65, FontSize = 12 });
         information.Children.Add(new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-        if (author.Length > 0) information.Children.Add(new TextBlock { Text = "Channel: " + author, TextWrapping = TextWrapping.Wrap });
+        information.Children.Add(new TextBlock { Text = "YouTube channel: " + (author.Length > 0 ? author : "Unavailable"), TextWrapping = TextWrapping.Wrap });
+        information.Children.Add(new TextBlock { Text = "Connected account: " + (account == null ? "Not connected" : string.IsNullOrWhiteSpace(account.Name) ? account.Email : account.Name), TextWrapping = TextWrapping.Wrap });
         if (visibility.Length > 0) information.Children.Add(new TextBlock { Text = "Visibility: " + CultureInfo.InvariantCulture.TextInfo.ToTitleCase(visibility), TextWrapping = TextWrapping.Wrap });
         information.Children.Add(new TextBlock { Text = "https://www.youtube.com/watch?v=" + id, Opacity = .7, FontSize = 12, TextWrapping = TextWrapping.Wrap });
         Grid.SetColumn(information, 1); card.Children.Add(information);

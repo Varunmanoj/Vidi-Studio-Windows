@@ -108,16 +108,19 @@ public sealed class ProjectSourcesSettingsControl : UserControl
             Row(sources, "Summary", string.IsNullOrWhiteSpace(project.Summary) ? "Not available" : project.SummaryOriginLabel + (project.SummaryOriginSource is { Length: > 0 } source ? " · " + source : ""));
             Row(sources, "AD transcript", project.ImportedADTranscript?.SourceName ?? (project.Cues.Count == 0 ? "Not available" : "Project descriptions"));
             Row(sources, "AD audio", project.ImportedAudioDescription?.SourceName ?? (project.HasNarrationAudio ? "Generated narration" : "Not available"));
-            if (!project.IsYouTube) Row(sources, "Playback and export audio", "Original audio in the project video");
+            if (!project.UsesStandaloneYouTubeAudio) Row(sources, "Export audio", "Original audio in the project video");
             body.Children.Add(ScreenReaderHeading.Mark(new Expander { Header = "Content sources", Content = sources, IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch }));
-            if (project.IsYouTube) {
+            if (project.AllowsOriginalAudioImport)
                 body.Children.Add(ScreenReaderHeading.Mark(new Expander { Header = "Audio sources", Content = new AudioSourceControls(owner, scoped, showHeading: false, chooseAudio: () => RunAction("import-original-audio"), reviewAudio: () => RunAction("review-audio-timing"), compact:true), IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch }));
+            if (project.IsYouTube) {
                 Actions(body, ("YouTube Details & Captions…", "youtube-captions"), ("Open in YouTube", "youtube-open-browser"));
             }
             var imports = new StackPanel { Spacing = 8 };
             Actions(imports, ("Import Transcript…", "import-transcript"), ("Import Summary…", "import-summary"), ("Import Descriptions…", "import-descriptions"), ("Import AD Audio…", "import-ad-audio"), ("Import Existing Assets…", "import-assets"));
             if (project.IsYouTube) {
-                imports.Children.Add(Action("Import Original Audio…", "import-original-audio"));
+                var original = Action("Import Original Audio…", "import-original-audio");
+                original.IsEnabled = project.AllowsOriginalAudioImport;
+                imports.Children.Add(original);
             }
             body.Children.Add(ScreenReaderHeading.Mark(new Expander { Header = "Import into this project", Content = imports, IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch }));
             Actions(body, ("Export…", "export"), ("Open in Editor", "open-editor"), ("Open Project Folder", "show-folder"), ("Rename…", "rename-project"));

@@ -339,9 +339,18 @@ public sealed partial class MainWindow
             try {
                 var incoming = new Uri(openingProject.YoutubeURL ?? "");
                 var id = incoming.Query.TrimStart('?').Split('&').FirstOrDefault(v => v.StartsWith("v="))?[2..] ?? "";
-                var current = await YouTubeService.Shared.ProjectVideoAsync(id, openingProject.PrivateYouTubeChannel, Model.Settings);
-                if (Model.Project?.Folder != openingProject.Folder) return;
-                current.RequireAvailable(allowPrivate: openingProject.PrivateYouTubeChannel != null);
+                if (openingProject.PrivateYouTubeChannel is { } channel &&
+                    openingProject.YouTubeMetadata is { ValueKind: System.Text.Json.JsonValueKind.Object })
+                {
+                    if (YouTubeService.Shared.PrivateConnection(channel, Model.Settings) == null)
+                        throw new InvalidOperationException(YouTubeVideo.PrivateVideoMessage);
+                }
+                else if (openingProject.ActiveLocalYouTubePlaybackPath == null || openingProject.PrivateYouTubeChannel != null)
+                {
+                    var current = await YouTubeService.Shared.ProjectVideoAsync(id, openingProject.PrivateYouTubeChannel, Model.Settings);
+                    if (Model.Project?.Folder != openingProject.Folder) return;
+                    current.RequireAvailable(allowPrivate: openingProject.PrivateYouTubeChannel != null);
+                }
             } catch (Exception ex) { await ShowError(ex); return; }
         }
         GalleryPanel.Visibility = Visibility.Collapsed; EditorWorkspace.Visibility = Visibility.Visible;
@@ -796,7 +805,7 @@ public sealed partial class MainWindow
         "piper" => "Piper Voices",
         _ => "Windows OneCore",
     };
-    private static void AddInfo(StackPanel panel, string label, string value, string? spokenValue = null)
+    private static Grid AddInfo(StackPanel panel, string label, string value, string? spokenValue = null)
     {
         var row = new Grid { ColumnSpacing = 10 };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.6, GridUnitType.Star) });
@@ -804,6 +813,7 @@ public sealed partial class MainWindow
         var text = new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
         if (spokenValue != null) Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(text, label + ": " + spokenValue);
         ToolTipService.SetToolTip(text, value); Grid.SetColumn(text, 1); row.Children.Add(text); panel.Children.Add(row);
+        return row;
     }
     private async void UpdateInspector(StudioProject p)
     {

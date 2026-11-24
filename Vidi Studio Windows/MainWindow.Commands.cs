@@ -193,7 +193,7 @@ public sealed partial class MainWindow
     }
     private void FullScreen_Click(object sender, RoutedEventArgs e)
     {
-        if (Model.Project?.IsYouTube == true) return;
+        if (Model.Project is not { UsesYouTubePlayer: false, CanPlayVideo: true }) return;
         if (fullScreenVideo) ExitFullScreenVideo();
         else EnterFullScreenVideo();
     }
@@ -340,7 +340,7 @@ public sealed partial class MainWindow
             "youtube-open-browser" => YouTubeService.ProjectWatchURL(project.YoutubeURL) != null,
             "analyze" or "transcribe" or "generate-summary" => Model.CanUseAI,
             "generate-ad-cues" => Model.CanUseAI && project.SavedResults.Any(r => r.Kind == "transcript" && r.State == "saved") && project.SavedResults.Any(r => r.Kind == "summary" && r.State == "saved"),
-            "delete-content" => project.SavedResults.Count > 0 || project.Exports.Count > 0 || project.Thumbnails.Count > 0 || project.Cues.Count > 0 || project.HasTranscript || project.HasSummary,
+            "delete-content" => project.SavedResults.Count > 0 || project.Exports.Count > 0 || project.Thumbnails.Count > 0 || project.Cues.Count > 0 || project.HasTranscript || project.HasSummary || (project.IsYouTube && project.YouTubePlaybackVideo != null),
             "prepare-video" => !project.IsYouTube || ConnectivityService.Shared.Available(OnlineService.YouTube),
             _ => true
         };

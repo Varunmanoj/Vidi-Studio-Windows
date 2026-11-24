@@ -23,22 +23,25 @@ public sealed partial class MainWindow
 
     internal async Task ImportExistingAssetsAsync(Models.ImportScope scope = Models.ImportScope.All)
     {
-        if (Model.Busy || Model.Project is not { } project) return;
+        if (Model.Busy || Model.Project is not { } project ||
+            scope == Models.ImportScope.OriginalAudio && !project.AllowsOriginalAudioImport) return;
         var dialog = new Views.ImportAssetsDialog(this, project, scope);
         try {
             var result = await ShowDialogAsync(dialog, 800, 760);
             if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary)) return;
+            if (!ReferenceEquals(Model.Project, project)) return;
             await ImportSelectedAssetsAsync(dialog.Selection, dialog.CombineRequested);
         } finally { dialog.CleanupYouTubeCaptions(); }
     }
 
     private async Task ImportSelectedAssetsAsync(ImportAssetSelection selection, bool combine)
     {
-        if (Model.Busy || Model.Project is not { } project || !selection.HasAny) return;
+        if (Model.Busy || Model.Project is not { } project || !selection.HasAny ||
+            selection.OriginalAudioPath != null && !project.AllowsOriginalAudioImport) return;
         var timingFiles = new List<string>();
         try
         {
-            if (selection.OriginalAudioPath is { } original)
+            if (selection.LocalPlaybackVideoPath == null && selection.OriginalAudioPath is { } original)
             {
                 if (!await ImportOriginalAudioAsync(original, selection.OriginalAudioPlayback, selection.OriginalAudioTranscription)) return;
                 project = Model.Project!;
@@ -58,6 +61,11 @@ public sealed partial class MainWindow
                 if (!proceed) return;
                 descriptionTiming = timing;
                 if (timing != null) timingFiles.Add(timing);
+            }
+            if (selection.LocalPlaybackVideoPath is { } video)
+            {
+                if (!await AttachYouTubePlaybackVideoAsync(project, video)) return;
+                project = Model.Project!;
             }
             async Task RunImport(string command, IEnumerable<string> arguments)
             {
@@ -85,8 +93,8 @@ public sealed partial class MainWindow
             if (selection.ADAudioPath is { } audio)
                 await RunImport("import-ad-audio", new[] { "--input", audio, "--audio-mode", selection.ADAudioMode });
             if (combine && selection.ADAudioPath != null)
-                await RunImport("combine-imported-audio", (project.IsYouTube ? new[] { "--audio-only", "--media-format", "wav" } : new[] { "--audio-presentation", "selectable", "--captions", "none", "--media-format", "mov" }));
-            await ShowImportReportAsync();
+                await RunImport("combine-imported-audio", (project.UsesStandaloneYouTubeAudio ? new[] { "--audio-only", "--media-format", "wav" } : new[] { "--audio-presentation", "selectable", "--captions", "none", "--media-format", "mov" }));
+            if ((selection with { LocalPlaybackVideoPath = null }).HasAny) await ShowImportReportAsync();
         }
         catch (OperationCanceledException) { Model.ReportStatus("Import cancelled. Completed imports remain in the project."); }
         catch (Exception ex) { await ShowError(ex); }

@@ -2780,3 +2780,27 @@ Built the ARM64 Debug MSIX and installed 1.0.402.0 with one package registration
 Filter Projects and View list All AI Providers plus categories represented by the loaded library. The filter returns to All AI Providers when its selected category loses its last matching project. Existing search, language, source and sort controls continue to combine with provider filtering.
 
 The Windows 11 ARM64 Debug build replaced the previous registered app. One 1.0.403.0 package in Ok status and one Start entry were verified. The packaged engine doctor and GallerySettingsOnly smoke suite passed. Native checks exercised the accessible dialog and View choices, omitted the draft-only provider, and reset the filter when its last matching fixture was removed. The 98 focused source tests passed. This run's temporary registration tasks, rollback copy and generated runnable layout were removed. Evidence is in build/gallery-provider-403-*.log.
+
+## 1.0.404 · Double-click a video to open or choose it · 2026-11-25
+
+The standalone YouTube and Cloud Storage browsers route double-click on a selected video to Open in Editor. My YouTube Videos opened from New Project routes it to Choose Video. Select mode keeps the browser open and requires explicit confirmation. The nested picker sizes to its parent and preserves the selected preview and caption choice.
+
+Installed ARM64 Debug 1.0.404.0 over the previous copy on Windows 11. One healthy package and one Start entry were verified. Native GallerySettingsOnly and YouTubeLayoutOnly passed using test fixtures, along with the packaged engine doctor and focused source checks. The suites exercised native pointer double-click in the standalone browsers, the existing oversized cloud warning before download, New Project List and Table handoff through the same row action, and explicit confirmation in Select mode. The nested handoff used the shared action because pointer placement in the VM's nested dialog was unreliable. The final temporary tasks and app layouts were removed. Evidence is in build/video-double-click-404-verify-handoff.log.
+
+## 1.0.407 · YouTube playback, export and Studio · 2026-11-25
+
+Windows matches the Mac YouTube attachment, single-copy replacement, progress, deletion, soundtrack and export behavior. The Studio action is disabled in the YouTube menu and hidden from the inspector for an unmatched channel. Connecting or disconnecting an account refreshes both controls in the open editor.
+
+Installed ARM64 Debug 1.0.407.0 in the Windows 11 test VM with one registered app and Start entry. The 175 source tests, five packaged engine playback tests, and JumpOnly, DialogsOnly and YouTubeLayoutOnly native fixture suites passed. They exercised a portable matching copy, its thumbnail, transport and export availability, player choice menu state, same-channel Studio action, timeline seeking and selective deletion. No live private analysis was run. Evidence is in `build/youtube-playback-407-accounts-*.log`.
+
+## 1.0.408 · Video Player menu and Import Existing Assets · 2026-11-25
+
+View > Video Player shows the chooser for all YouTube projects and the trash action when a copy is attached. The inspector trash button sits beside the playback filename. The Local playback video section in Import Existing Assets stages the file until Import. The native picker is owned by the import companion window.
+
+Installed ARM64 Debug 1.0.408.0 with one registered app and Start entry. The 175 source and five installed-engine tests passed. Native JumpOnly and DialogsOnly passed on the final 408 installation, including the owned Import Existing Assets window, enabled Import for a staged video, the selector state before and after attachment, and the inspector and menu trash actions. A separate YouTubeLayoutOnly run could not reach a browser video row by pointer. Evidence is in `build/youtube-player-menu-408-*.log`.
+
+## 1.0.409 · Exclusive YouTube media attachments · 2026-11-25
+
+Original audio and local playback video imports are mutually exclusive. The owned Import Existing Assets window disables the alternative chooser while a file is staged. Saved attachments block the other file type across the editor and engine. The Project > Import menu and inspector provide confirmed removal of original audio. The View > Video Player menu keeps existing video removal and source selection.
+
+Installed ARM64 Debug 1.0.409.0 in the Windows 11 test VM with one registered app and Start entry. The 176 source tests, six installed-engine tests, JumpOnly, DialogsOnly and YouTubeLayoutOnly passed. Native fixtures verified the owned import window, disabling in both directions while staging, saved audio blocking the preview and menu chooser, and saved video blocking original-audio import. Evidence is in `build/youtube-audio-exclusion-409-*.log`.

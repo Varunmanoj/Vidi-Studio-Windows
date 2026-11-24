@@ -26,6 +26,22 @@ public sealed partial class MainWindow
     private static void OpenProjectInYouTube(Models.StudioProject project) {
         if (YouTubeService.ProjectWatchURL(project.YoutubeURL) is { } url) System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
     }
+    private static string? ProjectYouTubeStudioUrl(Models.StudioProject project)
+    {
+        if (!project.IsYouTube || project.YoutubeURL is not { } url || SharedYouTubeLink.VideoId(url) is not { } id) return null;
+        var channel = project.YouTubeMetadata is { ValueKind: JsonValueKind.Object } metadata &&
+            metadata.TryGetProperty("channelID", out var field) && field.ValueKind == JsonValueKind.String
+            ? field.GetString() : project.PrivateYouTubeChannel;
+        return !string.IsNullOrWhiteSpace(channel) && YouTubeService.Shared.Accounts.Any(account => account.ChannelId == channel)
+            ? $"https://studio.youtube.com/video/{id}/edit" : null;
+    }
+
+    private static void OpenProjectInYouTubeStudio(Models.StudioProject project)
+    {
+        if (ProjectYouTubeStudioUrl(project) is { } url)
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+    }
+
     private readonly HashSet<string> youtubeInspectorLoaded = new();
     private bool youtubeInspectorRefreshing;
     private void PopulateYouTubeInspector(Models.StudioProject project) {
@@ -47,7 +63,68 @@ public sealed partial class MainWindow
                 YouTubeInspectorDetails.Children.Add(new Expander { Header = field.Item1, Content = new TextBlock { Text = display, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true }, HorizontalAlignment = HorizontalAlignment.Stretch });
             }
         }
-        var openYouTube = new Button { Content = "Open in YouTube" }; ToolTipService.SetToolTip(openYouTube, openYouTube.Content); openYouTube.Click += (_, _) => OpenProjectInYouTube(project); YouTubeInspectorDetails.Children.Add(openYouTube);
+        if (project.IsYouTube)
+        {
+            var attachment = project.YouTubePlaybackVideo;
+            var playbackControls = new StackPanel { Spacing = 8 };
+            var fileRow = AddInfo(playbackControls, "Local playback video", attachment == null ?
+                project.OriginalAudio == null ? "No file selected" : "Remove the original audio file to choose a video." :
+                project.LocalYouTubePlaybackPath != null ? attachment.SourceName : "Playback file unavailable");
+            var menu = new MenuFlyout();
+            var choices = attachment == null ? new[] { "choose-playback-video" } : new[] { "choose-playback-video", "remove-playback-video" };
+            foreach (var id in choices)
+            {
+                var title = DesktopCommandTitle(id);
+                var enabled = id == "choose-playback-video" ? CanChooseYouTubePlaybackVideo(project) : CanChangeYouTubePlayback(project);
+                var button = new Button { Content = title, IsEnabled = enabled };
+                AutomationProperties.SetName(button, title);
+                ToolTipService.SetToolTip(button, title);
+                button.Click += async (_, _) => await RunDesktopCommandAsync(id);
+                if (id == "remove-playback-video")
+                {
+                    button.Content = MenuIcons.Create(id);
+                    fileRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                    Grid.SetColumn(button, 2);
+                    fileRow.Children.Add(button);
+                }
+                else playbackControls.Children.Add(button);
+                var item = new MenuFlyoutItem { Text = title, Icon = MenuIcons.Create(id), IsEnabled = enabled };
+                item.Click += async (_, _) => await RunDesktopCommandAsync(id);
+                menu.Items.Add(item);
+            }
+            playbackControls.ContextFlyout = menu;
+            YouTubeInspectorDetails.Children.Add(playbackControls);
+            if (!project.AllowsOriginalAudioImport)
+            {
+                var blockedAudio = new Button { Content = "Choose Audio File…", IsEnabled = false };
+                ToolTipService.SetToolTip(blockedAudio, "Remove the local playback video to import original audio.");
+                YouTubeInspectorDetails.Children.Add(blockedAudio);
+                if (project.OriginalAudio != null)
+                {
+                    var removeAudio = new Button { Content = "Remove Original Audio…", IsEnabled = CanChangeYouTubePlayback(project) };
+                    removeAudio.Click += async (_, _) => await RunDesktopCommandAsync("remove-original-audio");
+                    YouTubeInspectorDetails.Children.Add(removeAudio);
+                }
+            }
+        }
+        var links = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var linkMenu = new MenuFlyout();
+        void Link(string label, Action open)
+        {
+            var button = new Button { Content = label };
+            ToolTipService.SetToolTip(button, label);
+            button.Click += (_, _) => open();
+            links.Children.Add(button);
+            var item = new MenuFlyoutItem { Text = label, Icon = MenuIcons.Create(label) };
+            item.Click += (_, _) => open();
+            linkMenu.Items.Add(item);
+        }
+        Link("Open in YouTube", () => OpenProjectInYouTube(project));
+        if (ProjectYouTubeStudioUrl(project) != null)
+            Link("Open in YouTube Studio", () => OpenProjectInYouTubeStudio(project));
+        links.ContextFlyout = linkMenu;
+        links.SizeChanged += (_, args) => links.Orientation = args.NewSize.Width >= 325 ? Orientation.Horizontal : Orientation.Vertical;
+        YouTubeInspectorDetails.Children.Add(links);
         var refresh = new Button { Content = "Refresh YouTube Details", IsEnabled = !youtubeInspectorRefreshing && Model.Idle };
         ToolTipService.SetToolTip(refresh, refresh.Content);
         refresh.Click += async (_, _) => await RefreshYouTubeInspectorAsync(); YouTubeInspectorDetails.Children.Add(refresh);
@@ -58,6 +135,67 @@ public sealed partial class MainWindow
         var missing = project.YouTubeMetadata is not JsonElement { ValueKind: JsonValueKind.Object };
         if (missing && !youtubeInspectorRefreshing && youtubeInspectorLoaded.Add(project.Folder)) _ = RefreshYouTubeInspectorAsync();
     }
+    private bool CanChangeYouTubePlayback(Models.StudioProject project) =>
+        Model.Idle && project.IsYouTube && !project.IntegrityPlaceholder &&
+        project.Integrity?.ManifestUnreadable != true && project.Integrity?.FolderMissing != true;
+
+    private bool CanChooseYouTubePlaybackVideo(Models.StudioProject project) =>
+        CanChangeYouTubePlayback(project) && project.OriginalAudio == null;
+
+    private async Task SelectYouTubePlayerAsync(bool embedded)
+    {
+        if (Model.Project is not { CanChooseYouTubePlayer: true } project || !CanChangeYouTubePlayback(project) ||
+            project.UsesYouTubePlayer == embedded) return;
+        if (fullScreenVideo) ExitFullScreenVideo();
+        await Model.RunAsync("select-youtube-player", new[] { "--name", embedded ? "youtube" : "local" });
+    }
+
+    private async Task ChangeYouTubePlaybackAsync(bool remove)
+    {
+        if (Model.Project is not { } project || !CanChangeYouTubePlayback(project)) return;
+        var asset = project.YouTubePlaybackVideo;
+        if (remove)
+        {
+            if (asset != null && await Confirm("Remove Local Playback Video?", asset.SourceName, "Remove") &&
+                ReferenceEquals(Model.Project, project) && CanChangeYouTubePlayback(project))
+                await ChangeYouTubePlaybackCopyAsync(() => Model.RunAsync("remove-youtube-playback"));
+            return;
+        }
+        if (!CanChooseYouTubePlaybackVideo(project)) return;
+        var file = await NewProjectDialog.PickVideoAsync(this);
+        if (file != null) await AttachYouTubePlaybackVideoAsync(project, file.Path);
+    }
+
+    private async Task<bool> AttachYouTubePlaybackVideoAsync(Models.StudioProject project, string path)
+    {
+        if (!ReferenceEquals(Model.Project, project) || !CanChooseYouTubePlaybackVideo(project)) return false;
+        var asset = project.YouTubePlaybackVideo;
+        if (asset != null && !await Confirm("Replace Local Playback Video?", $"Replace {asset.SourceName} with {Path.GetFileName(path)}?", "Replace")) return false;
+        if (!ReferenceEquals(Model.Project, project) || !CanChooseYouTubePlaybackVideo(project)) return false;
+        var args = new List<string> { "--video", path };
+        if (asset != null) args.Add("--replace-existing");
+        await ChangeYouTubePlaybackCopyAsync(() => Model.RunAsync("attach-youtube-playback", args, throwOnProcessingError: true));
+        return Model.Project?.YouTubePlaybackVideo is { } attached && attached.Path != asset?.Path;
+    }
+
+    private async Task ChangeYouTubePlaybackCopyAsync(Func<Task> change)
+    {
+        if (Model.Project?.ActiveLocalYouTubePlaybackPath != null)
+        {
+            youtubePlaybackPosition = Position;
+            StopProjectPlayback();
+            pendingYouTubePlaybackSeek = null;
+            youtubePlaybackDetachedForChange = true;
+            video.Source = null;
+        }
+        try { await change(); }
+        finally
+        {
+            // Restore the prior source and position after a rejected replacement.
+            if (youtubePlaybackDetachedForChange) RefreshProject();
+        }
+    }
+
     private async Task RefreshYouTubeInspectorAsync() {
         if (youtubeInspectorRefreshing || Model.Project is not { IsYouTube: true } project) return;
         youtubeInspectorRefreshing = true; UpdateInspector(project);
@@ -153,6 +291,9 @@ public sealed partial class MainWindow
         var browserOptions = new StackPanel { Spacing = 8 }; browserOptions.Children.Add(layoutRow); browserOptions.Children.Add(status); Grid.SetRow(browserOptions, 1); panel.Children.Add(browserOptions);
         var list = new ListView { SelectionMode = ListViewSelectionMode.Single };
         var videoSelection = new VideoBrowserSelection(list);
+#if DEBUG
+        if (layoutFixture) list.Tag = videoSelection;
+#endif
         var tableHeader = new Grid { Visibility = Visibility.Collapsed, ColumnSpacing = 8, Padding = new Thickness(12, 8, 12, 8) };
         var widths = new[] { 112.0, 280, 170, 100, 124, 130, 90, 90, 90, 110, 116 };
         var headers = new[] { "Thumbnail", "Title", "Channel", "Visibility", "Duration", "Published", "Views", "Likes", "Comments", "Captions", "Actions" };
@@ -239,11 +380,11 @@ public sealed partial class MainWindow
         AutomationProperties.SetAutomationId(accountRow, "youtube-account-row");
         AutomationProperties.SetAutomationId(filterRow, "youtube-filter-row");
         AutomationProperties.SetAutomationId(list, "youtube-videos");
-        var scale = Root.XamlRoot?.RasterizationScale ?? 1;
-        // ContentDialog otherwise fits this window to its narrow minimum desired width.
-        // Reserve the same broad browsing surface as Mac, bounded by the owner window.
-        panel.Width = Math.Max(480, Math.Min(1120, AppWindow.Size.Width / scale - 96));
-        panel.Height = Math.Max(240, Math.Min(680, AppWindow.Size.Height / scale - 160));
+        var scale = (dialogOwner.Content as FrameworkElement)?.XamlRoot?.RasterizationScale ?? 1;
+        // Size the nested picker to New Project, which can be smaller than All Projects.
+        var ownerSize = dialogOwner.AppWindow.Size;
+        panel.Width = Math.Max(480, Math.Min(1120, ownerSize.Width / scale - 96));
+        panel.Height = Math.Max(240, Math.Min(680, ownerSize.Height / scale - 160));
         controlsHost.MaxHeight = Math.Max(180, panel.Height - 260);
         done.Click += (_, _) => dialog.Hide();
         bool accountsOpen = false;
@@ -342,7 +483,16 @@ public sealed partial class MainWindow
         search.TextChanged += (_, _) => Filter(); visibility.SelectionChanged += (_, _) => Filter(); sort.SelectionChanged += (_, _) => Filter();
         list.SelectionChanged += (_, _) => openEditor.IsEnabled = list.SelectedItem is YouTubeVideo video && CanOpen(video) && refresh.IsEnabled;
         more.Click += async (_, _) => await Load(false); morePlaylists.Click += async (_, _) => await Load(false, false, true); refresh.Click += async (_, _) => await Load(true, true);
-        openEditor.Click += (_, _) => { if (youtubeBrowserCanRun?.Invoke("youtube-open-editor") == true) youtubeBrowserRun?.Invoke("youtube-open-editor"); };
+        openEditor.Click += (_, _) => OpenSelectedVideo();
+        videoSelection.AddPrimaryAction(() =>
+        {
+            OpenSelectedVideo();
+            return Task.CompletedTask;
+        });
+        void OpenSelectedVideo()
+        {
+            if (youtubeBrowserCanRun?.Invoke("youtube-open-editor") == true) youtubeBrowserRun?.Invoke("youtube-open-editor");
+        }
         void OpenBrowser() { if (list.SelectedItem is YouTubeVideo chosen) System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(chosen.Url) { UseShellExecute = true }); }
         void OpenStudio()
         {
@@ -388,7 +538,7 @@ public sealed partial class MainWindow
                 current.RequireAvailable(allowPrivate: OwnedPrivateVideo(current));
                 if (playlist.SelectedItem is YouTubePlaylist chosen && chosen.Id.Length > 0)
                     current.Data["openedFromPlaylist"] = YouTubeService.PlaylistData(chosen);
-                chosenForProject = (current, openInEditor);
+                chosenForProject = (current with { PreviewAccount = selected }, openInEditor);
                 dialog.Hide();
             }
             catch (OperationCanceledException) { }
@@ -487,6 +637,9 @@ public sealed partial class MainWindow
         var outcome = await WindowedDialog.ShowAsync(dialog, dialogOwner, 1200, 850); request?.Cancel(); generation++; StopLoading(); youtubeBrowserRun = null; youtubeBrowserCanRun = null;
         if (chooseMode) return chosenForProject;
         if ((outcome == ContentDialogResult.Primary || openViaMenu) && list.SelectedItem is YouTubeVideo video && CanOpen(video)) {
+#if DEBUG
+            if (layoutFixture) return (video, true);
+#endif
             var selectedAccount = (account.SelectedItem as YouTubeAccount)?.Id;
             await OpenSharedVideoAsync("Opening YouTube project…", "shared-youtube-opening", async () =>
             {

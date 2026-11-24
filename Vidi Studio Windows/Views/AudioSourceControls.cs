@@ -34,7 +34,7 @@ public sealed class AudioSourceControls : UserControl
     private void Refresh()
     {
         panel.Children.Clear();
-        if (model.Project is not { IsYouTube: true } project) return;
+        if (model.Project is not { AllowsOriginalAudioImport: true } project) return;
         if (showHeading) Text("Audio sources");
         Text(project.OriginalAudio is { } asset ? "Imported audio: " + asset.SourceName : "No original audio file imported");
         var sources = project.AudioSources ?? new();
@@ -57,7 +57,7 @@ public sealed class AudioSourceControls : UserControl
             else Text("Audio duration matches the video.");
         }
         Action("Choose Audio File…", chooseAudio ?? owner.ChooseOriginalAudioAsync);
-        if (project.OriginalAudio != null) Action("Remove Selection", async () => { await model.RunAsync("remove-original-audio"); });
+        if (project.OriginalAudio != null) Action("Remove Original Audio…", () => owner.RemoveOriginalAudioAsync(model));
         if(compact) {
             var buttons=System.Linq.Enumerable.ToArray(System.Linq.Enumerable.OfType<Button>(panel.Children));
             foreach(var button in buttons) panel.Children.Remove(button);

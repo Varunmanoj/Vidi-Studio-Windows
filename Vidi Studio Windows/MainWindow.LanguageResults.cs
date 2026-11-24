@@ -417,13 +417,26 @@ public sealed partial class MainWindow
         panel.Children.Add(language);
         string DeletionTitle(string kind) => kind switch {
             "descriptions" => "Description Segments and Audio", "narration" => "Description Audio Only (Keep Segments)",
-            "history" => "Segment Undo History Only", "thumbnails" => "Thumbnails (Entire Project)", _ => LanguageResult.KindTitle(kind)
+            "history" => "Segment Undo History Only", "thumbnails" => "Thumbnails (Entire Project)",
+            "youtubePlaybackVideo" => "Local Playback Video", _ => LanguageResult.KindTitle(kind)
         };
         var options = new List<CheckBox>();
-        foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio", "narration", "history", "thumbnails" }) {
+        var contentKinds = new List<string> { "transcript", "summary", "descriptions", "adAudio", "narration", "history", "thumbnails" };
+        if (project.IsYouTube && project.YouTubePlaybackVideo != null) contentKinds.Add("youtubePlaybackVideo");
+        foreach (var kind in contentKinds) {
             var box = new CheckBox { Content = DeletionTitle(kind), Tag = kind, IsChecked = component == kind };
+            if (kind == "youtubePlaybackVideo")
+            {
+                AutomationProperties.SetAutomationId(box, "delete-local-playback-video");
+                ToolTipService.SetToolTip(box, project.YouTubePlaybackVideo?.SourceName);
+                var check = new ToggleMenuFlyoutItem { Text = DeletionTitle(kind), Icon = Views.MenuIcons.Create("choose-playback-video") };
+                var menu = new MenuFlyout();
+                menu.Items.Add(check);
+                menu.Opening += (_, _) => check.IsChecked = box.IsChecked == true;
+                check.Click += (_, _) => box.IsChecked = check.IsChecked;
+                box.ContextFlyout = menu;
+            }
             options.Add(box); panel.Children.Add(box);
-
         }
         var rows = new StackPanel { Spacing = 5 }; panel.Children.Add(rows);
         var selected = new HashSet<string>(); var exports = new HashSet<string>();
@@ -471,7 +484,8 @@ public sealed partial class MainWindow
         if (await ShowDialogAsync(dialog, 800, 760) != ContentDialogResult.Primary) return;
         var components = options.Where(v => v.IsChecked == true).Select(v => (string)v.Tag).ToArray();
         if (components.Length == 0 && exports.Count == 0) return;
-        var request = new { resultIDs = selected.ToArray(), components, exportPaths = exports.ToArray() };
+        var playbackVideoPath = components.Contains("youtubePlaybackVideo") ? project.YouTubePlaybackVideo?.Path : null;
+        var request = new { resultIDs = selected.ToArray(), components, exportPaths = exports.ToArray(), playbackVideoPath };
         var previewInput = Path.Combine(Path.GetTempPath(), "vidistudio-delete-preview-" + Guid.NewGuid() + ".json");
         string previewText;
         try {
@@ -485,6 +499,9 @@ public sealed partial class MainWindow
         } finally { File.Delete(previewInput); }
         if (!await Confirm("Delete selected content permanently?", previewText + "\nContent types: " + string.Join(", ", components.Select(DeletionTitle)) + ". This cannot be undone.", "Delete Selected")) return;
         StopSegmentPreview(); narrationPlayer.Pause();
-        await RunResultRequestAsync("delete-results", request);
+        if (playbackVideoPath != null)
+            await ChangeYouTubePlaybackCopyAsync(() => RunResultRequestAsync("delete-results", request));
+        else
+            await RunResultRequestAsync("delete-results", request);
     }
 }

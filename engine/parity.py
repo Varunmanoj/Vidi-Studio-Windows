@@ -75,6 +75,9 @@ def prepare_video(root,p,e):
     """Refresh technical metadata and thumbnails without invoking an AI model."""
     if p.get('sourceType') == 'youtube':
         url=youtube_url(p.get('youtubeURL',''));ident=url.split('=')[-1]
+        if youtube_metadata.is_private(p):
+            e.emit('Private YouTube details are available in Video Information.', progress=1)
+            return
         e.emit('Refreshing YouTube video details',progress=.2)
         title=''
         try:

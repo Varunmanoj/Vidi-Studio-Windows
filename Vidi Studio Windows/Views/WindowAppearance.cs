@@ -340,6 +340,8 @@ internal static class WindowedDialog
         var window = new Window { Title = dialog.Title?.ToString() ?? "Vidi Studio" };
         var newProject = dialog as NewProjectDialog;
         if (newProject != null) newProject.CompanionWindow = window;
+        var importAssets = dialog as ImportAssetsDialog;
+        if (importAssets != null) importAssets.CompanionWindow = window;
 #if DEBUG
         Preparing?.Invoke(dialog, window);
 #endif
@@ -516,6 +518,7 @@ internal static class WindowedDialog
             dialog.Hide();
             root.Children.Remove(dialog);
             if (newProject != null) newProject.CompanionWindow = null;
+            if (importAssets != null) importAssets.CompanionWindow = null;
             window.Closed -= OnClosed;
             if (!closed) window.Close();
         }

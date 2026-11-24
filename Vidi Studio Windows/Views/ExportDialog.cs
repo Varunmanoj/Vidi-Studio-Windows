@@ -58,7 +58,7 @@ public sealed partial class ExportDialog : ContentDialog
         adSource = imported && !ready ? 1 : 0;
         videoAudio = webAudio = ready || imported ? 1 : 0;
         videoCaptions = !ready && !imported && ExportProject?.CanExportText("transcript") == true ? 1 : 0;
-        audioChoice = ExportProject?.IsYouTube == true ? 0 : ready || imported ? 1 : 0;
+        audioChoice = ExportProject?.UsesStandaloneYouTubeAudio == true ? 0 : ready || imported ? 1 : 0;
         textContent = Array.FindIndex(TextIds, id => ExportProject?.CanExportText(id) == true);
         if (textContent < 0) textContent = 0;
         Title = "Export";
@@ -81,7 +81,8 @@ public sealed partial class ExportDialog : ContentDialog
             row.Children.Add(new TextBlock { Text = Sections[i], VerticalAlignment = VerticalAlignment.Center });
             sidebar.Items.Add(new ListViewItem { Content = row, MinHeight = 46,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                IsEnabled = ExportProject?.IsYouTube != true || i is 1 or 2 });
+                Visibility = ExportProject is { IsYouTube: true, HasVideoExportSource: false } && i is 0 or 3
+                    ? Visibility.Collapsed : Visibility.Visible });
         }
         var scroll = new ScrollViewer { Content = page, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         Grid.SetColumn(scroll, 1); shell.Children.Add(scroll);
@@ -106,11 +107,12 @@ public sealed partial class ExportDialog : ContentDialog
             shell.ColumnDefinitions[0].Width = new GridLength(width < 780 ? 170 : 210);
         };
         sidebar.SelectionChanged += (_, _) => BuildPage();
-        sidebar.SelectedIndex = ExportProject?.IsYouTube == true ? 1 : 0;
+        sidebar.SelectedIndex = ExportProject is { IsYouTube: true, HasVideoExportSource: false } ? 1 : 0;
     }
 
 #if DEBUG
     internal StackPanel FooterForSmokeTest => footer;
+    internal bool VideoCategoryForSmokeTest => ((ListViewItem)sidebar.Items[0]).Visibility == Visibility.Visible;
     internal bool CanSaveForSmokeTest => saveButton.IsEnabled;
     internal bool AudioChoiceForSmokeTest(int index) => CanUseAudio(index);
     internal bool CaptionChoiceForSmokeTest(int index) => CanUseCaptions(index);
@@ -252,7 +254,7 @@ public sealed partial class ExportDialog : ContentDialog
 
     private void BuildAudio()
     {
-        var youtube = ExportProject?.IsYouTube == true;
+        var youtube = ExportProject?.UsesStandaloneYouTubeAudio == true;
         AddFormat("Audio file format", new[] { "wav", "mp3", "m4a" }, audioFormat, value => audioFormat = value);
         var labels = youtube ? new[] { "YouTube audio only", "Narration audio only", "YouTube audio with narration" } :
             new[] { "Original video audio", "Final audio with Audio Description", "Narration audio only" };
@@ -302,12 +304,12 @@ public sealed partial class ExportDialog : ContentDialog
         page.Children.Add(Card(picker));
     }
 
-    private bool CanUseVideoAudio(int choice) => ExportProject is { HasLocalSource: true } project &&
+    private bool CanUseVideoAudio(int choice) => ExportProject is { HasVideoExportSource: true } project &&
         (choice == 0 || (adSource == 1 ? project.ImportedAudioDescription != null : project.HasCompleteExportNarration));
-    private bool CanUseAudio(int choice) => ExportProject is { } project && (project.IsYouTube
+    private bool CanUseAudio(int choice) => ExportProject is { } project && (project.UsesStandaloneYouTubeAudio
         ? choice == 0 || (choice == 2 && project.Duration > 0 && project.ImportedAudioDescription != null) || project.HasCompleteExportNarration
-        : choice == 0 ? project.HasLocalSource && project.HasAudio
-        : choice == 1 ? project.HasLocalSource && (adSource == 1 ? project.ImportedAudioDescription != null : project.HasCompleteExportNarration)
+        : choice == 0 ? project.HasVideoExportSource && project.HasVideoExportAudio
+        : choice == 1 ? project.HasVideoExportSource && (adSource == 1 ? project.ImportedAudioDescription != null : project.HasCompleteExportNarration)
         : project.HasCompleteExportNarration);
     private void AddAdSource()
     {
@@ -397,12 +399,12 @@ public sealed partial class ExportDialog : ContentDialog
                 if (sidebar.SelectedIndex == 0 && command != "export-original-video") args.AddRange(new[] { "--media-format", videoFormat });
                 break;
             case 1:
-                command = ExportProject?.IsYouTube == true ? audioChoice switch
+                command = ExportProject?.UsesStandaloneYouTubeAudio == true ? audioChoice switch
                 { 0 => "export-youtube-original-audio", 1 => "export-audio", _ => "export-youtube-described-audio" }
                 : audioChoice == 1 && adSource == 1 ? "combine-imported-audio"
                 : audioChoice switch { 0 => "export-original-audio", 1 => "export-described-audio", _ => "export-audio" };
                 if (audioChoice == 1 && adSource == 1) args.Add("--audio-only");
-                if (ExportProject?.IsYouTube == true && audioChoice == 2) args.AddRange(new[] { "--ad-source", adSource == 1 ? "imported" : "generated" });
+                if (ExportProject?.UsesStandaloneYouTubeAudio == true && audioChoice == 2) args.AddRange(new[] { "--ad-source", adSource == 1 ? "imported" : "generated" });
                 args.AddRange(new[] { "--media-format", audioFormat });
                 break;
             case 2:
@@ -436,7 +438,7 @@ public sealed partial class ExportDialog : ContentDialog
             0 when audio == 0 => captions switch
             { 1 => "Transcript Closed Caption Video", 2 => "Transcript Open Caption Video", 3 => "AD Transcript Closed Caption Video", 4 => "AD Transcript Open Caption Video", 5 => "Transcript and Descriptive Transcript Closed Caption Video", _ => "Original Video" },
             0 => (audio == 1 ? "Closed Audio Description" : "Open Audio Description") + captionSuffix,
-            1 when project.IsYouTube => audioChoice switch { 0 => "YouTube Audio Only", 1 => "Narration Audio", _ => "YouTube Studio Audio Description" },
+            1 when project.UsesStandaloneYouTubeAudio => audioChoice switch { 0 => "YouTube Audio Only", 1 => "Narration Audio", _ => "YouTube Studio Audio Description" },
             1 => audioChoice switch { 0 => "Original Video Audio", 1 => "Final Audio with Audio Description", _ => "Narration Audio" },
             2 => TextLabels[textContent],
             _ => "Web Playback - " + (audio switch { 0 => "Original Audio", 1 => "Closed Audio Description", _ => "Open Audio Description" }) + captionSuffix

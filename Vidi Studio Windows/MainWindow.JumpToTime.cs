@@ -57,7 +57,7 @@ public sealed partial class MainWindow
         ClearSegmentPreview();
         await SeekAsync(target);
         if (!ReferenceEquals(Model.Project, project)) return;
-        if (Model.Project?.IsYouTube == true && YouTubePlayer.CoreWebView2 != null)
+        if (project.UsesYouTubePlayer && YouTubePlayer.CoreWebView2 != null)
         {
             await YouTubePlayer.ExecuteScriptAsync(wasPlaying ? "window.vidiPlay?.()" : "window.vidiPause?.()");
             youtubePlaying = wasPlaying;

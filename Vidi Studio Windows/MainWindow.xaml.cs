@@ -34,6 +34,12 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherTimer integrityTimer = new() { Interval = TimeSpan.FromSeconds(4) };
     private bool updatingPosition;
     private string? loadedProject;
+    private string? loadedPlaybackSource;
+    private double youtubePlaybackPosition;
+    private double? pendingYouTubePlaybackSeek;
+    private bool youtubePlaybackDetachedForChange;
+    private bool videoPlaybackFailed;
+    private bool VideoTransportAvailable => Model.Project is { CanPlayVideo: true } && !youtubePlaybackDetachedForChange && !videoPlaybackFailed;
     private string? activeCue;
     private bool applyingProjectPlaybackPreferences;
     private double youtubePosition;
@@ -69,7 +75,14 @@ public sealed partial class MainWindow : Window
     private Views.SettingsDialog? openSettings { get => App.SharedSettingsWindow; set => App.SharedSettingsWindow = value; }
     internal bool IsProjectLibrary => !openedAsEditor && !desktopEditorVisible && !windowClosed;
     internal StudioProject? SettingsProject => desktopEditorVisible ? Model.Project : null;
-    private double Position => Model.Project?.IsYouTube == true ? youtubePosition : video.PlaybackSession.Position.TotalSeconds;
+    private double Position => Model.Project switch
+    {
+        { UsesYouTubePlayer: true } => youtubePosition,
+        { IsYouTube: true } project => pendingYouTubePlaybackSeek ??
+            (loadedPlaybackSource == null || youtubePlaybackDetachedForChange ? youtubePlaybackPosition :
+                Math.Min(video.PlaybackSession.Position.TotalSeconds, project.Duration)),
+        _ => video.PlaybackSession.Position.TotalSeconds
+    };
     public MainWindow(string? folder = null)
     {
         openedAsEditor = folder != null;
@@ -125,6 +138,22 @@ public sealed partial class MainWindow : Window
         };
         Root.KeyboardAccelerators.Add(fullScreenEscape);
         video.PlaybackSession.PlaybackStateChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdatePlaybackControls);
+        ChoosePrivatePlaybackVideo.Click += async (_, _) => await RunDesktopCommandAsync("choose-playback-video");
+        video.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (pendingYouTubePlaybackSeek is not { } target || Model.Project is not { IsYouTube: true, LocalYouTubePlaybackPath: not null }) return;
+            video.PlaybackSession.Position = TimeSpan.FromSeconds(target);
+            pendingYouTubePlaybackSeek = null;
+        });
+        video.MediaFailed += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (Model.Project?.UsesYouTubePlayer != true)
+            {
+                videoPlaybackFailed = true;
+                UpdatePlaybackControls();
+                UpdateDesktopMenuStates();
+            }
+        });
         video.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() => { videoPlaybackStarted = false; UpdatePlaybackControls(); });
         speech.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(ClearSegmentPreview);
         InitializePresentation();
@@ -240,7 +269,8 @@ public sealed partial class MainWindow : Window
         var analyzing = Model.IsAnalyzing;
         var synthesizing = Model.IsSynthesizingNarration;
         var deleting = deletionMessage != null;
-        var editorBusy = analyzing || synthesizing || deleting;
+        var copyingPlayback = Model.Busy && Model.ContentTransferCommand == "attach-youtube-playback";
+        var editorBusy = analyzing || synthesizing || deleting || copyingPlayback;
         var cloudImport = desktopEditorVisible && !editorBusy ? CloudImportActivity.Current : default;
         var importing = cloudImport.Message != null;
         StatusText.Visibility = deleting || importing ? Visibility.Collapsed : Visibility.Visible;
@@ -290,7 +320,8 @@ public sealed partial class MainWindow : Window
             ContentTransferProgressBar.IsIndeterminate = !cloudDownload.HasValue && Model.ContentTransferProgress == null;
             ContentTransferProgressBar.Value = cloudDownload ?? Model.ContentTransferProgress ?? 0;
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ContentTransferProgressBar,
-                cloudDownload.HasValue ? "Cloud video download progress" : "Copy or translation progress");
+                cloudDownload.HasValue ? "Cloud video download progress" :
+                copyingPlayback ? "Local playback video copy progress" : "Copy or translation progress");
         }
         UpdateSectionOverlay(analyzing);
         UpdateDesktopMenuStates();
@@ -687,37 +718,63 @@ public sealed partial class MainWindow : Window
         RenderTimelineThumbnails(p);
         if (p.IntegrityPlaceholder || p.Integrity?.ManifestUnreadable == true || p.Integrity?.FolderMissing == true)
         {
-            loadedProject = p.Folder;
+            loadedProject = null;
+            loadedPlaybackSource = null;
+            pendingYouTubePlaybackSeek = null;
+            youtubePlaybackDetachedForChange = false;
+            youtubePlaybackPosition = 0;
             StopProjectPlayback();
             Player.Visibility = Visibility.Collapsed;
             YouTubePlayer.Visibility = Visibility.Collapsed;
+            PrivateYouTubePlaybackPanel.Visibility = Visibility.Collapsed;
             video.Source = null;
             return;
         }
-        if (loadedProject == p.Folder) return;
+        var nativePath = p.IsYouTube ? p.ActiveLocalYouTubePlaybackPath : p.Resolve(p.Source);
+        var sourceKey = p.UsesYouTubePlayer ? p.YoutubeURL : nativePath;
+        var sameProject = loadedProject == p.Folder;
+        if (sameProject && loadedPlaybackSource == sourceKey && !youtubePlaybackDetachedForChange) return;
+        var position = 0.0;
+        if (sameProject && p.IsYouTube)
+        {
+            position = loadedPlaybackSource != null && loadedPlaybackSource == p.YoutubeURL
+                ? youtubePosition
+                : pendingYouTubePlaybackSeek ?? (loadedPlaybackSource == null || youtubePlaybackDetachedForChange
+                    ? youtubePlaybackPosition : video.PlaybackSession.Position.TotalSeconds);
+            position = Math.Clamp(position, 0, p.Duration);
+        }
+        youtubePlaybackPosition = youtubePosition = position;
+        youtubePlaying = false;
+        pendingYouTubePlaybackSeek = p.IsYouTube && nativePath != null ? position : null;
+        loadedPlaybackSource = sourceKey;
+        youtubePlaybackDetachedForChange = false;
+        videoPlaybackFailed = false;
         videoPlaybackStarted = false; segmentPreviewPaused = false;
         StopIndicationSound(true);
         loadedProject = p.Folder; activeCue = null; previewingSegment = null; speech.Pause(); narrationPlayer.Pause(); originalAudioPlayer.Pause(); originalAudioPlayer.Source = null; originalAudioPath = null; originalAudioMode = false; video.Pause(); onDeviceNarrator.Stop(); readback.Stop();
-        Player.Visibility = p.IsYouTube ? Visibility.Collapsed : Visibility.Visible;
-        YouTubePlayer.Visibility = p.IsYouTube ? Visibility.Visible : Visibility.Collapsed;
+        Player.Visibility = nativePath != null ? Visibility.Visible : Visibility.Collapsed;
+        YouTubePlayer.Visibility = p.UsesYouTubePlayer ? Visibility.Visible : Visibility.Collapsed;
+        PrivateYouTubePlaybackPanel.Visibility = p.RequiresLocalYouTubePlayback && nativePath == null ? Visibility.Visible : Visibility.Collapsed;
         try
         {
-            if (p.IsYouTube)
+            if (p.UsesYouTubePlayer)
             {
                 video.Source = null;
                 var url = new Uri(p.YoutubeURL!);
                 var id = System.Text.RegularExpressions.Regex.Match(url.Query, @"(?:\?|&)v=([A-Za-z0-9_-]{11})(?:&|$)").Groups[1].Value;
                 if (id.Length != 11) throw new InvalidDataException("Invalid YouTube URL.");
                 await YouTubePlayer.EnsureCoreWebView2Async();
+                if (loadedProject != p.Folder || loadedPlaybackSource != sourceKey) return;
                 YouTubePlayer.CoreWebView2.Settings.AreDevToolsEnabled = false;
                 YouTubePlayer.CoreWebView2.SetVirtualHostNameToFolderMapping("vidistudio.local", AppContext.BaseDirectory, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.DenyCors);
-                YouTubePlayer.Source = new Uri("https://vidistudio.local/Assets/youtube.html?id=" + id + "&originalAudio=" + (p.AudioSources?.Playback == "imported" ? "1" : "0"));
+                YouTubePlayer.Source = new Uri("https://vidistudio.local/Assets/youtube.html?id=" + id + "&originalAudio=" + (p.UsesStandaloneYouTubeAudio && p.AudioSources?.Playback == "imported" ? "1" : "0") + "&startAt=" + position.ToString(CultureInfo.InvariantCulture));
             }
             else
             {
                 if (YouTubePlayer.CoreWebView2 != null) YouTubePlayer.Source = new Uri("about:blank");
-                video.Source = MediaSource.CreateFromUri(new Uri(p.Resolve(p.Source)));
+                video.Source = nativePath == null ? null : MediaSource.CreateFromUri(new Uri(nativePath));
             }
+            UpdatePlaybackControls();
         }
         catch (Exception ex) { await ShowError(ex); }
     }
@@ -810,7 +867,7 @@ public sealed partial class MainWindow : Window
         if (polledProject == null) return;
         double? youtubeDuration = null;
         string? youtubeTitle = null;
-        if (polledProject.IsYouTube && YouTubePlayer.CoreWebView2 != null && !youtubePolling)
+        if (polledProject.UsesYouTubePlayer && YouTubePlayer.CoreWebView2 != null && !youtubePolling)
         {
             youtubePolling = true;
             try
@@ -820,6 +877,12 @@ public sealed partial class MainWindow : Window
                 if (doc.RootElement.ValueKind == JsonValueKind.Object)
                 {
                     if (!ReferenceEquals(Model.Project, polledProject)) return;
+                    var failed = doc.RootElement.TryGetProperty("failed", out var failure) && failure.ValueKind == JsonValueKind.True;
+                    if (failed != videoPlaybackFailed)
+                    {
+                        videoPlaybackFailed = failed;
+                        UpdateDesktopMenuStates();
+                    }
                     youtubePosition = doc.RootElement.GetProperty("time").GetDouble(); youtubePlaying = doc.RootElement.GetProperty("playing").GetBoolean();
                     if (!youtubePlaying && youtubePosition >= polledProject.Duration - .05) videoPlaybackStarted = false;
                     await SyncOriginalAudioAsync(polledProject, doc.RootElement);
@@ -839,7 +902,7 @@ public sealed partial class MainWindow : Window
         readback.TickWordProgress();
         TimeLabel.Text = $"{NarrationTimeFormat.Timestamp(Position)} / {NarrationTimeFormat.Timestamp(Model.Project.Duration)}";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(TimeLabel, $"Current time {NarrationTimeFormat.SpokenTime(Position)}, duration {NarrationTimeFormat.SpokenProjectDuration(Model.Project.Duration)}");
-        var playing = Model.Project.IsYouTube ? youtubePlaying : video.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
+        var playing = IsVideoPlaying();
         if (playing && !wasPlaying) readback.Stop();
         wasPlaying = playing;
         var targetInterval = playing ? TimeSpan.FromMilliseconds(40) : TimeSpan.FromMilliseconds(150);
@@ -881,8 +944,10 @@ public sealed partial class MainWindow : Window
     {
         if (windowClosed || Model.Project == null) return;
         value = Math.Clamp(value, 0, Model.Project.Duration); activeCue = null; narrationPlayer.Pause(); onDeviceNarrator.Stop();
-        if (Model.Project?.IsYouTube == true && YouTubePlayer.CoreWebView2 != null)
+        if (Model.Project.UsesYouTubePlayer && YouTubePlayer.CoreWebView2 != null)
         { youtubePosition = value; await YouTubePlayer.ExecuteScriptAsync($"window.vidiSeek?.({value.ToString(CultureInfo.InvariantCulture)})"); }
+        else if (Model.Project.RequiresLocalYouTubePlayback && loadedPlaybackSource == null) youtubePlaybackPosition = value;
+        else if (pendingYouTubePlaybackSeek.HasValue) pendingYouTubePlaybackSeek = value;
         else video.PlaybackSession.Position = TimeSpan.FromSeconds(value);
         updatingPosition = true; Playhead.Value = value; updatingPosition = false;
         UpdateTimelineCursor(); UpdateCaptions(value); UpdateActiveSegment(true);
@@ -927,8 +992,9 @@ public sealed partial class MainWindow : Window
     private void TimelineScrubSurface_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => timelineScrubbing = false;
     private async void StartVideoPlayback()
     {
-        if (Model.Project?.IsYouTube == true && !ConnectivityService.Shared.Available(OnlineService.YouTube)) return;
-        if (Model.Project?.IsYouTube == true)
+        if (!VideoTransportAvailable || Model.Project is not { } project) return;
+        if (project.UsesYouTubePlayer && !ConnectivityService.Shared.Available(OnlineService.YouTube)) return;
+        if (project.UsesYouTubePlayer)
         {
             if (YouTubePlayer.CoreWebView2 != null)
             {
@@ -937,7 +1003,7 @@ public sealed partial class MainWindow : Window
                 UpdatePlaybackControls();
             }
         }
-        else if (Model.Project != null) { video.Play(); UpdatePlaybackControls(); }
+        else { video.Play(); UpdatePlaybackControls(); }
     }
     /// <summary>
     /// Restores the project's saved playback toggles whenever the editor loads or refreshes
@@ -1029,8 +1095,8 @@ public sealed partial class MainWindow : Window
     }
     private async void PlayPause_Click(object sender, RoutedEventArgs e)
     {
-        if (Model.Project == null) return;
-        if (Model.Project.IsYouTube)
+        if (!VideoTransportAvailable || Model.Project is not { } project) return;
+        if (project.UsesYouTubePlayer)
         {
             if (!youtubePlaying && !ConnectivityService.Shared.Available(OnlineService.YouTube)) { await ShowError(new ConnectivityException(ConnectivityService.Shared.Reason(OnlineService.YouTube)!)); return; }
             if (YouTubePlayer.CoreWebView2 == null) return;
@@ -1043,7 +1109,8 @@ public sealed partial class MainWindow : Window
     private bool IsVideoPlaying()
     {
         if (windowClosed || Model.Project == null) return false;
-        if (Model.Project.IsYouTube) return youtubePlaying;
+        if (Model.Project.UsesYouTubePlayer) return youtubePlaying;
+        if (Model.Project.RequiresLocalYouTubePlayback && loadedPlaybackSource == null) return false;
         try { return video.PlaybackSession.PlaybackState == MediaPlaybackState.Playing; }
         // Windows can abort a media-state query while focus and media sources change.
         // A later playback event or timer tick refreshes the transport state.
@@ -1056,15 +1123,17 @@ public sealed partial class MainWindow : Window
         if (playing) videoPlaybackStarted = true;
         VideoStopButton.Visibility = videoPlaybackStarted ? Visibility.Visible : Visibility.Collapsed;
         VideoStopButton.IsEnabled = CanRunDesktopCommand("stop");
-        VideoPlayPauseButton.IsEnabled = Model.Project != null && (playing || !Model.Project.IsYouTube || ConnectivityService.Shared.Available(OnlineService.YouTube));
+        VideoPlayPauseButton.IsEnabled = VideoTransportAvailable && Model.Project is { } project &&
+            (playing || !project.UsesYouTubePlayer || ConnectivityService.Shared.Available(OnlineService.YouTube));
+        ChoosePrivatePlaybackVideo.IsEnabled = Model.Project is { } current && CanChooseYouTubePlaybackVideo(current);
         VideoPlayPauseButton.Content = playing ? "\uE769" : "\uE768";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(VideoPlayPauseButton, playing ? "Pause video" : "Play video");
-        ToolTipService.SetToolTip(VideoPlayPauseButton, !playing && Model.Project?.IsYouTube == true ? ConnectivityService.Shared.Reason(OnlineService.YouTube) ?? "Play video" : playing ? "Pause video" : "Play video");
+        ToolTipService.SetToolTip(VideoPlayPauseButton, !playing && Model.Project?.UsesYouTubePlayer == true ? ConnectivityService.Shared.Reason(OnlineService.YouTube) ?? "Play video" : playing ? "Pause video" : "Play video");
         UpdateDesktopPlaybackState();
     }
     private async void VideoStop_Click(object sender, RoutedEventArgs e) => await RunDesktopCommandAsync("stop");
-    private void Rewind_Click(object sender, RoutedEventArgs e) => Seek(Position - 5);
-    private void Forward_Click(object sender, RoutedEventArgs e) => Seek(Position + 5);
+    private void Rewind_Click(object sender, RoutedEventArgs e) { if (CanRunDesktopCommand("back")) Seek(Position - 5); }
+    private void Forward_Click(object sender, RoutedEventArgs e) { if (CanRunDesktopCommand("forward")) Seek(Position + 5); }
     private async void Segment_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         if (Segments.SelectedItem is Segment segment)
@@ -2240,6 +2309,12 @@ public sealed partial class MainWindow : Window
             if (Model.Project is { } project) RenderTimelineThumbnails(project);
         }
         if (changed.Contains("libraryPath") || changed.Contains("projectLocations")) Filter();
+        if (changed.Contains("youtubeAccounts") && Model.Project is { IsYouTube: true } youtubeProject)
+        {
+            YouTubeInspectorDetails.Children.Clear();
+            PopulateYouTubeInspector(youtubeProject);
+            UpdateDesktopMenuStates();
+        }
         UpdateApiKeyUi();
         UpdateCaptions();
         UpdateSectionPresentation();

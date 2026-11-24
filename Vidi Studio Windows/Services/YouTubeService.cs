@@ -40,7 +40,12 @@ public sealed record YouTubeVideo(JsonObject Data)
     public string ListSubtitle => Visibility + " · " + DurationLabel + " · " + Channel;
     public string StatisticsLabel => "Published: " + PublishedLabel + " · Views: " + ViewsLabel + " · Likes: " + LikesLabel + " · Comments: " + CommentsLabel;
     public string TableAccessibleLabel => "Title: " + Title + ", Channel: " + Channel + ", Visibility: " + Visibility + ", " + DurationAnnouncement + ", Published: " + PublishedLabel + ", Views: " + ViewsLabel + ", Likes: " + LikesLabel + ", Comments: " + CommentsLabel + ", Captions: " + CaptionsLabel;
+    public YouTubeAccount? PreviewAccount { get; init; }
     public string Thumbnail => Data["thumbnailURL"]?.GetValue<string>() ?? "";
+    public static Uri? SafeThumbnailUri(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps &&
+        uri.Host.EndsWith(".ytimg.com", StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(uri.UserInfo)
+            ? uri : null;
     public override string ToString() => Title + " · " + Visibility + " · " + DurationLabel + " · " + Data["channelTitle"];
     public string ChannelId => Data["channelID"]?.ToString() ?? "";
     internal const string PrivateVideoMessage = "Private Video Cannot Be Opened. Connect the video’s owner in YouTube Accounts and sign in to Google Cloud with the same account, or import the original video file.";
@@ -375,7 +380,10 @@ public sealed class YouTubeService
         var result = await ApiAsync("videos", new() { ["part"] = "snippet,contentDetails,status,statistics", ["id"] = id }, accountId == null ? null : await BearerAsync(accountId, ct), ct);
         var item = (result["items"] as JsonArray)?.FirstOrDefault(value => value?["id"]?.ToString() == id);
         if (item == null) throw new YouTubeNotFoundException("This video is unavailable. It may be private, deleted, or inaccessible to this account.");
-        return YouTubeVideo.Parse(item);
+        var video = YouTubeVideo.Parse(item);
+        return video with { PreviewAccount = accountId == null
+            ? Accounts.FirstOrDefault(account => account.ChannelId == video.ChannelId)
+            : Accounts.FirstOrDefault(account => account.Id == accountId) };
     }
     public async Task<(List<YouTubeVideo>, string)> VideosAsync(string playlist, string page, string accountId, CancellationToken ct)
     {

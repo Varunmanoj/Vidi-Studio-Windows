@@ -94,7 +94,8 @@ public sealed partial class MainWindow
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_JUMP_ONLY") == "1")
             {
                 await VerifyJumpToTimeForSmokeTestAsync();
-                await File.WriteAllTextAsync(report, "PASS: Playback Jump to Time menu/shortcut, invalid time gating, stopped and paused seeking, continuing active playback, cancellation and unchanged project data.");
+                await VerifyPrivateYouTubePlaybackForSmokeTestAsync();
+                await File.WriteAllTextAsync(report, "PASS: Jump to Time plus the private YouTube playback chooser, portable copy, gallery thumbnail, native timeline seeking, and deletion.");
                 return;
             }
             VerifyProjectConfigurationDeveloperModeForSmokeTest();
@@ -1417,6 +1418,35 @@ public sealed partial class MainWindow
         }
     }
 
+    internal static async Task DoubleClickVideoRowForSmokeTestAsync(Window window, ListView list, int index)
+    {
+        var handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
+        window.Activate();
+        FocusTooltipTestWindow(handle);
+        list.ScrollIntoView(list.Items[index]);
+        await Task.Delay(120);
+        if (window.Content is not FrameworkElement root || list.ContainerFromIndex(index) is not ListViewItem row ||
+            !GetTooltipTestCursor(out var original))
+            throw new InvalidOperationException("Cannot locate the video row for double-click.");
+        var position = row.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point(85, row.ActualHeight / 2));
+        var scale = root.XamlRoot.RasterizationScale;
+        var point = new TooltipTestPoint { X = (int)(position.X * scale), Y = (int)(position.Y * scale) };
+        if (!MapTooltipClientPoint(handle, ref point) || TooltipRootWindow(TooltipWindowAt(point), 2) != handle ||
+            !MoveTooltipTestCursor(point.X, point.Y))
+            throw new InvalidOperationException("The video row is not reachable by the test pointer.");
+        try
+        {
+            for (var click = 0; click < 2; click++)
+            {
+                SendTooltipMouseMove(2, 0, 0, 0, UIntPtr.Zero);
+                SendTooltipMouseMove(4, 0, 0, 0, UIntPtr.Zero);
+                await Task.Delay(65);
+            }
+            await Task.Delay(150);
+        }
+        finally { MoveTooltipTestCursor(original.X, original.Y); }
+    }
+
     private async Task VerifyYouTubeLayoutForSmokeTestAsync(string report)
     {
         foreach (var cloud in new[] { true, false })
@@ -1520,7 +1550,13 @@ public sealed partial class MainWindow
                     if (list.Items.Count != 0 || open.IsEnabled) throw new InvalidOperationException("Filter left a stale selection.");
                     search.Text = ""; await Task.Delay(80);
                     await CaptureSmokeImage((FrameworkElement)browserWindow.Content, Path.Combine(Path.GetDirectoryName(report)!, $"youtube-list-{theme}-{width}.png"));
-                    Click(done); await running.WaitAsync(TimeSpan.FromSeconds(15));
+                    if (theme == "light" && width == 1120)
+                    {
+                        list.SelectedIndex = 0;
+                        await DoubleClickVideoRowForSmokeTestAsync(browserWindow, list, 0);
+                        await running.WaitAsync(TimeSpan.FromSeconds(15));
+                    }
+                    else { Click(done); await running.WaitAsync(TimeSpan.FromSeconds(15)); }
                 } finally { active?.Hide(); Views.WindowedDialog.ReadyToShow -= Capture; await running; }
                 var accounts = new Views.YouTubeAccountsPanel(this, showsDone: true);
                 accounts.PreviewAccountsForSmokeTest(new[] { new YouTubeAccount("layout-a", "", "Sample Google account", "sample@example.com", "", "", "Sample channel", "", ""), new YouTubeAccount("layout-b", "", "Second account", "second@example.com", "", "", "Second channel", "", "") });
@@ -1554,9 +1590,11 @@ public sealed partial class MainWindow
             finally { lightPicker.Hide(); await lightProject; }
 
             PreviewTheme("dark");
+            AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(1120 * scale), (int)(780 * scale)));
+            (YouTubeVideo Video, bool OpenInEditor)? pickerResult = null;
             var picker = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings, openYouTube: true)
             {
-                BrowseYouTubeVideo = owner => ShowYouTubeBrowserAsync(owner)
+                BrowseYouTubeVideo = async owner => pickerResult = await ShowYouTubeBrowserAsync(owner)
             };
             var newProject = ShowDialogAsync(picker, Views.NewProjectDialog.WindowWidth, Views.NewProjectDialog.WindowHeight);
             try
@@ -1566,11 +1604,15 @@ public sealed partial class MainWindow
                 picker.SetYouTubeCaptionsForSmokeTest();
                 await picker.VerifyYouTubeLinkForSmokeTestAsync(card => CaptureSmokeImage(card,
                     Path.Combine(Path.GetDirectoryName(report)!, "youtube-fetch-error-dark.png")));
-                picker.SelectYouTubeForSmokeTest("");
-                foreach (var action in new[] { "Cancel", "Choose Video", "Open in Editor" })
+                foreach (var action in new[] { "Cancel", "Row action List View", "Row action Table View", "Choose Video", "Open in Editor" })
                 {
+                    picker.SelectYouTubeForSmokeTest("");
+                    pickerResult = null;
                     ContentDialog? browser = null;
-                    void CapturePicker(ContentDialog dialog, Window _) { if (dialog.Title as string == "My YouTube Videos") browser = dialog; }
+                    void CapturePicker(ContentDialog dialog, Window _)
+                    {
+                        if (dialog.Title as string == "My YouTube Videos") browser = dialog;
+                    }
                     Views.WindowedDialog.ReadyToShow += CapturePicker;
                     var browsing = picker.BrowseYouTubeForSmokeTestAsync();
                     try
@@ -1580,23 +1622,40 @@ public sealed partial class MainWindow
                         var nested = (Grid)browser.Content;
                         var videos = Elements(nested).OfType<ListView>().Single();
                         for (var retry = 0; retry < 100 && videos.Items.Count != 30; retry++) await Task.Delay(30);
-                        if (videos.Items.Count != 30) throw new InvalidOperationException("YouTube picker did not load its videos.");
+                        if (videos.Items.Count != 30 || videos.Tag is not Views.VideoBrowserSelection selection)
+                            throw new InvalidOperationException("YouTube picker did not load its videos.");
                         if (action != "Cancel") videos.SelectedIndex = 0;
                         if (action == "Open in Editor")
                             youtubeBrowserRun?.Invoke("youtube-open-direct");
+                        else if (action.StartsWith("Row action ", StringComparison.Ordinal))
+                        {
+                            youtubeBrowserRun?.Invoke(action == "Row action Table View" ? "youtube-table" : "youtube-list");
+                            await selection.ActivateRowAsync(videos.Items[0]);
+                        }
                         else
                         {
+                            if (action == "Choose Video")
+                            {
+                                selection.SetMode(true);
+                                await selection.ActivateRowAsync(videos.Items[0]);
+                                if (browsing.IsCompleted || pickerResult != null)
+                                    throw new InvalidOperationException("A row action confirmed a video in Select mode.");
+                            }
                             var button = Elements(nested).OfType<Button>().Single(candidate => candidate.Content as string == action);
                             if (!button.IsEnabled) throw new InvalidOperationException("YouTube picker action was disabled.");
                             Click(button);
                         }
-                        await browsing.WaitAsync(TimeSpan.FromSeconds(10));
+                        try { await browsing.WaitAsync(TimeSpan.FromSeconds(10)); }
+                        catch (TimeoutException ex) { throw new InvalidOperationException($"The YouTube picker did not close after {action}.", ex); }
                         if (action == "Open in Editor") await newProject.WaitAsync(TimeSpan.FromSeconds(10));
                         if (newProject.IsCompleted != (action == "Open in Editor") ||
                             picker.OpenSelectedYouTubeInEditor != (action == "Open in Editor") || !picker.ChooseYouTubeCaptions ||
                             (action != "Cancel" ? picker.SelectedYouTubeVideo?.Id != "fixture-000"
                                                 : picker.SelectedYouTubeVideo != null || picker.IsPrimaryButtonEnabled))
-                            throw new InvalidOperationException("YouTube picker failed to preserve form choices and return the selected video.");
+                            throw new InvalidOperationException($"YouTube picker failed after {action}. " +
+                                $"Browser returned: {pickerResult?.Video.Id ?? "none"}; " +
+                                $"Video: {picker.SelectedYouTubeVideo?.Id ?? "none"}; captions: {picker.ChooseYouTubeCaptions}; " +
+                                $"direct open: {picker.OpenSelectedYouTubeInEditor}; project dialog closed: {newProject.IsCompleted}.");
                     }
                     finally { if (!browsing.IsCompleted) browser?.Hide(); Views.WindowedDialog.ReadyToShow -= CapturePicker; await browsing; }
                 }
@@ -1724,9 +1783,15 @@ public sealed partial class MainWindow
         browserSettings.Data["vertexBucket"] = "fixture-output";
         var browser = new Views.CloudVideosDialog(this, Root.ActualTheme, browserSettings);
         browser.UseFixtureForSmokeTest();
+        var readyCloudBrowser = new TaskCompletionSource<Window>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void CaptureCloudBrowser(ContentDialog dialog, Window window)
+        {
+            if (dialog == browser) readyCloudBrowser.TrySetResult(window);
+        }
+        Views.WindowedDialog.ReadyToShow += CaptureCloudBrowser;
         var browsing = ShowDialogAsync(browser, 820, 820);
-        try { await browser.VerifyBrowserForSmokeTestAsync(); }
-        finally { browser.Hide(); await browsing; }
+        try { await browser.VerifyBrowserForSmokeTestAsync(await readyCloudBrowser.Task.WaitAsync(TimeSpan.FromSeconds(5))); }
+        finally { Views.WindowedDialog.ReadyToShow -= CaptureCloudBrowser; browser.Hide(); await browsing; }
         await VerifyAccessibleMediaForSmokeTestAsync();
         await VerifyMenuAccessForSmokeTestAsync(report);
         VerifyCloudImportEditorProgressForSmokeTest();
@@ -3048,6 +3113,187 @@ public sealed partial class MainWindow
         if (!IsVideoPlaying()) throw new InvalidOperationException("Cancel paused active playback.");
         StopProjectPlayback();
         if (!before.SequenceEqual(await File.ReadAllBytesAsync(path))) throw new InvalidOperationException("Jump rewrote project data.");
+    }
+
+    private async Task VerifyPrivateYouTubePlaybackForSmokeTestAsync()
+    {
+        var original = Model.Project ?? throw new InvalidOperationException("Playback fixture missing.");
+        var path = Path.Combine(original.Folder, "project.json");
+        var saved = await File.ReadAllBytesAsync(path);
+        const string link = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+        try
+        {
+            var manifest = System.Text.Json.Nodes.JsonNode.Parse(saved)!.AsObject();
+            manifest["sourceType"] = "youtube";
+            manifest["source"] = "";
+            manifest["youtubeURL"] = link;
+            manifest["youtubePrivateChannelID"] = "fixture-channel";
+            manifest["youtubeMetadata"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["channelID"] = "fixture-channel", ["visibility"] = "private"
+            };
+            await File.WriteAllTextAsync(path, manifest.ToJsonString());
+            Model.Project = Models.StudioProject.Load(original.Folder);
+            RefreshProject();
+            UpdateDesktopMenuStates();
+            if (ChoosePrivatePlaybackVideo.Visibility != Visibility.Visible ||
+                PrivateYouTubePlaybackPanel.Visibility != Visibility.Visible || YouTubePlayer.Visibility != Visibility.Collapsed ||
+                !CanRunDesktopCommand("choose-playback-video") || CanRunDesktopCommand("remove-playback-video"))
+                throw new InvalidOperationException("Private YouTube preview did not offer the playback chooser.");
+            if (new Views.ExportDialog(Model, this).VideoCategoryForSmokeTest)
+                throw new InvalidOperationException("A private project without a playback copy exposed Video in Export.");
+            foreach (var transport in new[] { "play", "fullscreen", "back", "forward", "jump-to-time" })
+                if (CanRunDesktopCommand(transport)) throw new InvalidOperationException("Unavailable video enabled " + transport);
+            var account = new YouTubeAccount("playback-test-account", "", "Test", "", "", "fixture-channel", "Test Channel", "", "");
+            bool ShowsStudioInInspector() => YouTubeInspectorDetails.Children.OfType<StackPanel>()
+                .SelectMany(row => row.Children.OfType<Button>()).Any(button => button.Content as string == "Open in YouTube Studio");
+            var studioMenu = desktopMenuItems["youtube-project-open-studio"].Last();
+            if (studioMenu.Visibility != Visibility.Visible || studioMenu.IsEnabled || ShowsStudioInInspector())
+                throw new InvalidOperationException("The unmatched Studio action was not disabled in the menu and hidden in the inspector.");
+            YouTubeService.Shared.Accounts.Add(account);
+            try
+            {
+                ApplySettingsChanges(new[] { "youtubeAccounts" });
+                if (!studioMenu.IsEnabled || !ShowsStudioInInspector())
+                    throw new InvalidOperationException("Studio was unavailable for a confirmed channel match.");
+            }
+            finally
+            {
+                YouTubeService.Shared.Accounts.Remove(account);
+                ApplySettingsChanges(new[] { "youtubeAccounts" });
+            }
+            if (studioMenu.IsEnabled || ShowsStudioInInspector())
+                throw new InvalidOperationException("Disconnecting a YouTube account left the Studio action available.");
+            var playerMenu = desktopMenuGroups.Last(group => group.Name == "Video Player").Item;
+            var choices = playerMenu.Items.OfType<ToggleMenuFlyoutItem>().ToArray();
+            var chooseCopy = playerMenu.Items.OfType<MenuFlyoutItem>().Single(item => Equals(item.Tag, "choose-playback-video"));
+            var removeCopy = playerMenu.Items.OfType<MenuFlyoutItem>().Single(item => Equals(item.Tag, "remove-playback-video"));
+            if (playerMenu.Visibility != Visibility.Visible || !playerMenu.IsEnabled || !chooseCopy.IsEnabled ||
+                removeCopy.Visibility != Visibility.Collapsed || choices.Any(choice => choice.IsEnabled || choice.IsChecked))
+                throw new InvalidOperationException("Private YouTube must offer the file chooser with both player choices disabled before attachment.");
+            var youtubeProject = Model.Project!;
+            youtubeProject.OriginalAudio = new Models.OriginalAudioAsset { Path = "imports/original.wav", SourceName = "original.wav" };
+            try
+            {
+                UpdateInspector(youtubeProject);
+                UpdatePlaybackControls();
+                UpdateDesktopMenuStates();
+                if (!playerMenu.IsEnabled || chooseCopy.IsEnabled || ChoosePrivatePlaybackVideo.IsEnabled ||
+                    !CanRunDesktopCommand("remove-original-audio"))
+                    throw new InvalidOperationException("A saved original audio selection must disable video import while allowing audio removal.");
+            }
+            finally
+            {
+                youtubeProject.OriginalAudio = null;
+                UpdateInspector(youtubeProject);
+                UpdatePlaybackControls();
+                UpdateDesktopMenuStates();
+            }
+            var import = new Views.ImportAssetsDialog(this, Model.Project!);
+            var importReady = new TaskCompletionSource<Window>(TaskCreationOptions.RunContinuationsAsynchronously);
+            void CaptureImport(ContentDialog dialog, Window window)
+            {
+                if (ReferenceEquals(import, dialog)) importReady.TrySetResult(window);
+            }
+            Views.WindowedDialog.ReadyToShow += CaptureImport;
+            var showingImport = ShowDialogAsync(import, 800, 760);
+            try
+            {
+                var companion = await importReady.Task.WaitAsync(TimeSpan.FromSeconds(15));
+                if (!ReferenceEquals(companion, import.CompanionWindow))
+                    throw new InvalidOperationException("The playback picker must use the active import window.");
+                import.VerifyPlaybackSelectionForSmokeTest();
+            }
+            finally
+            {
+                Views.WindowedDialog.ReadyToShow -= CaptureImport;
+                import.Hide();
+                await showingImport.WaitAsync(TimeSpan.FromSeconds(15));
+                import.CleanupYouTubeCaptions();
+            }
+            void AssertPlayerChoices(Models.StudioProject sample, bool hasCopy)
+            {
+                var channel = sample.YouTubePrivateChannelId;
+                var metadata = sample.YouTubeMetadata;
+                var originalAsset = sample.YouTubePlaybackVideo;
+                try
+                {
+                    sample.YouTubePrivateChannelId = null;
+                    foreach (var privacy in new[] { "public", "unlisted" })
+                    {
+                        sample.YouTubeMetadata = JsonSerializer.SerializeToElement(new { visibility = privacy });
+                        UpdateDesktopMenuStates();
+                        var web = (ToggleMenuFlyoutItem)desktopMenuItems["use-youtube-player"].Last();
+                        var local = (ToggleMenuFlyoutItem)desktopMenuItems["use-local-video-player"].Last();
+                        if (playerMenu.Visibility != Visibility.Visible || !playerMenu.IsEnabled ||
+                            !CanRunDesktopCommand("choose-playback-video") || web.IsEnabled != hasCopy || local.IsEnabled != hasCopy)
+                            throw new InvalidOperationException($"Player availability is wrong for {privacy}, copy={hasCopy}: " +
+                                $"scope={playerMenu.Visibility}, submenu enabled={playerMenu.IsEnabled}, web enabled={web.IsEnabled}, " +
+                                $"local enabled={local.IsEnabled}, choose enabled={CanRunDesktopCommand("choose-playback-video")}, " +
+                                $"local command enabled={CanRunDesktopCommand("use-local-video-player")}, same project={ReferenceEquals(sample, Model.Project)}.");
+                        if (hasCopy && originalAsset != null)
+                        {
+                            if (!local.IsChecked || web.IsChecked) throw new InvalidOperationException("Local playback must be the default after copying.");
+                            sample.YouTubePlaybackVideo = originalAsset with { UseYouTubePlayer = true };
+                            UpdateDesktopMenuStates();
+                            if (!web.IsChecked || local.IsChecked || !sample.HasVideoExportSource)
+                                throw new InvalidOperationException("YouTube playback did not keep the local video available to export.");
+                            sample.YouTubePlaybackVideo = originalAsset;
+                        }
+                    }
+                }
+                finally
+                {
+                    sample.YouTubePrivateChannelId = channel;
+                    sample.YouTubeMetadata = metadata;
+                    sample.YouTubePlaybackVideo = originalAsset;
+                    UpdateDesktopMenuStates();
+                }
+            }
+            AssertPlayerChoices(Model.Project!, hasCopy: false);
+            var before = original.Resolve(original.Source);
+            var progressSeen = false;
+            await Model.RunAsync("attach-youtube-playback", new[] { "--video", before }, throwOnProcessingError: true,
+                observeProgress: update => progressSeen |= update.Data.TryGetProperty("contentTransferProgress", out _));
+            if (!progressSeen) throw new InvalidOperationException("No playback copy progress reached the editor.");
+            var project = Model.Project!;
+            var asset = project.YouTubePlaybackVideo ?? throw new InvalidOperationException("Playback clip did not persist.");
+            if (project.YoutubeURL != link || project.Duration != original.Duration ||
+                project.LocalYouTubePlaybackPath is not { } copy || copy == before ||
+                project.ThumbnailUri?.LocalPath != project.Resolve(asset.Thumbnail) ||
+                Player.Visibility != Visibility.Visible || YouTubePlayer.Visibility != Visibility.Collapsed)
+                throw new InvalidOperationException("Private YouTube copy and thumbnail did not reach the native viewer.");
+            if (!new Views.ExportDialog(Model, this).VideoCategoryForSmokeTest)
+                throw new InvalidOperationException("The video export category remained hidden after choosing a private playback file.");
+            if (!CanRunDesktopCommand("play") || !CanRunDesktopCommand("jump-to-time") ||
+                CanRunDesktopCommand("import-original-audio") || AudioSourcePanel.Visibility == Visibility.Visible)
+                throw new InvalidOperationException("A playable copy did not enable the transport and hide standalone audio.");
+            UpdateDesktopMenuStates();
+            var trash = YouTubeInspectorDetails.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Grid>())
+                .SelectMany(row => row.Children.OfType<Button>()).SingleOrDefault(button =>
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(button) == "Remove Local Playback Video…");
+            if (removeCopy.Visibility != Visibility.Visible || !removeCopy.IsEnabled ||
+                trash?.Content is not FontIcon { Glyph: "\uE74D" } || choices[0].IsEnabled || choices[0].IsChecked ||
+                choices[1].IsEnabled || !choices[1].IsChecked)
+                throw new InvalidOperationException("The private playback copy did not expose the trash button and matching menu command.");
+            AssertPlayerChoices(project, hasCopy: true);
+            await SeekAsync(2.5);
+            await Task.Delay(500);
+            if (Math.Abs(Position - 2.5) > .2 || Math.Abs(Playhead.Value - 2.5) > .2)
+                throw new InvalidOperationException("Private playback position diverged from the project timeline.");
+            var request = new { resultIDs = Array.Empty<string>(), components = new[] { "youtubePlaybackVideo" },
+                exportPaths = Array.Empty<string>(), playbackVideoPath = asset.Path };
+            await ChangeYouTubePlaybackCopyAsync(() => RunResultRequestAsync("delete-results", request));
+            if (Model.Project?.YouTubePlaybackVideo != null || File.Exists(copy) || !File.Exists(before) ||
+                PrivateYouTubePlaybackPanel.Visibility != Visibility.Visible)
+                throw new InvalidOperationException("Deleting the attachment did not restore the chooser or retain the original file.");
+        }
+        finally
+        {
+            await File.WriteAllBytesAsync(path, saved);
+            Model.Project = Models.StudioProject.Load(original.Folder);
+            RefreshProject();
+        }
     }
 
     private void VerifyContextualMenusForSmokeTest()

@@ -6,6 +6,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Vidi_Studio_Windows.Models;
+using Vidi_Studio_Windows.ViewModels;
 using Windows.Storage.Pickers;
 using Windows.Media.Core;
 using Windows.Media.Playback;
@@ -31,7 +32,7 @@ public sealed partial class MainWindow
 
     private async Task SyncOriginalAudioAsync(StudioProject project, JsonElement state)
     {
-        var selected = project.AudioSources?.Playback == "imported";
+        var selected = project.UsesStandaloneYouTubeAudio && project.AudioSources?.Playback == "imported";
         if (originalAudioMode != selected)
         {
             originalAudioMode = selected;
@@ -80,7 +81,7 @@ public sealed partial class MainWindow
 
     internal async Task<bool> ImportOriginalAudioAsync(string? file, bool? playback = null, bool? transcription = null)
     {
-        if (Model.Busy || Model.Project is not { IsYouTube: true } project) return false;
+        if (Model.Busy || Model.Project is not { AllowsOriginalAudioImport: true } project) return false;
         var output = Path.Combine(Path.GetTempPath(), "vidistudio-audio-" + Guid.NewGuid() + ".json");
         try
         {
@@ -126,7 +127,7 @@ public sealed partial class MainWindow
     {
         try
         {
-            if (Model.Busy || Model.Project?.Folder != recovery.ProjectFolder) return;
+            if (Model.Busy || Model.Project is not { AllowsOriginalAudioImport: true } project || project.Folder != recovery.ProjectFolder) return;
             var dialog = new ContentDialog
             {
                 Title = "YouTube Audio Couldn’t Be Retrieved",
@@ -152,6 +153,7 @@ public sealed partial class MainWindow
 
     internal async Task ChooseOriginalAudioAsync()
     {
+        if (Model.Project?.AllowsOriginalAudioImport != true) return;
         var file = await PickOriginalAudioAsync();
         if (file == null) return;
         var choice = new ContentDialog
@@ -164,9 +166,25 @@ public sealed partial class MainWindow
         if (result != ContentDialogResult.None) await ImportOriginalAudioAsync(file, result == ContentDialogResult.Secondary);
     }
 
+    internal async Task RemoveOriginalAudioAsync(StudioViewModel? target = null)
+    {
+        target ??= Model;
+        if (target.Busy || target.Project is not { IsYouTube: true, OriginalAudio: { } asset } project ||
+            !await Confirm("Remove Original Audio?", asset.SourceName, "Remove") ||
+            !ReferenceEquals(target.Project, project) || target.Busy) return;
+        if (Model.Project?.Id == project.Id)
+        {
+            originalAudioPlayer.Pause();
+            originalAudioPlayer.Source = null;
+            originalAudioPath = null;
+        }
+        await target.RunAsync("remove-original-audio");
+    }
+
     internal async Task ShowAudioExportAsync() => await ShowDialogAsync(new Views.ExportDialog(Model, this), 950, 780);
     internal async Task ShowAudioSourcesAsync()
     {
+        if (Model.Project?.AllowsOriginalAudioImport != true) return;
         var dialog = new ContentDialog { Title = "Audio sources", CloseButtonText = "Done" };
         dialog.Content = new ScrollViewer { Content = new Views.AudioSourceControls(this, Model, dialog, false), MaxHeight = 600 };
         await ShowDialogAsync(dialog, 740, 800);
@@ -176,9 +194,9 @@ public sealed partial class MainWindow
     private void UpdateAudioSourcePanel()
     {
         AudioSourcePanel.Children.Clear();
-        AudioSourcePanel.Visibility = Model.Project?.IsYouTube == true ? Visibility.Visible : Visibility.Collapsed;
-        if (Model.Project?.IsYouTube == true) AudioSourcePanel.Children.Add(new Views.AudioSourceControls(this, Model, showHeading: false));
-        AudioSourcesButton.Visibility = Model.Project?.IsYouTube == true ? Visibility.Visible : Visibility.Collapsed;
+        AudioSourcePanel.Visibility = Model.Project?.AllowsOriginalAudioImport == true ? Visibility.Visible : Visibility.Collapsed;
+        if (Model.Project?.AllowsOriginalAudioImport == true) AudioSourcePanel.Children.Add(new Views.AudioSourceControls(this, Model, showHeading: false));
+        AudioSourcesButton.Visibility = AudioSourcePanel.Visibility;
         AudioSourcesSummary.Visibility = AudioSourcesButton.Visibility;
         if (Model.Project is { } project) {
             AudioSourcesSummary.Glyph = project.AudioSources?.Playback == "imported" ? "\uE8A5" : "\uE714";

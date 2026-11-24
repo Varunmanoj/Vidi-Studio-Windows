@@ -47,7 +47,7 @@ public static class OnlineRequirements
         if (command == "download-voice") return new[] { OnlineService.Voices };
         if (project?.IsYouTube != true) return Array.Empty<OnlineService>();
         if (command == "prepare-video") return new[] { OnlineService.YouTube };
-        if (command is "export-youtube-original-audio" or "export-youtube-described-audio" or "combine-imported-audio")
+        if (project.UsesStandaloneYouTubeAudio && command is ("export-youtube-original-audio" or "export-youtube-described-audio" or "combine-imported-audio"))
         {
             var adIndex = Array.IndexOf(extra, "--ad-source");
             var importedAD = adIndex >= 0 && adIndex + 1 < extra.Length && extra[adIndex + 1] == "imported";

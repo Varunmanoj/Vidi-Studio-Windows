@@ -36,7 +36,8 @@ public sealed partial class MainWindow
     {
         MenuFlyoutItem Command(string id, bool libraryOnly = false)
         {
-            var item = new MenuFlyoutItem { Tag = id, Text = DesktopCommandTitle(id), Icon = DesktopCommandIcon(id) };
+            MenuFlyoutItem item = id is "use-youtube-player" or "use-local-video-player" ? new ToggleMenuFlyoutItem() : new MenuFlyoutItem();
+            item.Tag = id; item.Text = DesktopCommandTitle(id); item.Icon = DesktopCommandIcon(id);
             if (DesktopShortcuts.TryGetValue(id, out var shortcut)) item.KeyboardAcceleratorTextOverride = shortcut.Text;
             item.Click += async (_, _) =>
             {
@@ -44,6 +45,7 @@ public sealed partial class MainWindow
                 try { await RunDesktopCommandAsync(id); }
                 catch (OperationCanceledException) { }
                 catch (Exception ex) { await ShowError(ex); }
+                finally { if (item is ToggleMenuFlyoutItem) UpdateDesktopMenuStates(); }
             };
             if (!desktopMenuItems.TryGetValue(id, out var items)) desktopMenuItems[id] = items = new();
             items.Add(item);
@@ -87,7 +89,10 @@ public sealed partial class MainWindow
                 Command("projects-reset-filters"), Separator(),
                 Submenu("Editor Sections", Command("transcript"), Command("summary"), Command("descriptions"), Command("ad-transcript"), Command("ad-overview")), Separator(),
                 ProjectLanguageMenu(), Separator(), SavedResultsMenu(), Separator(),
-                Command("preview"), Command("fullscreen"), Command("toggle-timeline"), Command("toggle-thumbnail-images"),
+                Command("preview"),
+                Submenu("Video Player", Command("use-youtube-player"), Command("use-local-video-player"), Separator(), Command("choose-playback-video"), Command("remove-playback-video")),
+                Command("fullscreen"),
+                Command("toggle-timeline"), Command("toggle-thumbnail-images"),
                 Command("summary-zoom-in"), Command("summary-zoom-out"), Command("summary-zoom-reset"), Command("filter-segments"), Command("clear-segment-filter"),
                 Submenu("Sort Segments", Command("clear-segment-sort"), Command("sort-segments"), Separator(), Command("sort-start"), Command("sort-duration-asc"), Command("sort-duration-desc"), Command("sort-origin")), Separator(),
                 Command("show-projects"), Command("show-inspector"), Separator(),
@@ -115,10 +120,10 @@ public sealed partial class MainWindow
                     Submenu("AD Segment Generation", Command("generate-ad-cues"), Separator(), Command("delete-descriptions")),
                     Submenu("Narration Audio", Command("synthesize-tts"), Command("synthesize-changed"), Command("review-narration-issues"), Command("review-narration-voices"), Separator(), Command("delete-narration"))),
                 Command("delete-current"), Separator(),
-                Submenu("Import", Command("import-transcript"), Command("import-summary"), Command("import-descriptions"), Command("import-original-audio"), Command("import-ad-audio"), Separator(), Command("import-assets")),
+                Submenu("Import", Command("import-transcript"), Command("import-summary"), Command("import-descriptions"), Command("import-original-audio"), Command("remove-original-audio"), Command("choose-playback-video"), Command("remove-playback-video"), Command("import-ad-audio"), Separator(), Command("import-assets")),
                 Command("show-in-finder"), Command("open-configuration"),
                 Separator(), Command("rename-project"), Command("trash-project")),
-            Menu("YouTube", Command("youtube-browser"), Command("youtube-accounts"), Separator(), Command("youtube-list"), Command("youtube-table"), Separator(), Command("youtube-open-editor"), Command("youtube-open-direct"), Command("youtube-open-browser"), Command("youtube-open-studio"), Separator(), Command("youtube-refresh-list"), Command("youtube-load-videos"), Command("youtube-load-playlists")),
+            Menu("YouTube", Command("youtube-browser"), Command("youtube-accounts"), Separator(), Command("youtube-list"), Command("youtube-table"), Separator(), Command("youtube-open-editor"), Command("youtube-open-direct"), Command("youtube-open-browser"), Command("youtube-open-studio"), Command("youtube-project-open-studio"), Separator(), Command("youtube-refresh-list"), Command("youtube-load-videos"), Command("youtube-load-playlists")),
             Menu("Help", Command("help"), Command("website"), Command("about"))
         };
         galleryMenus.AddRange(Layout());
@@ -450,6 +455,11 @@ public sealed partial class MainWindow
         GalleryFilterProjects.IsEnabled = CanRunDesktopCommand("projects-filter-dialog");
         RefreshProjectLanguageMenus();
         RefreshSavedResultMenus();
+        foreach (var (_, group) in desktopMenuGroups.Where(entry => entry.Name == "Video Player"))
+        {
+            group.Visibility = desktopEditorVisible && Model.Project?.IsYouTube == true ? Visibility.Visible : Visibility.Collapsed;
+            group.IsEnabled = Model.Project is { } project && CanChangeYouTubePlayback(project);
+        }
         foreach (var (id, items) in desktopMenuItems)
             foreach (var item in items)
             {
@@ -459,6 +469,8 @@ public sealed partial class MainWindow
                 if (!SameMenuIcon(item.Icon, nextIcon)) item.Icon = nextIcon;
                 var enabled = CanRunDesktopCommand(id);
                 if (item.IsEnabled != enabled) item.IsEnabled = enabled;
+                if (item is ToggleMenuFlyoutItem choice)
+                    choice.IsChecked = id == "use-youtube-player" ? Model.Project?.UsesYouTubePlayer == true : Model.Project?.ActiveLocalYouTubePlaybackPath != null;
                 item.Visibility = (libraryOnlyMenuItems.Contains(item) ? !desktopEditorVisible : LibraryCommandVisible(id)) ? Visibility.Visible : Visibility.Collapsed;
                 if (libraryOnlyMenuItems.Contains(item) && !LibraryCommandVisible(id)) item.Visibility = Visibility.Collapsed;
                 if (id == "open-configuration" && !Model.Settings.GetBool("developerMode")) item.Visibility = Visibility.Collapsed;
@@ -494,6 +506,7 @@ public sealed partial class MainWindow
         ClearSegmentSortButton.IsEnabled = CanRunDesktopCommand("clear-segment-sort");
         foreach (var (name, group) in desktopMenuGroups)
         {
+            if (name == "Video Player") continue;
             group.IsEnabled = desktopEditorVisible && Model.Project != null && (Model.Idle || ((name is "Narration" or "Narration Audio") && Model.IsSynthesizingNarration));
             group.Visibility = desktopEditorVisible
                 ? (name is "Filter Projects by Source" or "Sort Projects" ? Visibility.Collapsed : Visibility.Visible)
@@ -519,6 +532,7 @@ public sealed partial class MainWindow
             }
             if (name == "Transcript Overlay")
             {
+                group.IsEnabled &= VideoTransportAvailable;
                 var mode = Model.Settings.Get("captionDisplayMode", "off");
                 group.Text = "Transcript Overlay: " + (mode == "combined" ? "AD Transcript" : mode == "transcript" ? "Transcript" : mode == "descriptions" ? "Descriptions" : "Off");
                 group.Visibility = desktopEditorVisible && (Section.SelectedIndex is 0 or 2 or 3) ? Visibility.Visible : Visibility.Collapsed;
@@ -656,7 +670,12 @@ public sealed partial class MainWindow
             "copy-to" or "segment-edit-mode" => Section.SelectedIndex is 0 or 1 or 2 or 3,
             "delete-current" => Section.SelectedIndex is 0 or 1 or 2,
             "youtube-captions" => Model.Project?.IsYouTube == true && Section.SelectedIndex == 0,
-            "youtube-details" or "youtube-refresh" or "import-original-audio" => Model.Project?.IsYouTube == true,
+            "youtube-details" or "youtube-refresh" or "youtube-project-open-studio" => Model.Project?.IsYouTube == true,
+            "import-original-audio" => Model.Project?.IsYouTube == true,
+            "remove-original-audio" => Model.Project is { IsYouTube: true, OriginalAudio: not null },
+            "use-youtube-player" or "use-local-video-player" => Model.Project?.IsYouTube == true,
+            "choose-playback-video" => Model.Project?.IsYouTube == true,
+            "remove-playback-video" => Model.Project is { IsYouTube: true, YouTubePlaybackVideo: not null },
             _ => true
         };
     }
@@ -697,7 +716,9 @@ public sealed partial class MainWindow
         if (!desktopEditorVisible || validationShowcaseActive || windowClosed || !Model.Idle || !Segments.Items.Contains(segment) ||
             !SegmentBelongsToCurrentTab(segment) || !RowCommandVisible(id, segment.IsDescription)) return false;
         return id switch {
-            "segment-one-play" or "segment-one-skip" => Model.Project?.IsYouTube != true || ConnectivityService.Shared.Available(OnlineService.YouTube),
+            "segment-one-play" => VideoTransportAvailable && Model.Project is { } playbackProject &&
+                (!playbackProject.UsesYouTubePlayer || ConnectivityService.Shared.Available(OnlineService.YouTube)),
+            "segment-one-skip" => VideoTransportAvailable && (Model.Project?.UsesYouTubePlayer != true || ConnectivityService.Shared.Available(OnlineService.YouTube)),
             "segment-one-reanalyze" or "segment-one-rewrite" => Model.CanUseAI,
             "segment-one-synthesize" => Model.CanNarrate,
             "segment-one-preview" => segment.AudioReady || ReferenceEquals(previewingSegment, segment),
@@ -783,7 +804,7 @@ public sealed partial class MainWindow
             if (id == "delete-project") return CanDeleteProjectVideo(selected);
             if (selected.IntegrityPlaceholder || selected.Integrity?.ManifestUnreadable == true || selected.Integrity?.FolderMissing == true) return false;
             return id switch {
-                "delete-content" => selected.SavedResults.Count > 0 || selected.Exports.Count > 0 || selected.Thumbnails.Count > 0 || selected.Cues.Count > 0 || selected.HasTranscript || selected.HasSummary,
+                "delete-content" => selected.SavedResults.Count > 0 || selected.Exports.Count > 0 || selected.Thumbnails.Count > 0 || selected.Cues.Count > 0 || selected.HasTranscript || selected.HasSummary || (selected.IsYouTube && selected.YouTubePlaybackVideo != null),
                 "analyze" or "transcribe" or "generate-summary" => Model.CanUseAI,
                 "generate-ad-cues" => Model.CanUseAI && selected.SavedResults.Any(r => r.Kind == "transcript" && r.State == "saved") && selected.SavedResults.Any(r => r.Kind == "summary" && r.State == "saved"),
                 "prepare-video" => !selected.IsYouTube || ConnectivityService.Shared.Available(OnlineService.YouTube),
@@ -804,7 +825,10 @@ public sealed partial class MainWindow
         if (id is "youtube-details" or "youtube-refresh" or "youtube-captions") return desktopEditorVisible && Model.Idle && Model.Project?.IsYouTube == true;
         if (!desktopEditorVisible || Model.Project is not { } p) return false;
         if (id.StartsWith("segment-one-", StringComparison.Ordinal)) return CanRunSingleSegmentCommand(id);
-        if (p.IsYouTube && (id is "play" or "back" or "forward" or "jump-to-time") && !ConnectivityService.Shared.Available(OnlineService.YouTube)) return id == "play" && IsVideoPlaying();
+        if (id == "youtube-project-open-studio") return ProjectYouTubeStudioUrl(p) != null;
+        if (id is ("play" or "stop" or "back" or "forward" or "jump-to-time" or "fullscreen" or "narration" or
+                   "caption-cycle" or "caption-off" or "caption-transcript" or "caption-ad-transcript") &&
+            (!VideoTransportAvailable || (p.UsesYouTubePlayer && !ConnectivityService.Shared.Available(OnlineService.YouTube)))) return false;
         if (Section.SelectedIndex == 4 && !p.OverviewMatchesEditingResult && id is "synthesize-tts" or "synthesize-changed" or "review-narration-issues" or "review-narration-voices") return false;
         var timed = Section.SelectedIndex is 0 or 2 or 3;
         var hasTranscript = p.HasTranscript || ExtraFlag(p, "transcriptGenerated");
@@ -823,7 +847,11 @@ public sealed partial class MainWindow
             case "import-descriptions":
             case "import-ad-audio":
                 return !p.IntegrityPlaceholder && p.Integrity?.ManifestUnreadable != true && p.Integrity?.FolderMissing != true;
-            case "import-original-audio": return p.IsYouTube && !p.IntegrityPlaceholder && p.Integrity?.ManifestUnreadable != true && p.Integrity?.FolderMissing != true;
+            case "use-youtube-player": case "use-local-video-player": return p.CanChooseYouTubePlayer && CanChangeYouTubePlayback(p);
+            case "choose-playback-video": return CanChooseYouTubePlaybackVideo(p);
+            case "remove-playback-video": return p.YouTubePlaybackVideo != null && CanChangeYouTubePlayback(p);
+            case "import-original-audio": return p.AllowsOriginalAudioImport && CanChangeYouTubePlayback(p);
+            case "remove-original-audio": return p.OriginalAudio != null && CanChangeYouTubePlayback(p);
             case "trash-project": return true;
             case "segment-edit-mode": return timed || Section.SelectedIndex == 1;
             case "add": return Section.SelectedIndex is 0 or 2;
@@ -858,7 +886,7 @@ public sealed partial class MainWindow
             case "delete-descriptions": return p.Cues.Count > 0 || ExtraFlag(p, "descriptionsGenerated");
             case "delete-current": return Section.SelectedIndex switch
                 { 0 => hasTranscript, 1 => p.HasSummary || ExtraFlag(p, "summaryGenerated"), 2 => p.Cues.Count > 0 || ExtraFlag(p, "descriptionsGenerated"), _ => false };
-            case "fullscreen": return !p.IsYouTube;
+            case "fullscreen": return !p.UsesYouTubePlayer && p.CanPlayVideo;
         }
         if (id is "summary-zoom-in" or "summary-zoom-out" or "summary-zoom-reset")
             return Section.SelectedIndex == 1 && !summaryEditMode && p.HasSummary && Model.Idle
@@ -945,13 +973,15 @@ public sealed partial class MainWindow
             "delete-current" => Section.SelectedIndex switch { 0 => "Delete Transcript…", 1 => "Delete Summary…", 2 => "Delete Descriptions…", _ => "Delete Current Page…" },
             "youtube-list" => "List View", "youtube-table" => "Table View", "youtube-accounts" => "YouTube Accounts…",
             "youtube-open-editor" => "Open in Editor",
-            "youtube-open-direct" => "Open in Editor", "youtube-open-browser" => "Open in YouTube", "youtube-open-studio" => "Open in YouTube Studio",
+            "youtube-open-direct" => "Open in Editor", "youtube-open-browser" => "Open in YouTube", "youtube-open-studio" => "Open in YouTube Studio", "youtube-project-open-studio" => "Open in YouTube Studio",
             "youtube-refresh-list" => "Refresh Videos", "youtube-load-videos" => "Load More Videos", "youtube-load-playlists" => "Load More Playlists",
             "project-settings" => "Open Project Settings…",
             "youtube-browser" => "My YouTube Videos…", "youtube-details" => "Video Details…", "youtube-refresh" => "Refresh YouTube Details", "youtube-captions" => "Import YouTube Captions…",
             "import-transcript" => "Import Transcript…", "import-summary" => "Import Summary…",
             "import-descriptions" => "Import Descriptions…", "import-assets" => "Import Existing Assets…",
-            "import-original-audio" => "Import Original Audio…", "import-ad-audio" => "Import AD Audio…",
+            "use-youtube-player" => "YouTube Player", "use-local-video-player" => "Local Video Player",
+            "choose-playback-video" => "Choose Local Playback Video…", "remove-playback-video" => "Remove Local Playback Video…",
+            "import-original-audio" => "Import Original Audio…", "remove-original-audio" => "Remove Original Audio…", "import-ad-audio" => "Import AD Audio…",
             "filter-segments" => Section.SelectedIndex switch
             {
                 0 => "Filter Transcript…", 2 => "Filter Descriptions…", 3 => "Filter AD Transcript…", _ => "Filter Segments…"
@@ -1019,7 +1049,7 @@ public sealed partial class MainWindow
             "YouTube" or "youtube-browser" => "My YouTube Videos…",
             "youtube-accounts" => "YouTube Accounts…", "youtube-list" => "Project list", "youtube-table" => "Table View",
             "youtube-open-editor" => "Edit selected", "youtube-open-direct" => "Open in Editor",
-            "youtube-open-browser" => "Open in YouTube", "youtube-open-studio" => "Open in YouTube Studio",
+            "youtube-open-browser" => "Open in YouTube", "youtube-open-studio" => "Open in YouTube Studio", "youtube-project-open-studio" => "Open in YouTube Studio",
             "youtube-refresh" or "youtube-refresh-list" => "Refresh video details",
             "youtube-load-videos" or "youtube-load-playlists" => "Add segment",
             "youtube-details" => "Video Details…", "youtube-captions" => "Import transcript",
@@ -1031,6 +1061,7 @@ public sealed partial class MainWindow
             "new-project" or "add" => "New project", "open-project" or "show-in-finder" => "Open project folder",
             "Import" => "Import", "import-assets" => "Import existing assets", "import-transcript" => "Import transcript",
             "import-summary" => "Import summary", "import-descriptions" => "Import descriptions", "filter-segments" => "Filter segments",
+            "choose-playback-video" or "remove-playback-video" or "remove-original-audio" or "use-youtube-player" or "use-local-video-player" or "Video Player" => id,
             "import-original-audio" => "Import original audio", "import-ad-audio" => "Import AD audio",
             "Sort Segments" => "Sort segments",
             "sort-start" => "Sort by start time", "sort-duration-asc" => "Shortest duration first",
@@ -1144,6 +1175,9 @@ public sealed partial class MainWindow
             case "youtube-browser": await ShowYouTubeBrowserAsync(); break;
             case "youtube-details": await ShowYouTubeDetailsAsync(); break;
             case "youtube-refresh": await RefreshYouTubeInspectorAsync(); break;
+            case "youtube-project-open-studio":
+                if (Model.Project is { } studioProject) OpenProjectInYouTubeStudio(studioProject);
+                break;
             case "youtube-captions": await ShowYouTubeDetailsAsync(true); break;
             case "open-project": OpenProject_Click(this, e); break;
             case "remove-from-list":
@@ -1229,7 +1263,12 @@ public sealed partial class MainWindow
             case "import-transcript": await ImportExistingAssetsAsync(Models.ImportScope.Transcript); break;
             case "import-summary": await ImportExistingAssetsAsync(Models.ImportScope.Summary); break;
             case "import-descriptions": await ImportExistingAssetsAsync(Models.ImportScope.Descriptions); break;
+            case "use-youtube-player": await SelectYouTubePlayerAsync(embedded: true); break;
+            case "use-local-video-player": await SelectYouTubePlayerAsync(embedded: false); break;
+            case "choose-playback-video": await ChangeYouTubePlaybackAsync(remove: false); break;
+            case "remove-playback-video": await ChangeYouTubePlaybackAsync(remove: true); break;
             case "import-original-audio": await ImportExistingAssetsAsync(Models.ImportScope.OriginalAudio); break;
+            case "remove-original-audio": await RemoveOriginalAudioAsync(); break;
             case "import-ad-audio": await ImportExistingAssetsAsync(Models.ImportScope.ADAudio); break;
             case "show-in-finder": if (ProjectManagementTarget() is { } revealProject) await RevealProjectAsync(revealProject); break;
             case "open-configuration": if (ProjectManagementTarget() is { } configurationProject) await OpenProjectConfigurationAsync(configurationProject); break;

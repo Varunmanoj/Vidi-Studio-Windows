@@ -1,8 +1,12 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 
 namespace Vidi_Studio_Windows.Views;
 
@@ -11,6 +15,7 @@ internal sealed class VideoBrowserSelection
 {
     private readonly ListView list;
     private bool updating;
+    private Func<Task>? primaryAction;
     internal bool Enabled => list.SelectionMode == ListViewSelectionMode.Multiple;
     internal event Action? ModeChanged;
     internal const double CheckboxColumnWidth = 42;
@@ -61,6 +66,29 @@ internal sealed class VideoBrowserSelection
         item.Click += (_, _) => SetMode(item.IsChecked);
         return item;
     }
+
+    internal void AddPrimaryAction(Func<Task> run)
+    {
+        primaryAction = run;
+        list.AddHandler(UIElement.DoubleTappedEvent, new DoubleTappedEventHandler(async (_, args) =>
+        {
+            if (Enabled || !list.IsEnabled) return;
+            for (var element = args.OriginalSource as DependencyObject;
+                 element != null && element != list; element = VisualTreeHelper.GetParent(element))
+            {
+                // Embedded row buttons keep their own action.
+                if (element is ButtonBase) return;
+                if (element is not ListViewItem row) continue;
+                args.Handled = true;
+                await ActivateRowAsync(row.Content);
+                return;
+            }
+        }), handledEventsToo: true);
+    }
+
+    internal Task ActivateRowAsync(object? target) =>
+        !Enabled && list.IsEnabled && target != null && ReferenceEquals(list.SelectedItem, target) && primaryAction is { } run
+            ? run() : Task.CompletedTask;
 
     internal void AddRowActions(Func<object, string> title, Action<MenuFlyout, object> populate)
     {

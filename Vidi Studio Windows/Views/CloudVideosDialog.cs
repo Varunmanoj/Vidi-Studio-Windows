@@ -96,7 +96,7 @@ internal sealed class CloudVideosDialog : ContentDialog
             throw new InvalidOperationException("The signed-out Cloud browser must offer sign-in without listing any storage data.");
     }
 
-    internal async Task VerifyBrowserForSmokeTestAsync()
+    internal async Task VerifyBrowserForSmokeTestAsync(Window browserWindow)
     {
         await WaitUntilAsync(() => projects.Items.Count == 2 && !loading);
         projects.SelectedIndex = projects.Items.ToList().FindIndex(item => item is CloudProject { Id: "fixture-source" });
@@ -173,7 +173,16 @@ internal sealed class CloudVideosDialog : ContentDialog
             window.DispatcherQueue.TryEnqueue(() => dialog.Hide());
         }
         WindowedDialog.ReadyToShow += CaptureWarning;
-        try { await OpenSelectedVideoAsync(); }
+        try
+        {
+            videoSelection.SetMode(true);
+            await MainWindow.DoubleClickVideoRowForSmokeTestAsync(browserWindow, list, 0);
+            if (notice != null) throw new InvalidOperationException("Double-click opened a cloud video in Select mode.");
+            videoSelection.SetMode(false);
+            videoSelection.SetTarget(list.Items[0]);
+            await MainWindow.DoubleClickVideoRowForSmokeTestAsync(browserWindow, list, 0);
+            await WaitUntilAsync(() => notice != null);
+        }
         finally { WindowedDialog.ReadyToShow -= CaptureWarning; }
         if (notice is not { Content: TextBlock warning, PrimaryButtonText: "Choose a Smaller Video", CloseButtonText: "Cancel" } ||
             warning.Text != NewProjectDialog.AnalysisSizeWarning(3_260_000_000) || ImportedProject != null)
@@ -341,6 +350,7 @@ internal sealed class CloudVideosDialog : ContentDialog
         refresh.ContextFlyout = refreshMenu;
         refresh.Click += async (_, _) => await RefreshAsync();
         openEditor.Click += async (_, _) => await OpenSelectedVideoAsync();
+        videoSelection.AddPrimaryAction(OpenSelectedVideoAsync);
         list.KeyDown += async (_, args) =>
         {
             if (args.Key != Windows.System.VirtualKey.Enter || !openEditor.IsEnabled) return;

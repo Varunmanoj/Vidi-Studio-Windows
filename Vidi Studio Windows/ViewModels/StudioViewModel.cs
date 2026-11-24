@@ -85,6 +85,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         {
             if (ContentTransferCommand == "translate-results") return "Translating content";
             if (ContentTransferCommand == "copy-results") return "Copying content";
+            if (ContentTransferCommand == "attach-youtube-playback") return "Copying local playback video";
             if (videoPreparation == "uploading") return "Uploading video";
             if (videoPreparation == "processing") return "Preparing video";
             if (IsSynthesizingNarration) return ActiveNarrationStatusText;
@@ -757,14 +758,14 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         extra = requestArguments;
         var requestFolder = Project?.Folder;
         var requestProjectID = needsProject ? Project?.Id : null;
-        var canRecoverYouTubeAudio = Project?.IsYouTube == true &&
+        var canRecoverYouTubeAudio = Project?.AllowsOriginalAudioImport == true &&
             command is "export-youtube-original-audio" or "export-youtube-described-audio" or "combine-imported-audio";
         YouTubeAudioExportRecovery? audioRecovery = null;
         string? connectionFailure = null;
         var exportSucceeded = false;
         var hasExportOutput = false;
         IsExporting = command.StartsWith("export-", StringComparison.Ordinal) && Project != null;
-        ContentTransferCommand = command is "copy-results" or "translate-results" ? command : null;
+        ContentTransferCommand = command is "copy-results" or "translate-results" or "attach-youtube-playback" ? command : null;
         ContentTransferProgress = null;
         processingPlan.Clear();
         processingPlan.AddRange(AnalysisPlan(command, extra));

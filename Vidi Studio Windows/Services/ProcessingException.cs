@@ -34,6 +34,9 @@ public sealed class ProcessingException : Exception
         if (diagnostic.Contains("storage.objects.get", StringComparison.OrdinalIgnoreCase) &&
             diagnostic.Contains("gcp-sa-aiplatform", StringComparison.OrdinalIgnoreCase))
             return "Ask your Google Cloud administrator to grant the Vertex AI service agent read access to this video, then retry.";
+        if (command == "attach-youtube-playback" && Regex.IsMatch(diagnostic,
+            @"^Playback video duration does not match\. YouTube is \d+\.\d{2} seconds and the local file is \d+\.\d{2} seconds\.$"))
+            return diagnostic;
         if (command == "generate-summary")
             return "The summary could not be created. Your transcript is safe. Please try again.";
 
@@ -83,6 +86,13 @@ public sealed class ProcessingException : Exception
             "Connect Vertex AI with Google sign-in in Settings > AI to analyze this Cloud Storage video.",
             "Connect Gemini Developer API or sign in to Google for Vertex AI in Settings > AI to generate Gemini narration.",
             "Connect an AI provider in Settings > AI.",
+            "Choose a readable video file with a video track.",
+            "Refresh YouTube Details before choosing a local playback video.",
+            "Local playback copies are available for YouTube projects.",
+            "Remove the original audio file before importing a local playback video.",
+            "Remove the local playback video before importing original audio.",
+            "Choose a matching local playback video before exporting this project.",
+            "The local playback video changed. Reopen Choose What to Delete and try again.",
             "YouTube audio could not be downloaded. Check your connection and that the video is public, then try again. If YouTube blocks the download, import your original video as a local project and export its described audio instead.",
             "YouTube audio download timed out. Try again, or import your original video.",
             "YouTube audio duration does not match this project. The video may have been edited. Refresh its transcript and descriptions, or import the matching original video.",

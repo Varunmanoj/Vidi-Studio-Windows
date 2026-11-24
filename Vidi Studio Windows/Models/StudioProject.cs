@@ -211,6 +211,8 @@ public sealed class ProjectPlaybackSettings
     public bool? FollowTranscript { get; set; }
 }
 
+public sealed record YouTubePlaybackVideoAsset(string Path, string Thumbnail, string SourceName, double Duration, bool UseYouTubePlayer = false, bool? HasAudio = null);
+
 public sealed class StudioProject : INotifyPropertyChanged
 {
     public string SelectedLanguage { get; set; } = "auto";
@@ -322,6 +324,7 @@ public sealed class StudioProject : INotifyPropertyChanged
             : null);
     [JsonPropertyName("youtubeCaptionSource")] public JsonElement? YouTubeCaptionSource { get; set; }
     public string? YoutubeURL { get; set; }
+    public YouTubePlaybackVideoAsset? YouTubePlaybackVideo { get; set; }
     public OriginalAudioAsset? OriginalAudio { get; set; }
     public AudioSourceSettings? AudioSources { get; set; }
     public AudioSourceProvenance? TranscriptAudioSource { get; set; }
@@ -370,9 +373,39 @@ public sealed class StudioProject : INotifyPropertyChanged
     [JsonIgnore] public bool IntegrityHasWarning => Integrity?.HasWarnings == true;
     [JsonIgnore] public string IntegrityStatus => Integrity?.BadgeText ?? "";
     [JsonIgnore] public bool IsYouTube => SourceType == "youtube";
+    [JsonIgnore] public bool RequiresLocalYouTubePlayback => IsYouTube && PrivateYouTubeChannel != null;
+    [JsonIgnore] public bool OffersYouTubePlayerChoice => IsYouTube && !RequiresLocalYouTubePlayback;
+    [JsonIgnore] public bool CanChooseYouTubePlayer => OffersYouTubePlayerChoice && LocalYouTubePlaybackPath != null;
+    [JsonIgnore] public string? ActiveLocalYouTubePlaybackPath => CanChooseYouTubePlayer && YouTubePlaybackVideo?.UseYouTubePlayer == true
+        ? null : LocalYouTubePlaybackPath;
+    [JsonIgnore] public bool UsesYouTubePlayer => IsYouTube && !RequiresLocalYouTubePlayback && ActiveLocalYouTubePlaybackPath == null;
+    [JsonIgnore] public string? LocalYouTubePlaybackPath => IsYouTube &&
+        YouTubePlaybackVideo is { } asset && Math.Abs(asset.Duration - Duration) < 0.5
+        ? ExistingAssetPath(asset.Path) : null;
+    [JsonIgnore] public bool UsesStandaloneYouTubeAudio => IsYouTube && LocalYouTubePlaybackPath == null;
+    [JsonIgnore] public bool AllowsOriginalAudioImport => IsYouTube && YouTubePlaybackVideo == null;
+    [JsonIgnore] public bool HasVideoExportAudio => IsYouTube ? LocalYouTubePlaybackPath != null && YouTubePlaybackVideo?.HasAudio != false : HasAudio;
+    [JsonIgnore] public bool HasVideoExportSource => IsYouTube ? LocalYouTubePlaybackPath != null : HasLocalSource;
+    [JsonIgnore] public bool CanPlayVideo => !RequiresLocalYouTubePlayback || LocalYouTubePlaybackPath != null;
+
+    private string? ExistingAssetPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        try { var resolved = Resolve(path); return File.Exists(resolved) ? resolved : null; }
+        catch (Exception ex) when (ex is ArgumentException or InvalidDataException) { return null; }
+    }
+
     [JsonIgnore] public Uri? ThumbnailUri
     {
-        get { try { var path = Thumbnails.FirstOrDefault(); return path != null && File.Exists(Resolve(path)) ? new Uri(Resolve(path)) : null; } catch { return null; } }
+        get
+        {
+            var thumbnail = LocalYouTubePlaybackPath != null ? ExistingAssetPath(YouTubePlaybackVideo?.Thumbnail) : null;
+            thumbnail ??= ExistingAssetPath(Thumbnails.FirstOrDefault());
+            if (thumbnail != null) return new Uri(thumbnail);
+            return IsYouTube && YouTubeMetadata is { ValueKind: JsonValueKind.Object } metadata &&
+                metadata.TryGetProperty("thumbnailURL", out var url) && url.ValueKind == JsonValueKind.String
+                ? Services.YouTubeVideo.SafeThumbnailUri(url.GetString()) : null;
+        }
     }
     [JsonIgnore] public string ProjectSubtitle => $"{DurationLabel} · {Cues.Count} descriptions";
     [JsonIgnore] public string DurationLabel => NarrationTimeFormat.ProjectDuration(Duration);

@@ -241,7 +241,8 @@ public sealed class StudioProject : INotifyPropertyChanged
             foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
                 var populated = kind switch { "transcript" => Transcript.Count > 0, "summary" => !string.IsNullOrWhiteSpace(Summary), "descriptions" => Cues.Count > 0 || ImportedADTranscript?.Segments.Count > 0, _ => ImportedAudioDescription != null };
                 if (populated) rows.Add(new LanguageResult { Id = Id + "-legacy-" + kind, Kind = kind,
-                    Payload = JsonSerializer.SerializeToElement(new { transcript = Transcript, summary = Summary, cues = Cues, importedAudioDescription = ImportedAudioDescription, importedADTranscript = ImportedADTranscript }, Json.Options) });
+                    Origin = kind == "summary" ? SummaryOrigin ?? "unknown" : "unknown",
+                    Payload = JsonSerializer.SerializeToElement(new { transcript = Transcript, summary = Summary, cues = Cues, narrationEngine = NarrationEngine, importedAudioDescription = ImportedAudioDescription, importedADTranscript = ImportedADTranscript }, Json.Options) });
             }
             return rows;
         }
@@ -251,6 +252,18 @@ public sealed class StudioProject : INotifyPropertyChanged
         if (ActiveResultIDs.TryGetValue(code, out var selection) && selection.TryGetValue(kind, out var rid)) return rid;
         return SavedResults.Where(r => r.Language == code && r.Kind == kind && r.State == "saved").OrderByDescending(r => r.CreatedAt).FirstOrDefault()?.Id ?? "";
     }
+    internal IReadOnlySet<string> ProjectFilterAIProviders
+    {
+        get
+        {
+            var providers = SavedResults.Select(result => result.AnalysisProvider)
+                .OfType<string>().Where(provider => provider != "none").ToHashSet();
+            if (IntegrityPlaceholder) providers.Add("unknown");
+            if (providers.Count == 0) providers.Add("none");
+            return providers;
+        }
+    }
+    internal bool MatchesAIProvider(string filter) => filter == "all" || ProjectFilterAIProviders.Contains(filter);
     public StudioProject WithLanguageResults(string code, IReadOnlyDictionary<string, string>? choices = null, bool includingDrafts = false) {
         var result = (StudioProject)MemberwiseClone(); result.SelectedLanguage = code;
         result.Transcript = new(); result.Summary = ""; result.Cues = new(); result.ImportedAudioDescription = null; result.ImportedADTranscript = null; result.NarrationEngine = null; result.NarrationVoice = null; result.DescriptionTimingAudit = null;

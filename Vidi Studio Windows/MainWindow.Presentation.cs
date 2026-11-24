@@ -293,7 +293,7 @@ public sealed partial class MainWindow
         EditorProjectHeader.Visibility = Visibility.Collapsed;
         GallerySearchHost.Visibility = Visibility.Visible;
         GalleryImport.Visibility = Visibility.Visible;
-        Model.Reload(); Model.RefreshProjectIntegrity(true); RefreshGalleryCount(); UpdateProjectIntegrityUi();
+        FilterGallery(); Model.RefreshProjectIntegrity(true); RefreshGalleryCount(); UpdateProjectIntegrityUi();
     }
     private bool videoPlaybackStarted;
     private void StopProjectPlayback()
@@ -354,11 +354,99 @@ public sealed partial class MainWindow
         UpdateEditorWindowTitle();
         UpdateEditorProjectButtons();
     }
-    private void GalleryFilter_Changed(object sender, SelectionChangedEventArgs e) { if (galleryReady) FilterGallery(); }
+    private string gallerySourceFilter = "all";
+    private bool projectFiltersOpen;
+
+    private async void GalleryFilterProjects_Click(object sender, RoutedEventArgs e) =>
+        await RunDesktopCommandAsync("projects-filter-dialog");
+
+    private void ApplyGalleryFilters(string source, string language, string provider, string? sort = null)
+    {
+        gallerySourceFilter = source;
+        Model.LanguageFilter = language == "all" || Model.ProjectFilterLanguages.Any(option => option.Id == language) ? language : "all";
+        Model.AIProviderFilter = Model.ProjectFilterAIProviders.Contains(provider) ? provider : "all";
+        if (sort != null) Model.ProjectSort = sort;
+        FilterGallery();
+    }
+
+    private async Task ShowProjectFiltersAsync()
+    {
+        if (!CanRunDesktopCommand("projects-filter-dialog")) return;
+        projectFiltersOpen = true;
+        UpdateDesktopMenuStates();
+        try
+        {
+            var fields = new StackPanel();
+            var sourceOptions = new[] { "all", "local", "youtube", "cloud" }
+                .Select(id => new Models.OutputLanguage(id, DesktopCommandTitle("projects-source-" + id)));
+            var languageOptions = new[] { new Models.OutputLanguage("all", "All Languages") }.Concat(Model.ProjectFilterLanguages);
+            var providerOptions = Model.ProjectFilterAIProviders
+                .Select(id => new Models.OutputLanguage(id, Models.SavedAIProcessing.ProviderTitle(id)));
+            var sortOptions = new[] { "opened", "name", "duration", "type" }
+                .Select(id => new Models.OutputLanguage(id, DesktopCommandTitle("projects-sort-" + id)));
+            var source = Picker("Source", sourceOptions, gallerySourceFilter);
+            var language = Picker("Language", languageOptions, Model.LanguageFilter);
+            var provider = Picker("AI Provider", providerOptions, Model.AIProviderFilter);
+            var sort = Picker("Sort by", sortOptions, Model.ProjectSort);
+            var dialog = new ContentDialog
+            {
+                Title = "Filter Projects", Content = Views.CompactDialogLayout.Card(fields, "Project filters"),
+                PrimaryButtonText = "Filter", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary
+            };
+            var menu = Views.MenuAccessKeys.Create();
+            AddChoices("Source", source, "Filter segments", option => option.Title);
+            AddChoices("Language", language, "language-results", _ => "language-results");
+            AddChoices("AI Provider", provider, "Filter Projects by AI Provider", option => option.Title);
+            AddChoices("Sort by", sort, "Sort segments", _ => "Sort segments");
+            menu.Items.Add(new MenuFlyoutSeparator());
+            var filterItem = new MenuFlyoutItem { Text = "Filter", Icon = Views.MenuIcons.Create("Filter segments") };
+            var cancelItem = new MenuFlyoutItem { Text = "Cancel", Icon = Views.MenuIcons.Create("Cancel Sign-in") };
+            var applyFromMenu = false;
+            filterItem.Click += (_, _) => { applyFromMenu = true; dialog.Hide(); };
+            cancelItem.Click += (_, _) => dialog.Hide();
+            menu.Items.Add(filterItem);
+            menu.Items.Add(cancelItem);
+            fields.ContextFlyout = menu;
+            var result = await ShowDialogAsync(dialog, 530, 410);
+            if ((result == ContentDialogResult.Primary || applyFromMenu) && !desktopEditorVisible && !windowClosed &&
+                source.SelectedItem is Models.OutputLanguage selectedSource && language.SelectedItem is Models.OutputLanguage selectedLanguage &&
+                provider.SelectedItem is Models.OutputLanguage selectedProvider && sort.SelectedItem is Models.OutputLanguage selectedSort)
+                ApplyGalleryFilters(selectedSource.Id, selectedLanguage.Id, selectedProvider.Id, selectedSort.Id);
+
+            ComboBox Picker(string label, IEnumerable<Models.OutputLanguage> options, string current)
+            {
+                var values = options.ToArray();
+                var picker = new ComboBox { ItemsSource = values, DisplayMemberPath = "Title",
+                    SelectedItem = values.FirstOrDefault(value => value.Id == current) ?? values[0] };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(picker, label);
+                Views.SettingsDialog.CompactRow(fields, label, picker, true);
+                return picker;
+            }
+
+            void AddChoices(string label, ComboBox picker, string icon, Func<Models.OutputLanguage, string> optionIcon)
+            {
+                var submenu = new MenuFlyoutSubItem { Text = label, Icon = Views.MenuIcons.Create(icon) };
+                foreach (var option in (Models.OutputLanguage[])picker.ItemsSource)
+                {
+                    var item = new ToggleMenuFlyoutItem { Text = option.Title, Icon = Views.MenuIcons.Create(optionIcon(option)) };
+                    menu.Opening += (_, _) => item.IsChecked = Equals(picker.SelectedItem, option);
+                    item.Click += (_, _) => picker.SelectedItem = option;
+                    submenu.Items.Add(item);
+                }
+                menu.Items.Add(submenu);
+            }
+        }
+        finally
+        {
+            projectFiltersOpen = false;
+            if (!windowClosed) UpdateDesktopMenuStates();
+        }
+    }
+
     private void GalleryToolbar_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (GalleryToolbarActions == null || GallerySearchHost == null) return;
-        var narrow = e.NewSize.Width < 740;
+        var narrow = e.NewSize.Width < GalleryViewControls.DesiredSize.Width + GalleryToolbarActions.DesiredSize.Width + GalleryToolbar.ColumnSpacing;
         Grid.SetRow(GalleryToolbarActions, narrow ? 2 : 1);
         Grid.SetColumn(GalleryToolbarActions, narrow ? 0 : 1);
         Grid.SetColumnSpan(GalleryToolbarActions, narrow ? 3 : 1);
@@ -372,7 +460,7 @@ public sealed partial class MainWindow
     private void FilterGallery()
     {
         var selected = SelectedGalleryProject();
-        Model.Reload(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", 3 => "cloud", _ => "all" });
+        Model.Reload(GallerySearch.Text, gallerySourceFilter);
         if (selected != null && Model.Projects.Contains(selected))
         {
             GalleryGrid.SelectedItem = selected;

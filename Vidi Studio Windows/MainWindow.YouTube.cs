@@ -78,7 +78,7 @@ public sealed partial class MainWindow
         }
     }
     private async void YouTubeBrowser_Click(object sender, RoutedEventArgs e) => await ShowYouTubeBrowserAsync();
-    private async Task<YouTubeVideo?> ShowYouTubeBrowserAsync(Window? pickerOwner = null)
+    private async Task<(YouTubeVideo Video, bool OpenInEditor)?> ShowYouTubeBrowserAsync(Window? pickerOwner = null)
     {
         if (youtubeBrowserRun != null || (pickerOwner == null && desktopEditorVisible)) return null;
         var chooseMode = pickerOwner != null;
@@ -154,15 +154,19 @@ public sealed partial class MainWindow
         var list = new ListView { SelectionMode = ListViewSelectionMode.Single };
         var videoSelection = new VideoBrowserSelection(list);
         var tableHeader = new Grid { Visibility = Visibility.Collapsed, ColumnSpacing = 8, Padding = new Thickness(12, 8, 12, 8) };
-        var widths = new[] { 112.0, 280, 170, 100, 124, 130, 90, 90, 90, 110 };
-        var headers = new[] { "Thumbnail", "Title", "Channel", "Visibility", "Duration", "Published", "Views", "Likes", "Comments", "Captions" };
+        var widths = new[] { 112.0, 280, 170, 100, 124, 130, 90, 90, 90, 110, 116 };
+        var headers = new[] { "Thumbnail", "Title", "Channel", "Visibility", "Duration", "Published", "Views", "Likes", "Comments", "Captions", "Actions" };
         for (var column = 0; column < headers.Length; column++) {
             tableHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(widths[column]) });
             var title = new TextBlock { Text = headers[column], FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
             Grid.SetColumn(title, column); tableHeader.Children.Add(title);
         }
+        var selectHeader = new TextBlock { Text = "Select", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(4, 8, 0, 0) };
+        var headerRow = new Grid();
+        headerRow.Children.Add(tableHeader);
+        headerRow.Children.Add(selectHeader);
         var videoHost = new Grid(); videoHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); videoHost.RowDefinitions.Add(new RowDefinition());
-        videoHost.Children.Add(tableHeader); Grid.SetRow(list, 1); videoHost.Children.Add(list);
+        videoHost.Children.Add(headerRow); Grid.SetRow(list, 1); videoHost.Children.Add(list);
         var videoScroll = new ScrollViewer { Content = videoHost, HorizontalScrollMode = ScrollMode.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled };
         var results = new Grid();
         results.Children.Add(videoScroll);
@@ -170,16 +174,17 @@ public sealed partial class MainWindow
         Grid.SetRow(results, 2);
         panel.Children.Add(results);
         var footer = new StackPanel { Spacing = 12 }; Grid.SetRow(footer, 3); panel.Children.Add(footer);
-        var openingActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 }; footer.Children.Add(openingActions);
-        var rowActions = new DropDownButton { Content = "Actions" }; openingActions.Children.Add(rowActions);
-        var openEditor = new Button { Content = openTitle, IsEnabled = false }; openingActions.Children.Add(openEditor);
+        var rowActions = new DropDownButton { Content = "Actions" };
+        var openEditor = new Button { Content = openTitle, IsEnabled = false };
         bool OwnedPrivateVideo(YouTubeVideo video)
         {
             var owner = service.PrivateConnection(video.ChannelId, Model.Settings);
             return owner != null && account.SelectedItem is YouTubeAccount selected && owner.Id == selected.Id;
         }
         bool CanOpen(YouTubeVideo video) => video.Visibility != "private" || OwnedPrivateVideo(video);
-        var openBrowser = new Button { Content = "Open in YouTube", IsEnabled = false }; openingActions.Children.Add(openBrowser);
+        var openBrowser = new Button { Content = "Open in YouTube", IsEnabled = false };
+        var openStudio = new Button { Content = "Open in YouTube Studio", IsEnabled = false };
+        footer.Children.Add(SettingsDialog.CompactActions(rowActions, openEditor, openBrowser, openStudio));
         var chooseCaptions = new CheckBox { Content = "Choose YouTube captions after opening" };
         if (!chooseMode) footer.Children.Add(chooseCaptions);
         var captionMenu = MenuAccessKeys.Create();
@@ -192,7 +197,9 @@ public sealed partial class MainWindow
         var cells = new[] { "Thumbnail", "Title", "Channel", "Visibility", "DurationLabel", "PublishedLabel", "ViewsLabel", "LikesLabel", "CommentsLabel", "CaptionsLabel" };
         var columns = string.Join("", widths.Select(width => "<ColumnDefinition Width=\"" + width + "\"/>"));
         var row = "<Image Source=\"{Binding Thumbnail}\" Width=\"100\" Height=\"60\" Stretch=\"Uniform\" AutomationProperties.AccessibilityView=\"Raw\"/>";
-        for (var column = 1; column < cells.Length; column++) row += "<TextBlock Grid.Column=\"" + column + "\" Text=\"{Binding " + cells[column] + "}\"" + (column == 4 ? " AutomationProperties.Name=\"{Binding DurationAnnouncement}\"" : "") + " TextTrimming=\"CharacterEllipsis\" VerticalAlignment=\"Center\"/>";
+        for (var column = 1; column < cells.Length; column++)
+            row += "<TextBlock Grid.Column=\"" + column + "\" Text=\"{Binding " + cells[column] + "}\"" + (cells[column] == "DurationLabel" ? " AutomationProperties.Name=\"{Binding DurationAnnouncement}\"" : "") + " TextTrimming=\"CharacterEllipsis\" VerticalAlignment=\"Center\"/>";
+        row += $"<DropDownButton Name=\"{VideoBrowserSelection.ActionsButtonName}\" Grid.Column=\"{cells.Length}\" Content=\"Actions\" VerticalAlignment=\"Center\"/>";
         var template = (DataTemplate)Microsoft.UI.Xaml.Markup.XamlReader.Load("<DataTemplate xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\"><Grid ColumnSpacing=\"8\" Padding=\"12,6\" AutomationProperties.Name=\"{Binding TableAccessibleLabel}\"><Grid.ColumnDefinitions>" + columns + "</Grid.ColumnDefinitions>" + row + "</Grid></DataTemplate>");
         var listTemplate = (DataTemplate)Microsoft.UI.Xaml.Markup.XamlReader.Load("<DataTemplate xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\"><Grid ColumnSpacing=\"12\" Padding=\"12,8\" AutomationProperties.Name=\"{Binding TableAccessibleLabel}\"><Grid.ColumnDefinitions><ColumnDefinition Width=\"100\"/><ColumnDefinition Width=\"*\"/></Grid.ColumnDefinitions><Grid AutomationProperties.AccessibilityView=\"Raw\"><SymbolIcon Symbol=\"Video\" Opacity=\"0.4\"/><Image Source=\"{Binding Thumbnail}\" Width=\"100\" Height=\"60\" Stretch=\"Uniform\"/></Grid><StackPanel Grid.Column=\"1\" Spacing=\"4\"><TextBlock Text=\"{Binding Title}\" FontWeight=\"SemiBold\" TextWrapping=\"Wrap\"/><TextBlock Text=\"{Binding ListSubtitle}\" AutomationProperties.Name=\"{Binding ListSubtitleAnnouncement}\"/><TextBlock Text=\"{Binding StatisticsLabel}\" TextWrapping=\"Wrap\"/><TextBlock Text=\"{Binding CaptionsLabel}\"/></StackPanel></Grid></DataTemplate>");
         void ApplyLayout() {
@@ -202,7 +209,7 @@ public sealed partial class MainWindow
             tableHeader.Visibility = table ? Visibility.Visible : Visibility.Collapsed;
             videoScroll.HorizontalScrollMode = table ? ScrollMode.Auto : ScrollMode.Disabled;
             videoScroll.HorizontalScrollBarVisibility = table ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
-            videoHost.Width = table ? widths.Sum() + 8 * 9 + 24 : double.NaN;
+            UpdateSelectionColumn();
             list.ItemTemplate = table ? template : listTemplate;
             AutomationProperties.SetName(list, table ? "YouTube videos table" : "YouTube videos list");
             var style = new Style(typeof(ListViewItem)); style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch)); style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0))); list.ItemContainerStyle = style;
@@ -210,6 +217,15 @@ public sealed partial class MainWindow
             Model.Settings.Set("youtubeVideoLayout", table ? "table" : "list"); Model.Settings.Save();
             UpdateDesktopMenuStates();
         }
+        void UpdateSelectionColumn()
+        {
+            var table = layout == "table";
+            var inset = videoSelection.Enabled ? VideoBrowserSelection.CheckboxColumnWidth : 0;
+            selectHeader.Visibility = table && videoSelection.Enabled ? Visibility.Visible : Visibility.Collapsed;
+            tableHeader.Margin = new Thickness(inset, 0, 0, 0);
+            videoHost.Width = table ? widths.Sum() + 8 * (widths.Length - 1) + 24 + inset : double.NaN;
+        }
+        videoSelection.ModeChanged += UpdateSelectionColumn;
         void SetLayout(string value) { layout = value; ApplyLayout(); }
         listLayout.Click += (_, _) => SetLayout("list"); tableLayout.Click += (_, _) => SetLayout("table"); ApplyLayout();
         var more = new Button { Content = "Load More Videos", Visibility = Visibility.Collapsed }; footer.Children.Add(more);
@@ -328,12 +344,31 @@ public sealed partial class MainWindow
         more.Click += async (_, _) => await Load(false); morePlaylists.Click += async (_, _) => await Load(false, false, true); refresh.Click += async (_, _) => await Load(true, true);
         openEditor.Click += (_, _) => { if (youtubeBrowserCanRun?.Invoke("youtube-open-editor") == true) youtubeBrowserRun?.Invoke("youtube-open-editor"); };
         void OpenBrowser() { if (list.SelectedItem is YouTubeVideo chosen) System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(chosen.Url) { UseShellExecute = true }); }
+        void OpenStudio()
+        {
+            if (list.SelectedItem is not YouTubeVideo chosen || SharedYouTubeLink.VideoId(chosen.Url) is not { } id) return;
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo($"https://studio.youtube.com/video/{id}/edit") { UseShellExecute = true });
+        }
         openBrowser.Click += (_, _) => { if (youtubeBrowserCanRun?.Invoke("youtube-open-browser") == true) youtubeBrowserRun?.Invoke("youtube-open-browser"); };
-        list.SelectionChanged += (_, _) => { openBrowser.IsEnabled = list.SelectedItem is YouTubeVideo; UpdateDesktopMenuStates(); };
-        youtubeBrowserCanRun = id => !accountsOpen && (id is "youtube-accounts" or "youtube-list" or "youtube-table" || (id == "youtube-open-browser" ? list.SelectedItem is YouTubeVideo : id == "youtube-open-editor" ? list.SelectedItem is YouTubeVideo video && CanOpen(video) && refresh.IsEnabled : id == "youtube-load-videos" ? more.Visibility == Visibility.Visible && more.IsEnabled : id == "youtube-load-playlists" ? morePlaylists.Visibility == Visibility.Visible && morePlaylists.IsEnabled : refresh.IsEnabled));
-        YouTubeVideo? chosenForProject = null;
+        openStudio.Click += (_, _) => { if (youtubeBrowserCanRun?.Invoke("youtube-open-studio") == true) youtubeBrowserRun?.Invoke("youtube-open-studio"); };
+        list.SelectionChanged += (_, _) =>
+        {
+            openBrowser.IsEnabled = openStudio.IsEnabled = list.SelectedItem is YouTubeVideo;
+            UpdateDesktopMenuStates();
+        };
+        youtubeBrowserCanRun = id => !accountsOpen && (id switch
+        {
+            "youtube-accounts" or "youtube-list" or "youtube-table" => true,
+            "youtube-choose-mode" => chooseMode,
+            "youtube-open-browser" or "youtube-open-studio" => list.SelectedItem is YouTubeVideo,
+            "youtube-open-editor" or "youtube-open-direct" => list.SelectedItem is YouTubeVideo video && CanOpen(video) && refresh.IsEnabled,
+            "youtube-load-videos" => more.Visibility == Visibility.Visible && more.IsEnabled,
+            "youtube-load-playlists" => morePlaylists.Visibility == Visibility.Visible && morePlaylists.IsEnabled,
+            _ => refresh.IsEnabled,
+        });
+        (YouTubeVideo Video, bool OpenInEditor)? chosenForProject = null;
         bool confirmingVideo = false;
-        async Task ChooseForNewProjectAsync()
+        async Task ChooseForNewProjectAsync(bool openInEditor)
         {
             if (confirmingVideo || list.SelectedItem is not YouTubeVideo video ||
                 account.SelectedItem is not YouTubeAccount selected || !CanOpen(video)) return;
@@ -353,7 +388,7 @@ public sealed partial class MainWindow
                 current.RequireAvailable(allowPrivate: OwnedPrivateVideo(current));
                 if (playlist.SelectedItem is YouTubePlaylist chosen && chosen.Id.Length > 0)
                     current.Data["openedFromPlaylist"] = YouTubeService.PlaylistData(chosen);
-                chosenForProject = current;
+                chosenForProject = (current, openInEditor);
                 dialog.Hide();
             }
             catch (OperationCanceledException) { }
@@ -371,19 +406,26 @@ public sealed partial class MainWindow
             case "youtube-table": SetLayout("table"); break;
             case "youtube-browser": search.Focus(FocusState.Programmatic); break;
             case "youtube-open-editor":
-                if (chooseMode) _ = ChooseForNewProjectAsync();
+                if (chooseMode) _ = ChooseForNewProjectAsync(openInEditor: false);
                 else dialog.Hide();
                 break;
+            case "youtube-open-direct": _ = ChooseForNewProjectAsync(openInEditor: true); break;
             case "youtube-open-browser": OpenBrowser(); break;
+            case "youtube-open-studio": OpenStudio(); break;
             case "youtube-accounts": _ = ShowAccounts(); break;
             case "youtube-refresh-list": _ = Load(true, true); break;
             case "youtube-load-videos": _ = Load(false); break;
             case "youtube-load-playlists": _ = Load(false, false, true); break;
             }
         };
+        var rowCommands = new List<string> { "youtube-open-editor" };
+        if (chooseMode) rowCommands.Add("youtube-open-direct");
+        rowCommands.AddRange(new[] { "youtube-open-browser", "youtube-open-studio" });
+        string BrowserActionTitle(string id) => id == "youtube-open-editor" ? openTitle : DesktopCommandTitle(id);
         var browserMenu = new MenuBar(); var youtubeMenu = new MenuBarItem { Title = "YouTube" }; browserMenu.Items.Add(youtubeMenu); controls.Children.Insert(0, browserMenu);
-        foreach (var id in new[] { "youtube-accounts", "youtube-list", "youtube-table", "youtube-open-editor", "youtube-open-browser", "youtube-refresh-list", "youtube-load-videos", "youtube-load-playlists" }) {
-            var item = new MenuFlyoutItem { Text = id == "youtube-open-editor" ? openTitle : DesktopCommandTitle(id), Icon = DesktopCommandIcon(id) };
+        foreach (var id in new[] { "youtube-accounts", "youtube-list", "youtube-table" }.Concat(rowCommands)
+                     .Concat(new[] { "youtube-refresh-list", "youtube-load-videos", "youtube-load-playlists" })) {
+            var item = new MenuFlyoutItem { Text = BrowserActionTitle(id), Icon = DesktopCommandIcon(id) };
             if (DesktopShortcuts.TryGetValue(id, out var shortcut)) {
                 item.KeyboardAcceleratorTextOverride = shortcut.Text;
                 var accelerator = new Microsoft.UI.Xaml.Input.KeyboardAccelerator { Key = shortcut.Key, Modifiers = shortcut.Modifiers };
@@ -404,10 +446,9 @@ public sealed partial class MainWindow
             menu.Items.Clear();
             menu.Items.Add(videoSelection.ModeItem(!loadingRing.IsActive && list.Items.Count > 0));
             if (target == null) return;
-            if (videoSelection.Enabled) menu.Items.Add(videoSelection.TargetItem(target));
-            foreach (var id in new[] { "youtube-open-editor", "youtube-open-browser" })
+            foreach (var id in rowCommands)
             {
-                var item = new MenuFlyoutItem { Text = id == "youtube-open-editor" ? openTitle : DesktopCommandTitle(id), Icon = DesktopCommandIcon(id), Tag = id,
+                var item = new MenuFlyoutItem { Text = BrowserActionTitle(id), Icon = DesktopCommandIcon(id), Tag = id,
                     IsEnabled = youtubeBrowserCanRun?.Invoke(id) == true };
                 item.Click += (_, _) =>
                 {
@@ -420,6 +461,11 @@ public sealed partial class MainWindow
         var selectedActions = MenuAccessKeys.Create();
         selectedActions.Opening += (_, _) => PopulateVideoActions(selectedActions, list.SelectedItem as YouTubeVideo);
         rowActions.Flyout = selectedActions;
+        videoSelection.AddRowActions(item => ((YouTubeVideo)item).Title, (menu, item) =>
+        {
+            videoSelection.SetTarget(item);
+            PopulateVideoActions(menu, (YouTubeVideo)item);
+        });
         list.ContextRequested += (_, args) =>
         {
             var pointer = args.TryGetPosition(list, out var point);

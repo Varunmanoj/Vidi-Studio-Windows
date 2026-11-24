@@ -104,8 +104,9 @@
     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <StackPanel x:Name="GalleryViewControls" Grid.Row="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-     <ComboBox x:Name="GalleryLanguageFilter" MinWidth="160" MaxWidth="220" MinHeight="32" VerticalAlignment="Center" DisplayMemberPath="Title" SelectionChanged="LanguageFilter_Changed" AutomationProperties.Name="Project language filter" ToolTipService.ToolTip="Filter projects by language"/>
-     <ComboBox x:Name="GalleryFilter" MinWidth="136" MinHeight="32" VerticalAlignment="Center" SelectedIndex="0" SelectionChanged="GalleryFilter_Changed" AutomationProperties.Name="Project source" ToolTipService.ToolTip="Filter projects by source"><ComboBoxItem Content="All Projects"/><ComboBoxItem Content="Local Videos"/><ComboBoxItem Content="YouTube Videos"/><ComboBoxItem Content="Cloud Storage Videos"/></ComboBox>
+     <Button x:Name="GalleryFilterProjects" MinHeight="32" VerticalAlignment="Center" Click="GalleryFilterProjects_Click" AutomationProperties.Name="Filter Projects" ToolTipService.ToolTip="Choose project filters and sort order">
+      <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE71C;" FontFamily="Segoe Fluent Icons" FontSize="16"/><TextBlock Text="Filter Projects"/></StackPanel>
+     </Button>
      <Button x:Name="GalleryLayoutButton" MinWidth="34" MinHeight="32" VerticalAlignment="Center" Content="&#xE8FD;" FontFamily="Segoe Fluent Icons" Click="GalleryLayout_Click" AutomationProperties.Name="Switch list and grid view" ToolTipService.ToolTip="Switch list and grid view"/>
     </StackPanel>
     <StackPanel x:Name="GalleryToolbarActions" Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -180,6 +181,11 @@
     <Grid x:Name="InspectorPanel" Background="{ThemeResource LayerFillColorAltBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
      <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
      <ScrollViewer x:Name="InspectorScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" VerticalScrollMode="Enabled" HorizontalScrollMode="Disabled" AutomationProperties.Name="Editor inspector"><StackPanel Padding="18,22" Spacing="18" HorizontalAlignment="Stretch"><StackPanel x:Name="LanguageResultsPanel" Spacing="10"/>
+      <StackPanel Spacing="8">
+       <TextBlock Text="AI Processing" FontWeight="SemiBold" AutomationProperties.HeadingLevel="Level2"/>
+       <TextBlock x:Name="InspectorCurrentAIProcessing" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" Visibility="Collapsed"/>
+       <StackPanel x:Name="InspectorAIProcessingRows" Spacing="8"/>
+      </StackPanel>
       <StackPanel Spacing="8">
        <Grid>
         <TextBlock x:Name="InspectorProjectInformationHeading" AutomationProperties.Name="Project Information" AutomationProperties.AccessibilityView="Control" AutomationProperties.HeadingLevel="Level2" Text="Project Information" FontWeight="SemiBold"/>

@@ -21,6 +21,7 @@ public sealed partial class MainWindow
     private string projectLanguageMenuState = "";
     private readonly List<MenuFlyoutSubItem> savedResultMenus = new();
     private readonly List<MenuFlyoutSubItem> libraryLanguageMenus = new();
+    private readonly List<MenuFlyoutSubItem> libraryAIProviderMenus = new();
     private string libraryLanguageMenuState = "";
     private readonly HashSet<MenuFlyoutItem> libraryOnlyMenuItems = new();
     private bool desktopEditorVisible;
@@ -78,8 +79,10 @@ public sealed partial class MainWindow
                 Command("segment-select-all"), Command("segment-deselect-all"), Separator(),
                 Command("segment-one-edit"), Command("segment-one-play"), Command("segment-one-skip"), Command("segment-one-synthesize"), Command("segment-one-rewrite"), Command("segment-one-import-audio"), Command("segment-one-delete-audio"), Command("segment-one-reanalyze"), Command("segment-delete-selected")),
             Menu("View",
+                Command("projects-filter-dialog", libraryOnly: true),
                 Submenu("Filter Projects by Source", Command("projects-source-all"), Command("projects-source-local"), Command("projects-source-youtube"), Command("projects-source-cloud")),
                 LibraryLanguageMenu(),
+                LibraryAIProviderMenu(),
                 Submenu("Sort Projects", Command("projects-sort-opened"), Command("projects-sort-name"), Command("projects-sort-duration"), Command("projects-sort-type")),
                 Command("projects-reset-filters"), Separator(),
                 Submenu("Editor Sections", Command("transcript"), Command("summary"), Command("descriptions"), Command("ad-transcript"), Command("ad-overview")), Separator(),
@@ -115,7 +118,7 @@ public sealed partial class MainWindow
                 Submenu("Import", Command("import-transcript"), Command("import-summary"), Command("import-descriptions"), Command("import-original-audio"), Command("import-ad-audio"), Separator(), Command("import-assets")),
                 Command("show-in-finder"), Command("open-configuration"),
                 Separator(), Command("rename-project"), Command("trash-project")),
-            Menu("YouTube", Command("youtube-browser"), Command("youtube-accounts"), Separator(), Command("youtube-list"), Command("youtube-table"), Separator(), Command("youtube-open-editor"), Command("youtube-open-browser"), Separator(), Command("youtube-refresh-list"), Command("youtube-load-videos"), Command("youtube-load-playlists")),
+            Menu("YouTube", Command("youtube-browser"), Command("youtube-accounts"), Separator(), Command("youtube-list"), Command("youtube-table"), Separator(), Command("youtube-open-editor"), Command("youtube-open-direct"), Command("youtube-open-browser"), Command("youtube-open-studio"), Separator(), Command("youtube-refresh-list"), Command("youtube-load-videos"), Command("youtube-load-playlists")),
             Menu("Help", Command("help"), Command("website"), Command("about"))
         };
         galleryMenus.AddRange(Layout());
@@ -296,11 +299,49 @@ public sealed partial class MainWindow
                 item.Click += (_, _) => {
                     if (desktopEditorVisible) return;
                     if (language.Id != "all" && !Model.ProjectFilterLanguages.Any(option => option.Id == language.Id)) return;
-                    GalleryLanguageFilter.SelectedItem = (GalleryLanguageFilter.ItemsSource as IEnumerable<Models.OutputLanguage>)?.FirstOrDefault(v => v.Id == language.Id);
-                    UpdateDesktopMenuStates();
+                    ApplyGalleryFilters(gallerySourceFilter, language.Id, Model.AIProviderFilter);
                 };
                 menu.Items.Add(item);
             }
+        }
+    }
+
+    private MenuFlyoutSubItem LibraryAIProviderMenu()
+    {
+        var menu = new MenuFlyoutSubItem
+        {
+            Text = "Filter Projects by AI Provider", Tag = "projects-ai-provider-filter",
+            Icon = Views.MenuIcons.Create("Filter Projects by AI Provider")
+        };
+        libraryAIProviderMenus.Add(menu);
+        return menu;
+    }
+
+    private void RefreshLibraryAIProviderMenus()
+    {
+        foreach (var menu in libraryAIProviderMenus)
+        {
+            menu.Visibility = desktopEditorVisible ? Visibility.Collapsed : Visibility.Visible;
+            if (!menu.Items.Select(item => item.Tag as string).SequenceEqual(Model.ProjectFilterAIProviders))
+            {
+                menu.Items.Clear();
+                foreach (var option in Model.ProjectFilterAIProviders)
+                {
+                    var title = Models.SavedAIProcessing.ProviderTitle(option);
+                    var item = new ToggleMenuFlyoutItem { Text = title, Tag = option, Icon = Views.MenuIcons.Create(title) };
+                    item.Click += (_, _) =>
+                    {
+                        if (desktopEditorVisible || !Model.ProjectFilterAIProviders.Contains(option)) return;
+                        if (Model.AIProviderFilter != option)
+                            ApplyGalleryFilters(gallerySourceFilter, Model.LanguageFilter, option);
+                        else RefreshLibraryAIProviderMenus();
+                    };
+                    menu.Items.Add(item);
+                }
+                AssignMenuAccessKeys(menu.Items);
+            }
+            foreach (var item in menu.Items.OfType<ToggleMenuFlyoutItem>())
+                item.IsChecked = item.Tag as string == Model.AIProviderFilter;
         }
     }
 
@@ -405,6 +446,8 @@ public sealed partial class MainWindow
     {
         if (windowClosed) return;
         RefreshLibraryLanguageMenus();
+        RefreshLibraryAIProviderMenus();
+        GalleryFilterProjects.IsEnabled = CanRunDesktopCommand("projects-filter-dialog");
         RefreshProjectLanguageMenus();
         RefreshSavedResultMenus();
         foreach (var (id, items) in desktopMenuItems)
@@ -525,6 +568,8 @@ public sealed partial class MainWindow
         if (id.StartsWith("youtube-", StringComparison.Ordinal)) {
             if (!YouTubeMenusVisible) return false;
             if (id is "youtube-list" or "youtube-table" or "youtube-open-editor" or "youtube-refresh-list" or "youtube-load-videos" or "youtube-load-playlists") return youtubeBrowserCanRun != null;
+            if (id == "youtube-open-direct") return youtubeBrowserCanRun?.Invoke("youtube-choose-mode") == true;
+            if (id == "youtube-open-studio") return youtubeBrowserCanRun != null;
             if (id == "youtube-open-browser") return youtubeBrowserCanRun != null || ProjectManagementTarget()?.IsYouTube == true;
         }
         if (id is "focus-search" or "clear-search") return true;
@@ -722,7 +767,9 @@ public sealed partial class MainWindow
         if (id.StartsWith("projects-source-", StringComparison.Ordinal)) return !desktopEditorVisible;
         if (id.StartsWith("projects-sort-", StringComparison.Ordinal)) return !desktopEditorVisible;
         if (id == "website") return true;
-        if (id == "projects-reset-filters") return !desktopEditorVisible && (!string.IsNullOrEmpty(GallerySearch.Text) || GalleryFilter.SelectedIndex != 0 || Model.LanguageFilter != "all");
+        if (id == "projects-filter-dialog") return !desktopEditorVisible && !projectFiltersOpen;
+        if (id == "projects-reset-filters") return !desktopEditorVisible && (!string.IsNullOrEmpty(GallerySearch.Text)
+            || gallerySourceFilter != "all" || Model.LanguageFilter != "all" || Model.AIProviderFilter != "all");
         if (!desktopEditorVisible && id is "project-list" or "project-grid") return true;
         // App information stays reachable while an editor is preparing or processing.
         // Each window has its own model; the gallery's idle state must not determine access.
@@ -752,7 +799,7 @@ public sealed partial class MainWindow
         if (id is "open-project" or "close-window") return true;
         if (id is "project-list" or "project-grid") return !desktopEditorVisible || !(Section.SelectedIndex == 1 && summaryEditMode);
         if (id == "youtube-accounts") return true;
-        if (id is "youtube-list" or "youtube-table" or "youtube-open-editor" or "youtube-refresh-list" or "youtube-load-videos" or "youtube-load-playlists") return youtubeBrowserCanRun?.Invoke(id) == true;
+        if (id is "youtube-list" or "youtube-table" or "youtube-open-editor" or "youtube-open-direct" or "youtube-open-studio" or "youtube-refresh-list" or "youtube-load-videos" or "youtube-load-playlists") return youtubeBrowserCanRun?.Invoke(id) == true;
         if (id == "youtube-browser") return Model.Idle;
         if (id is "youtube-details" or "youtube-refresh" or "youtube-captions") return desktopEditorVisible && Model.Idle && Model.Project?.IsYouTube == true;
         if (!desktopEditorVisible || Model.Project is not { } p) return false;
@@ -838,6 +885,7 @@ public sealed partial class MainWindow
 
     private string DesktopCommandTitle(string id, Models.StudioProject? contextProject = null)
     {
+        if (id == "youtube-open-editor" && youtubeBrowserCanRun?.Invoke("youtube-choose-mode") == true) return "Choose Video";
         if (id.StartsWith("segment-one-", StringComparison.Ordinal)) return SegmentCommandTitle(id);
         var p = contextProject ?? ProjectManagementTarget();
         return id switch
@@ -846,6 +894,7 @@ public sealed partial class MainWindow
             "cloud-upload" => "Upload Video to Cloud Storage…", "cloud-open" => "Open Video in Google Cloud Console", "cloud-rename" => "Rename Cloud Video…", "cloud-remove" => "Remove Cloud Video…",
             "projects-source-all" => "All Projects", "projects-source-local" => "Local Videos", "projects-source-cloud" => "Cloud Storage Videos", "projects-source-youtube" => "YouTube Videos",
             "projects-reset-filters" => "Reset Project Filters",
+            "projects-filter-dialog" => "Filter Projects…",
             "projects-sort-opened" => "Last Opened", "projects-sort-name" => "Name (A–Z)",
             "projects-sort-duration" => "Duration (Longest First)", "projects-sort-type" => "Type (Local, then YouTube)",
             "delete-project" => "Delete Project…", "delete-content" => "Choose What to Delete…",
@@ -894,7 +943,10 @@ public sealed partial class MainWindow
             "review-narration-voices" => "Review Narration Voices…",
             "delete-descriptions" => "Delete Descriptions…",
             "delete-current" => Section.SelectedIndex switch { 0 => "Delete Transcript…", 1 => "Delete Summary…", 2 => "Delete Descriptions…", _ => "Delete Current Page…" },
-            "youtube-list" => "List View", "youtube-table" => "Table View", "youtube-accounts" => "YouTube Accounts…", "youtube-open-editor" => "Open in Editor", "youtube-open-browser" => "Open in YouTube", "youtube-refresh-list" => "Refresh Videos", "youtube-load-videos" => "Load More Videos", "youtube-load-playlists" => "Load More Playlists",
+            "youtube-list" => "List View", "youtube-table" => "Table View", "youtube-accounts" => "YouTube Accounts…",
+            "youtube-open-editor" => "Open in Editor",
+            "youtube-open-direct" => "Open in Editor", "youtube-open-browser" => "Open in YouTube", "youtube-open-studio" => "Open in YouTube Studio",
+            "youtube-refresh-list" => "Refresh Videos", "youtube-load-videos" => "Load More Videos", "youtube-load-playlists" => "Load More Playlists",
             "project-settings" => "Open Project Settings…",
             "youtube-browser" => "My YouTube Videos…", "youtube-details" => "Video Details…", "youtube-refresh" => "Refresh YouTube Details", "youtube-captions" => "Import YouTube Captions…",
             "import-transcript" => "Import Transcript…", "import-summary" => "Import Summary…",
@@ -940,10 +992,10 @@ public sealed partial class MainWindow
             "narration" => Narration.IsOn, "follow" => Follow.IsOn,
             "caption-off" => Model.Settings.Get("captionDisplayMode", "off") == "off",
             "caption-transcript" => Model.Settings.Get("captionDisplayMode") == "transcript",
-            "projects-source-all" => GalleryFilter.SelectedIndex == 0,
-            "projects-source-cloud" => GalleryFilter.SelectedIndex == 3,
-            "projects-source-local" => GalleryFilter.SelectedIndex == 1,
-            "projects-source-youtube" => GalleryFilter.SelectedIndex == 2,
+            "projects-source-all" => gallerySourceFilter == "all",
+            "projects-source-cloud" => gallerySourceFilter == "cloud",
+            "projects-source-local" => gallerySourceFilter == "local",
+            "projects-source-youtube" => gallerySourceFilter == "youtube",
             "projects-sort-opened" => Model.ProjectSort == "opened", "projects-sort-name" => Model.ProjectSort == "name",
             "projects-sort-duration" => Model.ProjectSort == "duration", "projects-sort-type" => Model.ProjectSort == "type",
             "project-list" => desktopEditorVisible ? ProjectList.Visibility == Visibility.Visible : GalleryTable.Visibility == Visibility.Visible,
@@ -966,14 +1018,15 @@ public sealed partial class MainWindow
             "project-list" => "Project list", "project-grid" => "List / Grid projects",
             "YouTube" or "youtube-browser" => "My YouTube Videos…",
             "youtube-accounts" => "YouTube Accounts…", "youtube-list" => "Project list", "youtube-table" => "Table View",
-            "youtube-open-editor" => "Edit selected", "youtube-open-browser" => "Open in YouTube",
+            "youtube-open-editor" => "Edit selected", "youtube-open-direct" => "Open in Editor",
+            "youtube-open-browser" => "Open in YouTube", "youtube-open-studio" => "Open in YouTube Studio",
             "youtube-refresh" or "youtube-refresh-list" => "Refresh video details",
             "youtube-load-videos" or "youtube-load-playlists" => "Add segment",
             "youtube-details" => "Video Details…", "youtube-captions" => "Import transcript",
             "Editor Sections" => "Editor sections", "Segments" => "Segments",
             "Transcript Overlay" => "Transcript overlay",
             "caption-cycle" or "caption-off" or "caption-transcript" or "caption-ad-transcript" => "Transcript overlay",
-            "Filter Projects by Source" or "projects-source-all" or "projects-source-local" or "projects-source-youtube" or "projects-reset-filters" => "Filter segments",
+            "Filter Projects by Source" or "projects-source-all" or "projects-source-local" or "projects-source-youtube" or "projects-reset-filters" or "projects-filter-dialog" => "Filter segments",
             "open-selected-project" or "open-gallery-window" => "Open editor in new window",
             "new-project" or "add" => "New project", "open-project" or "show-in-finder" => "Open project folder",
             "Import" => "Import", "import-assets" => "Import existing assets", "import-transcript" => "Import transcript",
@@ -1054,17 +1107,19 @@ public sealed partial class MainWindow
             case "focus-search": FocusSearch(); break;
             case "clear-search": ClearSearch(); break;
             case "open-search-result": if (SelectedSearchHit is { } searchHit) await OpenSearchHitAsync(searchHit); break;
-            case "projects-source-all": GalleryFilter.SelectedIndex = 0; break;
-            case "projects-source-cloud": GalleryFilter.SelectedIndex = 3; break;
-            case "projects-source-local": GalleryFilter.SelectedIndex = 1; break;
-            case "projects-source-youtube": GalleryFilter.SelectedIndex = 2; break;
+            case "projects-source-all":
+            case "projects-source-cloud":
+            case "projects-source-local":
+            case "projects-source-youtube":
+                ApplyGalleryFilters(id["projects-source-".Length..], Model.LanguageFilter, Model.AIProviderFilter); break;
             case "projects-sort-opened": Model.ProjectSort = "opened"; FilterGallery(); break;
             case "projects-sort-name": Model.ProjectSort = "name"; FilterGallery(); break;
             case "projects-sort-duration": Model.ProjectSort = "duration"; FilterGallery(); break;
             case "projects-sort-type": Model.ProjectSort = "type"; FilterGallery(); break;
+            case "projects-filter-dialog": await ShowProjectFiltersAsync(); break;
             case "projects-reset-filters":
-                GallerySearch.Text = ""; GalleryFilter.SelectedIndex = 0;
-                GalleryLanguageFilter.SelectedIndex = 0; FilterGallery(); break;
+                GallerySearch.Text = "";
+                ApplyGalleryFilters("all", "all", "all"); break;
             case "copy-to":
                 var selected = Segments.SelectedItems.OfType<Models.Segment>().ToArray();
                 var segmentIDs = selected.GroupBy(s => s.IsDescription ? "descriptions" : "transcript").ToDictionary(g => g.Key, g => g.Select(s => s.Id).ToArray());
@@ -1083,7 +1138,8 @@ public sealed partial class MainWindow
                 break;
             case "youtube-open-browser":
                 if (youtubeBrowserRun != null) youtubeBrowserRun(id); else if (ProjectManagementTarget() is { } youtubeProject) OpenProjectInYouTube(youtubeProject); break;
-            case "youtube-list": case "youtube-table": case "youtube-open-editor": case "youtube-refresh-list": case "youtube-load-videos": case "youtube-load-playlists":
+            case "youtube-list": case "youtube-table": case "youtube-open-editor": case "youtube-open-direct": case "youtube-open-studio":
+            case "youtube-refresh-list": case "youtube-load-videos": case "youtube-load-playlists":
                 if (youtubeBrowserCanRun?.Invoke(id) == true) youtubeBrowserRun?.Invoke(id); break;
             case "youtube-browser": await ShowYouTubeBrowserAsync(); break;
             case "youtube-details": await ShowYouTubeDetailsAsync(); break;

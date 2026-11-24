@@ -214,6 +214,9 @@ public sealed partial class MainWindow : Window
     }
     private void UpdateStatusFooter(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(Model.ActiveAIProcessing) or nameof(Model.Project) or nameof(Model.Busy))
+            UpdateInspectorAIProcessing();
+        if (e.PropertyName == nameof(Model.ProjectFilterAIProviders)) UpdateDesktopMenuStates();
         if (e.PropertyName == nameof(Model.ProjectFilterLanguages)) { RefreshLanguageFilters(); UpdateDesktopMenuStates(); }
         if (e.PropertyName is nameof(Model.Busy) or nameof(Model.Idle) or nameof(Model.IsAnalyzing)
             or nameof(Model.IsSynthesizingNarration) or nameof(Model.NarratingSegmentId)
@@ -574,23 +577,32 @@ public sealed partial class MainWindow : Window
                     await cloudEditor.ImportSelectedAssetsAsync(imports, false);
                 return;
             }
-            if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary)) return;
-            List<EngineEvent> created;
+            if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary) && !dialog.OpenSelectedYouTubeInEditor) return;
+            List<EngineEvent>? created = null;
+            StudioProject? projectToOpen = null;
             if (dialog.IsYouTube)
             {
-                var arguments = new List<string> { "--url", dialog.YouTubeUrl, "--library", dialog.LibraryPath };
-                string? metadata = null;
-                try
+                if (dialog.OpenSelectedYouTubeInEditor)
                 {
-                    if (dialog.SelectedYouTubeVideo is { } chosen && chosen.Id == SharedYouTubeLink.VideoId(dialog.YouTubeUrl))
-                    {
-                        metadata = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
-                        File.WriteAllText(metadata, chosen.Data.ToJsonString());
-                        arguments.AddRange(new[] { "--youtube-metadata", metadata });
-                    }
-                    created = await Model.RunAsync("import-youtube", arguments, needsProject: false, throwOnProcessingError: true);
+                    Model.Reload();
+                    projectToOpen = Model.ExistingProjectForYouTube(dialog.YouTubeUrl);
                 }
-                finally { if (metadata != null) File.Delete(metadata); }
+                if (projectToOpen == null)
+                {
+                    var arguments = new List<string> { "--url", dialog.YouTubeUrl, "--library", dialog.LibraryPath };
+                    string? metadata = null;
+                    try
+                    {
+                        if (dialog.SelectedYouTubeVideo is { } chosen && chosen.Id == SharedYouTubeLink.VideoId(dialog.YouTubeUrl))
+                        {
+                            metadata = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+                            File.WriteAllText(metadata, chosen.Data.ToJsonString());
+                            arguments.AddRange(new[] { "--youtube-metadata", metadata });
+                        }
+                        created = await Model.RunAsync("import-youtube", arguments, needsProject: false, throwOnProcessingError: true);
+                    }
+                    finally { if (metadata != null) File.Delete(metadata); }
+                }
             }
             else if (dialog.VideoPath is { } path)
                 created = await Model.RunAsync(dialog.IsCloud ? "cloud-create" : "import-video", new[] { "--video", path, "--library", dialog.LibraryPath },
@@ -598,13 +610,15 @@ public sealed partial class MainWindow : Window
             else return;
             // Cancelled processing returns no events and leaves the previous project selected.
             // Never apply the new files to that previous project.
-            if (!created.Any(item => item.Data.TryGetProperty("project", out _)) || Model.Project == null)
+            if (projectToOpen == null && created?.Any(item => item.Data.TryGetProperty("project", out _)) == true)
+                projectToOpen = Model.Project;
+            if (projectToOpen == null)
             {
                 if (!Model.ConnectionFailure && !Model.Status.StartsWith("Cancelled", StringComparison.Ordinal))
                     await ShowErrorMessage("Import Could Not Finish", Model.Status);
                 return;
             }
-            var editor = App.OpenWindow(Model.Project.Folder);
+            var editor = dialog.OpenSelectedYouTubeInEditor ? App.OpenOrActivateEditor(projectToOpen.Folder) : App.OpenWindow(projectToOpen.Folder);
             if (imports.HasAny && await editor.windowReady.Task && !editor.windowClosed)
                 await editor.ImportSelectedAssetsAsync(imports, dialog.CombineRequested);
             if (dialog.ChooseYouTubeCaptions && await editor.windowReady.Task && !editor.windowClosed)
@@ -1205,7 +1219,7 @@ public sealed partial class MainWindow : Window
         if (EditorWorkspace.Visibility == Visibility.Visible)
             Model.RefreshProjectIntegrity();
         if (GalleryPanel.Visibility == Visibility.Visible &&
-            Model.ReloadIfProjectsChanged(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", 3 => "cloud", _ => "all" }))
+            Model.ReloadIfProjectsChanged(GallerySearch.Text, gallerySourceFilter))
             RefreshGalleryCount();
         UpdateProjectIntegrityUi();
     }

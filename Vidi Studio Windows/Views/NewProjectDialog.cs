@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System;
@@ -27,8 +28,9 @@ public sealed class NewProjectDialog : ContentDialog
     internal const int WindowWidth = 760;
     internal const int WindowHeight = 544;
 
-    internal Func<Window, Task<YouTubeVideo?>>? BrowseYouTubeVideo { get; set; }
+    internal Func<Window, Task<(YouTubeVideo Video, bool OpenInEditor)?>>? BrowseYouTubeVideo { get; set; }
     internal YouTubeVideo? SelectedYouTubeVideo { get; private set; }
+    internal bool OpenSelectedYouTubeInEditor { get; private set; }
     public bool ChooseYouTubeCaptions => chooseYouTubeCaptions.IsChecked == true && IsYouTube;
     private readonly CheckBox chooseYouTubeCaptions = new() { Content = "Choose YouTube captions after creating" };
     private readonly Window owner;
@@ -82,7 +84,8 @@ public sealed class NewProjectDialog : ContentDialog
     private readonly Border youtubePreview = new() { Visibility = Visibility.Collapsed, CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Background = new SolidColorBrush(Windows.UI.Color.FromArgb(24, 128, 128, 128)) };
     private readonly ProgressRing youtubeLoadingRing = new() { Width = 24, Height = 24, HorizontalAlignment = HorizontalAlignment.Center };
     private readonly StackPanel youtubeLoading = new() { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 8, Visibility = Visibility.Collapsed };
-    private readonly TextBlock youtubeStatus = new() { TextWrapping = TextWrapping.Wrap, Opacity = .7, Visibility = Visibility.Collapsed };
+    private readonly Border youtubeError;
+    private readonly TextBlock youtubeStatus;
     private readonly TextBlock sourceHeading = new() { Text = "Video File", FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(2, 4, 0, 0) };
     private static readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private CancellationTokenSource? inspection;
@@ -170,6 +173,39 @@ public sealed class NewProjectDialog : ContentDialog
         ShowYouTubePreview(fetchedYouTubeId!, title, "Test channel", $"https://i.ytimg.com/vi/{fetchedYouTubeId}/hqdefault.jpg");
         UpdateSource();
     }
+    internal async Task VerifyYouTubeLinkForSmokeTestAsync(Func<FrameworkElement, Task> capture)
+    {
+        SelectYouTubeForSmokeTest("https://www.youtube.com/watch?v=jNQXAC9IVRw");
+        var data = new System.Text.Json.Nodes.JsonObject
+        {
+            ["videoID"] = "jNQXAC9IVRw",
+            ["title"] = "Test video",
+            ["visibility"] = "unlisted",
+            ["duration"] = 30.0
+        };
+        await FetchYouTubeDetailsAsync((id, _, _) => Task.FromResult(new YouTubeVideo(data)));
+        if (!IsPrimaryButtonEnabled || SelectedYouTubeVideo?.Visibility != "unlisted" ||
+            youtubeError.Visibility != Visibility.Collapsed ||
+            youtubePreview.Child is not Grid previewCard ||
+            !previewCard.Children.OfType<StackPanel>().Single().Children.OfType<TextBlock>().Any(text => text.Text == "Visibility: Unlisted"))
+            throw new InvalidOperationException("Fetch Details did not show the unlisted video visibility and enable Create Project.");
+
+        foreach (var message in new[] { YouTubeVideo.PrivateVideoMessage, YouTubeLinkIssueException.UnavailableMessage })
+        {
+            await FetchYouTubeDetailsAsync((_, _, _) => Task.FromException<YouTubeVideo>(new YouTubeLinkIssueException(message)));
+            if (IsPrimaryButtonEnabled || SelectedYouTubeVideo != null || youtubePreview.Visibility != Visibility.Collapsed ||
+                youtubeError.Visibility != Visibility.Visible || youtubeStatus.Text != message)
+                throw new InvalidOperationException("Fetch Details did not clear the preview and block creation for an inaccessible link.");
+            var icon = (FontIcon)((Grid)youtubeError.Child).Children[0];
+            youtubeError.UpdateLayout();
+            if (icon.Glyph != "\uE711" || icon.ActualWidth <= 0 || youtubeStatus.ActualWidth <= 0 ||
+                youtubeStatus.FontSize < 16 || youtubeStatus.TextWrapping != TextWrapping.Wrap ||
+                youtubeStatus.Foreground is not SolidColorBrush textBrush || icon.Foreground is not SolidColorBrush iconBrush ||
+                !textBrush.Color.Equals(iconBrush.Color) || textBrush.Color.R <= textBrush.Color.G || textBrush.Color.R <= textBrush.Color.B)
+                throw new InvalidOperationException("The YouTube error must show larger wrapping red text beside a matching cross.");
+        }
+        await capture(youtubeError);
+    }
 #endif
 
     public NewProjectDialog(Window owner, ElementTheme theme, SettingsStore settings, bool openYouTube = false, bool openCloud = false)
@@ -242,8 +278,26 @@ public sealed class NewProjectDialog : ContentDialog
         youtubeLoading.Children.Add(new TextBlock { Text = "Fetching video details…", TextAlignment = TextAlignment.Center });
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(youtubeLoadingRing, "Fetching video details");
         youtubeFields.Children.Add(youtubeLoading);
-        youtubeFields.Children.Add(youtubeStatus);
-        fetchDetails.Click += async (_, _) => await FetchYouTubeDetailsAsync();
+        youtubeError = (Border)XamlReader.Load("""
+            <Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}"
+                    Visibility="Collapsed" Padding="10" CornerRadius="8">
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Glyph="&#xE711;" FontFamily="Segoe Fluent Icons" FontSize="17"
+                              VerticalAlignment="Top" Margin="0,2,0,0" AutomationProperties.AccessibilityView="Raw"
+                              Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
+                    <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
+                </Grid>
+            </Border>
+            """);
+        youtubeStatus = (TextBlock)((Grid)youtubeError.Child).Children[1];
+        youtubeFields.Children.Add(youtubeError);
+        fetchDetails.Click += async (_, _) => await FetchYouTubeDetailsAsync(YouTubeService.Shared.VideoForNewProjectAsync);
         sourceOptions.Children.Add(local); sourceOptions.Children.Add(youtube);
         sourceOptions.Children.Add(cloud);
         cloud.Checked += (_,_) => UpdateSource();
@@ -323,8 +377,14 @@ public sealed class NewProjectDialog : ContentDialog
         Grid.SetRow(form, 2); layout.Children.Add(form);
         Content = layout;
         details.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) => UpdateLocalDetailsVisibility());
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetLiveSetting(youtubeStatus, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
         youtubeStatus.RegisterPropertyChangedCallback(TextBlock.TextProperty, (_, _) =>
-            youtubeStatus.Visibility = string.IsNullOrEmpty(youtubeStatus.Text) ? Visibility.Collapsed : Visibility.Visible);
+        {
+            youtubeError.Visibility = string.IsNullOrEmpty(youtubeStatus.Text) ? Visibility.Collapsed : Visibility.Visible;
+            if (youtubeError.Visibility == Visibility.Visible)
+                Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.FromElement(youtubeStatus)?
+                    .RaiseAutomationEvent(Microsoft.UI.Xaml.Automation.Peers.AutomationEvents.LiveRegionChanged);
+        });
         local.Checked += (_, _) => UpdateSource(); youtube.Checked += (_, _) => UpdateSource();
         youtubeUrl.TextChanged += (_, _) => UpdateYouTubeDetails();
         PrimaryButtonClick += (_, args) => { if (!IsPrimaryButtonEnabled) args.Cancel = true; };
@@ -360,7 +420,7 @@ public sealed class NewProjectDialog : ContentDialog
         sourceHeading.Text = IsCloud ? "Cloud Storage" : IsYouTube ? "YouTube Video" : "Video File";
         if (IsYouTube) preview.MediaPlayer?.Pause();
         fetchDetails.IsEnabled = ValidYouTubeId(YouTubeUrl) != null && youtubeInspection == null && ConnectivityService.Shared.Available(OnlineService.YouTube);
-        ToolTipService.SetToolTip(fetchDetails, ConnectivityService.Shared.Reason(OnlineService.YouTube) ?? "Fetch video details");
+        ToolTipService.SetToolTip(fetchDetails, ConnectivityService.Shared.Reason(OnlineService.YouTube) ?? "Check the video's availability and visibility.");
         assets.SetContext(IsYouTube, false);
         UpdateCreationState();
     }
@@ -414,6 +474,8 @@ public sealed class NewProjectDialog : ContentDialog
         originalAssetsCard.Visibility = IsYouTube ? Visibility.Visible : Visibility.Collapsed;
         descriptionGuidance.Text = ImportAssetsAfterCreation ? "Choose existing files below. Text timing is reviewed before import. Combining audio is optional." : "Generate a transcript, summary, and descriptions after creating the project.";
         var sourceReady = IsYouTube ? fetchedYouTubeId != null && fetchedYouTubeId == ValidYouTubeId(YouTubeUrl) && ConnectivityService.Shared.Available(OnlineService.YouTube) : validLocal && !videoRequiresCloud;
+        if (IsYouTube && SelectedYouTubeVideo is { Visibility: "private" } video)
+            sourceReady &= YouTubeService.Shared.PrivateConnection(video.ChannelId, settings) != null;
         if (IsCloud) sourceReady = CanUploadCloudVideo(settings) && cloudMode.SelectedIndex == 0 && validLocal;
         var assetsReady = !ImportAssetsAfterCreation || !assets.Selection.HasAny || assets.CanImport;
         IsPrimaryButtonEnabled = sourceReady && assetsReady && !string.IsNullOrWhiteSpace(LibraryPath);
@@ -447,10 +509,16 @@ public sealed class NewProjectDialog : ContentDialog
         browsing = true;
         try
         {
-            if (await browse(window) is { } video && CompanionWindow == window)
+            if (await browse(window) is { } result && CompanionWindow == window)
             {
-                youtubeUrl.Text = video.Url;
-                ApplyYouTubePreview(video);
+                youtubeUrl.Text = result.Video.Url;
+                ApplyYouTubePreview(result.Video);
+                UpdateCreationState();
+                if (result.OpenInEditor && IsPrimaryButtonEnabled)
+                {
+                    OpenSelectedYouTubeInEditor = true;
+                    Hide();
+                }
             }
         }
         catch (Exception ex) { youtubeStatus.Text = ex.Message; }
@@ -461,7 +529,7 @@ public sealed class NewProjectDialog : ContentDialog
     {
         SelectedYouTubeVideo = video;
         fetchedYouTubeId = video.Id;
-        ShowYouTubePreview(video.Id, video.Title, video.Data["channelTitle"]?.ToString() ?? "", video.Thumbnail);
+        ShowYouTubePreview(video.Id, video.Title, video.Channel, video.Thumbnail, video.Visibility);
         youtubeStatus.Text = "";
     }
 
@@ -473,24 +541,27 @@ public sealed class NewProjectDialog : ContentDialog
         youtubeStatus.Text = "";
         UpdateSource();
     }
-    private async Task FetchYouTubeDetailsAsync()
+    private async Task FetchYouTubeDetailsAsync(Func<string, SettingsStore, CancellationToken, Task<YouTubeVideo>> fetchVideo)
     {
         if (!ConnectivityService.Shared.Available(OnlineService.YouTube)) { youtubeStatus.Text = ConnectivityService.Shared.Reason(OnlineService.YouTube); return; }
         var id = ValidYouTubeId(YouTubeUrl);
         if (id == null) return;
         youtubeInspection?.Cancel();
         var request = new CancellationTokenSource(); youtubeInspection = request;
+        SelectedYouTubeVideo = null;
         fetchedYouTubeId = null; youtubePreview.Visibility = Visibility.Collapsed;
         youtubeStatus.Text = ""; UpdateSource();
         try
         {
-            var privateChannel = SelectedYouTubeVideo is { Visibility: "private" } chosen && chosen.Id == id ? chosen.ChannelId : null;
-            var video = await YouTubeService.Shared.ProjectVideoAsync(id, privateChannel, settings, request.Token);
-            video.RequireAvailable(allowPrivate: privateChannel != null);
+            var video = await fetchVideo(id, settings, request.Token);
             if (youtubeInspection != request || request.IsCancellationRequested || id != ValidYouTubeId(YouTubeUrl)) return;
             ApplyYouTubePreview(video);
         }
         catch (OperationCanceledException) { }
+        catch (YouTubeLinkIssueException ex)
+        {
+            if (youtubeInspection == request) youtubeStatus.Text = ex.Message;
+        }
         catch (Exception ex)
         {
             if (youtubeInspection == request)
@@ -502,7 +573,7 @@ public sealed class NewProjectDialog : ContentDialog
             request.Dispose();
         }
     }
-    private void ShowYouTubePreview(string id, string title, string author, string thumbnail)
+    private void ShowYouTubePreview(string id, string title, string author, string thumbnail, string visibility = "")
     {
         var card = new Grid { ColumnSpacing = 10 };
         card.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(148) }); card.ColumnDefinitions.Add(new ColumnDefinition());
@@ -513,6 +584,7 @@ public sealed class NewProjectDialog : ContentDialog
         information.Children.Add(new TextBlock { Text = "Project name", Opacity = .65, FontSize = 12 });
         information.Children.Add(new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         if (author.Length > 0) information.Children.Add(new TextBlock { Text = "Channel: " + author, TextWrapping = TextWrapping.Wrap });
+        if (visibility.Length > 0) information.Children.Add(new TextBlock { Text = "Visibility: " + CultureInfo.InvariantCulture.TextInfo.ToTitleCase(visibility), TextWrapping = TextWrapping.Wrap });
         information.Children.Add(new TextBlock { Text = "https://www.youtube.com/watch?v=" + id, Opacity = .7, FontSize = 12, TextWrapping = TextWrapping.Wrap });
         Grid.SetColumn(information, 1); card.Children.Add(information);
         youtubePreview.Child = card; youtubePreview.Visibility = Visibility.Visible;

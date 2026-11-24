@@ -21,6 +21,43 @@ public sealed class LanguageResult
     public JsonElement SourceAsset { get; set; }
     public string? ReplacesResultID { get; set; }
     public Dictionary<string, string>? SourceResultIDs { get; set; }
+    public Dictionary<string, SavedAIProcessing>? AIProcessing { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool ShowsNarrationProvider
+    {
+        get
+        {
+            if (Kind != "descriptions") return false;
+            if (AIProcessing?.ContainsKey("narration") == true) return true;
+            if (Payload.ValueKind != JsonValueKind.Object || !Payload.TryGetProperty("cues", out var cues) ||
+                cues.ValueKind != JsonValueKind.Array) return false;
+            var narrationEngine = ReadString(Payload, "narrationEngine");
+            return cues.EnumerateArray().Any(cue => !string.IsNullOrEmpty(ReadString(cue, "audio")) &&
+                (ReadString(cue, "audioEngine") ?? ReadString(cue, "audioSettings")?.Split('|')[0] ?? narrationEngine) == "gemini");
+        }
+    }
+    private static string? ReadString(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var field) &&
+        field.ValueKind == JsonValueKind.String ? field.GetString() : null;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal string? AnalysisProvider
+    {
+        get
+        {
+            if (State != "saved" || Kind is not ("transcript" or "summary" or "descriptions")) return null;
+            if (AIProcessing?.GetValueOrDefault("text") is { } processing)
+                return SavedAIProcessing.ProviderChoices.Contains(processing.Provider) ? processing.Provider : "unknown";
+            static bool IsNonAI(string? origin) => origin is "manual" or "imported" or "imported_modified";
+            if (IsNonAI(Origin)) return null;
+            if (Origin is "ai" or "ai_modified") return "unknown";
+            if (Kind == "summary") return HasContent ? "unknown" : null;
+            var key = Kind == "transcript" ? "transcript" : "cues";
+            return Payload.ValueKind == JsonValueKind.Object && Payload.TryGetProperty(key, out var rows) &&
+                rows.ValueKind == JsonValueKind.Array && rows.EnumerateArray().Any(row => !IsNonAI(ReadString(row, "origin")))
+                ? "unknown" : null;
+        }
+    }
     [System.Text.Json.Serialization.JsonIgnore] public bool HasContent {
         get {
             if (Payload.ValueKind != JsonValueKind.Object) return false;
@@ -60,6 +97,29 @@ public sealed class LanguageResult
         "descriptions" => "Description Saved Results", _ => "Imported AD Audio Saved Results"
     };
     public static string KindTitle(string kind) => kind switch { "transcript" => "Transcript", "summary" => "Summary", "descriptions" => "Descriptions and Narration", _ => "Imported AD Audio" };
+}
+
+public sealed class SavedAIProcessing
+{
+    public string Provider { get; set; } = "";
+    public string Source { get; set; } = "";
+    internal string Title => ProviderTitle(Provider) + (Source == "assigned" ? " (assigned)" : "");
+    internal static IReadOnlyList<string> ProviderChoices { get; } =
+        new[] { "gemini-developer", "vertex-ai", "vertex-express", "none", "unknown" };
+    internal static IReadOnlyList<string> ProjectFilterOptions(IEnumerable<StudioProject> projects)
+    {
+        var providers = projects.SelectMany(project => project.ProjectFilterAIProviders).ToHashSet();
+        return new[] { "all" }.Concat(ProviderChoices.Where(providers.Contains)).ToArray();
+    }
+    internal static string ProviderTitle(string provider) => provider switch
+    {
+        "all" => "All AI Providers",
+        "gemini-developer" => "Gemini Developer API",
+        "vertex-ai" => "Vertex AI",
+        "vertex-express" => "Vertex AI Express",
+        "none" => "No AI processing",
+        _ => "Not recorded",
+    };
 }
 
 public sealed class ExportResultProvenance

@@ -126,10 +126,37 @@ internal sealed class CloudVideosDialog : ContentDialog
         if (CanRename || CanDelete) throw new InvalidOperationException("Cloud mutation actions must be hidden when permissions are denied.");
         SetTableView(true);
         if (list.Header is not Grid columns || columns.Children[0] is not TextBlock { Text: "Thumbnail" } ||
+            !columns.Children.OfType<TextBlock>().Any(label => label.Text == "Actions") ||
             tableView.IsChecked != true || listView.IsChecked != false ||
             AutomationProperties.GetName(list) != "Cloud videos table" ||
             videoScroll.HorizontalScrollMode != ScrollMode.Auto || CaptureSelection()?.Generation != "12")
             throw new InvalidOperationException("Cloud table view must show labeled columns, scroll, and preserve the selection.");
+        videoSelection.SetMode(true);
+        if (list.Header is not Grid selectionHeader ||
+            !selectionHeader.Children.OfType<TextBlock>().Any(label => label.Text == "Select") ||
+            selectionHeader.Children.OfType<Grid>().Single().Margin.Left <= 0 || CaptureSelection()?.Generation != "12")
+            throw new InvalidOperationException("Cloud table selection must precede the thumbnail and preserve the selected row.");
+        videoSelection.SetMode(false);
+        DropDownButton? rowActions = null;
+        await WaitUntilAsync(() =>
+        {
+            rowActions = ((list.ContainerFromIndex(0) as ListViewItem)?.ContentTemplateRoot as Grid)?
+                .Children.OfType<DropDownButton>().FirstOrDefault();
+            return rowActions?.Flyout != null;
+        });
+        if (rowActions?.Flyout is not MenuFlyout rowMenu || Grid.GetColumn(rowActions) != 5)
+            throw new InvalidOperationException("Cloud table did not show the row Actions menu in the final column.");
+        videoScroll.ChangeView(videoScroll.ScrollableWidth, null, null, true);
+        await Task.Delay(100);
+        rowMenu.ShowAt(rowActions);
+        try
+        {
+            var items = rowMenu.Items.OfType<MenuFlyoutItem>().ToArray();
+            if (!items.Any(item => item.Text == "Open in Editor" && item.IsEnabled) ||
+                items.Any(item => item.Text is "Select Video" or "Rename Video…" or "Delete Video…"))
+                throw new InvalidOperationException("Cloud row actions required Select or ignored the object permissions.");
+        }
+        finally { rowMenu.Hide(); }
         SetTableView(false);
         if (list.Header != null || listView.IsChecked != true || tableView.IsChecked != false ||
             AutomationProperties.GetName(list) != "Cloud videos list" || CaptureSelection()?.Generation != "12")
@@ -283,20 +310,30 @@ internal sealed class CloudVideosDialog : ContentDialog
         tableLayout = Windows.Storage.ApplicationData.Current.LocalSettings.Values["cloudStorageFileView"] as string == "Table";
         listView.Click += (_, _) => SetTableView(false);
         tableView.Click += (_, _) => SetTableView(true);
+        videoSelection.ModeChanged += UpdateTableHeader;
+        videoSelection.AddRowActions(item => ((CloudVideo)item).Filename, (menu, item) =>
+        {
+            videoSelection.SetTarget(item);
+            PopulateMenu(menu, includeFilters: false);
+        });
         list.SelectionChanged += async (_, _) =>
         {
             RenderDetails();
             UpdateActions();
             await CheckPermissionsAsync();
         };
-        list.RightTapped += (_, args) =>
+        list.ContextRequested += (_, args) =>
         {
+            var pointer = args.TryGetPosition(list, out var point);
             CloudVideo? target = null;
-            for (var element = args.OriginalSource as DependencyObject; element != null && element != list; element = VisualTreeHelper.GetParent(element))
+            var source = (pointer ? args.OriginalSource : FocusManager.GetFocusedElement(list.XamlRoot)) as FrameworkElement;
+            for (var element = (DependencyObject?)source; element != null && element != list; element = VisualTreeHelper.GetParent(element))
                 if (element is ListViewItem { Content: CloudVideo row }) { target = row; break; }
-            videoSelection.SetTarget(target);
+            if (target != null || pointer) videoSelection.SetTarget(target);
+            var menu = CreateMenu(includeFilters: false);
+            if (pointer) menu.ShowAt(list, point); else menu.ShowAt(source ?? list);
+            args.Handled = true;
         };
-        list.ContextFlyout = CreateMenu(includeFilters: false);
         actions.Flyout = CreateMenu(includeFilters: true);
         search.ContextFlyout = SearchMenu();
         var refreshMenu = MenuAccessKeys.Create();
@@ -385,29 +422,31 @@ internal sealed class CloudVideosDialog : ContentDialog
     private MenuFlyout CreateMenu(bool includeFilters)
     {
         var menu = MenuAccessKeys.Create();
-        menu.Opening += (_, _) =>
-        {
-            menu.Items.Clear();
-            var sourceForMenu = CaptureSource();
-            menu.Items.Add(videoSelection.ModeItem(!loading && list.Items.Count > 0));
-            if (videoSelection.Enabled && Selection is { } target) menu.Items.Add(videoSelection.TargetItem(target));
-            menu.Items.Add(Item("Open in Editor", "Open in Editor", OpenSelectedVideoAsync, openEditor.IsEnabled));
-            if (Selection is { } file && file.Thumbnail == null && previewedFile != file)
-                menu.Items.Add(Item("Load Thumbnail", "Load Thumbnail", () => LoadThumbnailAsync(file), !loading));
-            if (CanRename) menu.Items.Add(Item("Rename Video…", "cloud-rename", () => ManageSelectedAsync(true, sourceForMenu)));
-            if (CanDelete) menu.Items.Add(Item("Delete Video…", "Delete Project…", () => ManageSelectedAsync(false, sourceForMenu)));
-            menu.Items.Add(Item("Refresh", "Refresh Files", RefreshAsync, !loading));
-            if (!includeFilters) return;
-            menu.Items.Add(new MenuFlyoutSeparator());
-            foreach (var item in SearchItems()) menu.Items.Add(item);
-            menu.Items.Add(Choices("Google Cloud project", "Cloud Storage", projects));
-            menu.Items.Add(Choices("Source bucket", "Cloud Storage", buckets));
-            menu.Items.Add(Choices("Sort by", "sort-segments", sort));
-            var layouts = new MenuFlyoutSubItem { Text = "Video layout", Icon = MenuIcons.Create("Table"), IsEnabled = listView.IsEnabled };
-            foreach (var item in LayoutItems()) layouts.Items.Add(item);
-            menu.Items.Add(layouts);
-        };
+        menu.Opening += (_, _) => PopulateMenu(menu, includeFilters);
         return menu;
+    }
+
+    private void PopulateMenu(MenuFlyout menu, bool includeFilters)
+    {
+        menu.Items.Clear();
+        var sourceForMenu = CaptureSource();
+        menu.Items.Add(videoSelection.ModeItem(!loading && list.Items.Count > 0));
+        menu.Items.Add(Item("Open in Editor", "Open in Editor",
+            () => sourceForMenu == CaptureSource() ? OpenSelectedVideoAsync() : Task.CompletedTask, openEditor.IsEnabled));
+        if (Selection is { } file && file.Thumbnail == null && previewedFile != file)
+            menu.Items.Add(Item("Load Thumbnail", "Load Thumbnail", () => LoadThumbnailAsync(file), !loading));
+        if (CanRename) menu.Items.Add(Item("Rename Video…", "cloud-rename", () => ManageSelectedAsync(true, sourceForMenu)));
+        if (CanDelete) menu.Items.Add(Item("Delete Video…", "Delete Project…", () => ManageSelectedAsync(false, sourceForMenu)));
+        menu.Items.Add(Item("Refresh", "Refresh Files", RefreshAsync, !loading));
+        if (!includeFilters) return;
+        menu.Items.Add(new MenuFlyoutSeparator());
+        foreach (var item in SearchItems()) menu.Items.Add(item);
+        menu.Items.Add(Choices("Google Cloud project", "Cloud Storage", projects));
+        menu.Items.Add(Choices("Source bucket", "Cloud Storage", buckets));
+        menu.Items.Add(Choices("Sort by", "sort-segments", sort));
+        var layouts = new MenuFlyoutSubItem { Text = "Video layout", Icon = MenuIcons.Create("Table"), IsEnabled = listView.IsEnabled };
+        foreach (var item in LayoutItems()) layouts.Items.Add(item);
+        menu.Items.Add(layouts);
     }
 
     private void SetTableView(bool table)
@@ -733,14 +772,32 @@ internal sealed class CloudVideosDialog : ContentDialog
         listView.IsChecked = !tableLayout;
         tableView.IsChecked = tableLayout;
         list.ItemTemplate = tableLayout ? TableTemplate : ListTemplate;
-        list.Header = tableLayout ? XamlReader.Load(TableHeader) : null;
-        list.Width = tableLayout ? 848 : double.NaN;
+        UpdateTableHeader();
         videoScroll.HorizontalScrollMode = tableLayout ? ScrollMode.Auto : ScrollMode.Disabled;
         videoScroll.HorizontalScrollBarVisibility = tableLayout ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
         AutomationProperties.SetName(list, tableLayout ? "Cloud videos table" : "Cloud videos list");
         list.ItemsSource = visible;
         videoSelection.SetTarget(visible.Contains(selected) ? selected : null);
         if (Bucket.Length > 0) status.Text = visible.Length == 0 ? "No matching videos" : $"{visible.Length} videos";
+    }
+
+    private void UpdateTableHeader()
+    {
+        var inset = videoSelection.Enabled ? VideoBrowserSelection.CheckboxColumnWidth : 0;
+        list.Width = tableLayout ? 972 + inset : double.NaN;
+        if (!tableLayout) { list.Header = null; return; }
+        var header = (Grid)XamlReader.Load(TableHeader);
+        if (videoSelection.Enabled)
+        {
+            header.Margin = new Thickness(inset, 0, 0, 0);
+            var select = new TextBlock { Text = "Select", HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(4, 6, 0, 0) };
+            var wrapper = new Grid();
+            wrapper.Children.Add(header);
+            wrapper.Children.Add(select);
+            list.Header = wrapper;
+        }
+        else list.Header = header;
     }
 
     private void RenderDetails()
@@ -875,12 +932,15 @@ internal sealed class CloudVideosDialog : ContentDialog
         ThumbnailCell + "<StackPanel Grid.Column='1' Spacing='4'><TextBlock Text='{Binding Filename}' FontWeight='SemiBold' TextWrapping='Wrap'/>" +
         "<TextBlock Text='{Binding Name}' TextTrimming='CharacterEllipsis'/><TextBlock Text='{Binding DisplaySize}'/></StackPanel></Grid></DataTemplate>");
     private static DataTemplate TableTemplate => (DataTemplate)XamlReader.Load(
-        "<DataTemplate " + XamlNamespace + ">" + TableRow(ThumbnailCell, "{Binding Filename}", "{Binding Name}", "{Binding DisplaySize}", "{Binding DisplayUpdated}") + "</DataTemplate>");
-    private static string TableHeader => TableRow("<TextBlock Text='Thumbnail'/>", "Title", "Object path", "Size", "Modified", " " + XamlNamespace);
-    private static string TableRow(string thumbnail, string name, string path, string size, string updated, string ns = "") =>
-        $"<Grid{ns} ColumnSpacing='8' Padding='12,6'><Grid.ColumnDefinitions><ColumnDefinition Width='112'/><ColumnDefinition Width='184'/><ColumnDefinition Width='220'/><ColumnDefinition Width='92'/><ColumnDefinition Width='142'/></Grid.ColumnDefinitions>" +
+        "<DataTemplate " + XamlNamespace + ">" + TableRow(ThumbnailCell, "{Binding Filename}", "{Binding Name}", "{Binding DisplaySize}", "{Binding DisplayUpdated}",
+            $"<DropDownButton Name='{VideoBrowserSelection.ActionsButtonName}' Grid.Column='5' Content='Actions' VerticalAlignment='Center'/>") + "</DataTemplate>");
+    private static string TableHeader => TableRow("<TextBlock Text='Thumbnail'/>", "Title", "Object path", "Size", "Modified",
+        "<TextBlock Grid.Column='5' Text='Actions'/>", " " + XamlNamespace);
+    private static string TableRow(string thumbnail, string name, string path, string size, string updated, string actions, string ns = "") =>
+        $"<Grid{ns} ColumnSpacing='8' Padding='12,6'><Grid.ColumnDefinitions><ColumnDefinition Width='112'/><ColumnDefinition Width='184'/><ColumnDefinition Width='220'/><ColumnDefinition Width='92'/><ColumnDefinition Width='142'/><ColumnDefinition Width='116'/></Grid.ColumnDefinitions>" +
         thumbnail + $"<TextBlock Grid.Column='1' Text='{name}' TextTrimming='CharacterEllipsis' VerticalAlignment='Center'/><TextBlock Grid.Column='2' Text='{path}' TextTrimming='CharacterEllipsis' VerticalAlignment='Center'/>" +
-        $"<TextBlock Grid.Column='3' Text='{size}' TextTrimming='CharacterEllipsis' VerticalAlignment='Center'/><TextBlock Grid.Column='4' Text='{updated}' TextTrimming='CharacterEllipsis' VerticalAlignment='Center'/></Grid>";
+        $"<TextBlock Grid.Column='3' Text='{size}' TextTrimming='CharacterEllipsis' VerticalAlignment='Center'/><TextBlock Grid.Column='4' Text='{updated}' TextTrimming='CharacterEllipsis' VerticalAlignment='Center'/>" +
+        actions + "</Grid>";
 }
 
 internal sealed record CloudVideoSelection(string Project, string Bucket, string Name, string Generation)

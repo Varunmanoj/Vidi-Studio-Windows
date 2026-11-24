@@ -2746,3 +2746,37 @@ Built and installed the ARM64 Debug package in the Windows 11 guest. Verified on
 Both Google sign-in flows use the branded browser return page shared with macOS. The installed Windows build bundles the HTML and embeds its existing VidiStudio icon. The page labels the service, follows the browser’s light or dark appearance, and provides concise return or retry instructions.
 
 Built and installed version 1.0.397.0 as the ARM64 Debug package in Windows 11. Verified one package registration, one Start entry and a passing engine doctor. The packaged YouTube layout suite verified the returned HTML for both services and both outcomes, including the icon, heading, dark theme rules and UTF-8 response length. The shared template was rendered in WebKit and Chromium on the Mac. The 91 desktop parity tests passed. No live Google consent, Windows browser rendering or x64 runtime was exercised. Evidence is in `build/sign-in-return-397-build.log` and `build/sign-in-return-397-verify.log`.
+
+## 1.0.398 · Visibility for pasted YouTube links · 2026-11-24
+
+New Project shows the same private-video eligibility as My YouTube Videos when the user pastes a link and chooses Fetch Details. The preview shows confirmed visibility. Private or unavailable results show a warning, clear the preview and keep Create Project disabled.
+
+Built and installed the 1.0.398.0 ARM64 Debug package in Windows 11 with one package registration and one Start entry. The installed app’s YouTube layout suite verified the unlisted preview and enabled Create Project, then exercised private and unavailable errors and verified stale preview clearing and creation blocking. The suite used simulated YouTube responses. The 92 source parity tests and staged engine doctor passed. Live Google consent, private video analysis and x64 runtime were outside this verification. Evidence is in `build/youtube-link-398-build.log` and `build/youtube-link-398-verify.log`.
+
+## 1.0.399 · Video browser selection and row actions · 2026-11-24
+
+My YouTube Videos and Open Cloud Videos use a leading native checkbox in Select mode and a focused row Actions menu in Table View. Right-click uses the row in either mode. My YouTube Videos exposes Choose Video and direct Open in Editor in the picker and opens individual YouTube Studio details in the browser. Cloud object permissions and the signed-in YouTube owner checks remain in the guarded action paths.
+
+Installed the 1.0.399.0 ARM64 Debug package in Windows 11 with one package and Start entry. YouTubeLayoutOnly verified row Actions without Select, YouTube Studio menu availability, and the direct-open picker handoff across the tested layouts. GallerySettingsOnly verified the Cloud Actions column, leading checkbox mode and preserved selection, permission gating, and the configured-bucket handoff with synthetic fixtures. Verified the staged engine doctor and 96 parity and context-layout tests. A live YouTube Studio launch and live cloud writes were not part of the fixture runs. Evidence is in `build/video-actions-399-build.log` and `build/video-actions-399-verify.log`.
+
+## 1.0.400 · AI processing in the inspector, video browser tables, and New Project errors · 2026-11-24
+
+The AI Processing group shows live and saved provider attribution for the current editor tab, language and saved version. Legacy results offer an accessible Assign Provider menu and matching context actions. Actions is the last column in the YouTube and Cloud Storage tables. New Project uses the original YouTube error wording in a larger red callout with a cross.
+
+Built the ARM64 Debug MSIX and installed 1.0.400.0 with one package registration and Start entry in the Windows 11 test VM. The frozen engine and media doctor and 151 source tests passed. The installed YouTubeLayoutOnly and GallerySettingsOnly suites passed, including the rightmost Actions menus, blocked creation after unavailable or private responses, and the native error colors and wrapping in light and dark appearance. The legacy inspector fixture exposed provider labels on all five tabs, persisted a manual Vertex AI assignment with the frozen engine and kept it specific to the transcript. Screenshots of the warning measured 4.79:1 text contrast in light appearance and 6.61:1 in dark appearance. The suites used fixtures for YouTube, Cloud and attribution. Evidence is in build/ai-processing-400-*.log and build/youtube-fetch-error-*.png.
+
+## 1.0.401 · Filter All Projects by AI provider · 2026-11-24
+
+Built the ARM64 Debug MSIX and installed 1.0.401.0 with one package registration and Start entry in the Windows 11 test VM. The frozen engine and media doctor, 101 source tests and GallerySettingsOnly passed. The installed picker and accessible View submenu agreed on the choices and checked state. A disposable gallery fixture verified both providers match the same project, excluded draft and narration-only attribution, distinguished Not recorded from No AI processing, cleared a filtered-out project selection, and verified reset. Light and dark toolbar geometry passed at 1120, 880 and 640 logical pixels, with the new dropdown visible in the compact screenshots. Evidence is in build/gallery-provider-401-*.log and build/gallery-toolbar-*.png.
+
+## 1.0.402 · Combined project filters and sorting · 2026-11-24
+
+All Projects uses one Filter Projects button for Source, Language, AI Provider and Sort by. View opens the same compact dialog. The direct filter and sort submenus use the applied gallery settings. The toolbar retains search and layout controls.
+
+Built the ARM64 Debug MSIX and installed 1.0.402.0 with one package registration and Start entry in the Windows 11 test VM. The frozen engine and media doctor, 101 source tests and GallerySettingsOnly passed. The installed test opened the dialog from the toolbar and View, inspected its named fields and compact layout, checked Cancel and confirmed all four choices apply together while preserving search. Direct View provider choices, hidden project selection clearing, and reset preserving sorting passed. Toolbar geometry passed at 1120, 880 and 640 logical pixels in light and dark appearance. Evidence is in build/gallery-filters-402-*.log and build/gallery-toolbar-*.png.
+
+## 1.0.403 · Show represented AI provider filters · 2026-11-24
+
+Filter Projects and View list All AI Providers plus categories represented by the loaded library. The filter returns to All AI Providers when its selected category loses its last matching project. Existing search, language, source and sort controls continue to combine with provider filtering.
+
+The Windows 11 ARM64 Debug build replaced the previous registered app. One 1.0.403.0 package in Ok status and one Start entry were verified. The packaged engine doctor and GallerySettingsOnly smoke suite passed. Native checks exercised the accessible dialog and View choices, omitted the draft-only provider, and reset the filter when its last matching fixture was removed. The 98 focused source tests passed. This run's temporary registration tasks, rollback copy and generated runnable layout were removed. Evidence is in build/gallery-provider-403-*.log.

@@ -38,7 +38,7 @@ public sealed partial class MainWindow
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY") == "1")
             {
                 await VerifyYouTubeLayoutForSmokeTestAsync(report);
-                await File.WriteAllTextAsync(report, "PASS: Packaged Google Cloud and YouTube sign-in return pages include the app icon and status. YouTube browser compact controls, independent scrolling list/table, selection/filter/layout controls and separate account window; profile/action row layout and links; My YouTube Videos absent and blocked in local and YouTube editors, present only in All Projects. Synthetic account/video data; no live sign-in or network calls.");
+                await File.WriteAllTextAsync(report, "PASS: Pasted YouTube links show unlisted visibility and clear the preview and block creation after a private or unavailable response. Packaged Google Cloud and YouTube sign-in return pages include the app icon and status. YouTube browser compact controls, independent scrolling list/table, selection/filter/layout controls and separate account window; profile/action row layout and links; My YouTube Videos absent and blocked in local and YouTube editors, present only in All Projects. Synthetic account/video data; no live sign-in or network calls.");
                 return;
             }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY") == "1")
@@ -51,6 +51,7 @@ public sealed partial class MainWindow
             }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY") == "1")
             {
+                await VerifyInspectorAIProcessingForSmokeTestAsync();
                 await VerifyGalleryAndSettingsLayoutForSmokeTestAsync(report);
                 await VerifySettingsWindowLifetimeForSmokeTestAsync();
                 await File.WriteAllTextAsync(report, "PASS: Cloud browse handoff, configured bucket, import byte and step progress, and dialog completion; Help/About shared groups, Jump to Time reference and retained expansion, short FFmpeg/license rows and license actions, editor/gallery About menu while idle/processing and minimized, Help keeps Settings open, light/dark opaque Help caption hover/pressed colors; native inspector disclosure names and expanded/collapsed states; shared project language first, no per-section targets or review filter; spoken gallery/timeline durations; named inspector heading/actions/toggles and Start/End boundaries in all three segment tabs; aligned gallery controls and centered search at wide, compact and narrow widths in light/dark; editor preview tooltips, video and timeline collapse, and timeline preference restoration; tooltip coverage across all five editor sections and native pointer hover on Generate, Add, and Edit; Settings stable navigation, headings and bounded scrolling; Settings stays open with another main window, closes after the final main window and saves pending preferences.");
@@ -529,13 +530,12 @@ public sealed partial class MainWindow
             GalleryGrid.SelectedItem = null;
             GalleryList.SelectedItem = null;
             var expectedFilterLanguages = new[] { "all" }.Concat(Model.ProjectFilterLanguages.Select(language => language.Id)).ToList();
-            if (!(GalleryLanguageFilter.ItemsSource as System.Collections.Generic.IEnumerable<Models.OutputLanguage>)!.Select(language => language.Id).SequenceEqual(expectedFilterLanguages) ||
-                !(ProjectLanguageFilter.ItemsSource as System.Collections.Generic.IEnumerable<Models.OutputLanguage>)!.Select(language => language.Id).SequenceEqual(expectedFilterLanguages) ||
+            if (!(ProjectLanguageFilter.ItemsSource as System.Collections.Generic.IEnumerable<Models.OutputLanguage>)!.Select(language => language.Id).SequenceEqual(expectedFilterLanguages) ||
                 libraryLanguageMenus.Any(menu => !menu.Items.OfType<ToggleMenuFlyoutItem>().Select(item => item.Text).SequenceEqual(new[] { "All Languages" }.Concat(Model.ProjectFilterLanguages.Select(language => language.Title)))))
-                throw new InvalidOperationException("Project language dropdowns and View menus must show only library content languages plus All Languages.");
+                throw new InvalidOperationException("The editor project-list language filter and View menu must show library content languages plus All Languages.");
             var galleryViewMenu = galleryMenus.Single(menu => menu.Title == "View");
             if (!galleryViewMenu.Items.OfType<MenuFlyoutSubItem>().Where(item => item.Visibility == Visibility.Visible)
-                .Select(item => item.Text).SequenceEqual(new[] { "Filter Projects by Source", "Filter Projects by Language", "Sort Projects" }))
+                .Select(item => item.Text).SequenceEqual(new[] { "Filter Projects by Source", "Filter Projects by Language", "Filter Projects by AI Provider", "Sort Projects" }))
                 throw new InvalidOperationException("All Projects View must show library filter and sort submenus.");
             await VerifyProjectSortingForSmokeTestAsync();
             if (desktopMenuItems["preview"].Any(item => item.Visibility == Visibility.Visible) ||
@@ -584,7 +584,7 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("All Projects table row was not rendered.");
             var cachedGalleryProject = Model.Projects[0];
             Model.RefreshProjectIntegrity();
-            if (Model.ReloadIfProjectsChanged(GallerySearch.Text, GalleryFilter.SelectedIndex switch { 1 => "local", 2 => "youtube", 3 => "cloud", _ => "all" }) ||
+            if (Model.ReloadIfProjectsChanged(GallerySearch.Text, gallerySourceFilter) ||
                 Model.Projects.Count != 1 || !ReferenceEquals(cachedGalleryProject, Model.Projects[0]))
                 throw new InvalidOperationException("An unchanged gallery was rebuilt while the app remained open.");
             Model.Reload();
@@ -1197,12 +1197,12 @@ public sealed partial class MainWindow
 
     private void VerifyGalleryToolbarBoundsForSmokeTest()
     {
-        if (GalleryToolbar.Visibility != Visibility.Visible || GallerySearchHost.Visibility != Visibility.Visible || GalleryLanguageFilter.Header != null)
+        if (GalleryToolbar.Visibility != Visibility.Visible || GallerySearchHost.Visibility != Visibility.Visible)
             throw new InvalidOperationException("Gallery controls must share a header-free toolbar.");
-        var controls = new FrameworkElement[] { GalleryLanguageFilter, GalleryFilter, GalleryLayoutButton };
+        var controls = new FrameworkElement[] { GalleryFilterProjects, GalleryLayoutButton };
         var centers = controls.Select(control => control.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0, control.ActualHeight / 2)).Y).ToArray();
         if (centers.Max() - centers.Min() > 1)
-            throw new InvalidOperationException("Gallery language/source/layout controls do not share a baseline.");
+            throw new InvalidOperationException("Gallery Filter Projects and layout controls do not share a baseline.");
         if (GalleryImport.Content is not SymbolIcon { Symbol: Symbol.Add } || GalleryOpenProject.Content is not FontIcon { Glyph: "\uE8B7" } ||
             Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(GalleryImport) != "New Project" ||
             Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(GalleryOpenProject) != "Open Project Folder")
@@ -1246,6 +1246,175 @@ public sealed partial class MainWindow
         await RunDesktopCommandAsync("projects-sort-opened");
         if (desktopMenuItems["website"].Any(item => item.Visibility != Visibility.Visible || !item.IsEnabled || item.Text != "VidiStudio Website"))
             throw new InvalidOperationException("Help website command is missing.");
+    }
+
+    private async Task VerifyProjectAIProviderFilteringForSmokeTestAsync()
+    {
+        await RunDesktopCommandAsync("projects-reset-filters");
+        var library = Model.Settings.Get("libraryPath");
+        var prefix = "Provider fixture " + Guid.NewGuid().ToString("N");
+        var originalOptions = Model.ProjectFilterAIProviders;
+        if (!Models.SavedAIProcessing.ProjectFilterOptions(Array.Empty<Models.StudioProject>()).SequenceEqual(new[] { "all" }))
+            throw new InvalidOperationException("An empty library must offer only All AI Providers.");
+        var cases = new[]
+        {
+            (" multiple", """
+                [
+                  {"id":"summary","kind":"summary","language":"en","aiProcessing":{"text":{"provider":"gemini-developer","source":"recorded"}},"payload":{"summary":"Test"}},
+                  {"id":"old","kind":"summary","language":"hi","aiProcessing":{"text":{"provider":"vertex-ai","source":"assigned"}},"payload":{"summary":"Older"}},
+                  {"id":"draft","kind":"summary","language":"en","state":"draft","aiProcessing":{"text":{"provider":"vertex-express","source":"recorded"}},"payload":{"summary":"Draft"}}
+                ]
+                """),
+            (" unknown", """[{"id":"legacy","kind":"summary","origin":"ai","payload":{"summary":"Legacy"}}]"""),
+            (" none", """
+                [{"id":"manual","kind":"summary","origin":"manual","payload":{"summary":"Manual"}},
+                 {"id":"narration","kind":"descriptions","origin":"manual","aiProcessing":{"narration":{"provider":"vertex-express","source":"recorded"}},"payload":{}}]
+                """)
+        };
+        var folders = cases.Select(test => Path.Combine(library, prefix + test.Item1)).ToArray();
+        try
+        {
+            for (var index = 0; index < cases.Length; index++)
+            {
+                Directory.CreateDirectory(folders[index]);
+                using var results = JsonDocument.Parse(cases[index].Item2);
+                File.WriteAllText(Path.Combine(folders[index], "project.json"), JsonSerializer.Serialize(new
+                {
+                    schemaVersion = 3, id = prefix + cases[index].Item1, name = prefix + cases[index].Item1,
+                    source = "source.mp4", duration = 1, languageResults = results.RootElement, createdAt = 1, updatedAt = 1
+                }));
+                _ = Models.StudioProject.Load(folders[index]);
+            }
+            GallerySearch.Text = prefix;
+            await Task.Delay(150);
+            FilterGallery();
+            var menu = libraryAIProviderMenus.First(item => item.Visibility == Visibility.Visible);
+            var menuOptions = menu.Items.OfType<ToggleMenuFlyoutItem>().ToArray();
+            var represented = originalOptions.Concat(new[] { "gemini-developer", "vertex-ai", "none", "unknown" }).ToHashSet();
+            var expectedOptions = new[] { "all" }.Concat(Models.SavedAIProcessing.ProviderChoices.Where(represented.Contains));
+            if (!menuOptions.Select(option => option.Tag as string).SequenceEqual(expectedOptions) ||
+                menuOptions.Any(option => option.Icon == null) ||
+                Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(GalleryFilterProjects) != "Filter Projects")
+                throw new InvalidOperationException("Filter Projects and View must offer only accessible choices represented in the library.");
+
+            string[] VisibleProjects() => Model.Projects.Select(project => project.Name).ToArray();
+            void Check(string expected, string option)
+            {
+                if (!VisibleProjects().SequenceEqual(expected.Length == 0 ? Array.Empty<string>() : new[] { prefix + expected }) ||
+                    !menuOptions.Where(item => item.IsChecked).Select(item => item.Tag as string).SequenceEqual(new[] { option }))
+                    throw new InvalidOperationException("The project selection or checked filter is incorrect for " + option);
+            }
+            if (!VisibleProjects().Order().SequenceEqual(cases.Select(test => prefix + test.Item1).Order()))
+                throw new InvalidOperationException($"All AI Providers expected {cases.Length} fixtures, saw {VisibleProjects().Length} projects. " +
+                    $"Search matches fixture prefix: {GallerySearch.Text == prefix}. Library unchanged: {Model.Settings.Get("libraryPath") == library}. " +
+                    $"Gallery ready: {galleryReady}. Source: {gallerySourceFilter}. Language: {Model.LanguageFilter}. Provider: {Model.AIProviderFilter}.");
+            await RunDialogAsync(apply: false, fromToolbar: true);
+            if (Model.AIProviderFilter != "all" || Model.LanguageFilter != "all" || gallerySourceFilter != "all" || Model.ProjectSort != "opened" ||
+                VisibleProjects().Length != cases.Length)
+                throw new InvalidOperationException("Cancel changed the applied project filters.");
+            await RunDialogAsync(apply: true, fromToolbar: false);
+            Check(" multiple", "gemini-developer");
+            if (Model.LanguageFilter != "en" || gallerySourceFilter != "local" || Model.ProjectSort != "name" || GallerySearch.Text != prefix)
+                throw new InvalidOperationException("Filter did not apply the combined filters and sort or changed search.");
+            ApplyGalleryFilters("all", "all", "all");
+
+            foreach (var (filter, project) in new[] { ("gemini-developer", " multiple"), ("vertex-ai", " multiple"),
+                     ("unknown", " unknown"), ("none", " none") })
+            {
+                SelectProviderInView(filter);
+                await Task.Delay(80);
+                Check(project, filter);
+            }
+            GalleryGrid.SelectedItem = Model.Projects.Single();
+            GalleryList.SelectedItem = Model.Projects.Single();
+            SelectProviderInView("vertex-ai");
+            await Task.Delay(100);
+            Check(" multiple", "vertex-ai");
+            if (SelectedGalleryProject() != null)
+                throw new InvalidOperationException("View did not clear the hidden project selection.");
+            Directory.Delete(folders[0], recursive: true);
+            FilterGallery();
+            if (!originalOptions.Contains("vertex-ai") &&
+                (Model.AIProviderFilter != "all" || menu.Items.Any(item => item.Tag as string == "vertex-ai") ||
+                 !VisibleProjects().Order().SequenceEqual(new[] { prefix + " none", prefix + " unknown" })))
+                throw new InvalidOperationException("Removing the last project for a provider must restore All AI Providers.");
+
+            void SelectProviderInView(string filter)
+            {
+                var item = menuOptions.Single(option => option.Tag as string == filter);
+                var peer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(item);
+                if (peer?.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)
+                    is Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider invoke) invoke.Invoke();
+                else if (peer?.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Toggle)
+                    is Microsoft.UI.Xaml.Automation.Provider.IToggleProvider toggle) toggle.Toggle();
+                else throw new InvalidOperationException("View has no accessible provider action.");
+            }
+
+            async Task RunDialogAsync(bool apply, bool fromToolbar)
+            {
+                ContentDialog? dialog = null;
+                void Capture(ContentDialog candidate, Window _) { if (candidate.Title as string == "Filter Projects") dialog = candidate; }
+                Views.WindowedDialog.ReadyToShow += Capture;
+                try
+                {
+                    if (fromToolbar) Press(GalleryFilterProjects);
+                    else
+                    {
+                        var command = desktopMenuItems["projects-filter-dialog"].First(item => item.Visibility == Visibility.Visible);
+                        var peer = new Microsoft.UI.Xaml.Automation.Peers.MenuFlyoutItemAutomationPeer(command);
+                        ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(
+                            Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+                    }
+                    for (var attempt = 0; attempt < 80 && dialog == null; attempt++) await Task.Delay(30);
+                    if (dialog == null) throw new InvalidOperationException("Filter Projects did not open.");
+                    VerifyCompactDialogLayout(dialog);
+                    var candidates = DialogControls((UIElement)dialog.Content).OfType<ComboBox>().ToArray();
+                    ComboBox Picker(string name) => candidates.Single(picker => Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(picker) == name);
+                    var source = Picker("Source");
+                    var language = Picker("Language");
+                    var provider = Picker("AI Provider");
+                    var sort = Picker("Sort by");
+                    var options = (Models.OutputLanguage[])provider.ItemsSource;
+                    if (!menuOptions.Select(option => option.Text).SequenceEqual(options.Select(option => option.Title)) ||
+                        (provider.SelectedItem as Models.OutputLanguage)?.Id != Model.AIProviderFilter ||
+                        (sort.SelectedItem as Models.OutputLanguage)?.Id != Model.ProjectSort ||
+                        !((Models.OutputLanguage[])sort.ItemsSource).Select(option => option.Title).SequenceEqual(
+                          new[] { "opened", "name", "duration", "type" }.Select(id => DesktopCommandTitle("projects-sort-" + id))))
+                        throw new InvalidOperationException("The dialog must match View choices and begin with the applied provider.");
+                    source.SelectedIndex = 1;
+                    language.SelectedItem = ((Models.OutputLanguage[])language.ItemsSource).Single(option => option.Id == "en");
+                    provider.SelectedItem = options.Single(option => option.Id == "gemini-developer");
+                    sort.SelectedItem = ((Models.OutputLanguage[])sort.ItemsSource).Single(option => option.Id == "name");
+                    if (VisibleProjects().Length != cases.Length)
+                        throw new InvalidOperationException("Draft changes filtered the gallery before confirmation.");
+                    Press(FindButton(dialog, apply ? "Filter" : "Cancel") ?? throw new InvalidOperationException("Missing dialog action."));
+                    for (var attempt = 0; attempt < 80 && projectFiltersOpen; attempt++) await Task.Delay(30);
+                    if (projectFiltersOpen) throw new InvalidOperationException("Filter Projects did not close.");
+                }
+                finally
+                {
+                    if (projectFiltersOpen) dialog?.Hide();
+                    Views.WindowedDialog.ReadyToShow -= Capture;
+                }
+            }
+
+            static void Press(Button button)
+            {
+                var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(button);
+                ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(
+                    Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+            }
+        }
+        finally
+        {
+            foreach (var folder in folders)
+                if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+            var sortBeforeReset = Model.ProjectSort;
+            await RunDesktopCommandAsync("projects-reset-filters");
+            if (Model.AIProviderFilter != "all" || Model.ProjectSort != sortBeforeReset)
+                throw new InvalidOperationException("Reset Project Filters must restore all providers and preserve sorting.");
+            await RunDesktopCommandAsync("projects-sort-opened");
+        }
     }
 
     private async Task VerifyYouTubeLayoutForSmokeTestAsync(string report)
@@ -1324,6 +1493,24 @@ public sealed partial class MainWindow
                     if (!open.IsEnabled) throw new InvalidOperationException("Selection did not enable opening.");
                     youtubeBrowserRun!("youtube-table"); await Task.Delay(100);
                     if (list.SelectedIndex != 0 || Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(list) != "YouTube videos table") throw new InvalidOperationException("Table lost selection.");
+                    var rowButton = Elements(list).OfType<DropDownButton>().First(button => button.Name == Views.VideoBrowserSelection.ActionsButtonName);
+                    if (rowButton.Flyout is not MenuFlyout rowMenu || !Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(rowButton).StartsWith("Actions for "))
+                        throw new InvalidOperationException("Table row Actions did not expose an accessible menu.");
+                    var tableScroll = Elements(content).OfType<ScrollViewer>().Single(view => view.Content is Grid host && host.Children.Contains(list));
+                    if (Grid.GetColumn(rowButton) != 10)
+                        throw new InvalidOperationException("Actions must be the final YouTube table column.");
+                    tableScroll.ChangeView(tableScroll.ScrollableWidth, null, null, true);
+                    await Task.Delay(100);
+                    rowMenu.ShowAt(rowButton);
+                    try
+                    {
+                        var items = rowMenu.Items.OfType<MenuFlyoutItem>().ToArray();
+                        if (!items.Any(item => item.Text == "Open in Editor" && item.IsEnabled) ||
+                            !items.Any(item => item.Text == "Open in YouTube Studio" && item.IsEnabled) ||
+                            items.Any(item => item.Text == "Select Video"))
+                            throw new InvalidOperationException("Video row actions must be available with Select mode off.");
+                    }
+                    finally { rowMenu.Hide(); }
                     await CaptureSmokeImage((FrameworkElement)browserWindow.Content, Path.Combine(Path.GetDirectoryName(report)!, $"youtube-table-{theme}-{width}.png"));
                     youtubeBrowserRun!("youtube-list"); await Task.Delay(100);
                     list.ScrollIntoView(list.Items.Last()); await Task.Delay(80);
@@ -1354,6 +1541,19 @@ public sealed partial class MainWindow
                     await CaptureSmokeImage((FrameworkElement)accountWindow!.Content, Path.Combine(Path.GetDirectoryName(report)!, $"youtube-accounts-{theme}-{width}.png"));
                 } finally { accountDialog.Hide(); Views.WindowedDialog.ReadyToShow -= CaptureAccounts; await accountTask; }
             }
+            PreviewTheme("light");
+            var lightPicker = new Views.NewProjectDialog(this, ElementTheme.Light, Model.Settings, openYouTube: true);
+            var lightProject = ShowDialogAsync(lightPicker, Views.NewProjectDialog.WindowWidth, Views.NewProjectDialog.WindowHeight);
+            try
+            {
+                for (var retry = 0; retry < 100 && !lightPicker.IsLoaded; retry++) await Task.Delay(30);
+                if (!lightPicker.IsLoaded) throw new InvalidOperationException("Light New Project did not open.");
+                await lightPicker.VerifyYouTubeLinkForSmokeTestAsync(card => CaptureSmokeImage(card,
+                    Path.Combine(Path.GetDirectoryName(report)!, "youtube-fetch-error-light.png")));
+            }
+            finally { lightPicker.Hide(); await lightProject; }
+
+            PreviewTheme("dark");
             var picker = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings, openYouTube: true)
             {
                 BrowseYouTubeVideo = owner => ShowYouTubeBrowserAsync(owner)
@@ -1364,7 +1564,10 @@ public sealed partial class MainWindow
                 for (var retry = 0; retry < 100 && !picker.IsLoaded; retry++) await Task.Delay(30);
                 if (!picker.IsLoaded) throw new InvalidOperationException("New Project did not open.");
                 picker.SetYouTubeCaptionsForSmokeTest();
-                foreach (var accept in new[] { false, true })
+                await picker.VerifyYouTubeLinkForSmokeTestAsync(card => CaptureSmokeImage(card,
+                    Path.Combine(Path.GetDirectoryName(report)!, "youtube-fetch-error-dark.png")));
+                picker.SelectYouTubeForSmokeTest("");
+                foreach (var action in new[] { "Cancel", "Choose Video", "Open in Editor" })
                 {
                     ContentDialog? browser = null;
                     void CapturePicker(ContentDialog dialog, Window _) { if (dialog.Title as string == "My YouTube Videos") browser = dialog; }
@@ -1375,17 +1578,24 @@ public sealed partial class MainWindow
                         for (var retry = 0; retry < 100 && browser == null && !browsing.IsCompleted; retry++) await Task.Delay(30);
                         if (browser == null || newProject.IsCompleted) throw new InvalidOperationException("YouTube picker did not keep New Project open.");
                         var nested = (Grid)browser.Content;
-                        var button = Elements(nested).OfType<Button>().Single(candidate => candidate.Content as string == (accept ? "Choose Video" : "Cancel"));
                         var videos = Elements(nested).OfType<ListView>().Single();
                         for (var retry = 0; retry < 100 && videos.Items.Count != 30; retry++) await Task.Delay(30);
                         if (videos.Items.Count != 30) throw new InvalidOperationException("YouTube picker did not load its videos.");
-                        if (accept) videos.SelectedIndex = 0;
-                        if (!button.IsEnabled) throw new InvalidOperationException("YouTube picker action was disabled.");
-                        Click(button);
+                        if (action != "Cancel") videos.SelectedIndex = 0;
+                        if (action == "Open in Editor")
+                            youtubeBrowserRun?.Invoke("youtube-open-direct");
+                        else
+                        {
+                            var button = Elements(nested).OfType<Button>().Single(candidate => candidate.Content as string == action);
+                            if (!button.IsEnabled) throw new InvalidOperationException("YouTube picker action was disabled.");
+                            Click(button);
+                        }
                         await browsing.WaitAsync(TimeSpan.FromSeconds(10));
-                        if (newProject.IsCompleted || picker.ChooseYouTubeCaptions != true ||
-                            (accept ? picker.SelectedYouTubeVideo?.Id != "fixture-000" || !picker.IsPrimaryButtonEnabled
-                                    : picker.SelectedYouTubeVideo != null || picker.IsPrimaryButtonEnabled))
+                        if (action == "Open in Editor") await newProject.WaitAsync(TimeSpan.FromSeconds(10));
+                        if (newProject.IsCompleted != (action == "Open in Editor") ||
+                            picker.OpenSelectedYouTubeInEditor != (action == "Open in Editor") || !picker.ChooseYouTubeCaptions ||
+                            (action != "Cancel" ? picker.SelectedYouTubeVideo?.Id != "fixture-000"
+                                                : picker.SelectedYouTubeVideo != null || picker.IsPrimaryButtonEnabled))
                             throw new InvalidOperationException("YouTube picker failed to preserve form choices and return the selected video.");
                     }
                     finally { if (!browsing.IsCompleted) browser?.Hide(); Views.WindowedDialog.ReadyToShow -= CapturePicker; await browsing; }
@@ -1393,6 +1603,38 @@ public sealed partial class MainWindow
             }
             finally { picker.Hide(); await newProject; }
         } finally { youtubeLayoutFixture = false; Model.Settings.Set("youtubeVideoLayout", originalLayout); Model.Settings.Save(); PreviewTheme(originalTheme); }
+    }
+
+    private async Task VerifyInspectorAIProcessingForSmokeTestAsync()
+    {
+        System.Collections.Generic.IEnumerable<StackPanel> Rows() => InspectorAIProcessingRows.Children.OfType<StackPanel>();
+        bool HasValue(string value) => Rows().SelectMany(row => row.Children.OfType<Grid>())
+            .SelectMany(row => row.Children.OfType<TextBlock>()).Any(text => text.Text == value);
+        ShowEditor();
+        var originalSection = Section.SelectedIndex;
+        for (var section = 0; section < 5; section++)
+        {
+            Section.SelectedIndex = section;
+            RefreshLanguagePanel();
+            if (!HasValue("Not recorded"))
+                throw new InvalidOperationException("The inspector must show legacy provider status on each editor tab.");
+        }
+        Section.SelectedIndex = 0;
+        RefreshLanguagePanel();
+        if (!Rows().SelectMany(row => row.Children.OfType<DropDownButton>()).Any(button => button.Content as string == "Assign Transcript Provider"))
+            throw new InvalidOperationException("The legacy transcript must offer provider assignment.");
+        await Model.RunAsync("assign-result-ai-provider", new[] {
+            "--result-id", Model.Project!.ActiveResultID("transcript"), "--ai-task", "text", "--ai-provider", "vertex-ai"
+        }, throwOnProcessingError: true);
+        RefreshLanguagePanel();
+        if (!HasValue("Vertex AI (assigned)"))
+            throw new InvalidOperationException("The assigned provider did not appear after saving.");
+        Section.SelectedIndex = 1;
+        RefreshLanguagePanel();
+        if (HasValue("Vertex AI (assigned)"))
+            throw new InvalidOperationException("Transcript attribution leaked into the Summary tab.");
+        Section.SelectedIndex = originalSection;
+        RefreshLanguagePanel();
     }
 
     private async Task VerifyGalleryAndSettingsLayoutForSmokeTestAsync(string report)
@@ -1495,6 +1737,7 @@ public sealed partial class MainWindow
         await VerifyAboutMenuForSmokeTestAsync();
         await VerifyHelpWindowForSmokeTestAsync(report);
         await VerifyProjectSortingForSmokeTestAsync();
+        await VerifyProjectAIProviderFilteringForSmokeTestAsync();
         var originalTheme = Model.Settings.Get("theme", "system");
         var scale = Root.XamlRoot.RasterizationScale;
         if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter) presenter.Restore();

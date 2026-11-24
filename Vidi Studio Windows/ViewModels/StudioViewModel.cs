@@ -50,6 +50,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     /// <summary>Shows a message in the status bar, for example when live narration cannot speak.</summary>
     public void ReportStatus(string message) => Status = message;
     public string? ContentTransferCommand { get; private set; }
+    public (string ProjectId, string Provider)? ActiveAIProcessing { get; private set; }
     private double? contentTransferProgress;
     public double? ContentTransferProgress { get => contentTransferProgress; private set { contentTransferProgress = value; Changed(); } }
     private string? processingSection;
@@ -192,7 +193,9 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     }
 
     public string LanguageFilter { get; set; } = "all";
+    public string AIProviderFilter { get; set; } = "all";
     public string ProjectSort { get; set; } = "opened";
+    public IReadOnlyList<string> ProjectFilterAIProviders { get; private set; } = new[] { "all" };
     public IReadOnlyList<OutputLanguage> ProjectFilterLanguages { get; private set; } = Array.Empty<OutputLanguage>();
     public void Reload(string search = "", string source = "all")
     {
@@ -258,14 +261,20 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         var languageOptionsChanged = !ProjectFilterLanguages.SequenceEqual(languageOptions);
         ProjectFilterLanguages = languageOptions;
         if (LanguageFilter != "all" && !languageOptions.Any(language => language.Id == LanguageFilter)) LanguageFilter = "all";
+        var aiProviderOptions = SavedAIProcessing.ProjectFilterOptions(loaded);
+        var aiProviderOptionsChanged = !ProjectFilterAIProviders.SequenceEqual(aiProviderOptions);
+        ProjectFilterAIProviders = aiProviderOptions;
+        if (!aiProviderOptions.Contains(AIProviderFilter)) AIProviderFilter = "all";
         var desired = loaded.Where(p =>
                 p.Name.Contains(search, StringComparison.CurrentCultureIgnoreCase)
-                && (source == "all" || (p.IsYouTube ? "youtube" : p.CloudVideo != null ? "cloud" : "local") == source) && p.MatchesLanguage(LanguageFilter))
+                && (source == "all" || (p.IsYouTube ? "youtube" : p.CloudVideo != null ? "cloud" : "local") == source)
+                && p.MatchesLanguage(LanguageFilter) && p.MatchesAIProvider(AIProviderFilter))
             .ToList();
         ApplyProjectList(ProjectListSort.Apply(desired, ProjectSort, Settings.Data["projectLastOpened"] as System.Text.Json.Nodes.JsonObject).ToList());
         appliedSearch = search;
         appliedSource = source;
         if (languageOptionsChanged) Changed(nameof(ProjectFilterLanguages));
+        if (aiProviderOptionsChanged) Changed(nameof(ProjectFilterAIProviders));
     }
 
     /// <summary>
@@ -718,7 +727,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             if (!suppliedLanguage.Contains("--language")) suppliedLanguage.AddRange(new[] { "--language", languageProject.OperationLanguage(command) });
             var languageIndex = suppliedLanguage.IndexOf("--language");
             var sameLanguage = languageIndex < 0 || languageIndex + 1 >= suppliedLanguage.Count || suppliedLanguage[languageIndex + 1] == languageProject.OperationLanguage(command);
-            if (sameLanguage && !new[] { "select-language", "select-section-language", "sync-section-languages", "select-result", "assign-result-language", "review-result", "delete-results", "preview-delete-results", "export-batch" }.Contains(command)) {
+            if (sameLanguage && !new[] { "select-language", "select-section-language", "sync-section-languages", "select-result", "assign-result-language", "assign-result-ai-provider", "review-result", "delete-results", "preview-delete-results", "export-batch" }.Contains(command)) {
                 foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
                     var rid = languageProject.ActiveResultID(kind);
                     if (!string.IsNullOrEmpty(rid)) suppliedLanguage.AddRange(new[] { "--selected-" + (kind == "adAudio" ? "ad-audio" : kind) + "-id", rid });
@@ -747,6 +756,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         var requestArguments = extra?.ToArray() ?? Array.Empty<string>();
         extra = requestArguments;
         var requestFolder = Project?.Folder;
+        var requestProjectID = needsProject ? Project?.Id : null;
         var canRecoverYouTubeAudio = Project?.IsYouTube == true &&
             command is "export-youtube-original-audio" or "export-youtube-described-audio" or "combine-imported-audio";
         YouTubeAudioExportRecovery? audioRecovery = null;
@@ -817,6 +827,12 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             var result = await Engine.RunAsync(args, new Progress<EngineEvent>(e =>
             {
                 observeProgress?.Invoke(e);
+                if (requestProjectID != null && e.Data.TryGetProperty("activeAIProcessingProvider", out var aiProvider)
+                    && aiProvider.ValueKind == System.Text.Json.JsonValueKind.String && aiProvider.GetString() is { } name)
+                {
+                    ActiveAIProcessing = (requestProjectID, name);
+                    Changed(nameof(ActiveAIProcessing));
+                }
                 Status = e.Data.TryGetProperty("error", out var errorFlag) && errorFlag.ValueKind == System.Text.Json.JsonValueKind.True
                     ? new ProcessingException(e.Message, command: command).DisplayMessage(Settings.GetBool("developerMode"), Settings.Get("apiKey"))
                     : e.Message;
@@ -949,6 +965,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             IsSynthesizingNarration = false; NarratingSegmentId = null; NarratingSegmentIndex = null; NarratingTotalCount = 0; narratingQueueIds.Clear();
             ApplyNarrationStateToProject();
             Changed(nameof(IsSynthesizingNarration)); Changed(nameof(NarratingSegmentId)); Changed(nameof(NarratingSegmentIndex)); Changed(nameof(ActiveNarrationStatusText));
+            ActiveAIProcessing = null;
+            Changed(nameof(ActiveAIProcessing));
             ContentTransferCommand = null; ContentTransferProgress = null;
             ProcessingSection = null; VideoPreparation = null; processingPlan.Clear();
             var wasCancelled = operation.IsCancellationRequested;

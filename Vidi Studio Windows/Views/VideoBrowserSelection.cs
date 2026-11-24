@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 
 namespace Vidi_Studio_Windows.Views;
@@ -10,6 +12,9 @@ internal sealed class VideoBrowserSelection
     private readonly ListView list;
     private bool updating;
     internal bool Enabled => list.SelectionMode == ListViewSelectionMode.Multiple;
+    internal event Action? ModeChanged;
+    internal const double CheckboxColumnWidth = 42;
+    internal const string ActionsButtonName = "VideoRowActions";
 
     internal VideoBrowserSelection(ListView list)
     {
@@ -44,6 +49,7 @@ internal sealed class VideoBrowserSelection
         var current = list.SelectedItem;
         list.SelectionMode = enabled ? ListViewSelectionMode.Multiple : ListViewSelectionMode.Single;
         SetTarget(current);
+        ModeChanged?.Invoke();
     }
 
     internal ToggleMenuFlyoutItem ModeItem(bool available)
@@ -56,13 +62,28 @@ internal sealed class VideoBrowserSelection
         return item;
     }
 
-    internal ToggleMenuFlyoutItem TargetItem(object target)
+    internal void AddRowActions(Func<object, string> title, Action<MenuFlyout, object> populate)
     {
-        var item = new ToggleMenuFlyoutItem {
-            Text = "Select Video", Icon = MenuIcons.Create("selection-toggle"),
-            IsChecked = ReferenceEquals(list.SelectedItem, target)
+        list.ContainerContentChanging += (_, args) =>
+        {
+            if (args.InRecycleQueue) return;
+            void Attach(ListViewBase _, ContainerContentChangingEventArgs row)
+            {
+                if (row.ItemContainer.ContentTemplateRoot is not Grid grid ||
+                    grid.Children.OfType<DropDownButton>().FirstOrDefault(control => control.Name == ActionsButtonName) is not { } button) return;
+                AutomationProperties.SetName(button, "Actions for " + title(row.Item));
+                if (button.Flyout != null) return;
+                var menu = MenuAccessKeys.Create();
+                menu.Opening += (_, _) =>
+                {
+                    menu.Items.Clear();
+                    if (button.DataContext is { } target && list.Items.Contains(target))
+                        populate(menu, target);
+                };
+                button.Flyout = menu;
+            }
+            if (args.ItemContainer.ContentTemplateRoot is Grid) Attach(list, args);
+            else args.RegisterUpdateCallback(Attach);
         };
-        item.Click += (_, _) => SetTarget(item.IsChecked ? target : null);
-        return item;
     }
 }

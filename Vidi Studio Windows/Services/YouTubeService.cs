@@ -78,7 +78,11 @@ public sealed record YouTubeCaption(string Id, string Language, string Name, str
     public override string ToString() => Language + " · " + (Name.Length > 0 ? Name : Kind == "ASR" ? "Automatic" : "Standard") + " · " + Status;
 }
 
-internal sealed class YouTubeNotFoundException : InvalidOperationException { }
+internal sealed class YouTubeNotFoundException(string? message = null) : InvalidOperationException(message) { }
+internal sealed class YouTubeLinkIssueException(string message) : InvalidOperationException(message)
+{
+    internal const string UnavailableMessage = "YouTube couldn’t find an accessible video at this link. Check the URL. For a private video, connect its owner in YouTube Accounts and use the same Google account for Vertex AI.";
+}
 internal sealed class YouTubeAccessExpiredException : InvalidOperationException { public YouTubeAccessExpiredException() : base("Google access was revoked or has expired. Sign in again from YouTube Accounts.") { } }
 
 public sealed class YouTubeService
@@ -331,11 +335,47 @@ public sealed class YouTubeService
         return video;
     }
 
+    internal async Task<YouTubeVideo> VideoForNewProjectAsync(string id, SettingsStore settings, CancellationToken ct)
+    {
+        try
+        {
+            var video = await VideoAsync(id, ct);
+            if (video.Visibility == "private")
+            {
+                if (PrivateConnection(video.ChannelId, settings) == null)
+                    throw new YouTubeLinkIssueException(YouTubeVideo.PrivateVideoMessage);
+                return await ProjectVideoAsync(id, video.ChannelId, settings, ct);
+            }
+            video.RequireAvailable();
+            return video;
+        }
+        catch (YouTubeNotFoundException)
+        {
+            // Missing public metadata can also mean the link is private.
+        }
+
+        var accounts = Accounts.Where(account => PrivateConnection(account.ChannelId, settings)?.Id == account.Id).ToList();
+        if (Selected is { } selected && !accounts.Contains(selected)) accounts.Add(selected);
+        foreach (var account in accounts)
+        {
+            YouTubeVideo video;
+            try { video = await VideoAsync(id, ct, account.Id); }
+            catch (YouTubeNotFoundException) { continue; }
+            if (video.Visibility == "private" &&
+                (video.ChannelId != account.ChannelId || PrivateConnection(video.ChannelId, settings)?.Id != account.Id))
+                throw new YouTubeLinkIssueException(YouTubeVideo.PrivateVideoMessage);
+            video.RequireAvailable(allowPrivate: true);
+            return video;
+        }
+        throw new YouTubeLinkIssueException(YouTubeLinkIssueException.UnavailableMessage);
+    }
+
     public async Task<YouTubeVideo> VideoAsync(string id, CancellationToken ct = default, string? accountId = null)
     {
         var result = await ApiAsync("videos", new() { ["part"] = "snippet,contentDetails,status,statistics", ["id"] = id }, accountId == null ? null : await BearerAsync(accountId, ct), ct);
-        if (result["items"] is not JsonArray items || items.Count == 0) throw new InvalidOperationException("This video is unavailable. It may be private, deleted, or inaccessible to this account.");
-        return YouTubeVideo.Parse(items[0]!);
+        var item = (result["items"] as JsonArray)?.FirstOrDefault(value => value?["id"]?.ToString() == id);
+        if (item == null) throw new YouTubeNotFoundException("This video is unavailable. It may be private, deleted, or inaccessible to this account.");
+        return YouTubeVideo.Parse(item);
     }
     public async Task<(List<YouTubeVideo>, string)> VideosAsync(string playlist, string page, string accountId, CancellationToken ct)
     {

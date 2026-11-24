@@ -51,6 +51,82 @@ public sealed partial class MainWindow
         if (Model.Project is not { } project) return;
         LanguageResultsPanel.Children.Clear(); LanguageResultsPanel.Children.Add(BuildLanguageResultsPanel(project));
         if (activeLanguagePanelHost != null) activeLanguagePanelHost.Content = Views.CompactDialogLayout.PrepareContent(BuildLanguageResultsPanel(project));
+        RefreshInspectorAIProcessing(project);
+    }
+
+    private void RefreshInspectorAIProcessing(StudioProject project)
+    {
+        InspectorAIProcessingRows.Children.Clear();
+        var overview = Section.SelectedIndex == 4;
+        var kinds = overview ? new[] { "transcript", "summary", "descriptions" } : CurrentLanguageKinds.Where(kind => kind != "adAudio");
+        var language = overview ? project.OverviewLanguageCode : project.SelectedLanguage;
+        foreach (var kind in kinds)
+        {
+            var id = project.ActiveResultID(kind, language);
+            var result = project.SavedResults.FirstOrDefault(candidate => candidate.Id == id && candidate.Kind == kind &&
+                candidate.Language == language && candidate.State == "saved");
+            AddAIProviderRow(kind == "descriptions" ? "Audio Descriptions" : LanguageResult.KindTitle(kind), result, "text");
+            if (result?.ShowsNarrationProvider == true) AddAIProviderRow("Narration", result, "narration");
+        }
+        UpdateInspectorAIProcessing();
+
+        void AddAIProviderRow(string label, LanguageResult? result, string task)
+        {
+            var processing = result?.AIProcessing?.GetValueOrDefault(task);
+            var row = new StackPanel { Spacing = 4 };
+            var value = result == null ? "No saved result" : processing?.Title ?? "Not recorded";
+            AddInfo(row, label, value, value);
+            InspectorAIProcessingRows.Children.Add(row);
+            if (result == null || processing?.Source == "recorded") return;
+
+            var title = "Assign " + label + " Provider";
+            var assign = new DropDownButton { Content = title };
+            AutomationProperties.SetName(assign, title);
+            ToolTipService.SetToolTip(assign, title);
+            RegisterLanguageControl(assign, false);
+            assign.Flyout = ProviderMenu();
+            row.ContextFlyout = ProviderMenu();
+            row.Children.Add(assign);
+
+            bool CanAssign() => !Model.Busy && !HasUnsavedLanguageSummary && Model.Project is { } current &&
+                current.Id == project.Id && current.SavedResults.Any(candidate => candidate.Id == result.Id &&
+                    candidate.State == "saved" && candidate.AIProcessing?.GetValueOrDefault(task)?.Source != "recorded");
+
+            MenuFlyout ProviderMenu()
+            {
+                var menu = Views.MenuAccessKeys.Create();
+                menu.Opening += (_, _) =>
+                {
+                    menu.Items.Clear();
+                    foreach (var provider in SavedAIProcessing.ProviderChoices)
+                    {
+                        var selected = provider == (processing?.Provider ?? "unknown");
+                        var item = new MenuFlyoutItem
+                        {
+                            Text = SavedAIProcessing.ProviderTitle(provider),
+                            Icon = Views.MenuIcons.Create(selected ? "Select" : "Assign AI Provider"),
+                            IsEnabled = !selected && CanAssign()
+                        };
+                        item.Click += async (_, _) =>
+                        {
+                            if (CanAssign())
+                                await RunLanguageActionAsync("assign-result-ai-provider",
+                                    new[] { "--result-id", result.Id, "--ai-task", task, "--ai-provider", provider });
+                        };
+                        menu.Items.Add(item);
+                    }
+                };
+                return menu;
+            }
+        }
+    }
+
+    private void UpdateInspectorAIProcessing()
+    {
+        var message = Model.Busy && Model.ActiveAIProcessing is { } provider && provider.ProjectId == Model.Project?.Id
+            ? "Processing with " + SavedAIProcessing.ProviderTitle(provider.Provider) : "";
+        InspectorCurrentAIProcessing.Text = message;
+        InspectorCurrentAIProcessing.Visibility = message.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
     private async Task ShowLanguageResultsDialogAsync() {
         if (Model.Project is not { } project) return;
@@ -79,11 +155,10 @@ public sealed partial class MainWindow
         var options = new[] { new OutputLanguage("all", "All Languages") }.Concat(Model.ProjectFilterLanguages).ToList();
         updatingLanguageFilters = true;
         try {
-            foreach (var picker in new[] { GalleryLanguageFilter, ProjectLanguageFilter }) {
-                if (picker.ItemsSource is not IEnumerable<OutputLanguage> current || !current.SequenceEqual(options)) picker.ItemsSource = options;
-                var selected = (picker.ItemsSource as IEnumerable<OutputLanguage>)?.FirstOrDefault(v => v.Id == Model.LanguageFilter);
-                if (!Equals(picker.SelectedItem, selected)) picker.SelectedItem = selected;
-            }
+            if (ProjectLanguageFilter.ItemsSource is not IEnumerable<OutputLanguage> current || !current.SequenceEqual(options))
+                ProjectLanguageFilter.ItemsSource = options;
+            var selected = (ProjectLanguageFilter.ItemsSource as IEnumerable<OutputLanguage>)?.FirstOrDefault(v => v.Id == Model.LanguageFilter);
+            if (!Equals(ProjectLanguageFilter.SelectedItem, selected)) ProjectLanguageFilter.SelectedItem = selected;
         } finally { updatingLanguageFilters = false; }
     }
     private void LanguageFilter_Changed(object sender, SelectionChangedEventArgs e) {
@@ -92,7 +167,7 @@ public sealed partial class MainWindow
         if (Model.LanguageFilter == value.Id) return;
         Model.LanguageFilter = value.Id;
         RefreshLanguageFilters();
-        if (ReferenceEquals(sender, GalleryLanguageFilter)) FilterGallery(); else Filter();
+        Filter();
     }
     private ComboBox LanguagePicker(string title, string selected, bool all = false)
     {

@@ -105,7 +105,7 @@ public sealed partial class MainWindow
                     VerifyCompactDialogLayout(dialog); dialogPresentationVerifier.Verify(dialog);
                     if(dialog is Views.ImportAssetsDialog import) await import.VerifyGroupedLayoutForSmokeTestAsync();
                     await CaptureSmokeImage((FrameworkElement)dialogPresentationVerifier.WindowFor(dialog).Content,Path.Combine(Path.GetDirectoryName(report)!,"compact-dialog-"+item.Name+"-"+theme+".png"));
-                } finally {dialog.Hide();await showing;}
+                } finally {dialog.Hide();await showing;if(dialog is Views.ImportAssetsDialog import)import.CleanupYouTubeCaptions();}
             }
             var size=AppWindow.Size;
             var scale=Root.XamlRoot.RasterizationScale;
@@ -118,7 +118,7 @@ public sealed partial class MainWindow
                         await dialogPresentationVerifier!.WaitUntilReadyAsync(dialog);await Task.Delay(150);
                         VerifyCompactDialogLayout(dialog);dialogPresentationVerifier.Verify(dialog);
                         await CaptureSmokeImage((FrameworkElement)dialogPresentationVerifier.WindowFor(dialog).Content,Path.Combine(Path.GetDirectoryName(report)!,"compact-dialog-"+item.Name+"-narrow-"+theme+".png"));
-                    } finally {dialog.Hide();await showing;}
+                    } finally {dialog.Hide();await showing;if(dialog is Views.ImportAssetsDialog import)import.CleanupYouTubeCaptions();}
                 }
             } finally {AppWindow.Resize(size);}
             // Header metadata, values and events must survive repeated preparation and theme changes.

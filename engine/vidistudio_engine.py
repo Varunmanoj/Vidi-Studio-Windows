@@ -588,6 +588,10 @@ def ai_stage_label(stage):
 def gemini_client(project=None):
     from google import genai
     cfg = config()
+    if project and youtube_metadata.is_private(project):
+        if cfg.get('aiProvider') != 'vertex' or vertex_ai.express(cfg):
+            raise ValueError(youtube_metadata.PRIVATE_MESSAGE)
+        youtube_metadata.guard(project, lambda video, channel: vertex_ai.require_private_youtube_owner(cfg, video, channel))
     if cfg.get('aiProvider') == 'vertex':
         return vertex_ai.client(cfg, project)
     if not cfg.get('apiKey'): raise ValueError('Add a Gemini API key in Settings first.')
@@ -2991,7 +2995,6 @@ def delete_segment_audio(root, p, segment_id):
     remove_empty_directory(audio_root)
 
 def validate_analysis_prerequisites(command, root, project):
-    youtube_metadata.guard(project)
     if command != 'transcribe' and not (project.get('transcriptGenerated') or project.get('transcript')):
         raise ValueError('Run transcription first.')
     if command == 'generate-ad-cues' and not project['summary'].strip():
@@ -3151,7 +3154,7 @@ def delete_cloud_project_video(args):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command',choices=['cloud-projects','cloud-delete-project-video','cloud-object-permissions','cloud-object-rename','cloud-object-delete','cloud-browse','cloud-preview','cloud-list','cloud-import','cloud-create','vertex-connect','vertex-disconnect','vertex-check','cloud-upload','cloud-rename','cloud-remove','elevenlabs-settings','preview-sarvam-sample','check-sarvam-key','list-sarvam-models','normalize-speech','check-api-key','reanalyze-transcript-segment','undo-transcript','redo-transcript','reanalyze-segment','prepare-analysis-video','check-video-availability','cleanup-project','clear-generated','delete-generated','delete-segment-audio','list-models','list-voices','preview-tts','import-video','probe-video','generate-thumbnails','transcribe','generate-summary','generate-ad-cues','synthesize-tts','export-final-video','export-selectable-video','export-original-video','export-closed-audio-description-video','export-open-audio-description-video','export-closed-caption-video','export-dual-closed-caption-video','export-open-caption-video','export-original-audio','export-described-audio','export-youtube-described-audio','export-youtube-original-audio','download-youtube-audio','export-hls','save-cues','save-segments','save-summary','doctor',*parity.COMMANDS,*import_assets.COMMANDS,*audio_sources.COMMANDS,*language_results.COMMANDS,'read-youtube-metadata'])
+    parser.add_argument('command',choices=['cloud-projects','cloud-delete-project-video','cloud-object-permissions','cloud-object-rename','cloud-object-delete','cloud-browse','cloud-preview','cloud-list','cloud-import','cloud-create','vertex-connect','vertex-adopt-google-signin','vertex-disconnect','vertex-check','cloud-upload','cloud-rename','cloud-remove','elevenlabs-settings','preview-sarvam-sample','check-sarvam-key','list-sarvam-models','normalize-speech','check-api-key','reanalyze-transcript-segment','undo-transcript','redo-transcript','reanalyze-segment','prepare-analysis-video','check-video-availability','cleanup-project','clear-generated','delete-generated','delete-segment-audio','list-models','list-voices','preview-tts','import-video','probe-video','generate-thumbnails','transcribe','generate-summary','generate-ad-cues','synthesize-tts','export-final-video','export-selectable-video','export-original-video','export-closed-audio-description-video','export-open-audio-description-video','export-closed-caption-video','export-dual-closed-caption-video','export-open-caption-video','export-original-audio','export-described-audio','export-youtube-described-audio','export-youtube-original-audio','download-youtube-audio','export-hls','save-cues','save-segments','save-summary','doctor',*parity.COMMANDS,*import_assets.COMMANDS,*audio_sources.COMMANDS,*language_results.COMMANDS,'read-youtube-metadata'])
     parser.add_argument('--project',type=Path); parser.add_argument('--video',type=Path); parser.add_argument('--library',type=Path); parser.add_argument('--input',type=Path)
     parser.add_argument('--media-format', choices=VIDEO_EXPORT_FORMATS + AUDIO_EXPORT_FORMATS)
     parser.add_argument('--content',choices=['transcript','summary','descriptions','combined'],default='descriptions'); parser.add_argument('--url'); parser.add_argument('--name'); parser.add_argument('--timestamp',type=float,default=0); parser.add_argument('--duration',type=float); parser.add_argument('--segment'); parser.add_argument('--segments', action='append'); parser.add_argument('--format',choices=['srt','vtt','txt','json','md'],default='srt'); parser.add_argument('--changed',action='store_true'); parser.add_argument('--start-stage',default='transcribe')
@@ -3185,6 +3188,10 @@ def main():
     args=parser.parse_args()
     if args.command == 'vertex-connect':
         vertex_ai.sign_in()
+        emit('Google account connected', vertexConnected=True)
+        return
+    if args.command == 'vertex-adopt-google-signin':
+        vertex_ai.save_google_sign_in(sys.stdin.read(8193))
         emit('Google account connected', vertexConnected=True)
         return
     if args.command == 'vertex-disconnect':
@@ -3260,7 +3267,7 @@ def main():
         if not args.source_bucket or not args.name:
             raise ValueError('Choose a bucket video first.')
         emit('Cloud permissions checked', cloudPermissions=cloud_video.object_permissions(
-            config(), args.source_bucket, args.name))
+            config(), args.source_bucket, args.name, source_project=args.source_project))
         return
     if args.command == 'cloud-delete-project-video':
         delete_cloud_project_video(args)

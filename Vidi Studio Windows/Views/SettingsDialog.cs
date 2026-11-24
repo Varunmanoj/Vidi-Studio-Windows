@@ -313,10 +313,10 @@ public sealed partial class SettingsDialog : Window
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(heading, "settings-page-title");
         Grid.SetRow(heading, 1); Grid.SetColumn(heading, 1); layout.Children.Add(heading);
         var sections = new ListView { SelectionMode = ListViewSelectionMode.Single };
-        var labels = new[] { "Appearance", "Projects", "Narration", "AI", "Developer prompts", "Storage", "Help", "About" };
-        var glyphs = new[] { "\uE790", "\uE8F1", "\uE767", "\uE734", "\uE8F2", "\uE8B7", "\uE897", "\uE946" };
+        var labels = new[] { "Appearance", "Projects", "Narration", "AI", "Developer prompts", "Storage", "Help", "About", "YouTube Accounts" };
+        var glyphs = new[] { "\uE790", "\uE8F1", "\uE767", "\uE734", "\uE8F2", "\uE8B7", "\uE897", "\uE946", "\uE714" };
         // Keep section IDs stable for menu/navigation callers while matching the Mac sidebar order.
-        foreach (var i in Enumerable.Range(0, labels.Length))
+        foreach (var i in new[] { 0, 1, 2, 3, 8, 4, 5, 6, 7 })
         {
             var row = new Grid { ColumnSpacing = 12 };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
@@ -427,6 +427,7 @@ public sealed partial class SettingsDialog : Window
                 case 5: BuildStorage(panel); break;
                 case 6: BuildHelp(panel); break;
                 case 7: BuildAbout(panel); break;
+                case 8: panel.Children.Add(new YouTubeAccountsPanel(this)); break;
             }
         };
         SelectSection(requestedSection);

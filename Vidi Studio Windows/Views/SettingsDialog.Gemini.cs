@@ -660,6 +660,14 @@ public sealed partial class SettingsDialog
             var enabled = SpeechItems<Control>(panel).Where(control => control.IsEnabled).ToArray();
             foreach (var control in enabled) control.IsEnabled = false;
             try {
+                if (command is "vertex-connect" or "vertex-disconnect")
+                {
+                    if (command == "vertex-connect") await YouTubeService.Shared.SignInToCloudAsync(CancellationToken.None);
+                    else await YouTubeService.Shared.DisconnectCloudAccountAsync();
+                    draft["vertexConnected"] = CredentialStore.HasGoogleSignIn;
+                    RebuildAiPage(panel);
+                    return;
+                }
                 var events = await model.Engine.RunAsync(new[] { command });
                 bool passed = command == "vertex-check" && events.Any(e => e.Data.TryGetProperty("vertexModels", out _));
                 foreach (var entry in events) {
@@ -672,8 +680,6 @@ public sealed partial class SettingsDialog
                 peer?.RaiseNotificationEvent(Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationKind.ActionCompleted,
                     Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationProcessing.MostRecent, passed ? verifiedLabel : result.Text, "vertex-connection");
                 if (ApplyPreferences() && events.Any(e => e.Data.TryGetProperty("vertexModels", out _) || e.Data.TryGetProperty("vertexConnected", out _))) {
-                    if (command is "vertex-connect" or "vertex-disconnect")
-                        App.ApplySettingsChanges(new[] { "vertexConnected" });
                     RebuildAiPage(panel, passed);
                     status.Text = result.Text;
                 }
@@ -712,7 +718,7 @@ public sealed partial class SettingsDialog
             rows.Children.Add(badge);
             Action(connected ? "Reconnect Google Account" : "Sign in with Google", async () => await Run("vertex-connect"));
             Action("Remove Google sign-in", async () => {
-                var confirm = new ContentDialog { Title = "Remove Google sign-in from this PC?", PrimaryButtonText = "Remove Google sign-in", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
+                var confirm = new ContentDialog { Title = "Remove Google sign-in from this PC?", Content = "This removes Google Cloud access from this PC. Your YouTube accounts and projects stay available.", PrimaryButtonText = "Remove Google sign-in", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
                 if (await WindowedDialog.ShowAsync(confirm, this, 460, 250) == ContentDialogResult.Primary) await Run("vertex-disconnect");
             }).IsEnabled = connected;
         }

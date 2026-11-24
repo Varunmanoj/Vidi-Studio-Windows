@@ -27,6 +27,10 @@ public sealed class NewProjectDialog : ContentDialog
     internal const int WindowWidth = 760;
     internal const int WindowHeight = 544;
 
+    internal Func<Window, Task<YouTubeVideo?>>? BrowseYouTubeVideo { get; set; }
+    internal YouTubeVideo? SelectedYouTubeVideo { get; private set; }
+    public bool ChooseYouTubeCaptions => chooseYouTubeCaptions.IsChecked == true && IsYouTube;
+    private readonly CheckBox chooseYouTubeCaptions = new() { Content = "Choose YouTube captions after creating" };
     private readonly Window owner;
     private readonly SettingsStore settings;
     private readonly CompactActionsPanel sourceOptions = new() { VerticalAlignment = VerticalAlignment.Center };
@@ -76,6 +80,8 @@ public sealed class NewProjectDialog : ContentDialog
     };
     public bool CombineRequested { get; private set; }
     private readonly Border youtubePreview = new() { Visibility = Visibility.Collapsed, CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Background = new SolidColorBrush(Windows.UI.Color.FromArgb(24, 128, 128, 128)) };
+    private readonly ProgressRing youtubeLoadingRing = new() { Width = 24, Height = 24, HorizontalAlignment = HorizontalAlignment.Center };
+    private readonly StackPanel youtubeLoading = new() { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 8, Visibility = Visibility.Collapsed };
     private readonly TextBlock youtubeStatus = new() { TextWrapping = TextWrapping.Wrap, Opacity = .7, Visibility = Visibility.Collapsed };
     private readonly TextBlock sourceHeading = new() { Text = "Video File", FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(2, 4, 0, 0) };
     private static readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -92,6 +98,8 @@ public sealed class NewProjectDialog : ContentDialog
     public string? VideoPath { get; private set; }
     public string YouTubeUrl => youtubeUrl.Text.Trim();
 #if DEBUG
+    internal Task BrowseYouTubeForSmokeTestAsync() => BrowseYouTubeVideosAsync();
+    internal void SetYouTubeCaptionsForSmokeTest() => chooseYouTubeCaptions.IsChecked = true;
     internal void VerifyInitialSourceForSmokeTest(string command)
     {
         bool matches = command switch {
@@ -215,8 +223,25 @@ public sealed class NewProjectDialog : ContentDialog
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(youtubeUrl,"YouTube video URL");
         youtubeRow.Children.Add(youtubeUrl);
         Grid.SetColumn(fetchDetails,1); youtubeRow.Children.Add(fetchDetails);
+        var browseYouTube = new Button { Content = SourceLabel("\uE768", "My YouTube Videos…") };
+        browseYouTube.Click += async (_, _) => await BrowseYouTubeVideosAsync();
+        var youtubeMenu = MenuAccessKeys.Create();
+        var browseYouTubeItem = new MenuFlyoutItem { Text = "My YouTube Videos…", Icon = MenuIcons.Create("youtube-browser") };
+        browseYouTubeItem.Click += async (_, _) => await BrowseYouTubeVideosAsync();
+        var captionsItem = new ToggleMenuFlyoutItem { Text = "Choose YouTube captions after creating", Icon = MenuIcons.Create("youtube-captions") };
+        youtubeMenu.Opening += (_, _) => captionsItem.IsChecked = ChooseYouTubeCaptions;
+        captionsItem.Click += (_, _) => chooseYouTubeCaptions.IsChecked = captionsItem.IsChecked;
+        youtubeMenu.Items.Add(browseYouTubeItem);
+        youtubeMenu.Items.Add(captionsItem);
+        youtubeFields.ContextFlyout = youtubeMenu;
+        youtubeFields.Children.Add(browseYouTube);
+        youtubeFields.Children.Add(chooseYouTubeCaptions);
         SettingsDialog.CompactRow(youtubeFields,"YouTube video URL",youtubeRow,true);
         youtubeFields.Children.Add(youtubePreview);
+        youtubeLoading.Children.Add(youtubeLoadingRing);
+        youtubeLoading.Children.Add(new TextBlock { Text = "Fetching video details…", TextAlignment = TextAlignment.Center });
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(youtubeLoadingRing, "Fetching video details");
+        youtubeFields.Children.Add(youtubeLoading);
         youtubeFields.Children.Add(youtubeStatus);
         fetchDetails.Click += async (_, _) => await FetchYouTubeDetailsAsync();
         sourceOptions.Children.Add(local); sourceOptions.Children.Add(youtube);
@@ -330,6 +355,8 @@ public sealed class NewProjectDialog : ContentDialog
         UpdateLocalDetailsVisibility();
         localCard.Visibility = IsYouTube ? Visibility.Collapsed : Visibility.Visible;
         youtubeCard.Visibility = IsYouTube ? Visibility.Visible : Visibility.Collapsed;
+        youtubeLoadingRing.IsActive = IsYouTube && youtubeInspection != null;
+        youtubeLoading.Visibility = youtubeLoadingRing.IsActive ? Visibility.Visible : Visibility.Collapsed;
         sourceHeading.Text = IsCloud ? "Cloud Storage" : IsYouTube ? "YouTube Video" : "Video File";
         if (IsYouTube) preview.MediaPlayer?.Pause();
         fetchDetails.IsEnabled = ValidYouTubeId(YouTubeUrl) != null && youtubeInspection == null && ConnectivityService.Shared.Available(OnlineService.YouTube);
@@ -413,9 +440,35 @@ public sealed class NewProjectDialog : ContentDialog
         var path = uri.AbsolutePath.Trim('/').Split('/');
         return path.Length == 2 && (path[0] is "shorts" or "embed" or "live") && Regex.IsMatch(path[1], "^[A-Za-z0-9_-]{11}$") ? path[1] : null;
     }
+    private async Task BrowseYouTubeVideosAsync()
+    {
+        if (browsing || !IsYouTube || youtubeInspection != null ||
+            BrowseYouTubeVideo is not { } browse || CompanionWindow is not { } window) return;
+        browsing = true;
+        try
+        {
+            if (await browse(window) is { } video && CompanionWindow == window)
+            {
+                youtubeUrl.Text = video.Url;
+                ApplyYouTubePreview(video);
+            }
+        }
+        catch (Exception ex) { youtubeStatus.Text = ex.Message; }
+        finally { browsing = false; UpdateSource(); }
+    }
+
+    private void ApplyYouTubePreview(YouTubeVideo video)
+    {
+        SelectedYouTubeVideo = video;
+        fetchedYouTubeId = video.Id;
+        ShowYouTubePreview(video.Id, video.Title, video.Data["channelTitle"]?.ToString() ?? "", video.Thumbnail);
+        youtubeStatus.Text = "";
+    }
+
     private void UpdateYouTubeDetails()
     {
         youtubeInspection?.Cancel(); youtubeInspection = null;
+        SelectedYouTubeVideo = null;
         fetchedYouTubeId = null; youtubePreview.Visibility = Visibility.Collapsed;
         youtubeStatus.Text = "";
         UpdateSource();
@@ -428,19 +481,14 @@ public sealed class NewProjectDialog : ContentDialog
         youtubeInspection?.Cancel();
         var request = new CancellationTokenSource(); youtubeInspection = request;
         fetchedYouTubeId = null; youtubePreview.Visibility = Visibility.Collapsed;
-        youtubeStatus.Text = "Fetching video details…"; UpdateSource();
+        youtubeStatus.Text = ""; UpdateSource();
         try
         {
-            var url = "https://www.youtube.com/watch?v=" + id;
-            var video = await YouTubeService.Shared.VideoAsync(id, request.Token);
-            video.RequireAvailable();
+            var privateChannel = SelectedYouTubeVideo is { Visibility: "private" } chosen && chosen.Id == id ? chosen.ChannelId : null;
+            var video = await YouTubeService.Shared.ProjectVideoAsync(id, privateChannel, settings, request.Token);
+            video.RequireAvailable(allowPrivate: privateChannel != null);
             if (youtubeInspection != request || request.IsCancellationRequested || id != ValidYouTubeId(YouTubeUrl)) return;
-            var title = video.Title;
-            var author = video.Data["channelTitle"]?.ToString() ?? "";
-            var thumbnail = video.Thumbnail;
-            fetchedYouTubeId = id;
-            ShowYouTubePreview(id, title, author, thumbnail);
-            youtubeStatus.Text = "";
+            ApplyYouTubePreview(video);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)

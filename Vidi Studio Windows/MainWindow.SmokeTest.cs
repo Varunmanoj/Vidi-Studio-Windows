@@ -35,6 +35,12 @@ public sealed partial class MainWindow
                 await File.WriteAllTextAsync(report, "PASS: external local file import shows accessible progress, opens a separate editor, reuses it on repeat, and returns to the same All Projects window on Close Window.");
                 return;
             }
+            if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY") == "1")
+            {
+                await VerifyYouTubeLayoutForSmokeTestAsync(report);
+                await File.WriteAllTextAsync(report, "PASS: Packaged Google Cloud and YouTube sign-in return pages include the app icon and status. YouTube browser compact controls, independent scrolling list/table, selection/filter/layout controls and separate account window; profile/action row layout and links; My YouTube Videos absent and blocked in local and YouTube editors, present only in All Projects. Synthetic account/video data; no live sign-in or network calls.");
+                return;
+            }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY") == "1")
             {
                 ShowEditor();
@@ -117,7 +123,9 @@ public sealed partial class MainWindow
             if (!copyMenu.Items.OfType<MenuFlyoutItem>().Where(item => item.Visibility == Visibility.Visible).Select(item => (string)item.Tag).SequenceEqual(new[] { "copy-to", "segment-edit-mode" }))
                 throw new InvalidOperationException("Edit must expose Copy and Translate followed by Edit/Done Editing.");
             var youtubeMenu = editorMenus.Single(menu => menu.Title == "YouTube");
-            if (!youtubeMenu.Items.OfType<MenuFlyoutItem>().Select(item => (string)item.Tag).SequenceEqual(new[] { "youtube-open-browser" }))
+            if (!youtubeMenu.Items.OfType<MenuFlyoutItem>().Select(item => (string)item.Tag).SequenceEqual(new[] {
+                "youtube-browser", "youtube-accounts", "youtube-list", "youtube-table", "youtube-open-editor",
+                "youtube-open-browser", "youtube-refresh-list", "youtube-load-videos", "youtube-load-playlists" }))
                 throw new InvalidOperationException("YouTube menu commands do not match the shared desktop layout.");
             if (galleryMenus.Concat(editorMenus).SelectMany(menu => menu.Items).OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().Any(item => item.Icon == null) ||
                 SegmentMenu(Model.Project!.Cues[0]).Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().Any(item => item.Icon == null))
@@ -168,7 +176,7 @@ public sealed partial class MainWindow
             var projectYoutubeMenu = editorMenus.Single(menu => menu.Title == "Project").Items
                 .OfType<MenuFlyoutSubItem>().Single(item => item.Text == "YouTube");
             if (!projectYoutubeMenu.Items.OfType<MenuFlyoutItem>().Select(item => (string)item.Tag)
-                .SequenceEqual(new[] { "youtube-details", "youtube-refresh" }))
+                .SequenceEqual(new[] { "youtube-details", "youtube-refresh", "youtube-captions" }))
                 throw new InvalidOperationException("Project YouTube commands drifted from the shared desktop layout.");
             if (desktopMenuItems.SelectMany(pair => pair.Value).Any(item => item.Icon == null))
                 throw new InvalidOperationException("A nested desktop menu command has no icon.");
@@ -1199,8 +1207,9 @@ public sealed partial class MainWindow
             Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(GalleryImport) != "New Project" ||
             Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(GalleryOpenProject) != "Open Project Folder")
             throw new InvalidOperationException("Gallery creation/folder actions need native icons and accessible names.");
-        if (!GalleryToolbarActions.Children.OfType<Button>().SequenceEqual(new[] { GalleryImport, GalleryOpenProject }))
-            throw new InvalidOperationException("The gallery action group must contain New Project and Open Project Folder.");
+        var buttons = GalleryToolbarActions.Children.OfType<Button>().ToArray();
+        if (buttons.Length != 3 || buttons[0].Content as string != "My YouTube Videos…" || buttons[1] != GalleryImport || buttons[2] != GalleryOpenProject)
+            throw new InvalidOperationException("Gallery actions must show My YouTube Videos, New Project and Open Project Folder in order.");
         var searchCenter = GallerySearchHost.TransformToVisual(GalleryToolbar).TransformPoint(new Windows.Foundation.Point(GallerySearchHost.ActualWidth / 2, 0));
         var searchBottom = GallerySearchHost.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0, GallerySearchHost.ActualHeight)).Y;
         if (Math.Abs(searchCenter.X - GalleryToolbar.ActualWidth / 2) > 1 ||
@@ -1239,6 +1248,153 @@ public sealed partial class MainWindow
             throw new InvalidOperationException("Help website command is missing.");
     }
 
+    private async Task VerifyYouTubeLayoutForSmokeTestAsync(string report)
+    {
+        foreach (var cloud in new[] { true, false })
+        foreach (var receivedCode in new[] { true, false })
+        {
+            var response = System.Text.Encoding.UTF8.GetString(GoogleSignInReturn.Response(cloud, receivedCode));
+            var parts = response.Split("\r\n\r\n", 2);
+            var service = cloud ? "Google Cloud" : "YouTube";
+            var heading = receivedCode ? "Return to VidiStudio" : "Sign-in didn’t finish";
+            if (parts.Length != 2 ||
+                !parts[0].Contains($"Content-Length: {System.Text.Encoding.UTF8.GetByteCount(parts[1])}\r\n") ||
+                !parts[0].Contains("Cache-Control: no-store") ||
+                !parts[1].Contains($"{service} sign-in") ||
+                !parts[1].Contains($"<h1 id=\"page-heading\">{heading}</h1>") ||
+                !parts[1].Contains("data:image/png;base64,") ||
+                !parts[1].Contains("prefers-color-scheme: dark") ||
+                (!receivedCode && !parts[1].Contains("start a new sign-in in VidiStudio")))
+                throw new InvalidOperationException("The packaged Google sign-in return page is missing its branding or expected status.");
+        }
+        static System.Collections.Generic.IEnumerable<FrameworkElement> Elements(DependencyObject root) {
+            if (root is FrameworkElement element) yield return element;
+            for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root); i++)
+                foreach (var child in Elements(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i))) yield return child;
+        }
+        static void Click(Button button) {
+            var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(button);
+            ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+        }
+        var originalLayout = Model.Settings.Get("youtubeVideoLayout", "list");
+        var originalTheme = Model.Settings.Get("theme", "system");
+        var scale = Root.XamlRoot.RasterizationScale;
+        if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter) presenter.Restore();
+        ShowEditor(); await Task.Delay(150);
+        if (LibraryCommandVisible("youtube-browser") || CanRunDesktopCommand("youtube-browser") ||
+            Elements(EditorProjectHeader).OfType<Button>().Any(button => button.Content as string == "My YouTube Videos…"))
+            throw new InvalidOperationException("My YouTube Videos leaked into the editor.");
+        ShowGallery_Click(this, new RoutedEventArgs());
+        if (!LibraryCommandVisible("youtube-browser")) throw new InvalidOperationException("Missing gallery YouTube command.");
+        youtubeLayoutFixture = true;
+        try {
+            foreach (var theme in new[] { "light", "dark" }) foreach (var width in new[] { 1120, 720 }) {
+                PreviewTheme(theme); AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(width * scale), (int)(780 * scale))); await Task.Delay(100);
+                ContentDialog? active = null; Window? browserWindow = null;
+                void Capture(ContentDialog dialog, Window window) { if (dialog.Title as string == "My YouTube Videos") { active = dialog; browserWindow = window; } }
+                Views.WindowedDialog.ReadyToShow += Capture;
+                var running = RunDesktopCommandAsync("youtube-browser");
+                try {
+                    for (var attempt = 0; attempt < 100 && active == null; attempt++) await Task.Delay(30);
+                    if (active == null || browserWindow == null) throw new InvalidOperationException("YouTube browser did not open.");
+                    await Task.Delay(200); var content = (Grid)active.Content; content.UpdateLayout();
+                    var windowScale = ((FrameworkElement)browserWindow.Content).XamlRoot.RasterizationScale;
+                    var visibleWidth = browserWindow.AppWindow.ClientSize.Width / windowScale;
+                    if (visibleWidth < content.Width + 40 || Math.Abs(content.Width - Math.Max(480, Math.Min(1120, AppWindow.Size.Width / Root.XamlRoot.RasterizationScale - 96))) > 2)
+                        throw new InvalidOperationException("YouTube browser did not retain its wide content surface: " + visibleWidth + "/" + content.Width);
+                    var accountSelector = Elements(content).OfType<ComboBox>().Single(box => Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(box) == "Google account and channel");
+                    var refreshButton = Elements(content).OfType<Button>().Single(button => button.Content as string == "Refresh");
+                    if (content.Width >= 800 && Math.Abs(accountSelector.TransformToVisual(content).TransformPoint(new Windows.Foundation.Point()).Y - refreshButton.TransformToVisual(content).TransformPoint(new Windows.Foundation.Point()).Y) > 2)
+                        throw new InvalidOperationException("Wide account controls still wrap onto another row.");
+                    var upperControls = Elements(content).OfType<ScrollViewer>().Single(view => view.Content is StackPanel stack && stack.Children.OfType<MenuBar>().Any());
+                    if (content.Width >= 800 && content.Height >= 500 && upperControls.ScrollableHeight > 1)
+                        throw new InvalidOperationException("Wide browser still clips its upper controls.");
+                    var list = Elements(content).OfType<ListView>().Single();
+                    if (list.Items.Count != 30 || list.ActualHeight < 120 || list.ActualWidth > content.ActualWidth + 1)
+                        throw new InvalidOperationException("Video list is missing or clipped: " + list.ActualWidth + "x" + list.ActualHeight);
+                    var layoutChoice = Elements(content).OfType<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>().Single(button => button.Content as string == "Table View");
+                    var layoutBounds = layoutChoice.TransformToVisual(content).TransformPoint(new Windows.Foundation.Point());
+                    if (layoutBounds.Y < 0 || layoutBounds.Y + layoutChoice.ActualHeight > content.ActualHeight) throw new InvalidOperationException("Video layout choice is clipped.");
+                    if (Elements(content).OfType<Expander>().Any()) throw new InvalidOperationException("Accounts are still inline.");
+                    var done = Elements(content).OfType<Button>().Single(button => button.Content as string == "Done");
+                    var open = Elements(content).OfType<Button>().Single(button => button.Content as string == "Open in Editor");
+                    if (done.TransformToVisual(content).TransformPoint(new Windows.Foundation.Point()).Y > list.TransformToVisual(content).TransformPoint(new Windows.Foundation.Point()).Y || open.ActualHeight < 20)
+                        throw new InvalidOperationException("Opening buttons are not beside/below the browser controls.");
+                    list.SelectedIndex = 0; await Task.Delay(80);
+                    if (!open.IsEnabled) throw new InvalidOperationException("Selection did not enable opening.");
+                    youtubeBrowserRun!("youtube-table"); await Task.Delay(100);
+                    if (list.SelectedIndex != 0 || Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(list) != "YouTube videos table") throw new InvalidOperationException("Table lost selection.");
+                    await CaptureSmokeImage((FrameworkElement)browserWindow.Content, Path.Combine(Path.GetDirectoryName(report)!, $"youtube-table-{theme}-{width}.png"));
+                    youtubeBrowserRun!("youtube-list"); await Task.Delay(100);
+                    list.ScrollIntoView(list.Items.Last()); await Task.Delay(80);
+                    var scroll = Elements(list).OfType<ScrollViewer>().First();
+                    if (scroll.ScrollableHeight <= 0) throw new InvalidOperationException("Video rows do not scroll independently.");
+                    var search = Elements(content).OfType<TextBox>().Single(field => Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(field) == "Search loaded video titles"); search.Text = "no matching video"; await Task.Delay(80);
+                    if (list.Items.Count != 0 || open.IsEnabled) throw new InvalidOperationException("Filter left a stale selection.");
+                    search.Text = ""; await Task.Delay(80);
+                    await CaptureSmokeImage((FrameworkElement)browserWindow.Content, Path.Combine(Path.GetDirectoryName(report)!, $"youtube-list-{theme}-{width}.png"));
+                    Click(done); await running.WaitAsync(TimeSpan.FromSeconds(15));
+                } finally { active?.Hide(); Views.WindowedDialog.ReadyToShow -= Capture; await running; }
+                var accounts = new Views.YouTubeAccountsPanel(this, showsDone: true);
+                accounts.PreviewAccountsForSmokeTest(new[] { new YouTubeAccount("layout-a", "", "Sample Google account", "sample@example.com", "", "", "Sample channel", "", ""), new YouTubeAccount("layout-b", "", "Second account", "second@example.com", "", "", "Second channel", "", "") });
+                var accountDialog = new ContentDialog { Content = new ScrollViewer { Content = accounts, MaxHeight = 500 } };
+                Window? accountWindow = null;
+                void CaptureAccounts(ContentDialog dialog, Window window) { if (dialog == accountDialog) accountWindow = window; }
+                Views.WindowedDialog.ReadyToShow += CaptureAccounts;
+                var accountTask = Views.WindowedDialog.ShowAsync(accountDialog, this, 1100, 500);
+                try {
+                    for (var attempt = 0; attempt < 100 && accountWindow == null; attempt++) await Task.Delay(30);
+                    await Task.Delay(150);
+                    if (Elements(accounts).OfType<ComboBox>().Any() || Elements(accounts).OfType<HyperlinkButton>().Count() != 2 || Elements(accounts).OfType<Button>().Count(button => button.Content as string == "Disconnect YouTube Account…") != 2)
+                        throw new InvalidOperationException("Account rows/links do not match Mac.");
+                    foreach (var button in Elements(accounts).OfType<Button>().Where(button => button.Visibility == Visibility.Visible)) {
+                        var point = button.TransformToVisual(accounts).TransformPoint(new Windows.Foundation.Point());
+                        if (point.X < -1 || point.X + button.ActualWidth > accounts.ActualWidth + 1) throw new InvalidOperationException("Account action clipped at " + width);
+                    }
+                    await CaptureSmokeImage((FrameworkElement)accountWindow!.Content, Path.Combine(Path.GetDirectoryName(report)!, $"youtube-accounts-{theme}-{width}.png"));
+                } finally { accountDialog.Hide(); Views.WindowedDialog.ReadyToShow -= CaptureAccounts; await accountTask; }
+            }
+            var picker = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings, openYouTube: true)
+            {
+                BrowseYouTubeVideo = owner => ShowYouTubeBrowserAsync(owner)
+            };
+            var newProject = ShowDialogAsync(picker, Views.NewProjectDialog.WindowWidth, Views.NewProjectDialog.WindowHeight);
+            try
+            {
+                for (var retry = 0; retry < 100 && !picker.IsLoaded; retry++) await Task.Delay(30);
+                if (!picker.IsLoaded) throw new InvalidOperationException("New Project did not open.");
+                picker.SetYouTubeCaptionsForSmokeTest();
+                foreach (var accept in new[] { false, true })
+                {
+                    ContentDialog? browser = null;
+                    void CapturePicker(ContentDialog dialog, Window _) { if (dialog.Title as string == "My YouTube Videos") browser = dialog; }
+                    Views.WindowedDialog.ReadyToShow += CapturePicker;
+                    var browsing = picker.BrowseYouTubeForSmokeTestAsync();
+                    try
+                    {
+                        for (var retry = 0; retry < 100 && browser == null && !browsing.IsCompleted; retry++) await Task.Delay(30);
+                        if (browser == null || newProject.IsCompleted) throw new InvalidOperationException("YouTube picker did not keep New Project open.");
+                        var nested = (Grid)browser.Content;
+                        var button = Elements(nested).OfType<Button>().Single(candidate => candidate.Content as string == (accept ? "Choose Video" : "Cancel"));
+                        var videos = Elements(nested).OfType<ListView>().Single();
+                        for (var retry = 0; retry < 100 && videos.Items.Count != 30; retry++) await Task.Delay(30);
+                        if (videos.Items.Count != 30) throw new InvalidOperationException("YouTube picker did not load its videos.");
+                        if (accept) videos.SelectedIndex = 0;
+                        if (!button.IsEnabled) throw new InvalidOperationException("YouTube picker action was disabled.");
+                        Click(button);
+                        await browsing.WaitAsync(TimeSpan.FromSeconds(10));
+                        if (newProject.IsCompleted || picker.ChooseYouTubeCaptions != true ||
+                            (accept ? picker.SelectedYouTubeVideo?.Id != "fixture-000" || !picker.IsPrimaryButtonEnabled
+                                    : picker.SelectedYouTubeVideo != null || picker.IsPrimaryButtonEnabled))
+                            throw new InvalidOperationException("YouTube picker failed to preserve form choices and return the selected video.");
+                    }
+                    finally { if (!browsing.IsCompleted) browser?.Hide(); Views.WindowedDialog.ReadyToShow -= CapturePicker; await browsing; }
+                }
+            }
+            finally { picker.Hide(); await newProject; }
+        } finally { youtubeLayoutFixture = false; Model.Settings.Set("youtubeVideoLayout", originalLayout); Model.Settings.Save(); PreviewTheme(originalTheme); }
+    }
+
     private async Task VerifyGalleryAndSettingsLayoutForSmokeTestAsync(string report)
     {
         ShowGallery_Click(this, new RoutedEventArgs());
@@ -1254,10 +1410,37 @@ public sealed partial class MainWindow
                     .Take(expected.Length).ToArray();
                 if (!entries.Select(row => row.Tag as string).SequenceEqual(expected) || entries[2].IsEnabled != connected)
                     throw new InvalidOperationException("File must show all project commands and disable New Cloud Project before sign-in.");
-                var browserEntry = file.Items.OfType<MenuFlyoutItem>().FirstOrDefault(row => row.Tag as string == "open-cloud-videos");
-                if (browserEntry is not { Visibility: Visibility.Visible } || browserEntry.IsEnabled != connected ||
-                    file.Items.IndexOf(browserEntry) != file.Items.IndexOf(entries[2]) + 1)
-                    throw new InvalidOperationException("Open Cloud Videos must follow New Cloud Project and require Google sign-in.");
+                var browserGroup = file.Items.Where(row => row.Visibility == Visibility.Visible)
+                    .Skip(expected.Length).Take(5).ToArray();
+                if (browserGroup.Length != 5 || browserGroup[0] is not MenuFlyoutSeparator ||
+                    browserGroup[1] is not MenuFlyoutItem { Tag: "open-cloud-videos" } cloudEntry ||
+                    !cloudEntry.IsEnabled || cloudEntry.KeyboardAcceleratorTextOverride != "Ctrl+Alt+G" ||
+                    browserGroup[2] is not MenuFlyoutItem { Tag: "youtube-browser" } ||
+                    browserGroup[3] is not MenuFlyoutSeparator ||
+                    browserGroup[4] is not MenuFlyoutItem { Tag: "open-project" })
+                    throw new InvalidOperationException("File must give Cloud and YouTube video browsers their own group between menu dividers.");
+                if (!connected)
+                {
+                    var ready = new TaskCompletionSource<Views.CloudVideosDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    void CaptureCloud(ContentDialog dialog, Window window)
+                    {
+                        if (dialog is Views.CloudVideosDialog cloudDialog) ready.TrySetResult(cloudDialog);
+                    }
+                    Views.WindowedDialog.ReadyToShow += CaptureCloud;
+                    var opening = RunDesktopCommandAsync("open-cloud-videos");
+                    try
+                    {
+                        if (await Task.WhenAny(ready.Task, opening, Task.Delay(5000)) != ready.Task)
+                            throw new InvalidOperationException("The File command did not open the signed-out Cloud browser.");
+                        ready.Task.Result.VerifySignedOutForSmokeTest();
+                    }
+                    finally
+                    {
+                        Views.WindowedDialog.ReadyToShow -= CaptureCloud;
+                        if (ready.Task.IsCompletedSuccessfully) ready.Task.Result.Hide();
+                        await opening.WaitAsync(TimeSpan.FromSeconds(10));
+                    }
+                }
                 foreach (var id in expected) {
                     // Closing each companion window can reload the real connection state.
                     Model.Settings.Data["vertexConnected"] = connected;
@@ -1342,12 +1525,22 @@ public sealed partial class MainWindow
                 else await CaptureSmokeImage((FrameworkElement)picker.Content, Path.Combine(Path.GetDirectoryName(report)!, "cloud-new-project-signed-out.png"));
             } finally { picker.Hide(); await showing; }
         }
-        var display = RunDesktopCommandAsync("settings");
+        var display = RunDesktopCommandAsync("youtube-accounts");
         for (var attempt = 0; attempt < 100 && openSettings == null; attempt++) await Task.Delay(20);
-        var settings = openSettings ?? throw new InvalidOperationException("Settings command did not open Settings.");
+        var settings = openSettings ?? throw new InvalidOperationException("YouTube Accounts menu did not open the shared Settings window.");
         try
         {
             await Task.Delay(150);
+            if (settings.SelectedSectionForSmokeTest != 8) throw new InvalidOperationException("YouTube Accounts opened the wrong Settings page.");
+            var accountPanel = new Views.YouTubeAccountsPanel(settings);
+            if (accountPanel.Children.OfType<CheckBox>().Any()) throw new InvalidOperationException("YouTube Accounts must not require a disconnect checkbox.");
+            var disconnectConfirmation = Views.YouTubeAccountsPanel.CreateDisconnectConfirmation();
+            if (disconnectConfirmation.PrimaryButtonText != "Disconnect" || disconnectConfirmation.CloseButtonText != "Cancel" || disconnectConfirmation.DefaultButton != ContentDialogButton.Close)
+                throw new InvalidOperationException("Disconnect must use the same cancel-default confirmation as Mac.");
+            settings.SelectSection(5);
+            await RunDesktopCommandAsync("youtube-accounts");
+            if (openSettings != settings || settings.SelectedSectionForSmokeTest != 8)
+                throw new InvalidOperationException("YouTube Accounts did not reuse Settings or select its page.");
             settings.VerifySidebarNavigationForSmokeTest();
             await settings.VerifyInformationForSmokeTestAsync();
             await settings.VerifyLayoutForSmokeTestAsync();
@@ -1380,7 +1573,7 @@ public sealed partial class MainWindow
                     CaptureSmokeImage((FrameworkElement)settings.Content, Path.Combine(Path.GetDirectoryName(report)!, $"settings-compact-{section}-{theme}.png")));
             }
             finally { ShowGallery_Click(this, new RoutedEventArgs()); PreviewTheme(originalTheme); }
-            foreach (var (id, title) in new[] { (1, "projects"), (5, "storage") })
+            foreach (var (id, title) in new[] { (8, "youtube"), (1, "projects"), (5, "storage") })
             {
                 settings.SelectSection(id);
                 await Task.Delay(100);
@@ -2655,9 +2848,9 @@ public sealed partial class MainWindow
                         if ((item.Visibility == Visibility.Visible) != visible || (!visible && CanRunDesktopCommand(id)))
                             throw new InvalidOperationException($"Menu/accelerator escaped its tab: {id}, tab={tab}, YouTube={youtube}.");
                     }
-                    foreach (var id in new[] { "youtube-details", "youtube-refresh", "import-original-audio" })
+                    foreach (var id in new[] { "youtube-details", "youtube-refresh", "youtube-captions", "import-original-audio" })
                     {
-                        var visible = youtube;
+                        var visible = youtube && (id != "youtube-captions" || tab == 0);
                         if ((desktopMenuItems[id].Last().Visibility == Visibility.Visible) != visible || (!visible && CanRunDesktopCommand(id)))
                             throw new InvalidOperationException($"YouTube command escaped its source/tab: {id}.");
                     }

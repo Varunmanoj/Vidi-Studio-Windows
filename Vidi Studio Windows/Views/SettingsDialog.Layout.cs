@@ -114,7 +114,7 @@ public sealed partial class SettingsDialog
 #if DEBUG
     internal void VerifySidebarNavigationForSmokeTest()
     {
-        var expected = new[] { "Appearance", "Projects", "Narration", "AI" }
+        var expected = new[] { "Appearance", "Projects", "Narration", "AI", "YouTube Accounts" }
             .Concat(DeveloperModeEnabled ? new[] { "Developer prompts" } : Array.Empty<string>())
             .Concat(new[] { "Storage", "Help", "About" });
         var actual = sectionList!.Items.OfType<ListViewItem>().Where(item => item.Visibility == Visibility.Visible)
@@ -122,7 +122,7 @@ public sealed partial class SettingsDialog
         if (!actual.SequenceEqual(expected)) throw new InvalidOperationException("Settings sidebar order differs from Mac.");
         var original = SelectedSection;
         var heading = layout.Children.OfType<TextBlock>().Single();
-        foreach (var (id, title) in new[] { (1, "Projects"), (5, "Storage"), (6, "Help"), (7, "About") })
+        foreach (var (id, title) in new[] { (8, "YouTube Accounts"), (1, "Projects"), (5, "Storage"), (6, "Help"), (7, "About") })
         {
             SelectSection(id);
             if (SelectedSection != id || heading.Text != title ||
@@ -144,7 +144,7 @@ public sealed partial class SettingsDialog
         {
             var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(owner)) / 96d;
             AppWindow.Resize(new SizeInt32(Math.Min(originalSize.Width, (int)(720 * scale)), Math.Min(originalSize.Height, (int)(540 * scale))));
-            foreach (var section in new[] { 0, 1, 2, 3, 5, 6, 7 })
+            foreach (var section in new[] { 0, 1, 2, 3, 5, 6, 7, 8 })
             {
                 NavigateForSmokeTest(section);
                 await System.Threading.Tasks.Task.Delay(100);

@@ -136,7 +136,10 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         "sarvam" => !string.IsNullOrWhiteSpace(Settings.Get("sarvamApiKey")) && Settings.Get("sarvamKeyStatus") != "invalid" && ConnectivityService.Shared.Available(OnlineService.Sarvam),
         _ => true
     };
-    public bool CanUseAI => ReadyAIConnections().Any() && ConnectivityService.Shared.Available(OnlineService.Gemini);
+    public bool CanUseAI => ConnectivityService.Shared.Available(OnlineService.Gemini) &&
+        (Project?.PrivateYouTubeChannel is { } channel
+            ? YouTubeService.Shared.PrivateConnection(channel, Settings) != null && ReadyAIConnections().Contains(AiConnection.GoogleSignIn)
+            : ReadyAIConnections().Any());
     public string? OnlineReason(string command, IEnumerable<string>? extra = null) => OnlineRequirements.Services(command, Project, Settings, extra).Select(ConnectivityService.Shared.Reason).FirstOrDefault(s => s != null);
     public void RefreshConnectivity() { Changed(nameof(CanUseAI)); }
     public void ClearAiIssue()
@@ -642,8 +645,15 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         bool requiresCloudAnalysis = (project?.ReferencesCloudVideo == true ||
             (long.TryParse(project?.CloudVideo?.GetValueOrDefault("size"), out var size) && size > Views.NewProjectDialog.MaximumLocalVideoBytes))
             && OnlineRequirements.VideoAICommand(command);
+        if (project?.PrivateYouTubeChannel is { } channel && YouTubeService.Shared.PrivateConnection(channel, Settings) == null)
+        {
+            Status = YouTubeVideo.PrivateVideoMessage;
+            if (throwOnProcessingError) throw new ProcessingException(Status);
+            return false;
+        }
         var ready = ReadyAIConnections().Where(connection =>
-            OnlineRequirements.Supports(connection, requiresCloudAnalysis, OnlineRequirements.NarrationCommand(command))).ToList();
+            OnlineRequirements.Supports(connection, requiresCloudAnalysis || project?.PrivateYouTubeChannel != null,
+                                        OnlineRequirements.NarrationCommand(command))).ToList();
         if (ready.Contains(ActiveAIConnection)) return true;
         if (ready.Count == 0)
         {
@@ -724,11 +734,15 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             var position = supplied.IndexOf("--url");
             var id = position >= 0 && position + 1 < supplied.Count ? SharedYouTubeLink.VideoId(supplied[position + 1]) : null;
             if (id == null) throw new InvalidOperationException("Enter a valid YouTube video link.");
-            var video = await YouTubeService.Shared.VideoAsync(id);
-            video.RequireAvailable();
-            youtubeMetadataFile = Path.Combine(Path.GetTempPath(), "vidistudio-youtube-" + Guid.NewGuid() + ".json");
-            File.WriteAllText(youtubeMetadataFile, video.Data.ToJsonString());
-            supplied.AddRange(new[] { "--youtube-metadata", youtubeMetadataFile }); extra = supplied;
+            if (!supplied.Contains("--youtube-metadata"))
+            {
+                var video = await YouTubeService.Shared.VideoAsync(id);
+                video.RequireAvailable();
+                youtubeMetadataFile = Path.Combine(Path.GetTempPath(), "vidistudio-youtube-" + Guid.NewGuid() + ".json");
+                File.WriteAllText(youtubeMetadataFile, video.Data.ToJsonString());
+                supplied.AddRange(new[] { "--youtube-metadata", youtubeMetadataFile });
+            }
+            extra = supplied;
         }
         var requestArguments = extra?.ToArray() ?? Array.Empty<string>();
         extra = requestArguments;

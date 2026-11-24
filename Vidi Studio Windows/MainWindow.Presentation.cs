@@ -339,9 +339,9 @@ public sealed partial class MainWindow
             try {
                 var incoming = new Uri(openingProject.YoutubeURL ?? "");
                 var id = incoming.Query.TrimStart('?').Split('&').FirstOrDefault(v => v.StartsWith("v="))?[2..] ?? "";
-                var current = await YouTubeService.Shared.VideoAsync(id);
+                var current = await YouTubeService.Shared.ProjectVideoAsync(id, openingProject.PrivateYouTubeChannel, Model.Settings);
                 if (Model.Project?.Folder != openingProject.Folder) return;
-                current.RequireAvailable();
+                current.RequireAvailable(allowPrivate: openingProject.PrivateYouTubeChannel != null);
             } catch (Exception ex) { await ShowError(ex); return; }
         }
         GalleryPanel.Visibility = Visibility.Collapsed; EditorWorkspace.Visibility = Visibility.Visible;

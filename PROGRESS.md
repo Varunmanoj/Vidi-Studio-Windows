@@ -2710,3 +2710,39 @@ Built Windows 11 ARM64 Debug MSIX and installed 1.0.388.0 with one package regis
 Cloud Storage uploads and imports keep the Vertex AI video analysis limit. Open in Editor shows the same size warning for an oversized bucket object before starting a transfer. Both warning choices keep the browser open. The engine rechecks the selected generation and size before opening the download stream.
 
 Installed Windows 11 ARM64 Debug 1.0.389.0 with one package registration and Start entry. Menu, icon and UI checks and 125 focused source tests passed. The bundled engine diagnostic passed and rejected a 3.26 GB sparse file on both local and cloud creation paths before project creation. Packaged DialogsOnly and ContextMenusOnly passed. GallerySettingsOnly passed after correcting its test callback, including a 3.26 GB bucket fixture that displayed the native warning without reaching the import handler. No actual user video was uploaded or downloaded during the size checks.
+
+## 1.0.392 · YouTube and Cloud video browsers · 2026-11-24
+
+Restored YouTube accounts, playlists and caption import. New Project opens the YouTube browser as a companion and accepts a selected video while preserving the form choices. Cloud and YouTube have centered listing progress, List View and Table View, row selection controls and context actions. Cloud actions check object permissions and generation. The File menu separates the three project creation commands from the Cloud and YouTube browser group.
+
+An ARM64 Debug MSIX was built and installed in the Windows 11 guest. The guest reported one version 1.0.392.0 package and Start entry, and the packaged engine reported media and TLS readiness. The YouTube layout suite passed with the nested picker and account controls, the Gallery and Settings suite passed with the Cloud browser and File menu checks, and the context menu suite passed. The general dialog suite timed out. There were 137 passing focused source tests.
+
+## 1.0.393 · Separate Google Cloud and YouTube sign-in · 2026-11-24
+
+AI Settings and YouTube Accounts now start separate Google consent requests and remove only their own device credentials. The same channel owner must be connected in both services for private YouTube opening and analysis.
+
+Built and installed the ARM64 Debug package in the Windows 11 guest with one version 1.0.393.0 registration and Start entry. The staged engine doctor, 139 focused source tests, YouTube layout suite and context menu suite passed. The Gallery and Settings suite reached the editor tooltip check after exercising the File menu and Cloud browser. It reported a pointer-focus failure in the editor Add tooltip. Both scoped consent requests reached Google sign-in. Live consent and private analysis were not exercised.
+
+## 1.0.394 · Open Cloud Videos shortcut · 2026-11-24
+
+Ctrl-Alt-G invokes Open Cloud Videos through the File menu’s command dispatcher. Settings Help reads the shared binding.
+
+Installed the ARM64 Debug package in the Windows 11 guest with one version 1.0.394.0 registration and Start entry. The packaged engine health check and 140 focused source tests passed. The YouTube layout, gallery and Settings, and context menu suites passed. The gallery suite checked the shortcut displayed in File.
+
+## 1.0.395 · Signed-out Cloud browser and Settings Help · 2026-11-24
+
+File and Ctrl-Alt-G open Cloud Videos before sign-in. The centered screen offers Google Cloud sign-in and Done. The two video browser shortcuts appear together in Settings > Help.
+
+Installed the ARM64 Debug build in the Windows 11 guest with one 1.0.395.0 package and Start entry. The packaged engine health check and 141 focused source tests passed. The YouTube layout suite passed. The gallery and Settings suite verified the signed-out Cloud command and panel, signed-in Cloud browser, and the displayed shortcuts in Settings Help.
+
+## 1.0.396 · Cloud project discovery after first sign-in · 2026-11-24
+
+First-time Google Cloud users can open the browser and list accessible projects before saving a default project. Bucket operations use the selected source project when the default is empty. The previously configured quota project is preserved.
+
+Built and installed the ARM64 Debug package in the Windows 11 guest. Verified one version 1.0.396.0 registration and one Start entry. The staged engine doctor passed and 142 focused source tests passed. Installed YouTube layout, gallery/Settings and context menu suites passed. The gallery suite exercised the signed-out Cloud File command, connected browsing, import progress and the Settings Help shortcut rows. The general native dialog suite passed in the preceding 1.0.395 build. Tests used fixture accounts and Cloud objects without live OAuth consent or private video analysis.
+
+## 1.0.397 · Branded Google sign-in return page · 2026-11-24
+
+Both Google sign-in flows use the branded browser return page shared with macOS. The installed Windows build bundles the HTML and embeds its existing VidiStudio icon. The page labels the service, follows the browser’s light or dark appearance, and provides concise return or retry instructions.
+
+Built and installed version 1.0.397.0 as the ARM64 Debug package in Windows 11. Verified one package registration, one Start entry and a passing engine doctor. The packaged YouTube layout suite verified the returned HTML for both services and both outcomes, including the icon, heading, dark theme rules and UTF-8 response length. The shared template was rendered in WebKit and Chromium on the Mac. The 91 desktop parity tests passed. No live Google consent, Windows browser rendering or x64 runtime was exercised. Evidence is in `build/sign-in-return-397-build.log` and `build/sign-in-return-397-verify.log`.

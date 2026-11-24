@@ -25,16 +25,32 @@ internal sealed class CloudVideosDialog : ContentDialog
     private bool selectConfiguredBucket;
     private readonly ComboBox projects = new() { Header = "Google Cloud project", DisplayMemberPath = nameof(CloudProject.Label), HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly ComboBox buckets = new() { Header = "Source bucket", HorizontalAlignment = HorizontalAlignment.Stretch };
-    private readonly ComboBox sort = new() { Header = "Sort by", ItemsSource = new[] { "Name A–Z", "Name Z–A", "Recently Modified", "Largest First" }, SelectedIndex = 0 };
-    private readonly ComboBox fileView = new() { Header = "File view", ItemsSource = new[] { "List", "Table" } };
-    private readonly TextBox search = new() { Header = "Search videos", PlaceholderText = "Name or object path" };
+    private readonly ComboBox sort = new() { ItemsSource = new[] { "Name A–Z", "Name Z–A", "Recently Modified", "Largest First" }, SelectedIndex = 0 };
+    private readonly Microsoft.UI.Xaml.Controls.Primitives.ToggleButton listView = new() { Content = "List View" };
+    private readonly Microsoft.UI.Xaml.Controls.Primitives.ToggleButton tableView = new() { Content = "Table View" };
+    private readonly ScrollViewer videoScroll = new() { VerticalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled };
+    private bool tableLayout;
+    private readonly TextBox search = new() { PlaceholderText = "Search videos" };
+    private readonly VideoBrowserSelection videoSelection;
     private readonly ListView list = new() { Height = 220, SelectionMode = ListViewSelectionMode.Single };
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap };
     private readonly StackPanel details = new() { Spacing = 4 };
+    private readonly ProgressRing listingRing = new() { Width = 24, Height = 24 };
+    private readonly TextBlock listingStatus = new() { TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
+    private readonly StackPanel centeredLoading = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Spacing = 8, Visibility = Visibility.Collapsed };
     private readonly ProgressRing progress = new() { Width = 18, Height = 18, Visibility = Visibility.Collapsed };
     private readonly ProgressBar transfer = new() { Minimum = 0, Maximum = 100, Visibility = Visibility.Collapsed };
     private readonly Button refresh = new() { Content = "Refresh" };
     private readonly DropDownButton actions = new() { Content = "Actions" };
+    private readonly Button openEditor = new() { Content = "Open in Editor", IsEnabled = false };
+    private readonly Button cancel = new() { Content = "Cancel" };
+    private readonly Grid connectedBrowser = new() { RowSpacing = 12, MaxHeight = 710 };
+    private readonly StackPanel signedOutBrowser = new() { Spacing = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Button signIn = new() { Content = "Sign in with Google" };
+    private readonly Button cancelSignIn = new() { Content = "Cancel Sign-in", Visibility = Visibility.Collapsed };
+    private readonly TextBlock signInStatus = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly ProgressRing signInProgress = new() { Width = 18, Height = 18, Visibility = Visibility.Collapsed };
+    private CancellationTokenSource? signInRequest;
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? permissionRequest;
     private CloudVideo[] videos = Array.Empty<CloudVideo>();
@@ -72,6 +88,14 @@ internal sealed class CloudVideosDialog : ContentDialog
         };
     }
 
+    internal void VerifySignedOutForSmokeTest()
+    {
+        if (signedOutBrowser.Visibility != Visibility.Visible || connectedBrowser.Visibility != Visibility.Collapsed ||
+            !signIn.IsEnabled || signIn.Content as string != "Sign in with Google" || openEditor.IsEnabled ||
+            refresh.IsEnabled || projects.Items.Count != 0 || signedOutBrowser.ContextFlyout == null)
+            throw new InvalidOperationException("The signed-out Cloud browser must offer sign-in without listing any storage data.");
+    }
+
     internal async Task VerifyBrowserForSmokeTestAsync()
     {
         await WaitUntilAsync(() => projects.Items.Count == 2 && !loading);
@@ -81,6 +105,16 @@ internal sealed class CloudVideosDialog : ContentDialog
         await WaitUntilAsync(() => list.Items.Count == 2 && !loading);
         if (list.Items[0] is not CloudVideo { Name: "alpha.mov" })
             throw new InvalidOperationException("Cloud videos must sort by name and exclude other files.");
+        videoSelection.SetTarget(list.Items[0]);
+        videoSelection.SetMode(true);
+        if (!list.IsMultiSelectCheckBoxEnabled || !videoSelection.ModeItem(true).IsChecked)
+            throw new InvalidOperationException("Cloud browser Select must use native checkboxes.");
+        list.SelectedItems.Add(list.Items[1]);
+        if (list.SelectedItems.Count != 1 || !ReferenceEquals(list.SelectedItem, list.Items[1]))
+            throw new InvalidOperationException("Checking a video must replace the previous action target.");
+        videoSelection.SetTarget(null);
+        if (openEditor.IsEnabled) throw new InvalidOperationException("Unchecking the video must clear the action target.");
+        videoSelection.SetMode(false);
         sort.SelectedIndex = 3;
         if (list.Items[0] is not CloudVideo { Name: "folder/zulu.mp4" })
             throw new InvalidOperationException("Cloud videos did not sort by byte size.");
@@ -90,9 +124,18 @@ internal sealed class CloudVideosDialog : ContentDialog
         if (CaptureSelection() is not { Project: "fixture-source", Bucket: "fixture-bucket", Generation: "12" })
             throw new InvalidOperationException("Opening a video must keep its selected project, bucket and generation.");
         if (CanRename || CanDelete) throw new InvalidOperationException("Cloud mutation actions must be hidden when permissions are denied.");
-        fileView.SelectedIndex = 1;
-        if (list.Header == null || CaptureSelection()?.Generation != "12")
-            throw new InvalidOperationException("Cloud table view must preserve the selection.");
+        SetTableView(true);
+        if (list.Header is not Grid columns || columns.Children[0] is not TextBlock { Text: "Thumbnail" } ||
+            tableView.IsChecked != true || listView.IsChecked != false ||
+            AutomationProperties.GetName(list) != "Cloud videos table" ||
+            videoScroll.HorizontalScrollMode != ScrollMode.Auto || CaptureSelection()?.Generation != "12")
+            throw new InvalidOperationException("Cloud table view must show labeled columns, scroll, and preserve the selection.");
+        SetTableView(false);
+        if (list.Header != null || listView.IsChecked != true || tableView.IsChecked != false ||
+            AutomationProperties.GetName(list) != "Cloud videos list" || CaptureSelection()?.Generation != "12")
+            throw new InvalidOperationException("Cloud list view must restore the active layout and keep the selected video.");
+        if (!ReferenceEquals(actions.Parent, openEditor.Parent))
+            throw new InvalidOperationException("Cloud browser Actions and Open in Editor must share one footer.");
 
         ImportVideo = (_, _, _) => throw new InvalidOperationException("An oversized cloud video reached the import callback.");
         ContentDialog? notice = null;
@@ -113,14 +156,14 @@ internal sealed class CloudVideosDialog : ContentDialog
     internal async Task VerifyConfiguredImportForSmokeTestAsync(StudioProject project)
     {
         await WaitUntilAsync(() => list.Items.Count == 2 && !loading);
-        if (ProjectID != settings.Get("vertexProject") || Bucket != settings.Get("vertexBucket") || IsPrimaryButtonEnabled)
+        if (ProjectID != settings.Get("vertexProject") || Bucket != settings.Get("vertexBucket") || openEditor.IsEnabled)
             throw new InvalidOperationException("The cloud browser must select the configured project and bucket and wait for a video.");
         ImportVideo = (selection, report, _) =>
         {
             if (selection.Bucket != Bucket || selection.Generation != "13")
                 throw new InvalidOperationException("The cloud import lost the selected bucket and generation.");
             report(new EngineEvent("Downloading video: 50 of 100 bytes", .5, JsonSerializer.SerializeToElement(new { progress = .5 })));
-            if (transfer.Visibility != Visibility.Visible || transfer.Value != 50 || IsPrimaryButtonEnabled)
+            if (transfer.Visibility != Visibility.Visible || transfer.Value != 50 || openEditor.IsEnabled)
                 throw new InvalidOperationException("The browser must show transfer progress while keeping import commands disabled.");
             report(new EngineEvent("Copying source video into local project", null, JsonSerializer.SerializeToElement(new {})));
             if (transfer.Visibility != Visibility.Collapsed || progress.Visibility != Visibility.Visible)
@@ -151,6 +194,7 @@ internal sealed class CloudVideosDialog : ContentDialog
         public string DisplaySize => NewProjectDialog.CloudFileSize(Size);
         public string DisplayType => ContentType ?? "—";
         public string DisplayUpdated => DateTimeOffset.TryParse(Updated, out var date) ? date.ToLocalTime().ToString("g") : "—";
+        public ImageSource? ThumbnailImage => DecodeThumbnail(Thumbnail);
     }
 
     internal CloudVideosDialog(Window owner, ElementTheme theme, SettingsStore settings, bool selectConfiguredBucket = false)
@@ -158,52 +202,87 @@ internal sealed class CloudVideosDialog : ContentDialog
         this.owner = owner;
         this.settings = settings;
         this.selectConfiguredBucket = selectConfiguredBucket;
+        videoSelection = new VideoBrowserSelection(list);
         RequestedTheme = theme;
-        MaxWidth = 780;
+        MaxWidth = 940;
         Title = "Open Cloud Videos";
-        PrimaryButtonText = "Open in Editor";
-        CloseButtonText = "Cancel";
-        DefaultButton = ContentDialogButton.Primary;
-        IsPrimaryButtonEnabled = false;
-        AutomationProperties.SetName(list, "Bucket video list");
+        var itemStyle = new Style(typeof(ListViewItem));
+        itemStyle.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
+        itemStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
+        list.ItemContainerStyle = itemStyle;
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(transfer, "Cloud video import progress");
 
         var selectors = new StackPanel { Spacing = 8 };
-        SettingsDialog.CompactRow(selectors, "Google Cloud project", projects, true);
+        SettingsDialog.CompactRow(selectors, "Google Cloud project", SettingsDialog.CompactActions(projects, refresh), true);
         SettingsDialog.CompactRow(selectors, "Source bucket", buckets, true);
-        var filters = new StackPanel { Spacing = 8 };
-        SettingsDialog.CompactRow(filters, "Search videos", search, true);
-        SettingsDialog.CompactRow(filters, "Sort by", sort, true);
-        SettingsDialog.CompactRow(filters, "File view", fileView, true);
-        search.Header = null;
-        sort.Header = null;
-        fileView.Header = null;
+        var filters = new Grid { ColumnSpacing = 8 };
+        filters.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        filters.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        filters.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        filters.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        filters.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var sortLabel = new TextBlock { Text = "Sort by", VerticalAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetName(search, "Search videos");
+        AutomationProperties.SetName(sort, sortLabel.Text);
+        filters.Children.Add(search);
+        Grid.SetColumn(sortLabel, 1);
+        filters.Children.Add(sortLabel);
+        Grid.SetColumn(sort, 2);
+        filters.Children.Add(sort);
+        filters.SizeChanged += (_, _) =>
+        {
+            var narrow = filters.ActualWidth < 420;
+            filters.RowSpacing = narrow ? 8 : 0;
+            Grid.SetColumnSpan(search, narrow ? 3 : 1);
+            Grid.SetRow(sortLabel, narrow ? 1 : 0);
+            Grid.SetRow(sort, narrow ? 1 : 0);
+        };
+        var layoutRow = SettingsDialog.CompactActions(
+            new TextBlock { Text = "Video layout", VerticalAlignment = VerticalAlignment.Center }, listView, tableView);
+        layoutRow.ContextFlyout = LayoutMenu();
+        AutomationProperties.SetName(projects, "Google Cloud project");
         projects.Header = null;
         buckets.Header = null;
 
-        var stack = new StackPanel { Spacing = 10, MaxWidth = 720 };
+        var stack = new StackPanel { Spacing = 10, MaxWidth = 880 };
         stack.Children.Add(CompactDialogLayout.Card(selectors, "Cloud Storage"));
         stack.Children.Add(CompactDialogLayout.Card(filters, "Video filters"));
-        stack.Children.Add(list);
+        stack.Children.Add(layoutRow);
+        var results = new Grid();
+        videoScroll.Content = list;
+        results.Children.Add(videoScroll);
+        AutomationProperties.SetAccessibilityView(listingRing, AccessibilityView.Raw);
+        AutomationProperties.SetLiveSetting(listingStatus, AutomationLiveSetting.Polite);
+        centeredLoading.Children.Add(listingRing);
+        centeredLoading.Children.Add(listingStatus);
+        results.Children.Add(centeredLoading);
+        stack.Children.Add(results);
         stack.Children.Add(new AccessibilityGroup("Selected video details") { Child = details });
         stack.Children.Add(progress);
         stack.Children.Add(transfer);
         stack.Children.Add(status);
         stack.Children.Add(vertexProject);
-        stack.Children.Add(SettingsDialog.CompactActions(refresh, actions));
-        Content = new ScrollViewer { Content = stack, MaxHeight = 650, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        connectedBrowser.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        connectedBrowser.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var scroll = new ScrollViewer { Content = stack, MaxHeight = 650, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        connectedBrowser.Children.Add(scroll);
+        var footer = SettingsDialog.CompactActions(actions, openEditor, cancel);
+        Grid.SetRow(footer, 1);
+        connectedBrowser.Children.Add(footer);
+        var layout = new Grid();
+        layout.Children.Add(connectedBrowser);
+        layout.Children.Add(signedOutBrowser);
+        BuildSignInPanel();
+        Content = layout;
 
         projects.SelectionChanged += async (_, _) => { if (!populatingChoices) await LoadBucketsAsync(); };
         buckets.SelectionChanged += async (_, _) => { if (!populatingChoices) await LoadVideosAsync(); };
         search.TextChanged += (_, _) => Render();
         sort.SelectionChanged += (_, _) => Render();
-        fileView.SelectedIndex = Windows.Storage.ApplicationData.Current.LocalSettings.Values["cloudStorageFileView"] as string == "Table" ? 1 : 0;
-        fileView.SelectionChanged += (_, _) =>
-        {
-            Windows.Storage.ApplicationData.Current.LocalSettings.Values["cloudStorageFileView"] = fileView.SelectedIndex == 1 ? "Table" : "List";
-            Render();
-        };
+        tableLayout = Windows.Storage.ApplicationData.Current.LocalSettings.Values["cloudStorageFileView"] as string == "Table";
+        listView.Click += (_, _) => SetTableView(false);
+        tableView.Click += (_, _) => SetTableView(true);
         list.SelectionChanged += async (_, _) =>
         {
             RenderDetails();
@@ -215,7 +294,7 @@ internal sealed class CloudVideosDialog : ContentDialog
             CloudVideo? target = null;
             for (var element = args.OriginalSource as DependencyObject; element != null && element != list; element = VisualTreeHelper.GetParent(element))
                 if (element is ListViewItem { Content: CloudVideo row }) { target = row; break; }
-            list.SelectedItem = target;
+            videoSelection.SetTarget(target);
         };
         list.ContextFlyout = CreateMenu(includeFilters: false);
         actions.Flyout = CreateMenu(includeFilters: true);
@@ -224,23 +303,83 @@ internal sealed class CloudVideosDialog : ContentDialog
         refreshMenu.Items.Add(Item("Refresh", "Refresh Files", RefreshAsync));
         refresh.ContextFlyout = refreshMenu;
         refresh.Click += async (_, _) => await RefreshAsync();
-        PrimaryButtonClick += async (_, args) =>
+        openEditor.Click += async (_, _) => await OpenSelectedVideoAsync();
+        list.KeyDown += async (_, args) =>
         {
-            args.Cancel = true;
+            if (args.Key != Windows.System.VirtualKey.Enter || !openEditor.IsEnabled) return;
+            args.Handled = true;
             await OpenSelectedVideoAsync();
         };
-        CloseButtonClick += (_, args) =>
+        cancel.Click += (_, _) =>
         {
-            if (importCancellation == null) return;
-            args.Cancel = true;
-            status.Text = "Cancelling import…";
-            importCancellation.Cancel();
+            if (importCancellation is { } cancellation)
+            {
+                status.Text = "Cancelling import…";
+                cancellation.Cancel();
+            }
+            else Hide();
         };
-        Opened += async (_, _) => await LoadProjectsAsync();
+        Opened += async (_, _) =>
+        {
+            if (settings.GetBool("vertexConnected")) await LoadProjectsAsync();
+            else signIn.Focus(FocusState.Programmatic);
+        };
         Closing += (_, _) => { closed = true; lifetime.Cancel(); permissionRequest?.Cancel(); };
         Closed += (_, _) => lifetime.Dispose();
         Render();
         UpdateActions();
+    }
+
+    private void BuildSignInPanel()
+    {
+        var note = new TextBlock { Text = "Sign in to Google Cloud to browse your storage buckets.", TextWrapping = TextWrapping.Wrap };
+        AutomationProperties.SetLiveSetting(signInStatus, AutomationLiveSetting.Polite);
+        var done = new Button { Content = "Done" };
+        done.Click += (_, _) => Hide();
+        signIn.Click += async (_, _) => await ConnectCloudAsync();
+        cancelSignIn.Click += (_, _) => signInRequest?.Cancel();
+        signedOutBrowser.Children.Add(note);
+        signedOutBrowser.Children.Add(SettingsDialog.CompactActions(signIn, cancelSignIn, done));
+        AutomationProperties.SetAccessibilityView(signInProgress, AccessibilityView.Raw);
+        signedOutBrowser.Children.Add(SettingsDialog.CompactActions(signInProgress, signInStatus));
+        var menu = MenuAccessKeys.Create();
+        menu.Opening += (_, _) =>
+        {
+            menu.Items.Clear();
+            menu.Items.Add(Item("Sign in with Google", "Sign in with Google", ConnectCloudAsync, signIn.IsEnabled));
+            menu.Items.Add(Item("Cancel Sign-in", "Cancel Sign-in", () => { signInRequest?.Cancel(); return Task.CompletedTask; }, signInRequest != null));
+            menu.Items.Add(Item("Done", "Done", () => { Hide(); return Task.CompletedTask; }));
+        };
+        signedOutBrowser.ContextFlyout = menu;
+    }
+
+    private async Task ConnectCloudAsync()
+    {
+        if (closed || signInRequest != null || settings.GetBool("vertexConnected")) return;
+        using var request = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        signInRequest = request;
+        signIn.IsEnabled = false;
+        cancelSignIn.Visibility = Visibility.Visible;
+        signInProgress.IsActive = true;
+        signInProgress.Visibility = Visibility.Visible;
+        signInStatus.Text = "Waiting for Google sign-in…";
+        try
+        {
+            await YouTubeService.Shared.SignInToCloudAsync(request.Token);
+            if (closed) return;
+            settings.Reload();
+            UpdateActions();
+            await LoadProjectsAsync();
+        }
+        catch (OperationCanceledException) { if (!closed) signInStatus.Text = "Sign-in cancelled."; }
+        catch (Exception ex) { if (!closed) signInStatus.Text = ex.Message; }
+        finally
+        {
+            signInRequest = null;
+            signIn.IsEnabled = true;
+            signInProgress.IsActive = false;
+            cancelSignIn.Visibility = signInProgress.Visibility = Visibility.Collapsed;
+        }
     }
 
     private MenuFlyout CreateMenu(bool includeFilters)
@@ -249,11 +388,14 @@ internal sealed class CloudVideosDialog : ContentDialog
         menu.Opening += (_, _) =>
         {
             menu.Items.Clear();
-            menu.Items.Add(Item("Open in Editor", "Open in Editor", OpenSelectedVideoAsync, IsPrimaryButtonEnabled));
+            var sourceForMenu = CaptureSource();
+            menu.Items.Add(videoSelection.ModeItem(!loading && list.Items.Count > 0));
+            if (videoSelection.Enabled && Selection is { } target) menu.Items.Add(videoSelection.TargetItem(target));
+            menu.Items.Add(Item("Open in Editor", "Open in Editor", OpenSelectedVideoAsync, openEditor.IsEnabled));
             if (Selection is { } file && file.Thumbnail == null && previewedFile != file)
                 menu.Items.Add(Item("Load Thumbnail", "Load Thumbnail", () => LoadThumbnailAsync(file), !loading));
-            if (CanRename) menu.Items.Add(Item("Rename Video…", "cloud-rename", () => ManageAsync(true)));
-            if (CanDelete) menu.Items.Add(Item("Delete Video…", "Delete Project…", () => ManageAsync(false)));
+            if (CanRename) menu.Items.Add(Item("Rename Video…", "cloud-rename", () => ManageSelectedAsync(true, sourceForMenu)));
+            if (CanDelete) menu.Items.Add(Item("Delete Video…", "Delete Project…", () => ManageSelectedAsync(false, sourceForMenu)));
             menu.Items.Add(Item("Refresh", "Refresh Files", RefreshAsync, !loading));
             if (!includeFilters) return;
             menu.Items.Add(new MenuFlyoutSeparator());
@@ -261,7 +403,40 @@ internal sealed class CloudVideosDialog : ContentDialog
             menu.Items.Add(Choices("Google Cloud project", "Cloud Storage", projects));
             menu.Items.Add(Choices("Source bucket", "Cloud Storage", buckets));
             menu.Items.Add(Choices("Sort by", "sort-segments", sort));
-            menu.Items.Add(Choices("File view", "List", fileView));
+            var layouts = new MenuFlyoutSubItem { Text = "Video layout", Icon = MenuIcons.Create("Table"), IsEnabled = listView.IsEnabled };
+            foreach (var item in LayoutItems()) layouts.Items.Add(item);
+            menu.Items.Add(layouts);
+        };
+        return menu;
+    }
+
+    private void SetTableView(bool table)
+    {
+        tableLayout = table;
+        Windows.Storage.ApplicationData.Current.LocalSettings.Values["cloudStorageFileView"] = table ? "Table" : "List";
+        Render();
+    }
+
+    private IEnumerable<ToggleMenuFlyoutItem> LayoutItems()
+    {
+        foreach (var table in new[] { false, true })
+        {
+            var item = new ToggleMenuFlyoutItem {
+                Text = table ? "Table View" : "List View", Icon = MenuIcons.Create(table ? "Table View" : "List"),
+                IsChecked = tableLayout == table, IsEnabled = listView.IsEnabled
+            };
+            item.Click += (_, _) => SetTableView(table);
+            yield return item;
+        }
+    }
+
+    private MenuFlyout LayoutMenu()
+    {
+        var menu = MenuAccessKeys.Create();
+        menu.Opening += (_, _) =>
+        {
+            menu.Items.Clear();
+            foreach (var item in LayoutItems()) menu.Items.Add(item);
         };
         return menu;
     }
@@ -309,18 +484,21 @@ internal sealed class CloudVideosDialog : ContentDialog
     private void UpdateActions()
     {
         var connected = settings.GetBool("vertexConnected");
+        connectedBrowser.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
+        signedOutBrowser.Visibility = connected ? Visibility.Collapsed : Visibility.Visible;
+        if (Content is Grid layout) layout.MinHeight = connected ? 0 : 340;
         var hasBucket = Bucket.Length > 0;
         projects.IsEnabled = connected && !loading;
         buckets.IsEnabled = connected && !loading && ProjectID.Length > 0;
-        search.IsEnabled = sort.IsEnabled = fileView.IsEnabled = list.IsEnabled = connected && !loading && hasBucket;
+        search.IsEnabled = sort.IsEnabled = listView.IsEnabled = tableView.IsEnabled = list.IsEnabled = connected && !loading && hasBucket;
         refresh.IsEnabled = actions.IsEnabled = connected && !loading;
         vertexProject.Visibility = ProjectID.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         vertexProject.Text = $"Vertex AI project: {ProjectID}";
-        IsPrimaryButtonEnabled = connected && !loading && hasBucket && ProjectID.Length > 0 && Selection is not null;
+        openEditor.IsEnabled = connected && !loading && hasBucket && ProjectID.Length > 0 && Selection is not null;
     }
 
     private CloudVideoSelection? CaptureSelection() =>
-        IsPrimaryButtonEnabled && Selection is { } file ? new(ProjectID, Bucket, file.Name, file.Generation) : null;
+        openEditor.IsEnabled && Selection is { } file ? new(ProjectID, Bucket, file.Name, file.Generation) : null;
     private async Task OpenSelectedVideoAsync()
     {
         if (CaptureSelection() is not { } selected || ImportVideo is not { } import) return;
@@ -403,13 +581,23 @@ internal sealed class CloudVideosDialog : ContentDialog
         return new EngineClient(settings).RunAsync(args, updates, cancellation: lifetime.Token);
     }
 
-    private async Task WithLoadingAsync(string message, Func<Task> operation)
+    private async Task WithLoadingAsync(string message, Func<Task> operation, bool listing = false)
     {
         if (loading || closed || !settings.GetBool("vertexConnected")) return;
         loading = true;
         status.Text = message;
-        progress.Visibility = Visibility.Visible;
-        progress.IsActive = true;
+        if (listing)
+        {
+            status.Visibility = Visibility.Collapsed;
+            centeredLoading.Visibility = Visibility.Visible;
+            listingStatus.Text = message;
+            listingRing.IsActive = true;
+        }
+        else
+        {
+            progress.Visibility = Visibility.Visible;
+            progress.IsActive = true;
+        }
         UpdateActions();
         try { await operation(); }
         catch (OperationCanceledException) { }
@@ -424,7 +612,10 @@ internal sealed class CloudVideosDialog : ContentDialog
         finally
         {
             loading = false;
-            if (!closed) { progress.IsActive = false; progress.Visibility = Visibility.Collapsed; UpdateActions(); }
+            listingRing.IsActive = progress.IsActive = false;
+            centeredLoading.Visibility = progress.Visibility = Visibility.Collapsed;
+            status.Visibility = Visibility.Visible;
+            if (!closed) UpdateActions();
         }
     }
 
@@ -454,7 +645,7 @@ internal sealed class CloudVideosDialog : ContentDialog
                 choices.FirstOrDefault(choice => choice.Id == configured);
             populatingChoices = false;
             if (choices.Count == 0) status.Text = "No accessible Cloud projects.";
-        });
+        }, listing: true);
         if (!closed && ProjectID.Length > 0) await LoadBucketsAsync();
     }
 
@@ -489,7 +680,7 @@ internal sealed class CloudVideosDialog : ContentDialog
                 selectConfiguredBucket = false;
                 if (choices.Contains(configured)) buckets.SelectedItem = configured;
             }
-        });
+        }, listing: true);
         if (!closed && Bucket.Length > 0) await LoadVideosAsync();
     }
 
@@ -508,7 +699,7 @@ internal sealed class CloudVideosDialog : ContentDialog
                     Value(row, "contentType"), Value(row, "storageClass"), Value(row, "created"), Value(row, "updated"), Value(row, "thumbnail")))
                 .ToArray();
             Render();
-        });
+        }, listing: true);
     }
 
     private void ResetVideos()
@@ -539,11 +730,16 @@ internal sealed class CloudVideosDialog : ContentDialog
             _ => rows.OrderBy(row => row.Name, StringComparer.CurrentCultureIgnoreCase)
         };
         var visible = rows.ToArray();
-        var table = fileView.SelectedIndex == 1;
-        list.ItemTemplate = table ? TableTemplate : ListTemplate;
-        list.Header = table ? XamlReader.Load(TableHeader) : null;
+        listView.IsChecked = !tableLayout;
+        tableView.IsChecked = tableLayout;
+        list.ItemTemplate = tableLayout ? TableTemplate : ListTemplate;
+        list.Header = tableLayout ? XamlReader.Load(TableHeader) : null;
+        list.Width = tableLayout ? 848 : double.NaN;
+        videoScroll.HorizontalScrollMode = tableLayout ? ScrollMode.Auto : ScrollMode.Disabled;
+        videoScroll.HorizontalScrollBarVisibility = tableLayout ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
+        AutomationProperties.SetName(list, tableLayout ? "Cloud videos table" : "Cloud videos list");
         list.ItemsSource = visible;
-        list.SelectedItem = visible.Contains(selected) ? selected : null;
+        videoSelection.SetTarget(visible.Contains(selected) ? selected : null);
         if (Bucket.Length > 0) status.Text = visible.Length == 0 ? "No matching videos" : $"{visible.Length} videos";
     }
 
@@ -551,18 +747,11 @@ internal sealed class CloudVideosDialog : ContentDialog
     {
         details.Children.Clear();
         if (Selection is not { } file) return;
-        if ((file.Thumbnail ?? (previewedFile == file ? previewThumbnail : null)) is { Length: > 0 and <= 4000 } thumbnail)
+        if (DecodeThumbnail(file.Thumbnail ?? (previewedFile == file ? previewThumbnail : null)) is { } bitmap)
         {
-            try
-            {
-                using var bytes = new MemoryStream(Convert.FromBase64String(thumbnail));
-                var bitmap = new BitmapImage { DecodePixelWidth = 112 };
-                bitmap.SetSource(System.IO.WindowsRuntimeStreamExtensions.AsRandomAccessStream(bytes));
-                var image = new Image { Width = 112, Height = 64, Source = bitmap, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left };
-                AutomationProperties.SetName(image, "Thumbnail for " + file.Filename);
-                details.Children.Add(image);
-            }
-            catch (Exception ex) when (ex is FormatException or ArgumentException or System.Runtime.InteropServices.COMException) { }
+            var image = new Image { Width = 112, Height = 64, Source = bitmap, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left };
+            AutomationProperties.SetName(image, "Thumbnail for " + file.Filename);
+            details.Children.Add(image);
         }
         else if (previewedFile != file)
         {
@@ -591,6 +780,14 @@ internal sealed class CloudVideosDialog : ContentDialog
             foreach (var entry in events)
                 if (entry.Data.TryGetProperty("cloudPreview", out var preview)) previewThumbnail = Value(preview, "thumbnail");
             previewedFile = file;
+            if (previewThumbnail != null)
+            {
+                var updated = file with { Thumbnail = previewThumbnail };
+                videos = videos.Select(video => video == file ? updated : video).ToArray();
+                previewedFile = updated;
+                Render();
+                videoSelection.SetTarget(updated);
+            }
             status.Text = previewThumbnail == null ? "Thumbnail unavailable" : "Thumbnail loaded";
             RenderDetails();
         });
@@ -609,7 +806,7 @@ internal sealed class CloudVideosDialog : ContentDialog
         permissionRequest = request;
         try
         {
-            var verified = await CloudPermissions.CheckAsync(settings, Bucket, file.Name, request.Token);
+            var verified = await CloudPermissions.CheckAsync(settings, Bucket, file.Name, request.Token, ProjectID);
             if (!closed && !request.IsCancellationRequested && Selection == file)
             {
                 permissions = verified;
@@ -618,6 +815,9 @@ internal sealed class CloudVideosDialog : ContentDialog
         }
         finally { if (permissionRequest == request) permissionRequest = null; }
     }
+
+    private Task ManageSelectedAsync(bool rename, CloudVideoSelection? source) =>
+        source != null && source == CaptureSource() ? ManageAsync(rename) : Task.CompletedTask;
 
     private async Task ManageAsync(bool rename)
     {
@@ -632,7 +832,8 @@ internal sealed class CloudVideosDialog : ContentDialog
             DefaultButton = ContentDialogButton.Close
         };
         filename.TextChanged += (_, _) => confirm.IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(filename.Text);
-        if (await WindowedDialog.ShowAsync(confirm, owner, 540, 340) != ContentDialogResult.Primary) return;
+        if (await WindowedDialog.ShowAsync(confirm, owner, 540, 340) != ContentDialogResult.Primary ||
+            source != CaptureSource() || (rename ? !CanRename : !CanDelete)) return;
         var applied = false;
         await WithLoadingAsync(rename ? "Renaming cloud video…" : "Deleting cloud video…", async () =>
         {
@@ -651,17 +852,35 @@ internal sealed class CloudVideosDialog : ContentDialog
 
     private CloudVideoSelection? CaptureSource() => Selection is { } file ? new(ProjectID, Bucket, file.Name, file.Generation) : null;
 
+    private static BitmapImage? DecodeThumbnail(string? thumbnail)
+    {
+        if (thumbnail is not { Length: > 0 and <= 4000 }) return null;
+        try
+        {
+            using var bytes = new MemoryStream(Convert.FromBase64String(thumbnail));
+            var bitmap = new BitmapImage { DecodePixelWidth = 112 };
+            bitmap.SetSource(System.IO.WindowsRuntimeStreamExtensions.AsRandomAccessStream(bytes));
+            return bitmap;
+        }
+        catch (Exception ex) when (ex is FormatException or ArgumentException or System.Runtime.InteropServices.COMException)
+        {
+            return null;
+        }
+    }
+
     private const string XamlNamespace = "xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'";
+    private const string ThumbnailCell = "<Grid Width='100' Height='60' AutomationProperties.AccessibilityView='Raw'><SymbolIcon Symbol='Video' Opacity='0.4'/><Image Source='{Binding ThumbnailImage}' Stretch='Uniform'/></Grid>";
     private static DataTemplate ListTemplate => (DataTemplate)XamlReader.Load(
-        "<DataTemplate " + XamlNamespace + "><StackPanel Spacing='2'><TextBlock Text='{Binding Filename}' FontWeight='SemiBold'/>" +
-        "<TextBlock Text='{Binding Name}' TextTrimming='CharacterEllipsis'/></StackPanel></DataTemplate>");
+        "<DataTemplate " + XamlNamespace + "><Grid ColumnSpacing='12' Padding='12,6'><Grid.ColumnDefinitions><ColumnDefinition Width='100'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>" +
+        ThumbnailCell + "<StackPanel Grid.Column='1' Spacing='4'><TextBlock Text='{Binding Filename}' FontWeight='SemiBold' TextWrapping='Wrap'/>" +
+        "<TextBlock Text='{Binding Name}' TextTrimming='CharacterEllipsis'/><TextBlock Text='{Binding DisplaySize}'/></StackPanel></Grid></DataTemplate>");
     private static DataTemplate TableTemplate => (DataTemplate)XamlReader.Load(
-        "<DataTemplate " + XamlNamespace + ">" + TableRow("{Binding Filename}", "{Binding Name}", "{Binding DisplaySize}", "{Binding DisplayUpdated}") + "</DataTemplate>");
-    private static string TableHeader => TableRow("Video", "Object path", "Size", "Modified", " " + XamlNamespace);
-    private static string TableRow(string name, string path, string size, string updated, string ns = "") =>
-        $"<Grid{ns} ColumnSpacing='8'><Grid.ColumnDefinitions><ColumnDefinition Width='2*'/><ColumnDefinition Width='2*'/><ColumnDefinition Width='*'/><ColumnDefinition Width='1.5*'/></Grid.ColumnDefinitions>" +
-        $"<TextBlock Text='{name}' TextTrimming='CharacterEllipsis'/><TextBlock Grid.Column='1' Text='{path}' TextTrimming='CharacterEllipsis'/>" +
-        $"<TextBlock Grid.Column='2' Text='{size}' TextTrimming='CharacterEllipsis'/><TextBlock Grid.Column='3' Text='{updated}' TextTrimming='CharacterEllipsis'/></Grid>";
+        "<DataTemplate " + XamlNamespace + ">" + TableRow(ThumbnailCell, "{Binding Filename}", "{Binding Name}", "{Binding DisplaySize}", "{Binding DisplayUpdated}") + "</DataTemplate>");
+    private static string TableHeader => TableRow("<TextBlock Text='Thumbnail'/>", "Title", "Object path", "Size", "Modified", " " + XamlNamespace);
+    private static string TableRow(string thumbnail, string name, string path, string size, string updated, string ns = "") =>
+        $"<Grid{ns} ColumnSpacing='8' Padding='12,6'><Grid.ColumnDefinitions><ColumnDefinition Width='112'/><ColumnDefinition Width='184'/><ColumnDefinition Width='220'/><ColumnDefinition Width='92'/><ColumnDefinition Width='142'/></Grid.ColumnDefinitions>" +
+        thumbnail + $"<TextBlock Grid.Column='1' Text='{name}' TextTrimming='CharacterEllipsis' VerticalAlignment='Center'/><TextBlock Grid.Column='2' Text='{path}' TextTrimming='CharacterEllipsis' VerticalAlignment='Center'/>" +
+        $"<TextBlock Grid.Column='3' Text='{size}' TextTrimming='CharacterEllipsis' VerticalAlignment='Center'/><TextBlock Grid.Column='4' Text='{updated}' TextTrimming='CharacterEllipsis' VerticalAlignment='Center'/></Grid>";
 }
 
 internal sealed record CloudVideoSelection(string Project, string Bucket, string Name, string Generation)
@@ -672,13 +891,15 @@ internal sealed record CloudVideoSelection(string Project, string Bucket, string
 
 internal record struct CloudPermissions(bool Rename, bool Delete)
 {
-    internal static async Task<CloudPermissions> CheckAsync(SettingsStore settings, string bucket, string name, CancellationToken cancellation)
+    internal static async Task<CloudPermissions> CheckAsync(SettingsStore settings, string bucket, string name,
+        CancellationToken cancellation, string? sourceProject = null)
     {
         if (!settings.GetBool("vertexConnected")) return default;
         try
         {
-            var events = await new EngineClient(settings).RunAsync(
-                new[] { "cloud-object-permissions", "--source-bucket", bucket, "--name", name }, cancellation: cancellation);
+            var arguments = new List<string> { "cloud-object-permissions", "--source-bucket", bucket, "--name", name };
+            if (!string.IsNullOrWhiteSpace(sourceProject)) arguments.AddRange(new[] { "--source-project", sourceProject });
+            var events = await new EngineClient(settings).RunAsync(arguments, cancellation: cancellation);
             foreach (var entry in events)
                 if (entry.Data.TryGetProperty("cloudPermissions", out var permissions))
                     return new(permissions.GetProperty("rename").GetBoolean(), permissions.GetProperty("delete").GetBoolean());

@@ -112,7 +112,7 @@ public sealed class ProjectSourcesSettingsControl : UserControl
             body.Children.Add(ScreenReaderHeading.Mark(new Expander { Header = "Content sources", Content = sources, IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch }));
             if (project.IsYouTube) {
                 body.Children.Add(ScreenReaderHeading.Mark(new Expander { Header = "Audio sources", Content = new AudioSourceControls(owner, scoped, showHeading: false, chooseAudio: () => RunAction("import-original-audio"), reviewAudio: () => RunAction("review-audio-timing"), compact:true), IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch }));
-                Actions(body, ("Video Details…", "youtube-details"), ("Open in YouTube", "youtube-open-browser"));
+                Actions(body, ("YouTube Details & Captions…", "youtube-captions"), ("Open in YouTube", "youtube-open-browser"));
             }
             var imports = new StackPanel { Spacing = 8 };
             Actions(imports, ("Import Transcript…", "import-transcript"), ("Import Summary…", "import-summary"), ("Import Descriptions…", "import-descriptions"), ("Import AD Audio…", "import-ad-audio"), ("Import Existing Assets…", "import-assets"));

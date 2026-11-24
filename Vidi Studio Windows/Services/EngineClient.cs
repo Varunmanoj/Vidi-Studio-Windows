@@ -19,7 +19,7 @@ public sealed class EngineClient
     public string SpeechHost => Path.Combine(AppContext.BaseDirectory, "speech", "VidiStudio.SpeechHost.exe");
 
     public async Task<List<EngineEvent>> RunAsync(IEnumerable<string> arguments, IProgress<EngineEvent>? progress = null,
-        CancellationToken cancellation = default, string? configPath = null, string? apiKey = null)
+        CancellationToken cancellation = default, string? configPath = null, string? apiKey = null, string? secretInput = null)
     {
         var requestArguments = new List<string>(arguments);
         var projectIndex = requestArguments.IndexOf("--project");
@@ -50,7 +50,7 @@ public sealed class EngineClient
             var start = new ProcessStartInfo(File.Exists(frozen) ? frozen : python)
             {
                 UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
-                RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8,
+                RedirectStandardInput = secretInput != null, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8,
                 WorkingDirectory = AppContext.BaseDirectory
             };
             if (!File.Exists(frozen)) start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "engine", "vidistudio_engine.py"));
@@ -66,6 +66,7 @@ public sealed class EngineClient
             // The Gemini key is held in Windows Credential Manager and handed to the engine per
             // process in the environment; it is never written to the config file on disk.
             if (geminiKey.Length > 0) start.Environment["VIDISTUDIO_API_KEY"] = geminiKey;
+            start.Environment["VIDISTUDIO_CLOUD_SUBJECT"] = YouTubeService.CloudSubject;
             start.Environment.Remove("VIDISTUDIO_VERTEX_KEY");
             if (vertexKey is { Length: > 0 })
                 start.Environment["VIDISTUDIO_VERTEX_KEY"] = vertexKey;
@@ -84,6 +85,11 @@ public sealed class EngineClient
             cancellationFile = Path.Combine(SettingsStore.DirectoryPath, Guid.NewGuid() + ".cancel");
             start.Environment["VIDISTUDIO_CANCEL_FILE"] = cancellationFile;
             using var process = Process.Start(start) ?? throw new InvalidOperationException("Cannot start processing engine.");
+            if (secretInput != null)
+            {
+                await process.StandardInput.WriteAsync(secretInput);
+                process.StandardInput.Close();
+            }
             using var connectionCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
             using var connectionWatch = new ConnectionRecoveryWatch(connectionCancellation.Cancel);
             using var registration = connectionCancellation.Token.Register(() =>

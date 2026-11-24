@@ -479,7 +479,7 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    private async Task OpenSharedVideoAsync(string message, string automationId, Func<Task<string?>> resolveProject)
+    private async Task OpenSharedVideoAsync(string message, string automationId, Func<Task<string?>> resolveProject, Func<MainWindow, Task>? editorOpened = null)
     {
         if (Model.Busy || SharedVideoRing.IsActive)
         {
@@ -510,7 +510,12 @@ public sealed partial class MainWindow : Window
             if (windowClosed || folder == null) return;
             var remaining = TimeSpan.FromMilliseconds(450) - progressClock.Elapsed;
             if (remaining > TimeSpan.Zero) await Task.Delay(remaining);
-            if (!windowClosed) App.OpenOrActivateEditor(folder);
+            if (!windowClosed)
+            {
+                var editor = App.OpenOrActivateEditor(folder);
+                if (editorOpened != null && await editor.windowReady.Task && !editor.windowClosed)
+                    await editorOpened(editor);
+            }
         }
         catch (Exception ex)
         {
@@ -557,7 +562,8 @@ public sealed partial class MainWindow : Window
         {
             var dialog = new Views.NewProjectDialog(this, Root.ActualTheme, Model.Settings, youtube, fromStorage)
             {
-                BrowseCloudVideo = (owner, library) => BrowseCloudVideosAsync(owner, library, selectConfiguredBucket: true)
+                BrowseCloudVideo = (owner, library) => BrowseCloudVideosAsync(owner, library, selectConfiguredBucket: true),
+                BrowseYouTubeVideo = owner => ShowYouTubeBrowserAsync(owner)
             };
             var result = await ShowDialogAsync(dialog, Views.NewProjectDialog.WindowWidth, Views.NewProjectDialog.WindowHeight);
             var imports = dialog.AssetSelection;
@@ -571,8 +577,21 @@ public sealed partial class MainWindow : Window
             if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary)) return;
             List<EngineEvent> created;
             if (dialog.IsYouTube)
-                created = await Model.RunAsync("import-youtube", new[] { "--url", dialog.YouTubeUrl, "--library", dialog.LibraryPath },
-                    needsProject: false, throwOnProcessingError: true);
+            {
+                var arguments = new List<string> { "--url", dialog.YouTubeUrl, "--library", dialog.LibraryPath };
+                string? metadata = null;
+                try
+                {
+                    if (dialog.SelectedYouTubeVideo is { } chosen && chosen.Id == SharedYouTubeLink.VideoId(dialog.YouTubeUrl))
+                    {
+                        metadata = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+                        File.WriteAllText(metadata, chosen.Data.ToJsonString());
+                        arguments.AddRange(new[] { "--youtube-metadata", metadata });
+                    }
+                    created = await Model.RunAsync("import-youtube", arguments, needsProject: false, throwOnProcessingError: true);
+                }
+                finally { if (metadata != null) File.Delete(metadata); }
+            }
             else if (dialog.VideoPath is { } path)
                 created = await Model.RunAsync(dialog.IsCloud ? "cloud-create" : "import-video", new[] { "--video", path, "--library", dialog.LibraryPath },
                     needsProject: false, throwOnProcessingError: true);
@@ -588,6 +607,8 @@ public sealed partial class MainWindow : Window
             var editor = App.OpenWindow(Model.Project.Folder);
             if (imports.HasAny && await editor.windowReady.Task && !editor.windowClosed)
                 await editor.ImportSelectedAssetsAsync(imports, dialog.CombineRequested);
+            if (dialog.ChooseYouTubeCaptions && await editor.windowReady.Task && !editor.windowClosed)
+                await editor.ShowYouTubeDetailsAsync(true);
         }
         catch (Exception ex) { await ShowError(ex); }
     }
@@ -2230,7 +2251,7 @@ public sealed partial class MainWindow : Window
         var section = ((sender as FrameworkElement)?.Tag as string) switch
         {
             "Projects" => 1, "Narration" => 2, "Gemini" or "Gemini API" => 3, "Developer prompts" => 4,
-            "Storage" => 5, "Help" => 6, "About" => 7, _ => 0
+            "Storage" => 5, "Help" => 6, "About" => 7, "YouTube Accounts" => 8, _ => 0
         };
         await ShowSettingsSectionAsync(section);
     }

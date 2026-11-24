@@ -16,7 +16,7 @@ class NarrationPlaybackOptions(unittest.TestCase):
         mac_model = (ROOT/'VidiStudio Mac/VidiStudio/StudioModel.swift').read_text()
         win_prefs = (ROOT/'Vidi-Studio-Windows/Vidi Studio Windows/Services/ProjectPlaybackPreferences.cs').read_text()
         win_projects = (ROOT/'Vidi-Studio-Windows/Vidi Studio Windows/Views/SettingsDialog.Projects.cs').read_text()
-        self.assertIn('var sections = ["Appearance", "Projects", "Narration", "Gemini"]', mac_settings)
+        self.assertIn('var sections = ["Appearance", "Projects", "Narration", "Gemini", "YouTube Accounts"]', mac_settings)
         self.assertIn('sections.append("Developer prompts")', mac_settings)
         self.assertIn('sections += ["Storage", "Help", "About"]', mac_settings)
         self.assertIn('ContentUnavailableView("No Open Projects"', mac_settings)

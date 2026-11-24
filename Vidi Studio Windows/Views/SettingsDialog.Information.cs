@@ -176,6 +176,12 @@ public sealed partial class SettingsDialog
         if (!SpeechItems<TextBlock>(currentSectionPanel!).Any(text => text.Text == "Jump to Time…") ||
             !SpeechItems<TextBlock>(currentSectionPanel!).Any(text => text.Text == "Ctrl+Shift+J"))
             throw new InvalidOperationException("Settings Help lost Jump to Time and its shortcut.");
+        var shortcutLabels = SpeechItems<TextBlock>(reference).Select(text => text.Text).ToArray();
+        var cloudLabel = Array.IndexOf(shortcutLabels, "Open Cloud Videos…");
+        var youtubeLabel = Array.IndexOf(shortcutLabels, "My YouTube Videos…");
+        if (cloudLabel < 0 || youtubeLabel <= cloudLabel ||
+            !shortcutLabels.Contains("Ctrl+Alt+G") || !shortcutLabels.Contains("Ctrl+Alt+Y"))
+            throw new InvalidOperationException("Settings Help must list both video browser shortcuts together.");
         var openHelp = SpeechItems<Button>(currentSectionPanel!).Single(button => button.Content as string == "Open VidiStudio Help");
         var helpPeer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(openHelp);
         ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)helpPeer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();

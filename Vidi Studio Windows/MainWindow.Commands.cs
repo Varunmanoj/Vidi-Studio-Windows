@@ -356,7 +356,7 @@ public sealed partial class MainWindow
 
     private async Task<StudioProject?> BrowseCloudVideosAsync(Window owner, string library, bool selectConfiguredBucket)
     {
-        if (cloudBrowserOpen || Model.Busy || !Model.Settings.GetBool("vertexConnected")) return null;
+        if (cloudBrowserOpen || Model.Busy || (selectConfiguredBucket && !Model.Settings.GetBool("vertexConnected"))) return null;
         cloudBrowserOpen = true;
         UpdateDesktopMenuStates();
         try
@@ -389,7 +389,7 @@ public sealed partial class MainWindow
                     return null;
                 }
             };
-            await Views.WindowedDialog.ShowAsync(dialog, owner, 820, 820);
+            await Views.WindowedDialog.ShowAsync(dialog, owner, 940, 820);
             return dialog.ImportedProject;
         }
         catch (Exception ex) { await ShowError(ex); return null; }
@@ -421,7 +421,7 @@ public sealed partial class MainWindow
         if (CloudPermissionKey(project) is not { } key || !checkingCloudPermissions.Add((session, key))) return;
         try
         {
-            var permissions = await Views.CloudPermissions.CheckAsync(Model.Settings, key.Bucket, key.Name, CancellationToken.None);
+            var permissions = await Views.CloudPermissions.CheckAsync(Model.Settings, key.Bucket, key.Name, CancellationToken.None, key.Project);
             if (windowClosed || session != cloudPermissionSession || CloudPermissionKey(project) != key) return;
             projectCloudPermissions[key] = permissions;
             UpdateDesktopMenuStates();

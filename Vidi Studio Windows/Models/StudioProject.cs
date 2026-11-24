@@ -300,6 +300,13 @@ public sealed class StudioProject : INotifyPropertyChanged
         ? new Uri("https://console.cloud.google.com/storage/browser/_details/" + Uri.EscapeDataString(bucket) + "/" + string.Join("/",name.Split('/').Select(Uri.EscapeDataString))) : null;
     public string? SourceType { get; set; }
     [JsonPropertyName("youtubeMetadata")] public JsonElement? YouTubeMetadata { get; set; }
+    [JsonPropertyName("youtubePrivateChannelID")] public string? YouTubePrivateChannelId { get; set; }
+    [JsonIgnore]
+    public string? PrivateYouTubeChannel => YouTubePrivateChannelId ??
+        (YouTubeMetadata is { ValueKind: JsonValueKind.Object } details &&
+         details.TryGetProperty("visibility", out var visibility) && visibility.GetString() == "private"
+            ? details.TryGetProperty("channelID", out var channel) ? channel.GetString() ?? "" : ""
+            : null);
     [JsonPropertyName("youtubeCaptionSource")] public JsonElement? YouTubeCaptionSource { get; set; }
     public string? YoutubeURL { get; set; }
     public OriginalAudioAsset? OriginalAudio { get; set; }

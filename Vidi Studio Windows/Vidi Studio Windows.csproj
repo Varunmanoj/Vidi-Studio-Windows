@@ -12,7 +12,7 @@
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
-    <Version>1.0.389</Version>
+    <Version>1.0.397</Version>
     <Product>Vidi Studio</Product>
     <AssemblyTitle>Vidi Studio</AssemblyTitle>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>
@@ -38,6 +38,7 @@
     <Content Include="Assets\LockScreenLogo.scale-200.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Square150x150Logo.scale-200.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Square44x44Logo.scale-200.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\GoogleSignInReturn.html" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Square44x44Logo.targetsize-*.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\StoreLogo.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" CopyToOutputDirectory="PreserveNewest" />
@@ -198,17 +199,17 @@
       <Content Include="$(PiperRuntimeDir)\**\*" Link="piper\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
-  <ItemGroup Condition="!Exists('..\Config\youtube-release.json')">
+  <ItemGroup Condition="!Exists('..\Config\youtube-release.json') and !Exists('..\Config\vertex-desktop.json')">
     <Content Include="youtube-config.json" CopyToOutputDirectory="Always" />
   </ItemGroup>
 
-  <Target Name="PrepareYouTubeDataApiConfig" BeforeTargets="AssignTargetPaths"
-          Condition="Exists('..\Config\youtube-release.json') and '$(DesignTimeBuild)' != 'true'">
+  <Target Name="PrepareGoogleServicesConfig" BeforeTargets="AssignTargetPaths"
+          Condition="(Exists('..\Config\youtube-release.json') Or Exists('..\Config\vertex-desktop.json')) and '$(DesignTimeBuild)' != 'true'">
     <PropertyGroup>
       <YouTubePackageConfig>$(IntermediateOutputPath)youtube-config.json</YouTubePackageConfig>
     </PropertyGroup>
     <MakeDir Directories="$(IntermediateOutputPath)" />
-    <Exec Command="powershell -NoProfile -NonInteractive -Command &quot;$ErrorActionPreference = 'Stop'; $config = Get-Content -LiteralPath '..\Config\youtube-release.json' -Raw | ConvertFrom-Json; @{ apiKey = [string]$config.apiKey } | ConvertTo-Json -Compress | Set-Content -LiteralPath '$(YouTubePackageConfig)' -Encoding ASCII&quot;" />
+    <Exec Command="powershell -NoProfile -NonInteractive -Command &quot;$ErrorActionPreference = 'Stop'; if (Test-Path '..\Config\youtube-release.json') { $config = Get-Content -LiteralPath '..\Config\youtube-release.json' -Raw | ConvertFrom-Json }; if (Test-Path '..\Config\vertex-desktop.json') { $client = (Get-Content -LiteralPath '..\Config\vertex-desktop.json' -Raw | ConvertFrom-Json).installed }; @{ apiKey = [string]$config.apiKey; clientID = [string]$client.client_id; clientSecret = [string]$client.client_secret } | ConvertTo-Json -Compress | Set-Content -LiteralPath '$(YouTubePackageConfig)' -Encoding ASCII&quot;" />
     <ItemGroup>
       <Content Include="$(YouTubePackageConfig)" Link="youtube-config.json" CopyToOutputDirectory="Always" />
     </ItemGroup>

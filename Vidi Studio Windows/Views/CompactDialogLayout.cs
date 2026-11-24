@@ -30,6 +30,7 @@ internal static class CompactDialogLayout
     internal static void PrepareDialog(ContentDialog dialog)
     {
         // The video browser already has a dedicated toolbar/list layout.
+        if (dialog.Title as string == "My YouTube Videos") return;
         if (dialog.Content is UIElement content) dialog.Content = PrepareContent(content);
     }
 

@@ -109,6 +109,7 @@
      <Button x:Name="GalleryLayoutButton" MinWidth="34" MinHeight="32" VerticalAlignment="Center" Content="&#xE8FD;" FontFamily="Segoe Fluent Icons" Click="GalleryLayout_Click" AutomationProperties.Name="Switch list and grid view" ToolTipService.ToolTip="Switch list and grid view"/>
     </StackPanel>
     <StackPanel x:Name="GalleryToolbarActions" Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+     <Button Content="My YouTube Videos…" Click="YouTubeBrowser_Click"/>
      <Button x:Name="GalleryImport" Width="36" Height="36" Padding="6" Style="{StaticResource AccentButtonStyle}" Click="NewProject_Click" AutomationProperties.Name="New Project" ToolTipService.ToolTip="New Project"><SymbolIcon Symbol="Add"/></Button>
      <Button x:Name="GalleryOpenProject" Width="36" Height="36" Padding="6" Click="OpenProject_Click" AutomationProperties.Name="Open Project Folder" ToolTipService.ToolTip="Open Project Folder"><FontIcon Glyph="&#xE8B7;" FontFamily="Segoe Fluent Icons"/></Button>
     </StackPanel>

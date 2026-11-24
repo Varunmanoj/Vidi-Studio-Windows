@@ -4,6 +4,8 @@ using System.Linq;
 using Vidi_Studio_Windows.Models;
 namespace Vidi_Studio_Windows.Services;
 
+internal enum AiConnection { Developer, GoogleSignIn, Express }
+
 public static class OnlineRequirements
 {
     public static bool AcceptsHost(string? host, OnlineService service)
@@ -17,13 +19,29 @@ public static class OnlineRequirements
         "check-api-key", "list-models", "list-voices", "validate-config", "align-imported-text",
         "prepare-analysis-video", "check-video-availability"
     };
+    internal static AiConnection Connection(string provider, string authentication) =>
+        provider != "vertex" ? AiConnection.Developer : authentication == "express" ? AiConnection.Express : AiConnection.GoogleSignIn;
+    internal static string Title(AiConnection connection) => connection switch {
+        AiConnection.GoogleSignIn => "Vertex AI with Google sign-in",
+        AiConnection.Express => "Vertex AI Express API key",
+        _ => "Gemini Developer API"
+    };
+    internal static bool Supports(AiConnection connection, bool existingBucketVideo, bool narration) =>
+        existingBucketVideo ? connection == AiConnection.GoogleSignIn : !narration || connection != AiConnection.Express;
+    internal static bool VideoAICommand(string command) => command is "analyze" or "regenerate-all" or "analyze-video" or
+        "transcribe" or "generate-summary" or "generate-ad-cues" or "reanalyze-segment" or "reanalyze-transcript-segment";
+    internal static bool NarrationCommand(string command) => command is "synthesize-tts" or "synthesize-speech" or "preview-tts" or "synthesize-changed";
+    internal static bool RequiresAIConnection(string command, bool usesGeminiNarration) =>
+        NarrationCommand(command) ? usesGeminiNarration :
+        GeminiCommands.Contains(command) && command is not ("check-api-key" or "list-models" or "list-voices" or "validate-config");
+
     public static OnlineService[] Services(string command, StudioProject? project, SettingsStore settings, IEnumerable<string>? arguments = null, string? narrationProvider = null)
     {
         var extra = arguments?.ToArray() ?? Array.Empty<string>();
         if (command == "elevenlabs-settings") return new[] { OnlineService.ElevenLabs };
         if (command == "check-sarvam-key") return new[] { OnlineService.Sarvam };
         if (GeminiCommands.Contains(command)) return new[] { OnlineService.Gemini };
-        if (command is "synthesize-tts" or "synthesize-speech" or "preview-tts" or "synthesize-changed")
+        if (NarrationCommand(command))
             return (narrationProvider ?? settings.Get("ttsMode", "windows-core")) switch { "gemini" => new[] { OnlineService.Gemini }, "sarvam" => new[] { OnlineService.Sarvam }, "elevenlabs" => new[] { OnlineService.ElevenLabs }, _ => Array.Empty<OnlineService>() };
         if (command is "import-youtube" or "read-youtube-metadata" or "download-youtube-audio" or "youtube-playback") return new[] { OnlineService.YouTube };
         if (command == "download-voice") return new[] { OnlineService.Voices };

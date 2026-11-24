@@ -439,8 +439,20 @@ public sealed partial class MainWindow : Window
             var existing = Model.ExistingProjectForVideo(videoPath);
             if (existing != null) return existing.Folder;
 
-            var imported = await Model.RunAsync("import-video",
-                new[] { "--video", videoPath, "--library", Model.Settings.Get("libraryPath") },
+            var candidate = videoPath;
+            var choice = await Views.NewProjectDialog.CheckVideoSizeAsync(this, Model.Settings, candidate);
+            while (choice == Views.NewProjectDialog.VideoImportChoice.Smaller)
+            {
+                var smaller = await Views.NewProjectDialog.PickVideoAsync(this);
+                if (smaller == null) return null;
+                candidate = smaller.Path;
+                choice = await Views.NewProjectDialog.CheckVideoSizeAsync(this, Model.Settings, candidate);
+            }
+            if (choice == Views.NewProjectDialog.VideoImportChoice.Cancel) return null;
+            if (Model.ExistingProjectForVideo(candidate) is { } replacementProject) return replacementProject.Folder;
+            var command = choice == Views.NewProjectDialog.VideoImportChoice.Cloud ? "cloud-create" : "import-video";
+            var imported = await Model.RunAsync(command,
+                new[] { "--video", candidate, "--library", Model.Settings.Get("libraryPath") },
                 needsProject: false, throwOnProcessingError: true);
             return imported.LastOrDefault(item => item.Data.TryGetProperty("project", out _))?.Data.GetProperty("project").GetString();
         });

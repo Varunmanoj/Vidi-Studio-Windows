@@ -2698,3 +2698,15 @@ Show the section-specific Generate or Regenerate label and availability reason o
 The installed Windows 11 ARM64 1.0.387.0 has one package and one Start entry. Packaged GallerySettingsOnly passed. It checks every rendered app-owned editor button for nonempty tooltip text across Transcript, Summary, Descriptions, AD Transcript and Overview at 1120 and 880 logical pixels in both appearances, plus the editable sections in Edit mode. Real Windows mouse moves verified that Generate, Add and Edit opened tooltip popups. The test returns the pointer and editor position and restores preview visibility. The XAML, icon, menu and UI checks and 85 focused source tests passed. An older import suite assertion about New Project menu source syntax failed independently of the tooltip changes. Native x64 was not exercised.
 
 Packaged dialog and context-menu regressions also passed in the final run. Restored the Windows VM idle-pause setting. Evidence is in build/tooltips-387-final3-verify.log.
+
+## 1.0.388 · AI connections and large videos · 2026-11-24
+
+AI generation uses the same connection check for the editor, menus and shortcuts. It asks before using another compatible saved connection and shows the project for signed-in Vertex. New Project and direct file opening use the saved Google sign-in to determine Cloud Storage availability. The oversized-file warning offers upload when the file fits and a project and bucket are configured, regardless of the selected AI provider. Otherwise it offers a smaller video and Cancel.
+
+Built Windows 11 ARM64 Debug MSIX and installed 1.0.388.0 with one package registration and Start entry. The initial staging run lost its FFmpeg tools when it rebuilt the engine. Repopulated the staged media and verified the corrected package with the bundled engine diagnostic and disposable sparse files. Menu icons, menu and UI parity, and 123 focused tests passed. Final packaged DialogsOnly, GallerySettingsOnly and ContextMenusOnly passed. The Gallery run covers the configured-bucket import handoff and transfer progress. These checks did not send a multi-gigabyte video to Google or exercise native x64 or Narrator speech.
+
+## 1.0.389 · Cloud browser video size check · 2026-11-24
+
+Cloud Storage uploads and imports keep the Vertex AI video analysis limit. Open in Editor shows the same size warning for an oversized bucket object before starting a transfer. Both warning choices keep the browser open. The engine rechecks the selected generation and size before opening the download stream.
+
+Installed Windows 11 ARM64 Debug 1.0.389.0 with one package registration and Start entry. Menu, icon and UI checks and 125 focused source tests passed. The bundled engine diagnostic passed and rejected a 3.26 GB sparse file on both local and cloud creation paths before project creation. Packaged DialogsOnly and ContextMenusOnly passed. GallerySettingsOnly passed after correcting its test callback, including a 3.26 GB bucket fixture that displayed the native warning without reaching the import handler. No actual user video was uploaded or downloaded during the size checks.

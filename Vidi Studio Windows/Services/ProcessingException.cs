@@ -52,6 +52,8 @@ public sealed class ProcessingException : Exception
                 "The selected video is no longer available in Cloud Storage. Refresh the file list." or
                 "Downloaded video checksum did not match Cloud Storage. Retry the import." or
                 "Choose a supported Cloud Storage video." or
+                "Video File projects support files up to 2 GB. Choose a smaller video or use Cloud Storage." or
+                "This video is too large for Cloud Storage analysis. Choose a smaller video." or
                 "The selected video exceeds the supported import size." or
                 "Choose a bucket in the selected Google Cloud project." or
                 "Use Google sign-in in Settings > AI to connect your account." => diagnostic,
@@ -78,6 +80,9 @@ public sealed class ProcessingException : Exception
             "Some descriptions have missing or outdated narration. Synthesize narration or confirm an incomplete export.",
             "The source video has no audio track to export.",
             "Choose Vertex AI with Google sign-in in Settings > AI to analyze this Cloud Storage video.",
+            "Connect Vertex AI with Google sign-in in Settings > AI to analyze this Cloud Storage video.",
+            "Connect Gemini Developer API or sign in to Google for Vertex AI in Settings > AI to generate Gemini narration.",
+            "Connect an AI provider in Settings > AI.",
             "YouTube audio could not be downloaded. Check your connection and that the video is public, then try again. If YouTube blocks the download, import your original video as a local project and export its described audio instead.",
             "YouTube audio download timed out. Try again, or import your original video.",
             "YouTube audio duration does not match this project. The video may have been edited. Refresh its transcript and descriptions, or import the matching original video.",

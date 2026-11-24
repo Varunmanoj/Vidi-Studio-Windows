@@ -63,7 +63,7 @@ internal sealed class CloudVideosDialog : ContentDialog
                 ? JsonSerializer.SerializeToElement(new { cloudProjects = new[] { new { id = "fixture-source", name = "Source project" } } })
                 : args.Contains("--source-bucket")
                     ? JsonSerializer.SerializeToElement(new { cloudFiles = new[] {
-                        new { name = "folder/zulu.mp4", generation = "12", size = "5000", video = true },
+                        new { name = "folder/zulu.mp4", generation = "12", size = "3260000000", video = true },
                         new { name = "alpha.mov", generation = "13", size = "100", video = true },
                         new { name = "notes.txt", generation = "14", size = "15", video = false }
                     } })
@@ -93,6 +93,21 @@ internal sealed class CloudVideosDialog : ContentDialog
         fileView.SelectedIndex = 1;
         if (list.Header == null || CaptureSelection()?.Generation != "12")
             throw new InvalidOperationException("Cloud table view must preserve the selection.");
+
+        ImportVideo = (_, _, _) => throw new InvalidOperationException("An oversized cloud video reached the import callback.");
+        ContentDialog? notice = null;
+        void CaptureWarning(ContentDialog dialog, Window window)
+        {
+            if (dialog.Title as string != "Video Is Too Large") return;
+            notice = dialog;
+            window.DispatcherQueue.TryEnqueue(() => dialog.Hide());
+        }
+        WindowedDialog.ReadyToShow += CaptureWarning;
+        try { await OpenSelectedVideoAsync(); }
+        finally { WindowedDialog.ReadyToShow -= CaptureWarning; }
+        if (notice is not { Content: TextBlock warning, PrimaryButtonText: "Choose a Smaller Video", CloseButtonText: "Cancel" } ||
+            warning.Text != NewProjectDialog.AnalysisSizeWarning(3_260_000_000) || ImportedProject != null)
+            throw new InvalidOperationException("Cloud import must warn before downloading an oversized video.");
     }
 
     internal async Task VerifyConfiguredImportForSmokeTestAsync(StudioProject project)
@@ -309,6 +324,23 @@ internal sealed class CloudVideosDialog : ContentDialog
     private async Task OpenSelectedVideoAsync()
     {
         if (CaptureSelection() is not { } selected || ImportVideo is not { } import) return;
+        if (long.TryParse(Selection?.Size, out var size) && size > NewProjectDialog.MaximumCloudVideoBytes)
+        {
+            var warning = new ContentDialog
+            {
+                Title = "Video Is Too Large",
+                Content = new TextBlock { Text = NewProjectDialog.AnalysisSizeWarning(size), TextWrapping = TextWrapping.Wrap },
+                PrimaryButtonText = "Choose a Smaller Video",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary
+            };
+            if (await WindowedDialog.ShowAsync(warning, owner, 620, 300) == ContentDialogResult.Primary && !closed)
+            {
+                list.SelectedIndex = -1;
+                list.Focus(FocusState.Keyboard);
+            }
+            return;
+        }
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         importCancellation = cancellation;
         try

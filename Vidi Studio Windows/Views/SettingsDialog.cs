@@ -773,9 +773,24 @@ public sealed partial class SettingsDialog : Window
         sampleRows.Children.Add(GeminiRowDivider()); sampleRows.Children.Add(controls);
         _ = RefreshVoices();
     }
-    private bool HasDraftApiKey => SettingsStore.GetString(draft["aiProvider"]) == "vertex" ? (SettingsStore.GetString(draft["vertexAuth"]) != "express" && CredentialStore.HasGoogleSignIn) : !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"])) &&
-        SettingsStore.GetString(draft["apiKeyValid"], "true") != "false" &&
-        SettingsStore.GetString(draft["apiPlan"], "") != "invalid";
+    private AiConnection DraftAIConnection =>
+        OnlineRequirements.Connection(SettingsStore.GetString(draft["aiProvider"]), SettingsStore.GetString(draft["vertexAuth"]));
+
+    private AiConnection? DraftVoiceConnection
+    {
+        get
+        {
+            var developerReady = !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["apiKey"])) &&
+                SettingsStore.GetString(draft["apiKeyValid"], "true") != "false" &&
+                SettingsStore.GetString(draft["apiPlan"], "") != "invalid";
+            var googleReady = CredentialStore.HasGoogleSignIn && !string.IsNullOrWhiteSpace(SettingsStore.GetString(draft["vertexProject"]));
+            if (DraftAIConnection == AiConnection.Developer && developerReady) return AiConnection.Developer;
+            if (googleReady) return AiConnection.GoogleSignIn;
+            return developerReady ? AiConnection.Developer : null;
+        }
+    }
+
+    private bool HasDraftApiKey => DraftVoiceConnection != null;
     private void VoiceSampleChanged() { if (!closed) { UpdateSampleControls(); UpdateSarvamSampleControls(); UpdateSummarySampleControls(); if(elevenCard?.Visibility == Visibility.Visible) RenderElevenRows(); } }
     private void UpdateSampleControls()
     {
@@ -925,6 +940,31 @@ public sealed partial class SettingsDialog : Window
         if ((mode.SelectedItem as SpeechEngineOption)?.Id == "gemini" && !ConnectivityService.Shared.Available(OnlineService.Gemini)) {
             status.Text = ConnectivityService.Shared.Reason(OnlineService.Gemini); await ShowVoiceWarningAsync(OnlineService.Gemini,status.Text); return;
         }
+        AiConnection? voiceConnection = null;
+        if ((mode.SelectedItem as SpeechEngineOption)?.Id == "gemini")
+        {
+            if (DraftVoiceConnection is not { } available) return;
+            voiceConnection = available;
+            if (available != DraftAIConnection)
+            {
+                var cloudProject = SettingsStore.GetString(draft["vertexProject"]);
+                var prompt = new ContentDialog
+                {
+                    Title = $"Use {OnlineRequirements.Title(available)} for this sample?",
+                    Content = new TextBlock
+                    {
+                        Text = available == AiConnection.GoogleSignIn
+                            ? $"Use Cloud project “{cloudProject}” to create this voice sample."
+                            : "Use your saved Gemini Developer API key to create this voice sample.",
+                        TextWrapping = TextWrapping.Wrap
+                    },
+                    PrimaryButtonText = "Continue",
+                    CloseButtonText = "Cancel"
+                };
+                if (await WindowedDialog.ShowAsync(prompt, this, 620, 310) != ContentDialogResult.Primary ||
+                    closed || VoiceSampleSession.Busy || DraftVoiceConnection != available) return;
+            }
+        }
         StopSample(false);
         sampleCancellation = new();
         var cancellation = sampleCancellation;
@@ -965,6 +1005,11 @@ public sealed partial class SettingsDialog : Window
             else
             {
                 var previewConfig = PreviewConfig();
+                if (voiceConnection is { } connection)
+                {
+                    previewConfig["aiProvider"] = connection == AiConnection.Developer ? "developer" : "vertex";
+                    if (connection == AiConnection.GoogleSignIn) previewConfig["vertexAuth"] = "signin";
+                }
                 var enteredKey = SettingsStore.GetString(draft["apiKey"]).Trim();
                 await File.WriteAllTextAsync(config, previewConfig.ToJsonString(Models.Json.Options), cancellation.Token);
                 await model.Engine.RunAsync(new[] { "preview-tts", "--text", text, "--output", audio }, cancellation: cancellation.Token, configPath: config,

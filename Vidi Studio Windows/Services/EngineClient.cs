@@ -25,10 +25,18 @@ public sealed class EngineClient
         var projectIndex = requestArguments.IndexOf("--project");
         var project = projectIndex >= 0 && projectIndex + 1 < requestArguments.Count ? Models.StudioProject.TryLoad(requestArguments[projectIndex + 1]) : null;
         string? narrationProvider = null;
+        var aiProvider = settings.Get("aiProvider");
+        var vertexAuth = settings.Get("vertexAuth");
         if (configPath != null && File.Exists(configPath)) {
             using var draft = JsonDocument.Parse(File.ReadAllText(configPath));
             if (draft.RootElement.TryGetProperty("ttsMode", out var provider)) narrationProvider = provider.GetString();
+            if (draft.RootElement.TryGetProperty("aiProvider", out var ai)) aiProvider = ai.GetString() ?? aiProvider;
+            if (draft.RootElement.TryGetProperty("vertexAuth", out var auth)) vertexAuth = auth.GetString() ?? vertexAuth;
         }
+        var geminiKey = (apiKey ?? settings.Get("apiKey")).Trim();
+        var vertexKey = aiProvider == "vertex" && vertexAuth == "express" ? CredentialStore.Vertex.Read() : null;
+        var snapshot = configPath == null && OnlineRequirements.RequiresAIConnection(requestArguments[0],
+            (narrationProvider ?? settings.Get("ttsMode")) == "gemini") ? settings.Data.DeepClone().AsObject() : null;
         var required = OnlineRequirements.Services(requestArguments[0], project, settings, requestArguments, narrationProvider);
         foreach (var service in required) ConnectivityService.Shared.Require(service);
         await gate.WaitAsync(cancellation);
@@ -47,14 +55,19 @@ public sealed class EngineClient
             };
             if (!File.Exists(frozen)) start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "engine", "vidistudio_engine.py"));
             foreach (var argument in requestArguments) start.ArgumentList.Add(argument);
-            var geminiKey = (apiKey ?? settings.Get("apiKey")).Trim();
+            if (snapshot != null)
+            {
+                foreach (var key in new[] { "apiKey", "elevenlabsApiKey", "sarvamApiKey", "azureSpeechKey" }) snapshot.Remove(key);
+                Directory.CreateDirectory(SettingsStore.DirectoryPath);
+                temporaryConfig = Path.Combine(SettingsStore.DirectoryPath, "ai-request-" + Guid.NewGuid() + ".json");
+                File.WriteAllText(temporaryConfig, snapshot.ToJsonString(Models.Json.Options));
+            }
             start.Environment["VIDISTUDIO_CONFIG"] = configPath ?? temporaryConfig ?? SettingsStore.ConfigPath;
             // The Gemini key is held in Windows Credential Manager and handed to the engine per
             // process in the environment; it is never written to the config file on disk.
             if (geminiKey.Length > 0) start.Environment["VIDISTUDIO_API_KEY"] = geminiKey;
             start.Environment.Remove("VIDISTUDIO_VERTEX_KEY");
-            if (settings.Get("aiProvider") == "vertex" && settings.Get("vertexAuth") == "express"
-                && CredentialStore.Vertex.Read() is { Length: > 0 } vertexKey)
+            if (vertexKey is { Length: > 0 })
                 start.Environment["VIDISTUDIO_VERTEX_KEY"] = vertexKey;
             var sarvamKey = settings.Get("sarvamApiKey").Trim();
             var elevenlabsKey = settings.Get("elevenlabsApiKey").Trim();

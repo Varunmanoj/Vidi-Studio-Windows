@@ -82,7 +82,12 @@ public sealed class NewProjectDialog : ContentDialog
     private CancellationTokenSource? inspection;
     private CancellationTokenSource? youtubeInspection;
     private string? fetchedYouTubeId;
+    internal enum VideoImportChoice { Local, Cloud, Smaller, Cancel }
+    internal const long MaximumLocalVideoBytes = 2_000_000_000;
+    internal const long MaximumCloudVideoBytes = 2L * 1024 * 1024 * 1024 - 500 * 1024;
+
     private bool validLocal;
+    private bool videoRequiresCloud;
     public bool IsYouTube => youtube.IsChecked == true;
     public string? VideoPath { get; private set; }
     public string YouTubeUrl => youtubeUrl.Text.Trim();
@@ -381,8 +386,8 @@ public sealed class NewProjectDialog : ContentDialog
         assetsCard.Visibility = ImportAssetsAfterCreation ? Visibility.Visible : Visibility.Collapsed;
         originalAssetsCard.Visibility = IsYouTube ? Visibility.Visible : Visibility.Collapsed;
         descriptionGuidance.Text = ImportAssetsAfterCreation ? "Choose existing files below. Text timing is reviewed before import. Combining audio is optional." : "Generate a transcript, summary, and descriptions after creating the project.";
-        var sourceReady = IsYouTube ? fetchedYouTubeId != null && fetchedYouTubeId == ValidYouTubeId(YouTubeUrl) && ConnectivityService.Shared.Available(OnlineService.YouTube) : validLocal;
-        if (IsCloud) sourceReady = settings.GetBool("vertexConnected") && !string.IsNullOrWhiteSpace(settings.Get("vertexBucket")) && cloudMode.SelectedIndex == 0 && validLocal;
+        var sourceReady = IsYouTube ? fetchedYouTubeId != null && fetchedYouTubeId == ValidYouTubeId(YouTubeUrl) && ConnectivityService.Shared.Available(OnlineService.YouTube) : validLocal && !videoRequiresCloud;
+        if (IsCloud) sourceReady = CanUploadCloudVideo(settings) && cloudMode.SelectedIndex == 0 && validLocal;
         var assetsReady = !ImportAssetsAfterCreation || !assets.Selection.HasAny || assets.CanImport;
         IsPrimaryButtonEnabled = sourceReady && assetsReady && !string.IsNullOrWhiteSpace(LibraryPath);
         PrimaryButtonText = ImportAssetsAfterCreation ? "Create Project & Open Editor" : "Create Project";
@@ -466,13 +471,81 @@ public sealed class NewProjectDialog : ContentDialog
     }
     private async Task ChooseVideoAsync()
     {
+        var pickerOwner = CompanionWindow ?? owner;
+        while (await PickVideoAsync(pickerOwner) is { } file)
+        {
+            var choice = await CheckVideoSizeAsync(pickerOwner, settings, file.Path, IsCloud);
+            if (choice == VideoImportChoice.Smaller) continue;
+            if (choice == VideoImportChoice.Cancel) return;
+            if (choice == VideoImportChoice.Cloud)
+            {
+                cloudMode.SelectedIndex = 0;
+                cloud.IsChecked = true;
+            }
+            await InspectVideoAsync(file);
+            return;
+        }
+    }
+
+    internal static async Task<StorageFile?> PickVideoAsync(Window owner)
+    {
         var picker = new FileOpenPicker();
         foreach (var ext in new[] { ".mp4", ".mov", ".m4v", ".mkv", ".avi", ".webm" }) picker.FileTypeFilter.Add(ext);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(owner));
-        var file = await picker.PickSingleFileAsync();
-        if (file == null) return;
-        await InspectVideoAsync(file);
+        return await picker.PickSingleFileAsync();
     }
+
+    private static bool CanUploadCloudVideo(SettingsStore settings) =>
+        CredentialStore.HasGoogleSignIn &&
+        !string.IsNullOrWhiteSpace(settings.Get("vertexProject")) &&
+        !string.IsNullOrWhiteSpace(settings.Get("vertexBucket"));
+
+    internal static string AnalysisSizeWarning(long size) =>
+        $"This video is {size / 1_000_000_000d:0.00} GB and is too large for analysis. Choose a smaller video.";
+
+    internal static async Task<VideoImportChoice> CheckVideoSizeAsync(Window owner, SettingsStore settings, string path, bool asCloud = false)
+    {
+        long size;
+        try { size = new FileInfo(path).Length; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            await WindowedDialog.ShowAsync(new ContentDialog
+            {
+                Title = "Video File Unavailable",
+                Content = new TextBlock { Text = "VidiStudio couldn’t open this video. Choose an available video and try again.", TextWrapping = TextWrapping.Wrap },
+                CloseButtonText = "OK"
+            }, owner, 620, 300);
+            return VideoImportChoice.Cancel;
+        }
+
+        if (asCloud && size <= MaximumCloudVideoBytes) return VideoImportChoice.Cloud;
+        if (!asCloud && size <= MaximumLocalVideoBytes) return VideoImportChoice.Local;
+        var fitsCloud = size <= MaximumCloudVideoBytes;
+        var offerUpload = fitsCloud && CanUploadCloudVideo(settings);
+        var sizeLabel = $"{size / 1_000_000_000d:0.00} GB";
+        var message = !fitsCloud
+            ? AnalysisSizeWarning(size)
+                : offerUpload
+                ? $"This video is {sizeLabel}. Video File projects accept videos up to 2 GB. Choose a smaller video or upload this one to Cloud Storage."
+                : $"This video is {sizeLabel}. Video File projects accept videos up to 2 GB. Choose a smaller video and try again.";
+        var alert = new ContentDialog
+        {
+            Title = "Video Is Too Large",
+            Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = "Choose a Smaller Video",
+            SecondaryButtonText = offerUpload ? "Upload to Cloud Storage" : "",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary
+        };
+        var result = await WindowedDialog.ShowAsync(alert, owner, 720, 320);
+        return result switch
+        {
+            ContentDialogResult.Primary => VideoImportChoice.Smaller,
+            ContentDialogResult.Secondary when offerUpload => VideoImportChoice.Cloud,
+            _ => VideoImportChoice.Cancel
+        };
+    }
+
     private async Task InspectVideoAsync(StorageFile file)
     {
         inspection?.Cancel();
@@ -485,6 +558,7 @@ public sealed class NewProjectDialog : ContentDialog
         {
             var metadata = await ProbeAsync(file.Path, request.Token);
             if (inspection != request || request.IsCancellationRequested) return;
+            videoRequiresCloud = new FileInfo(file.Path).Length > MaximumLocalVideoBytes;
             VideoPath = file.Path;
             validLocal = true;
             details.Text = metadata;

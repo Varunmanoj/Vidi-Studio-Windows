@@ -107,12 +107,21 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             cue.IsQueuedForNarration = IsSynthesizingNarration && NarratingSegmentId != cue.Id && narratingQueueIds.Contains(cue.Id);
         }
     }
-    public bool HasApiKey => Settings.HasApiKey;
-    public bool IsApiKeyInvalid => Settings.IsApiKeyInvalid;
+    private AiConnection ActiveAIConnection => OnlineRequirements.Connection(Settings.Get("aiProvider"), Settings.Get("vertexAuth"));
+    private IEnumerable<AiConnection> ConfiguredAIConnections()
+    {
+        if (Settings.HasDeveloperKey && !Settings.DeveloperKeyInvalid) yield return AiConnection.Developer;
+        if (Settings.GetBool("vertexConnected")) yield return AiConnection.GoogleSignIn;
+        if (CredentialStore.Vertex.ContainsValue()) yield return AiConnection.Express;
+    }
+    private IEnumerable<AiConnection> ReadyAIConnections() =>
+        ConfiguredAIConnections().Where(connection => AiIssueMessage == null || connection != ActiveAIConnection);
+    public bool HasApiKey => ConfiguredAIConnections().Any();
+    public bool IsApiKeyInvalid => !HasApiKey && Settings.DeveloperKeyInvalid;
     public string? AiIssueTitle { get; private set; }
     public string? AiIssueMessage { get; private set; }
     public string? AiIssueKind { get; private set; }
-    public bool AiProcessingBlocked => AiIssueMessage != null;
+    public bool AiProcessingBlocked => AiIssueMessage != null && !ReadyAIConnections().Any();
     public bool ConnectionFailure { get; private set; }
     public event Func<string, Task>? ConnectivityNotification;
     private async Task NotifyConnectivityAsync(string reason)
@@ -121,12 +130,13 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         if (ConnectivityNotification is { } notify) await notify(reason);
     }
     public bool CanNarrate => CurrentNarrationEngine() switch {
-        "gemini" => CanUseAI,
+        "gemini" => ReadyAIConnections().Any(connection => OnlineRequirements.Supports(connection, false, true)) &&
+            ConnectivityService.Shared.Available(OnlineService.Gemini),
         "elevenlabs" => !string.IsNullOrWhiteSpace(Settings.Get("elevenlabsApiKey")) && Settings.Get("elevenlabsKeyStatus") != "invalid" && SettingsStore.GetString(Settings.Data["elevenlabsSpeech"]?["voice"]).Length > 0 && ConnectivityService.Shared.Available(OnlineService.ElevenLabs),
         "sarvam" => !string.IsNullOrWhiteSpace(Settings.Get("sarvamApiKey")) && Settings.Get("sarvamKeyStatus") != "invalid" && ConnectivityService.Shared.Available(OnlineService.Sarvam),
         _ => true
     };
-    public bool CanUseAI => HasApiKey && !IsApiKeyInvalid && !AiProcessingBlocked && ConnectivityService.Shared.Available(OnlineService.Gemini);
+    public bool CanUseAI => ReadyAIConnections().Any() && ConnectivityService.Shared.Available(OnlineService.Gemini);
     public string? OnlineReason(string command, IEnumerable<string>? extra = null) => OnlineRequirements.Services(command, Project, Settings, extra).Select(ConnectivityService.Shared.Reason).FirstOrDefault(s => s != null);
     public void RefreshConnectivity() { Changed(nameof(CanUseAI)); }
     public void ClearAiIssue()
@@ -626,27 +636,51 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         return report;
     }
     public Func<string, string, string, Task<bool>>? ConfirmCloudAction { get; set; }
+    private async Task<bool> AuthorizeAIConnectionAsync(string command, StudioProject? project, bool throwOnProcessingError)
+    {
+        if (!OnlineRequirements.RequiresAIConnection(command, Settings.Get("ttsMode") == "gemini")) return true;
+        bool requiresCloudAnalysis = (project?.ReferencesCloudVideo == true ||
+            (long.TryParse(project?.CloudVideo?.GetValueOrDefault("size"), out var size) && size > Views.NewProjectDialog.MaximumLocalVideoBytes))
+            && OnlineRequirements.VideoAICommand(command);
+        var ready = ReadyAIConnections().Where(connection =>
+            OnlineRequirements.Supports(connection, requiresCloudAnalysis, OnlineRequirements.NarrationCommand(command))).ToList();
+        if (ready.Contains(ActiveAIConnection)) return true;
+        if (ready.Count == 0)
+        {
+            Status = requiresCloudAnalysis ? "Connect Vertex AI with Google sign-in in Settings > AI to analyze this Cloud Storage video."
+                : OnlineRequirements.NarrationCommand(command) ? "Connect Gemini Developer API or sign in to Google for Vertex AI in Settings > AI to generate Gemini narration."
+                : AiIssueMessage ?? "Connect an AI provider in Settings > AI.";
+            if (throwOnProcessingError) throw new ProcessingException(Status);
+            return false;
+        }
+        var connection = ActiveAIConnection == AiConnection.Express && ready.Contains(AiConnection.GoogleSignIn) ? AiConnection.GoogleSignIn : ready[0];
+        var title = OnlineRequirements.Title(connection);
+        var projectId = requiresCloudAnalysis ? project?.CloudVideo?.GetValueOrDefault("project") ?? "" : Settings.Get("vertexProject");
+        var message = connection == AiConnection.GoogleSignIn && projectId.Length > 0
+            ? $"VidiStudio will select this connection in Settings > AI and use Cloud project “{projectId}”."
+            : "VidiStudio will select this connection in Settings > AI and continue.";
+        if (ConfirmCloudAction == null || !await ConfirmCloudAction($"Switch to {title}?", message, "Switch and Continue") ||
+            Busy || (project != null && Project?.Id != project.Id) || !ReadyAIConnections().Contains(connection)) return false;
+        Settings.Set("aiProvider", connection == AiConnection.Developer ? "developer" : "vertex");
+        if (connection != AiConnection.Developer) Settings.Set("vertexAuth", connection == AiConnection.Express ? "express" : "signin");
+        Settings.Save();
+        ClearAiIssue();
+        RefreshConnectivity();
+        return true;
+    }
+
     public async Task<List<EngineEvent>> RunAsync(string command, IEnumerable<string>? extra = null, bool needsProject = true,
         bool throwOnProcessingError = false, Action<EngineEvent>? observeProgress = null)
     {
         if (Busy) return new();
         if (needsProject && Project == null) { Status = "Open a project first."; return new(); }
-        bool vertexVideoTask = needsProject && Project is { IsYouTube: false } &&
-            command is ("analyze" or "regenerate-all" or "analyze-video" or "transcribe" or "generate-summary" or "generate-ad-cues"
-                or "reanalyze-segment" or "reanalyze-transcript-segment");
-        if (vertexVideoTask && Project?.ReferencesCloudVideo == true && Settings.Get("aiProvider") != "vertex")
-        {
-            var error = new ProcessingException("Choose Vertex AI with Google sign-in in Settings > AI to analyze this Cloud Storage video.");
-            Status = error.Message;
-            if (throwOnProcessingError) throw error;
-            return new();
-        }
-        bool vertexSpeechTask = Settings.Get("ttsMode") == "gemini" && command is ("synthesize-tts" or "synthesize-speech" or "preview-tts");
-        if (Settings.Get("aiProvider") == "vertex" && Settings.Get("vertexAuth") == "express" && (vertexVideoTask || vertexSpeechTask)) {
+        if (!await AuthorizeAIConnectionAsync(command, needsProject ? Project : null, throwOnProcessingError)) return new();
+        bool vertexVideoTask = needsProject && Project is { IsYouTube: false } && OnlineRequirements.VideoAICommand(command);
+        if (Settings.Get("aiProvider") == "vertex" && Settings.Get("vertexAuth") == "express" && vertexVideoTask) {
             string stage = command == "generate-summary" ? "summary" : command is ("generate-ad-cues" or "reanalyze-segment") ? "audio_descriptions" : "youtube_transcript";
             string modelId = SettingsStore.GetString(Settings.Data["vertexExpressModels"]?[stage], "gemini-3-flash-preview");
             long limit = modelId.StartsWith("gemini-3") ? 256_000_000 : 15_000_000;
-            if (vertexSpeechTask || Project?.CloudVideo != null || (Project is { HasLocalSource: true } local && new FileInfo(local.Resolve(local.Source)).Length > limit)) {
+            if (Project?.CloudVideo != null || (Project is { HasLocalSource: true } local && new FileInfo(local.Resolve(local.Source)).Length > limit)) {
                 string projectId = vertexVideoTask && Project?.ReferencesCloudVideo == true
                     ? Project.CloudVideo?.GetValueOrDefault("project") ?? "" : Settings.Get("vertexProject");
                 if (!CredentialStore.HasGoogleSignIn || projectId.Length == 0) throw new InvalidOperationException("Connect Google and choose a Cloud project in Settings > AI for this task.");
@@ -662,6 +696,11 @@ public sealed class StudioViewModel : INotifyPropertyChanged
                 if (Project?.Id != cloudProject.Id) return new();
                 await RunAsync("cloud-upload", throwOnProcessingError: true);
                 if (Project?.Id != cloudProject.Id || Project.CloudVideo == null) return new();
+                if (ActiveAIConnection != AiConnection.GoogleSignIn)
+                {
+                    Status = "The AI connection changed. Run the analysis again with your selected connection.";
+                    return new();
+                }
             }
         }
         if (needsProject && Project is { } languageProject) {

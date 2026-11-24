@@ -804,7 +804,7 @@ public sealed partial class MainWindow
             if (id == "delete-project") return CanDeleteProjectVideo(selected);
             if (selected.IntegrityPlaceholder || selected.Integrity?.ManifestUnreadable == true || selected.Integrity?.FolderMissing == true) return false;
             return id switch {
-                "delete-content" => selected.SavedResults.Count > 0 || selected.Exports.Count > 0 || selected.Thumbnails.Count > 0 || selected.Cues.Count > 0 || selected.HasTranscript || selected.HasSummary || (selected.IsYouTube && selected.YouTubePlaybackVideo != null),
+                "delete-content" => selected.SavedResults.Count > 0 || selected.Exports.Count > 0 || selected.Thumbnails.Count > 0 || selected.Cues.Count > 0 || selected.HasTranscript || selected.HasSummary || (selected.IsYouTube && (selected.OriginalAudio != null || selected.YouTubePlaybackVideo != null)),
                 "analyze" or "transcribe" or "generate-summary" => Model.CanUseAI,
                 "generate-ad-cues" => Model.CanUseAI && selected.SavedResults.Any(r => r.Kind == "transcript" && r.State == "saved") && selected.SavedResults.Any(r => r.Kind == "summary" && r.State == "saved"),
                 "prepare-video" => !selected.IsYouTube || ConnectivityService.Shared.Available(OnlineService.YouTube),

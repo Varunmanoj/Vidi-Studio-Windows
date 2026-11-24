@@ -2804,3 +2804,9 @@ Installed ARM64 Debug 1.0.408.0 with one registered app and Start entry. The 175
 Original audio and local playback video imports are mutually exclusive. The owned Import Existing Assets window disables the alternative chooser while a file is staged. Saved attachments block the other file type across the editor and engine. The Project > Import menu and inspector provide confirmed removal of original audio. The View > Video Player menu keeps existing video removal and source selection.
 
 Installed ARM64 Debug 1.0.409.0 in the Windows 11 test VM with one registered app and Start entry. The 176 source tests, six installed-engine tests, JumpOnly, DialogsOnly and YouTubeLayoutOnly passed. Native fixtures verified the owned import window, disabling in both directions while staging, saved audio blocking the preview and menu chooser, and saved video blocking original-audio import. Evidence is in `build/youtube-audio-exclusion-409-*.log`.
+
+## 1.0.410 · Delete YouTube project attachments · 2026-11-25
+
+Choose What to Delete shows independent Original Audio File and Local Playback Video checkboxes with context toggles. Absent attachments appear disabled. The existing confirmation lists the affected project files and the app releases any active media file before removing the selected attachment.
+
+Installed ARM64 Debug 1.0.410.0 in the Windows 11 test VM with one registered app and Start entry. The 177 source tests, seven installed-engine tests, JumpOnly and DialogsOnly passed. The native dialog verified both labels and context actions with neither attachment, only original audio, and only local playback video. Evidence is in `build/youtube-attachment-deletion-410-*.log`.

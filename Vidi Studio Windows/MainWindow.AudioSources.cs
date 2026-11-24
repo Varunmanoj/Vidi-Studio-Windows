@@ -173,12 +173,15 @@ public sealed partial class MainWindow
             !await Confirm("Remove Original Audio?", asset.SourceName, "Remove") ||
             !ReferenceEquals(target.Project, project) || target.Busy) return;
         if (Model.Project?.Id == project.Id)
-        {
-            originalAudioPlayer.Pause();
-            originalAudioPlayer.Source = null;
-            originalAudioPath = null;
-        }
+            DetachOriginalAudioPlayback();
         await target.RunAsync("remove-original-audio");
+    }
+
+    private void DetachOriginalAudioPlayback()
+    {
+        originalAudioPlayer.Pause();
+        originalAudioPlayer.Source = null;
+        originalAudioPath = null;
     }
 
     internal async Task ShowAudioExportAsync() => await ShowDialogAsync(new Views.ExportDialog(Model, this), 950, 780);

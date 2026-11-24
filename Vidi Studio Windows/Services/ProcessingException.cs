@@ -93,6 +93,7 @@ public sealed class ProcessingException : Exception
             "Remove the local playback video before importing original audio.",
             "Choose a matching local playback video before exporting this project.",
             "The local playback video changed. Reopen Choose What to Delete and try again.",
+            "The original audio changed. Reopen Choose What to Delete and try again.",
             "YouTube audio could not be downloaded. Check your connection and that the video is public, then try again. If YouTube blocks the download, import your original video as a local project and export its described audio instead.",
             "YouTube audio download timed out. Try again, or import your original video.",
             "YouTube audio duration does not match this project. The video may have been edited. Refresh its transcript and descriptions, or import the matching original video.",

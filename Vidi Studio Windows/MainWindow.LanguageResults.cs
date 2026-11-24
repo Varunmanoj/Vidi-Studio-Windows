@@ -418,25 +418,34 @@ public sealed partial class MainWindow
         string DeletionTitle(string kind) => kind switch {
             "descriptions" => "Description Segments and Audio", "narration" => "Description Audio Only (Keep Segments)",
             "history" => "Segment Undo History Only", "thumbnails" => "Thumbnails (Entire Project)",
-            "youtubePlaybackVideo" => "Local Playback Video", _ => LanguageResult.KindTitle(kind)
+            "originalAudio" => "Original Audio File", "youtubePlaybackVideo" => "Local Playback Video", _ => LanguageResult.KindTitle(kind)
         };
         var options = new List<CheckBox>();
         var contentKinds = new List<string> { "transcript", "summary", "descriptions", "adAudio", "narration", "history", "thumbnails" };
-        if (project.IsYouTube && project.YouTubePlaybackVideo != null) contentKinds.Add("youtubePlaybackVideo");
         foreach (var kind in contentKinds) {
             var box = new CheckBox { Content = DeletionTitle(kind), Tag = kind, IsChecked = component == kind };
-            if (kind == "youtubePlaybackVideo")
+            options.Add(box); panel.Children.Add(box);
+        }
+        if (project.IsYouTube)
+        {
+            panel.Children.Add(ScreenReaderHeading.Mark(new TextBlock { Text = "Project attachments", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }));
+            foreach (var (kind, identifier, filename, icon) in new[]
             {
-                AutomationProperties.SetAutomationId(box, "delete-local-playback-video");
-                ToolTipService.SetToolTip(box, project.YouTubePlaybackVideo?.SourceName);
-                var check = new ToggleMenuFlyoutItem { Text = DeletionTitle(kind), Icon = Views.MenuIcons.Create("choose-playback-video") };
+                ("originalAudio", "delete-original-audio", project.OriginalAudio?.SourceName, "remove-original-audio"),
+                ("youtubePlaybackVideo", "delete-local-playback-video", project.YouTubePlaybackVideo?.SourceName, "choose-playback-video")
+            })
+            {
+                var box = new CheckBox { Content = DeletionTitle(kind), Tag = kind, IsEnabled = filename != null };
+                AutomationProperties.SetAutomationId(box, identifier);
+                ToolTipService.SetToolTip(box, filename ?? "No saved attachment");
+                var check = new ToggleMenuFlyoutItem { Text = DeletionTitle(kind), Icon = Views.MenuIcons.Create(icon), IsEnabled = box.IsEnabled };
                 var menu = new MenuFlyout();
                 menu.Items.Add(check);
                 menu.Opening += (_, _) => check.IsChecked = box.IsChecked == true;
                 check.Click += (_, _) => box.IsChecked = check.IsChecked;
                 box.ContextFlyout = menu;
+                options.Add(box); panel.Children.Add(box);
             }
-            options.Add(box); panel.Children.Add(box);
         }
         var rows = new StackPanel { Spacing = 5 }; panel.Children.Add(rows);
         var selected = new HashSet<string>(); var exports = new HashSet<string>();
@@ -481,11 +490,12 @@ public sealed partial class MainWindow
         panel.Children.Insert(panel.Children.IndexOf(rows), selectVisible);
         language.SelectionChanged += (_, _) => Refresh(); Refresh();
         var dialog = new ContentDialog { Title = "Delete Content by Language", Content = new ScrollViewer { Content = panel }, PrimaryButtonText = "Review Deletion", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
-        if (await ShowDialogAsync(dialog, 800, 760) != ContentDialogResult.Primary) return;
+        if (await ShowDialogAsync(dialog, 800, 760) != ContentDialogResult.Primary || Model.Project?.Id != project.Id) return;
         var components = options.Where(v => v.IsChecked == true).Select(v => (string)v.Tag).ToArray();
         if (components.Length == 0 && exports.Count == 0) return;
         var playbackVideoPath = components.Contains("youtubePlaybackVideo") ? project.YouTubePlaybackVideo?.Path : null;
-        var request = new { resultIDs = selected.ToArray(), components, exportPaths = exports.ToArray(), playbackVideoPath };
+        var originalAudioPath = components.Contains("originalAudio") ? project.OriginalAudio?.Path : null;
+        var request = new { resultIDs = selected.ToArray(), components, exportPaths = exports.ToArray(), originalAudioPath, playbackVideoPath };
         var previewInput = Path.Combine(Path.GetTempPath(), "vidistudio-delete-preview-" + Guid.NewGuid() + ".json");
         string previewText;
         try {
@@ -498,7 +508,9 @@ public sealed partial class MainWindow
                 string.Join("\n", data.GetProperty("files").EnumerateArray().Select(v => v.GetString()));
         } finally { File.Delete(previewInput); }
         if (!await Confirm("Delete selected content permanently?", previewText + "\nContent types: " + string.Join(", ", components.Select(DeletionTitle)) + ". This cannot be undone.", "Delete Selected")) return;
+        if (Model.Project?.Id != project.Id) return;
         StopSegmentPreview(); narrationPlayer.Pause();
+        if (originalAudioPath != null) DetachOriginalAudioPlayback();
         if (playbackVideoPath != null)
             await ChangeYouTubePlaybackCopyAsync(() => RunResultRequestAsync("delete-results", request));
         else

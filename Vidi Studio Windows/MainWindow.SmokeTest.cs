@@ -3135,6 +3135,41 @@ public sealed partial class MainWindow
             await File.WriteAllTextAsync(path, manifest.ToJsonString());
             Model.Project = Models.StudioProject.Load(original.Folder);
             RefreshProject();
+            async Task CheckAttachmentDeletionChoices(bool audioAvailable, bool videoAvailable)
+            {
+                var opened = new TaskCompletionSource<ContentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+                void Capture(ContentDialog dialog, Window window)
+                {
+                    if (dialog.Title as string == "Delete Content by Language") opened.TrySetResult(dialog);
+                }
+                Views.WindowedDialog.ReadyToShow += Capture;
+                var showing = ShowLanguageDeletionAsync();
+                ContentDialog? active = null;
+                try
+                {
+                    active = await opened.Task.WaitAsync(TimeSpan.FromSeconds(15));
+                    var boxes = DialogControls((UIElement)active.Content).OfType<CheckBox>().ToArray();
+                    foreach (var (id, label, available) in new[]
+                    {
+                        ("delete-original-audio", "Original Audio File", audioAvailable),
+                        ("delete-local-playback-video", "Local Playback Video", videoAvailable)
+                    })
+                    {
+                        var box = boxes.Single(item => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(item) == id);
+                        if (box.Content as string != label || box.IsEnabled != available || box.IsChecked == true ||
+                            box.ContextFlyout is not MenuFlyout menu || menu.Items.Single() is not ToggleMenuFlyoutItem option ||
+                            option.Text != label || option.IsEnabled != available || option.Icon == null)
+                            throw new InvalidOperationException("The deletion checkbox or its context action is wrong for " + label);
+                    }
+                }
+                finally
+                {
+                    Views.WindowedDialog.ReadyToShow -= Capture;
+                    active?.Hide();
+                }
+                await showing.WaitAsync(TimeSpan.FromSeconds(15));
+            }
+            await CheckAttachmentDeletionChoices(audioAvailable: false, videoAvailable: false);
             UpdateDesktopMenuStates();
             if (ChoosePrivatePlaybackVideo.Visibility != Visibility.Visible ||
                 PrivateYouTubePlaybackPanel.Visibility != Visibility.Visible || YouTubePlayer.Visibility != Visibility.Collapsed ||
@@ -3175,6 +3210,7 @@ public sealed partial class MainWindow
             youtubeProject.OriginalAudio = new Models.OriginalAudioAsset { Path = "imports/original.wav", SourceName = "original.wav" };
             try
             {
+                await CheckAttachmentDeletionChoices(audioAvailable: true, videoAvailable: false);
                 UpdateInspector(youtubeProject);
                 UpdatePlaybackControls();
                 UpdateDesktopMenuStates();
@@ -3258,6 +3294,7 @@ public sealed partial class MainWindow
             if (!progressSeen) throw new InvalidOperationException("No playback copy progress reached the editor.");
             var project = Model.Project!;
             var asset = project.YouTubePlaybackVideo ?? throw new InvalidOperationException("Playback clip did not persist.");
+            await CheckAttachmentDeletionChoices(audioAvailable: false, videoAvailable: true);
             if (project.YoutubeURL != link || project.Duration != original.Duration ||
                 project.LocalYouTubePlaybackPath is not { } copy || copy == before ||
                 project.ThumbnailUri?.LocalPath != project.Resolve(asset.Thumbnail) ||

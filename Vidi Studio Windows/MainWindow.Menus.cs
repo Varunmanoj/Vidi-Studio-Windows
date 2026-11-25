@@ -1134,7 +1134,10 @@ public sealed partial class MainWindow
         switch (id)
         {
             case "open-gallery-window":
-            case "open-selected-project": if (SelectedGalleryProject() is { } openingProject) App.OpenWindow(openingProject.Folder); break;
+            case "open-selected-project":
+                if (SelectedGalleryProject() is { } openingProject)
+                    OpenGalleryProject(openingProject, newWindow: id == "open-gallery-window");
+                break;
             case "focus-search": FocusSearch(); break;
             case "clear-search": ClearSearch(); break;
             case "open-search-result": if (SelectedSearchHit is { } searchHit) await OpenSearchHitAsync(searchHit); break;

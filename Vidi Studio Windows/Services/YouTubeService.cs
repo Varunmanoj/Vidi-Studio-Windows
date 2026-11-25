@@ -16,6 +16,11 @@ using System.Xml;
 
 namespace Vidi_Studio_Windows.Services;
 
+internal sealed class PrivateYouTubeAccessException : InvalidOperationException
+{
+    public PrivateYouTubeAccessException() : base(YouTubeVideo.PrivateVideoRecovery) { }
+}
+
 public sealed record YouTubeAccount(string Id, string Subject, string Name, string Email, string Photo, string ChannelId, string ChannelName, string ChannelPhoto, string Uploads)
 {
     public override string ToString() => Name + " · " + ChannelName;
@@ -48,11 +53,12 @@ public sealed record YouTubeVideo(JsonObject Data)
             ? uri : null;
     public override string ToString() => Title + " · " + Visibility + " · " + DurationLabel + " · " + Data["channelTitle"];
     public string ChannelId => Data["channelID"]?.ToString() ?? "";
-    internal const string PrivateVideoMessage = "Private Video Cannot Be Opened. Connect the video’s owner in YouTube Accounts and sign in to Google Cloud with the same account, or import the original video file.";
+    internal const string PrivateVideoRecovery = "Connect the video’s owner in YouTube Accounts and sign in to Google Cloud with the same account, or import the original video file.";
+    internal const string PrivateVideoMessage = "Private Video Cannot Be Opened. " + PrivateVideoRecovery;
 
     public void RequireAvailable(bool allowPrivate = false)
     {
-        if (Visibility == "private" && !allowPrivate) throw new InvalidOperationException(PrivateVideoMessage);
+        if (Visibility == "private" && !allowPrivate) throw new PrivateYouTubeAccessException();
         if (Duration <= 0 || Data["liveStatus"]?.ToString() is "live" or "upcoming" || Data["uploadStatus"]?.ToString() is "uploaded" or "failed" or "rejected" or "deleted")
             throw new InvalidOperationException("This video is live, scheduled, or has not finished processing on YouTube. Try again when a completed video is available.");
     }
@@ -332,10 +338,10 @@ public sealed class YouTubeService
     internal async Task<YouTubeVideo> ProjectVideoAsync(string id, string? privateChannelId, SettingsStore settings, CancellationToken ct = default)
     {
         if (privateChannelId == null) return await VideoAsync(id, ct);
-        var account = PrivateConnection(privateChannelId, settings) ?? throw new InvalidOperationException(YouTubeVideo.PrivateVideoMessage);
+        var account = PrivateConnection(privateChannelId, settings) ?? throw new PrivateYouTubeAccessException();
         var video = await VideoAsync(id, ct, account.Id);
         if (video.ChannelId != privateChannelId || PrivateConnection(privateChannelId, settings)?.Id != account.Id)
-            throw new InvalidOperationException(YouTubeVideo.PrivateVideoMessage);
+            throw new PrivateYouTubeAccessException();
         video.RequireAvailable(allowPrivate: true);
         return video;
     }

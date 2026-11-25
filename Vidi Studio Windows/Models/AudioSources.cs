@@ -47,8 +47,9 @@ public sealed class OriginalAudioInspection
     public string Status { get; set; } = "";
     public string SourceName { get; set; } = "";
     public string Sha256 { get; set; } = "";
-    public string Warning => (VideoDuration is { } duration
-        ? $"Audio: {AudioDuration:F3} seconds. Video: {duration:F3} seconds. Difference: {Difference:F3} seconds."
+    public string Warning => $"Audio duration: {NarrationTimeFormat.SpokenDuration(AudioDuration)}\n" + (VideoDuration is { } duration
+        ? $"Video duration: {NarrationTimeFormat.SpokenDuration(duration)}\n" +
+          $"Difference: {NarrationTimeFormat.SpokenDuration(Difference ?? System.Math.Abs(AudioDuration - duration))}"
         : "Duration could not be verified against the YouTube video.")
-        + " Audio starts at zero. Excess audio is omitted and shorter audio ends in silence. Audio is never stretched.";
+        + "\n\nAudio starts at zero. Excess audio is omitted and shorter audio ends in silence. Audio is never stretched.";
 }

@@ -35,7 +35,7 @@ public sealed class ImportAssetsPicker : UserControl
     private string? transcript, summary, adTranscript, adAudio;
     private readonly List<Action> refreshRows = new();
     private readonly List<Action> refreshAvailability = new();
-    private bool youtube, hasTranscript;
+    private bool youtube;
     private bool hasSavedPlaybackVideo, hasSavedOriginalAudio;
     private bool CanChooseOriginalAudio => !hasSavedPlaybackVideo && localPlaybackVideo == null;
     private bool CanChoosePlaybackVideo => !hasSavedOriginalAudio && originalAudio == null;
@@ -52,8 +52,7 @@ public sealed class ImportAssetsPicker : UserControl
         OriginalAudioPlayback: originalPlayback.SelectedIndex == 1,
         OriginalAudioTranscription: originalTranscription.SelectedIndex == 1, CaptionProvenancePath: captionProvenance,
         Language: (owner as MainWindow)?.SettingsProject?.SelectedLanguage, LocalPlaybackVideoPath: localPlaybackVideo);
-    public bool CanImport => Selection.HasAny && (localPlaybackVideo == null || CanChoosePlaybackVideo) &&
-        (adTranscript == null || adTranscriptMode.SelectedIndex != 0 || hasTranscript || transcript != null);
+    public bool CanImport => Selection.HasAny && (localPlaybackVideo == null || CanChoosePlaybackVideo);
 
     public ImportAssetsPicker(Window owner, ImportScope scope = ImportScope.All, double width = 640, bool showOriginal = true)
     {
@@ -134,7 +133,7 @@ public sealed class ImportAssetsPicker : UserControl
 
     public void SetContext(bool isYouTube, bool transcriptExists)
     {
-        youtube = isYouTube; hasTranscript = transcriptExists;
+        youtube = isYouTube;
         audioPanel.Visibility = Visibility.Visible;
         UpdateState();
     }
@@ -229,10 +228,6 @@ public sealed class ImportAssetsPicker : UserControl
         adTranscriptMode.Visibility = adTranscript != null ? Visibility.Visible : Visibility.Collapsed;
         adAudioMode.Visibility = combineGuidance.Visibility = adAudio != null ? Visibility.Visible : Visibility.Collapsed;
         originalPlayback.IsEnabled = originalTranscription.IsEnabled = CanChooseOriginalAudio && originalAudio != null;
-        validation.Text = adTranscript != null && adTranscriptMode.SelectedIndex == 0 && !hasTranscript && transcript == null
-            ? "Choose a transcript before importing AD-only descriptions, or choose Dialogue + AD combined."
-            : "";
-        validation.Visibility = string.IsNullOrEmpty(validation.Text) ? Visibility.Collapsed : Visibility.Visible;
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 

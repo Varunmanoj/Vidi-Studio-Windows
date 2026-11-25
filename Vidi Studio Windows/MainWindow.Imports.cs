@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Vidi_Studio_Windows.Models;
+using Vidi_Studio_Windows.Services;
 using Windows.Storage.Pickers;
 
 namespace Vidi_Studio_Windows;
@@ -46,92 +47,42 @@ public sealed partial class MainWindow
                 if (!await ImportOriginalAudioAsync(original, selection.OriginalAudioPlayback, selection.OriginalAudioTranscription)) return;
                 project = Model.Project!;
             }
-            // Validate/review every selected text file before writing any assets.
-            string? transcriptTiming = null, descriptionTiming = null;
-            if (selection.TranscriptPath is { } transcriptFile)
-            {
-                var (proceed, timing) = await ReviewTimingBeforeImportAsync(transcriptFile, false, "narration", project, selection.CaptionProvenancePath != null);
-                if (!proceed) return;
-                transcriptTiming = timing;
-                if (timing != null) timingFiles.Add(timing);
-            }
-            if (selection.ADTranscriptPath is { } descriptionFile)
-            {
-                var (proceed, timing) = await ReviewTimingBeforeImportAsync(descriptionFile, selection.ADTranscriptMode == "narration", selection.ADTranscriptMode, project);
-                if (!proceed) return;
-                descriptionTiming = timing;
-                if (timing != null) timingFiles.Add(timing);
-            }
             if (selection.LocalPlaybackVideoPath is { } video)
             {
                 if (!await AttachYouTubePlaybackVideoAsync(project, video)) return;
                 project = Model.Project!;
             }
-            async Task RunImport(string command, IEnumerable<string> arguments)
+            async Task RunImport(string command, IEnumerable<string> arguments, Func<Task<string?>>? review = null)
             {
-                if (await Model.RunAsync(command, arguments.Concat(new[] { "--language", project.SelectedLanguage })) is not { Count: > 0 })
-                {
-                    if (Model.Status.StartsWith("Cancelled", StringComparison.Ordinal)) throw new OperationCanceledException();
-                    throw new IOException(Model.Status);
-                }
+                if ((await RunImportWithWarningsAsync(command, arguments.Concat(new[] { "--language", project.SelectedLanguage }),
+                    reviewTiming: review == null ? null : async () =>
+                    {
+                        var timing = await review();
+                        if (timing != null) timingFiles.Add(timing);
+                        return timing;
+                    })).Count == 0)
+                    throw new OperationCanceledException();
             }
             if (selection.TranscriptPath is { } transcript)
             {
                 var arguments = new List<string> { "--input", transcript };
                 if (selection.CaptionProvenancePath is { } provenance) arguments.AddRange(new[] { "--caption-provenance", provenance });
-                if (transcriptTiming != null) arguments.AddRange(new[] { "--timing-input", transcriptTiming });
-                await RunImport("import-transcript", arguments);
+                await RunImport("import-transcript", arguments, () => ReviewTextTimingAsync(transcript, "narration", project));
             }
             if (selection.ADTranscriptPath is { } adTranscript)
-            {
-                var arguments = new List<string> { "--input", adTranscript, "--ad-transcript-mode", selection.ADTranscriptMode };
-                if (descriptionTiming != null) arguments.AddRange(new[] { "--timing-input", descriptionTiming });
-                await RunImport("import-ad-transcript", arguments);
-            }
+                await RunImport("import-ad-transcript", new[] { "--input", adTranscript, "--ad-transcript-mode", selection.ADTranscriptMode },
+                    () => ReviewTextTimingAsync(adTranscript, selection.ADTranscriptMode, project));
             if (selection.SummaryPath is { } summary)
                 await RunImport("import-summary", new[] { "--input", summary });
             if (selection.ADAudioPath is { } audio)
                 await RunImport("import-ad-audio", new[] { "--input", audio, "--audio-mode", selection.ADAudioMode });
             if (combine && selection.ADAudioPath != null)
-                await RunImport("combine-imported-audio", (project.UsesStandaloneYouTubeAudio ? new[] { "--audio-only", "--media-format", "wav" } : new[] { "--audio-presentation", "selectable", "--captions", "none", "--media-format", "mov" }));
+                await Model.RunAsync("combine-imported-audio", (project.UsesStandaloneYouTubeAudio ? new[] { "--audio-only", "--media-format", "wav" } : new[] { "--audio-presentation", "selectable", "--captions", "none", "--media-format", "mov" }));
             if ((selection with { LocalPlaybackVideoPath = null }).HasAny) await ShowImportReportAsync();
         }
         catch (OperationCanceledException) { Model.ReportStatus("Import cancelled. Completed imports remain in the project."); }
         catch (Exception ex) { await ShowError(ex); }
         finally { foreach (var file in timingFiles) if (File.Exists(file)) File.Delete(file); }
-    }
-
-    private async Task<(bool Proceed, string? Timing)> ReviewTimingBeforeImportAsync(string path, bool description, string mode, StudioProject project, bool requireComplete = false)
-    {
-        if (Path.GetExtension(path).Equals(".txt", StringComparison.OrdinalIgnoreCase))
-        {
-            var timing = await ReviewTextTimingAsync(path, mode, project);
-            return (timing != null, timing);
-        }
-        var warnings = ImportTimingInspector.Warnings(path, project.Duration, project, description);
-        if (warnings.Count == 0) return (true, null);
-        var warningDialog = new ContentDialog
-        {
-            Title = "Timing Warnings",
-            Content = new ScrollViewer
-            {
-                Content = new TextBlock
-                {
-                    Text = string.Join("\n\n", warnings) + (requireComplete ? "\n\nReview this caption track’s timing before importing. Your existing transcript is unchanged." : "\n\nYou can import anyway and edit transcript timings afterward."),
-                    TextWrapping = TextWrapping.Wrap
-                },
-                MaxHeight = 420
-            },
-            PrimaryButtonText = requireComplete ? "" : "Import Anyway",
-            SecondaryButtonText = "Review Timing…",
-            CloseButtonText = "Cancel",
-            DefaultButton = requireComplete ? ContentDialogButton.Secondary : ContentDialogButton.Primary
-        };
-        var result = await ShowDialogAsync(warningDialog, 720, 520);
-        if (result == ContentDialogResult.Primary) return (true, null);
-        if (result != ContentDialogResult.Secondary) return (false, null);
-        var reviewed = await ReviewTextTimingAsync(path, mode, project);
-        return (reviewed != null, reviewed);
     }
 
     private async Task<string?> ReviewTextTimingAsync(string path, string mode, StudioProject project)
@@ -164,7 +115,7 @@ public sealed partial class MainWindow
         {
             var args = new List<string> { "--input", file.Path, "--segment", segment.Id };
             if (replace) args.Add("--replace-existing");
-            await Model.RunAsync("import-segment-narration", args);
+            await RunImportWithWarningsAsync("import-segment-narration", args);
         }
         catch (Exception ex) { await ShowError(ex); }
     }

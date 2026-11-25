@@ -10,44 +10,28 @@ from unittest.mock import patch, Mock
 from test_engine import engine
 
 class VoicePreview(unittest.TestCase):
-    def test_shared_models_ignore_legacy_youtube_overrides(self):
+    def test_project_source_selects_its_model_and_narration_signature(self):
         stages = ('summary', 'screen_text', 'text_rewrite', 'tts_audio')
-        models = {stage: 'shared-' + stage for stage in stages}
-        models.update({'youtube_' + stage: 'legacy-' + stage for stage in stages})
+        models = {stage: 'local-' + stage for stage in stages}
+        models.update({'youtube_' + stage: 'youtube-' + stage for stage in stages})
         models.update(transcript='gemini-local-transcribe', youtube_transcript='gemini-flash', audio_descriptions='shared-ad')
         with patch.object(engine, 'config', return_value={'models': models}), patch.object(engine, 'gemini_client', return_value=Mock()):
             for stage in stages:
-                for source in ('local', 'youtube'):
-                    with self.subTest(stage=stage, source=source):
-                        self.assertEqual(engine.client_and_model(stage, {'sourceType': source})[1], models[stage])
-                self.assertEqual(engine.client_and_model('youtube_' + stage)[1], models[stage])
-            self.assertEqual(engine.client_and_model('transcribe', {'sourceType': 'local'})[1], 'gemini-local-transcribe')
-            self.assertEqual(engine.client_and_model('transcribe', {'sourceType': 'youtube'})[1], 'gemini-flash')
-            self.assertEqual(engine.client_and_model('youtube_transcript')[1], 'gemini-flash')
-            self.assertEqual(engine.client_and_model('tts', {'sourceType': 'youtube'})[1], models['tts_audio'])
+                self.assertEqual(engine.client_and_model(stage, {'sourceType': 'local'})[1], models[stage])
+                self.assertEqual(engine.client_and_model(stage, {'sourceType': 'youtube'})[1], models['youtube_' + stage])
+            self.assertEqual(engine.client_and_model('transcribe', {'sourceType': 'local'})[1], models['transcript'])
+            self.assertEqual(engine.client_and_model('transcribe', {'sourceType': 'youtube'})[1], models['youtube_transcript'])
+            self.assertEqual(engine.client_and_model('tts', {'sourceType': 'youtube'})[1], models['youtube_tts_audio'])
         settings = {'ttsMode': 'gemini', 'geminiVoice': 'Kore', 'models': models}
-        self.assertEqual(engine.narration_signature(settings, {'sourceType': 'local'}),
-                         engine.narration_signature(settings, {'sourceType': 'youtube'}))
-        previous = engine.narration_signature(settings)
-        models['tts_audio'] = 'new-shared-tts'
-        self.assertNotEqual(previous, engine.narration_signature(settings, {'sourceType': 'youtube'}))
+        self.assertEqual(engine.narration_signature(settings, {'sourceType': 'local'}), 'gemini|Kore|local-tts_audio')
+        self.assertEqual(engine.narration_signature(settings, {'sourceType': 'youtube'}), 'gemini|Kore|youtube-tts_audio')
 
     def test_youtube_transcription_rejects_speech_only_models(self):
         for model in ('gemini-3.5-transcribe', 'gemini-flash-tts'):
             with patch.object(engine, 'config', return_value={'models': {'youtube_transcript': model}}), patch.object(engine, 'gemini_client') as client:
-                with self.assertRaisesRegex(ValueError, 'video model for YouTube'):
+                with self.assertRaisesRegex(ValueError, 'Choose a video model'):
                     engine.client_and_model('youtube_transcript')
                 client.assert_not_called()
-
-    def test_gemini_voice_catalog_emits_human_names_and_ids(self):
-        client = Mock()
-        client.voices.list.return_value = SimpleNamespace(voices=[SimpleNamespace(id='Kore', display_name='Kore', language_code='en-US', gender='female')])
-        output = io.StringIO()
-        with patch.object(engine, 'gemini_client', return_value=client), redirect_stdout(output):
-            engine.list_voices()
-        self.assertEqual(json.loads(output.getvalue())['voices'][0]['id'], 'Kore')
-        client.voices.list.assert_called_once_with(page_size=1000)
-        client.close.assert_called_once()
 
     def test_model_catalog_comes_from_available_generate_content_models(self):
         client = Mock()

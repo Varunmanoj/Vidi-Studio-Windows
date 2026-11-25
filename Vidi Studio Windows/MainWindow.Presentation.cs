@@ -333,25 +333,22 @@ public sealed partial class MainWindow
     }
     private async void ShowEditor() => await ShowEditorAsync();
 
-    private async Task ShowEditorAsync()
+    private async Task<bool> ShowEditorAsync()
     {
-        if (Model.Project is { IsYouTube: true } openingProject) {
+        // Saved private projects can open without YouTube access. Playback uses the
+        // local copy when present. Remote refresh and analysis authorize separately.
+        if (Model.Project is { IsYouTube: true, PrivateYouTubeChannel: null, ActiveLocalYouTubePlaybackPath: null } openingProject) {
             try {
                 var incoming = new Uri(openingProject.YoutubeURL ?? "");
                 var id = incoming.Query.TrimStart('?').Split('&').FirstOrDefault(v => v.StartsWith("v="))?[2..] ?? "";
-                if (openingProject.PrivateYouTubeChannel is { } channel &&
-                    openingProject.YouTubeMetadata is { ValueKind: System.Text.Json.JsonValueKind.Object })
-                {
-                    if (YouTubeService.Shared.PrivateConnection(channel, Model.Settings) == null)
-                        throw new InvalidOperationException(YouTubeVideo.PrivateVideoMessage);
-                }
-                else if (openingProject.ActiveLocalYouTubePlaybackPath == null || openingProject.PrivateYouTubeChannel != null)
-                {
-                    var current = await YouTubeService.Shared.ProjectVideoAsync(id, openingProject.PrivateYouTubeChannel, Model.Settings);
-                    if (Model.Project?.Folder != openingProject.Folder) return;
-                    current.RequireAvailable(allowPrivate: openingProject.PrivateYouTubeChannel != null);
-                }
-            } catch (Exception ex) { await ShowError(ex); return; }
+                var current = await YouTubeService.Shared.ProjectVideoAsync(id, null, Model.Settings);
+                if (windowClosed || Model.Project?.Folder != openingProject.Folder) return false;
+                current.RequireAvailable();
+            } catch (Exception ex)
+            {
+                if (!windowClosed && Model.Project?.Folder == openingProject.Folder) await ShowError(ex);
+                return false;
+            }
         }
         GalleryPanel.Visibility = Visibility.Collapsed; EditorWorkspace.Visibility = Visibility.Visible;
         UpdateMenuBar(true);
@@ -362,6 +359,7 @@ public sealed partial class MainWindow
         GalleryImport.Visibility = Visibility.Collapsed;
         UpdateEditorWindowTitle();
         UpdateEditorProjectButtons();
+        return true;
     }
     private string gallerySourceFilter = "all";
     private bool projectFiltersOpen;
@@ -489,7 +487,17 @@ public sealed partial class MainWindow
         GalleryList.SelectedItem = selected;
         UpdateDesktopMenuStates();
     }
-    private void GalleryProject_Click(object sender, ItemClickEventArgs e) { if (e.ClickedItem is StudioProject p) App.OpenWindow(p.Folder); }
+    private void GalleryProject_Click(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is StudioProject project) OpenGalleryProject(project);
+    }
+
+    private void OpenGalleryProject(StudioProject project, bool newWindow = false)
+    {
+        if (windowClosed) return;
+        if (newWindow) App.OpenWindow(project.Folder);
+        else App.OpenOrActivateEditor(project.Folder);
+    }
     private async void NewProject_Click(object sender, RoutedEventArgs e) => await ShowNewProjectDialogAsync(false);
     private int editorActionHoverVersion;
 

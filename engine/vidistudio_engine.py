@@ -13,6 +13,7 @@ import sarvam_tts
 import elevenlabs_tts
 import cloud_video
 import vertex_ai
+import gemini_voices
 import gemini_adapter
 import parity
 import import_assets
@@ -786,27 +787,6 @@ def list_models():
     return check_api_key()
 
 
-def list_voices():
-    client = gemini_client()
-    try:
-        catalog = client.voices.list(page_size=1000)
-        available = []
-        for voice in catalog.voices or []:
-            ident = str(getattr(voice, 'id', '') or '')
-            if ident:
-                available.append({
-                    'id': ident,
-                    'name': str(getattr(voice, 'display_name', '') or ident),
-                    'language': str(getattr(voice, 'language_code', '') or ''),
-                    'gender': str(getattr(voice, 'gender', '') or ''),
-                })
-        if not available:
-            raise ValueError('No Gemini voices are available for this API key.')
-        emit('Available Gemini voices loaded', voices=available)
-    finally:
-        client.close()
-
-
 def delete_description_narration(root, project):
     """Remove saved narration while preserving the current description text and timing."""
     if language_results._transaction:
@@ -1242,7 +1222,6 @@ def ai_video(root, p, stage, max_attempts=AI_MAX_ATTEMPTS):
 
 
 def gemini_speech(output, text, project):
-    from google.genai import types
     cfg = config()
     output = Path(output)
     client, model = client_and_model('tts',project)
@@ -1251,7 +1230,7 @@ def gemini_speech(output, text, project):
         # Gemini 3.8 TTS treats input as a verbatim transcript. Older TTS models
         # still use the configurable prompt that accompanied their raw PCM output.
         contents = text if model in ('gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts') else parity.render(cfg['prompts']['tts_audio']['user_prompt'], project, text=text)
-        response = client.models.generate_content(model=model, contents=contents, config=types.GenerateContentConfig(response_modalities=['AUDIO'], speech_config=types.SpeechConfig(voice_config=types.VoiceConfig(prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=cfg.get('geminiVoice','Kore'))))))
+        response = client.models.generate_content(model=model, contents=contents, config=gemini_voices.synthesis_config(cfg, model))
         parts = [part for candidate in (response.candidates or []) for part in (candidate.content.parts if candidate.content else [])]
         audio = next((part.inline_data for part in parts if part.inline_data and part.inline_data.data), None)
         data = audio.data if audio else None
@@ -1404,7 +1383,7 @@ def narration_voice(cfg):
     if cfg.get('ttsMode') == 'sarvam':
         return sarvam_tts.parameters(cfg).get('speaker', 'Default voice')
     if narration_engine(cfg) == 'gemini':
-        return str(cfg.get('geminiVoice', 'Kore') or 'Kore').strip() or 'Kore'
+        return gemini_voices.selection(cfg)[1]
     if narration_engine(cfg) == 'piper':
         selected = str(cfg.get('piperVoice') or cfg.get('systemVoice') or '').strip()
         return selected or 'Piper voice'
@@ -1421,7 +1400,7 @@ def narration_signature(cfg, project=None):
         stage = project_model_stage(cfg, 'tts_audio', project)
         model = (vertex_ai.model_for(cfg, stage) if cfg.get('aiProvider') == 'vertex'
                  else cfg.get('models', {}).get(stage) or cfg.get('models', {}).get('tts_audio', ''))
-        return f"gemini|{cfg.get('geminiVoice', 'Kore')}|{model}"
+        return f"gemini|{gemini_voices.selection(cfg)[0]}|{model}"
     rate, pitch, volume = speech_controls(cfg)
     if cfg.get('ttsMode') == 'piper':
         return f"piper|{narration_voice(cfg)}|{rate:.3f}|{pitch:.3f}|{volume:.3f}"
@@ -3132,10 +3111,18 @@ def import_local_video(args, cloud_reference=None):
     if not args.video or not args.library: raise ValueError('Import requires --video and --library.')
     ensure_supported_local_video(args.video, cloud=args.command in ('cloud-create', 'cloud-import'))
     if args.command != 'cloud-import':
-        ensure_unique_local_video(args.library, args.video.name)
+        try:
+            ensure_unique_local_video(args.library, args.video.name)
+        except ValueError as exc:
+            if str(exc) != DUPLICATE_PROJECT_MESSAGE:
+                raise
+            import_assets.confirm_warning(
+                args, 'duplicate-video', 'Project Already Exists',
+                'A project with this video filename already exists. Import Anyway creates a separate project. The existing one is unchanged.',
+                diagnostic=DUPLICATE_PROJECT_MESSAGE, context=[str(args.library), str(args.video)])
     info=probe(args.video)
-    streams=info['streams']; video=next((s for s in streams if s['codec_type']=='video'),None)
-    if not video: raise ValueError('The selected file has no video stream.')
+    streams=info['streams']; video=next((s for s in streams if s['codec_type']=='video' and not s.get('disposition', {}).get('attached_pic')),None)
+    if not video: raise import_assets.ImportIssue('Video Couldn’t Be Imported', 'The selected file has no video stream.')
     duration=float(info['format'].get('duration',video.get('duration',0)))
     if not math.isfinite(duration) or duration<=0: raise ValueError('The video duration could not be determined.')
     root=args.library.resolve()/(args.video.stem[:60]+'-'+str(uuid.uuid4())[:8])
@@ -3183,6 +3170,7 @@ def delete_cloud_project_video(args):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--voice-search', default='')
     parser.add_argument('command',choices=['cloud-projects','cloud-delete-project-video','cloud-object-permissions','cloud-object-rename','cloud-object-delete','cloud-browse','cloud-preview','cloud-list','cloud-import','cloud-create','vertex-connect','vertex-adopt-google-signin','vertex-disconnect','vertex-check','cloud-upload','cloud-rename','cloud-remove','elevenlabs-settings','preview-sarvam-sample','check-sarvam-key','list-sarvam-models','normalize-speech','check-api-key','reanalyze-transcript-segment','undo-transcript','redo-transcript','reanalyze-segment','prepare-analysis-video','check-video-availability','cleanup-project','clear-generated','delete-generated','delete-segment-audio','list-models','list-voices','preview-tts','import-video','probe-video','generate-thumbnails','transcribe','generate-summary','generate-ad-cues','synthesize-tts','export-final-video','export-selectable-video','export-original-video','export-closed-audio-description-video','export-open-audio-description-video','export-closed-caption-video','export-dual-closed-caption-video','export-open-caption-video','export-original-audio','export-described-audio','export-youtube-described-audio','export-youtube-original-audio','download-youtube-audio','export-hls','save-cues','save-segments','save-summary','doctor',*parity.COMMANDS,*import_assets.COMMANDS,*audio_sources.COMMANDS,*language_results.COMMANDS,*youtube_playback.COMMANDS,'read-youtube-metadata'])
     parser.add_argument('--project',type=Path); parser.add_argument('--video',type=Path); parser.add_argument('--library',type=Path); parser.add_argument('--input',type=Path)
     parser.add_argument('--media-format', choices=VIDEO_EXPORT_FORMATS + AUDIO_EXPORT_FORMATS)
@@ -3282,7 +3270,7 @@ def main():
     if args.command == 'list-models':
         list_models(); return
     if args.command == 'list-voices':
-        list_voices(); return
+        gemini_voices.list_catalog(config(), args.voice_search, emit); return
     core=SimpleNamespace(**globals())
     if args.command in ('import-youtube','validate-config'):
         parity.execute(args,None,None,core);return
@@ -3345,12 +3333,19 @@ def main():
         language_results.validate_copy_languages(json.loads(args.input.read_text(encoding='utf-8')), translating=args.command == 'translate-results')
     with project_lock(root):
         p=migrate_project_schema(root,json.loads((root/'project.json').read_text(encoding='utf-8')))
+        if args.command in ('inspect-import', 'inspect-original-audio'):
+            # Import preflight must not update timestamps or save a migrated manifest.
+            dispatch_project(args, root, p)
+            return
         if args.command in youtube_playback.COMMANDS:
             youtube_playback.execute(args, root, p, core)
             emit('Playback video updated', project=str(root), progress=1)
             return
         try:
             language_results.run(args, root, p, core, dispatch_project)
+        except import_assets.ImportIssue:
+            # Waiting for a choice is not a project change or a failed result.
+            raise
         except BaseException as exc:
             p['status'] = 'Needs attention'; p['error'] = safe_error(exc); save(root, p)
             raise
@@ -3361,5 +3356,5 @@ if __name__=='__main__':
     signal.signal(signal.SIGINT, cancel_processing)
     try: main()
     except Exception as exc:
-        emit(safe_error(exc), error=True, **(audio_sources.error_metadata(exc) | network_activity.error_metadata(exc)))
+        emit(safe_error(exc), error=True, **(audio_sources.error_metadata(exc) | network_activity.error_metadata(exc) | import_assets.error_metadata(exc, safe_error)))
         sys.exit(1)

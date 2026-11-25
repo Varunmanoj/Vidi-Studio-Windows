@@ -137,24 +137,33 @@ public sealed partial class MainWindow : Window
             args.Handled = true;
         };
         Root.KeyboardAccelerators.Add(fullScreenEscape);
-        video.PlaybackSession.PlaybackStateChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdatePlaybackControls);
+        video.PlaybackSession.PlaybackStateChanged += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!windowClosed) UpdatePlaybackControls();
+        });
         ChoosePrivatePlaybackVideo.Click += async (_, _) => await RunDesktopCommandAsync("choose-playback-video");
         video.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
-            if (pendingYouTubePlaybackSeek is not { } target || Model.Project is not { IsYouTube: true, LocalYouTubePlaybackPath: not null }) return;
-            video.PlaybackSession.Position = TimeSpan.FromSeconds(target);
+            if (windowClosed || pendingYouTubePlaybackSeek is not { } target ||
+                Model.Project is not { IsYouTube: true, LocalYouTubePlaybackPath: not null }) return;
             pendingYouTubePlaybackSeek = null;
+            if (target > 0) video.PlaybackSession.Position = TimeSpan.FromSeconds(target);
         });
         video.MediaFailed += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
-            if (Model.Project?.UsesYouTubePlayer != true)
+            if (!windowClosed && Model.Project?.UsesYouTubePlayer != true)
             {
                 videoPlaybackFailed = true;
                 UpdatePlaybackControls();
                 UpdateDesktopMenuStates();
             }
         });
-        video.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() => { videoPlaybackStarted = false; UpdatePlaybackControls(); });
+        video.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (windowClosed) return;
+            videoPlaybackStarted = false;
+            UpdatePlaybackControls();
+        });
         speech.MediaEnded += (_, _) => DispatcherQueue.TryEnqueue(ClearSegmentPreview);
         InitializePresentation();
         UpdateApiKeyUi();
@@ -194,7 +203,7 @@ public sealed partial class MainWindow : Window
             Model.YouTubeAudioRecoveryRequested -= RecoverYouTubeAudioExportAsync;
             Model.ConnectivityNotification -= ShowConnectivityNoticeAsync;
             Model.Cancel(); timer.Stop(); integrityTimer.Stop();
-            foreach (var cleanup in new Action[] { video.Dispose, speech.Dispose, narrationPlayer.Dispose, originalAudioPlayer.Dispose, indicationPlayer.Dispose, onDeviceNarrator.Dispose, readback.Dispose,
+            foreach (var cleanup in new Action[] { () => Player.SetMediaPlayer(null), video.Dispose, speech.Dispose, narrationPlayer.Dispose, originalAudioPlayer.Dispose, indicationPlayer.Dispose, onDeviceNarrator.Dispose, readback.Dispose,
                 () => { if (YouTubePlayer.CoreWebView2 != null) YouTubePlayer.Close(); } })
             {
                 try { cleanup(); } catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
@@ -213,7 +222,12 @@ public sealed partial class MainWindow : Window
                 try
                 {
                     Model.Open(folder);
-                    await ShowEditorAsync();
+                    if (!await ShowEditorAsync())
+                    {
+                        windowReady.TrySetResult(false);
+                        if (!windowClosed) Close();
+                        return;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -418,7 +432,7 @@ public sealed partial class MainWindow : Window
         if (Model.ConnectionFailure && ex is not ConnectivityException && ex.Message == Model.Status) return;
         Model.Engine.Log(ex.ToString());
         // Processing and speech messages are already written for people; other failures stay generic.
-        var message = ex is ProcessingException or SpeechFailedException or ConnectivityException
+        var message = ex is ProcessingException or SpeechFailedException or ConnectivityException or PrivateYouTubeAccessException
             ? ex.Message
             : "Check your settings and the diagnostic log, then retry. Your saved project remains available.";
         if (ex is ProcessingException processing)
@@ -427,6 +441,7 @@ public sealed partial class MainWindow : Window
         {
             ConnectivityException => "Internet Connection Required",
             ProcessingException { IsDuplicateProject: true } => "Project Already Exists",
+            PrivateYouTubeAccessException => "Private YouTube Access Required",
             _ => "Action could not finish"
         };
         await ShowDialogAsync(new ContentDialog { Title = title, Content = DialogMessage(message), CloseButtonText = "Close" });
@@ -444,15 +459,21 @@ public sealed partial class MainWindow : Window
     private static extern bool SetForegroundWindow(IntPtr hWnd);
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-    public void BringToForeground()
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+    public void BringToForeground(bool restoreMinimized = true)
     {
         try
         {
             var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             if (hWnd != IntPtr.Zero)
             {
-                const int SW_RESTORE = 9;
-                ShowWindow(hWnd, SW_RESTORE);
+                if (IsIconic(hWnd))
+                {
+                    if (!restoreMinimized) return;
+                    const int SW_RESTORE = 9;
+                    ShowWindow(hWnd, SW_RESTORE);
+                }
                 SetForegroundWindow(hWnd);
             }
         }
@@ -485,9 +506,8 @@ public sealed partial class MainWindow : Window
             if (choice == Views.NewProjectDialog.VideoImportChoice.Cancel) return null;
             if (Model.ExistingProjectForVideo(candidate) is { } replacementProject) return replacementProject.Folder;
             var command = choice == Views.NewProjectDialog.VideoImportChoice.Cloud ? "cloud-create" : "import-video";
-            var imported = await Model.RunAsync(command,
-                new[] { "--video", candidate, "--library", Model.Settings.Get("libraryPath") },
-                needsProject: false, throwOnProcessingError: true);
+            var imported = await RunImportWithWarningsAsync(command,
+                new[] { "--video", candidate, "--library", Model.Settings.Get("libraryPath") }, needsProject: false);
             return imported.LastOrDefault(item => item.Data.TryGetProperty("project", out _))?.Data.GetProperty("project").GetString();
         });
     }
@@ -508,7 +528,8 @@ public sealed partial class MainWindow : Window
             var existing = Model.ExistingProjectForYouTube(url);
             if (existing != null) return existing.Folder;
 
-            await Model.RunAsync("import-youtube", new[] { "--url", url, "--library", Model.Settings.Get("libraryPath") }, false);
+            var imported = await RunImportWithWarningsAsync("import-youtube", new[] { "--url", url, "--library", Model.Settings.Get("libraryPath") }, false);
+            if (imported.Count == 0) return null;
             return Model.Project is { } project && SharedYouTubeLink.VideoId(project.YoutubeURL) == videoId ? project.Folder : null;
         });
     }
@@ -529,8 +550,6 @@ public sealed partial class MainWindow : Window
         SharedVideoProgress.Visibility = Visibility.Visible;
         try
         {
-            Activate();
-            BringToForeground();
             var peer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(SharedVideoProgressText);
             peer?.RaiseNotificationEvent(Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationKind.Other,
                 Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationProcessing.MostRecent, message, automationId);
@@ -630,25 +649,19 @@ public sealed partial class MainWindow : Window
                             File.WriteAllText(metadata, chosen.Data.ToJsonString());
                             arguments.AddRange(new[] { "--youtube-metadata", metadata });
                         }
-                        created = await Model.RunAsync("import-youtube", arguments, needsProject: false, throwOnProcessingError: true);
+                        created = await RunImportWithWarningsAsync("import-youtube", arguments, needsProject: false);
                     }
                     finally { if (metadata != null) File.Delete(metadata); }
                 }
             }
             else if (dialog.VideoPath is { } path)
-                created = await Model.RunAsync(dialog.IsCloud ? "cloud-create" : "import-video", new[] { "--video", path, "--library", dialog.LibraryPath },
-                    needsProject: false, throwOnProcessingError: true);
+                created = await RunImportWithWarningsAsync(dialog.IsCloud ? "cloud-create" : "import-video", new[] { "--video", path, "--library", dialog.LibraryPath }, needsProject: false);
             else return;
             // Cancelled processing returns no events and leaves the previous project selected.
             // Never apply the new files to that previous project.
             if (projectToOpen == null && created?.Any(item => item.Data.TryGetProperty("project", out _)) == true)
                 projectToOpen = Model.Project;
-            if (projectToOpen == null)
-            {
-                if (!Model.ConnectionFailure && !Model.Status.StartsWith("Cancelled", StringComparison.Ordinal))
-                    await ShowErrorMessage("Import Could Not Finish", Model.Status);
-                return;
-            }
+            if (projectToOpen == null) return;
             var editor = dialog.OpenSelectedYouTubeInEditor ? App.OpenOrActivateEditor(projectToOpen.Folder) : App.OpenWindow(projectToOpen.Folder);
             if (imports.HasAny && await editor.windowReady.Task && !editor.windowClosed)
                 await editor.ImportSelectedAssetsAsync(imports, dialog.CombineRequested);
@@ -688,7 +701,10 @@ public sealed partial class MainWindow : Window
                 SetSummaryEditMode(false);
             }
             StopProjectPlayback();
-            Model.Open(selected.Folder); ShowEditor();
+            Model.Open(selected.Folder);
+            if (!await ShowEditorAsync() && !windowClosed && previous != null)
+                Model.Open(previous.Folder);
+            if (windowClosed) return;
             var current = Model.Projects.FirstOrDefault(project => project.Folder == Model.Project?.Folder);
             ProjectList.SelectedItem = current;
             ProjectGrid.SelectedItem = current;

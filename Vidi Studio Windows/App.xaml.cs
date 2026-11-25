@@ -110,14 +110,13 @@ public partial class App : Application
     internal static void ShowProjectLibrary()
     {
         var library = ProjectLibrary();
-        library.Activate();
-        library.BringToForeground();
+        library.BringToForeground(restoreMinimized: false);
     }
 
     internal static MainWindow OpenOrActivateEditor(string folder)
     {
-        var editor = Windows.FirstOrDefault(window => window.IsEditingFolder(folder)) ?? OpenWindow(folder);
-        editor.Activate();
+        var editor = Windows.FirstOrDefault(window => window.IsEditingFolder(folder));
+        if (editor == null) return OpenWindow(folder);
         editor.BringToForeground();
         return editor;
     }
@@ -148,6 +147,7 @@ public partial class App : Application
             foreach (var key in new[] { "VIDISTUDIO_UI_SMOKE_REPORT", "VIDISTUDIO_UI_SMOKE_PROJECT", "VIDISTUDIO_CONFIG" })
                 Environment.SetEnvironmentVariable(key, environment[key]);
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY"));
+            Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GEMINI_VOICES_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_GEMINI_VOICES_ONLY"));
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_JUMP_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_JUMP_ONLY"));
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY"));
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY"));
@@ -201,8 +201,8 @@ public partial class App : Application
                     dispatcher.TryEnqueue(async () =>
                     {
                         var target = ProjectLibrary();
-                        target.Activate();
-                        target.BringToForeground();
+                        if (request is { VideoPath: null, YouTubeUrl: null, Share: null })
+                            target.BringToForeground();
                         await HandleIncomingActivationAsync(target, request);
                     });
                 };

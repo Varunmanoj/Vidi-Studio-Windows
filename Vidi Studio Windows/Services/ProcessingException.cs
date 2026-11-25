@@ -3,19 +3,25 @@ using System.Text.RegularExpressions;
 
 namespace Vidi_Studio_Windows.Services;
 
+public sealed record ImportIssueNotice(string Title, string Message, string? Token);
+
 public sealed class ProcessingException : Exception
 {
     private const string DuplicateProjectDiagnostic = "This project already exists. Please continue with the existing project or delete the existing project before continuing.";
+    private const string DurationPart = @"[0-9]+ (?:days?|hours?|minutes?|seconds?|milliseconds?)";
+    private const string DurationLabel = DurationPart + "(?:, " + DurationPart + ")*";
 
     public string? RecoveryAction { get; }
     public string Diagnostic { get; }
     public bool IsDuplicateProject { get; }
-    public ProcessingException(string diagnostic, string? recoveryAction = null, string? command = null)
-        : base(recoveryAction == "choose-original-audio"
+    public ImportIssueNotice? ImportIssue { get; }
+    public ProcessingException(string diagnostic, string? recoveryAction = null, string? command = null, ImportIssueNotice? importIssue = null)
+        : base(importIssue?.Message ?? (recoveryAction == "choose-original-audio"
             ? "YouTube audio could not be retrieved. Choose a matching audio file to retry this export. Existing exports are unchanged."
-            : UserMessage(diagnostic, command))
+            : UserMessage(diagnostic, command)))
     {
         RecoveryAction = recoveryAction;
+        ImportIssue = importIssue;
         Diagnostic = diagnostic;
         IsDuplicateProject = IsDuplicateProjectFailure(diagnostic, command);
     }
@@ -35,7 +41,8 @@ public sealed class ProcessingException : Exception
             diagnostic.Contains("gcp-sa-aiplatform", StringComparison.OrdinalIgnoreCase))
             return "Ask your Google Cloud administrator to grant the Vertex AI service agent read access to this video, then retry.";
         if (command == "attach-youtube-playback" && Regex.IsMatch(diagnostic,
-            @"^Playback video duration does not match\. YouTube is \d+\.\d{2} seconds and the local file is \d+\.\d{2} seconds\.$"))
+            @"\APlayback video duration does not match\.\n\nYouTube duration: " + DurationLabel +
+            @"\nLocal video duration: " + DurationLabel + @"\z"))
             return diagnostic;
         if (command == "generate-summary")
             return "The summary could not be created. Your transcript is safe. Please try again.";

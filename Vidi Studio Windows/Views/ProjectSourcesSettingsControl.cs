@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Linq;
 using Vidi_Studio_Windows.Models;
 using Vidi_Studio_Windows.ViewModels;
 
@@ -65,20 +66,33 @@ public sealed class ProjectSourcesSettingsControl : UserControl
         if(spokenValue!=null) AutomationProperties.SetName(content,label+": "+spokenValue);
         SettingsDialog.CompactRow(panel,label,content,true);
     }
-    private Button Action(string title, string command)
+    private Button Action(string title, string command, bool imported = false)
     {
         var button = new Button { Content = new TextBlock { Text = title, TextWrapping = TextWrapping.Wrap }, HorizontalAlignment = HorizontalAlignment.Stretch };
         AutomationProperties.SetName(button, title);
+        if (imported) MarkImported(button);
         button.Click += async (_, _) => await RunAction(command);
         return button;
     }
-    private void Actions(StackPanel panel, params (string Title, string Command)[] actions)
+    internal static void MarkImported(Button button)
+    {
+        var status = (FontIcon)Microsoft.UI.Xaml.Markup.XamlReader.Load("<FontIcon xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Glyph='&#xE73E;' FontSize='14' Foreground='{ThemeResource SystemFillColorSuccessBrush}'/>");
+        AutomationProperties.SetAccessibilityView(status, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+        AutomationProperties.SetHelpText(button, "Imported");
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        var label = (UIElement)button.Content;
+        button.Content = null;
+        row.Children.Add(label);
+        row.Children.Add(status);
+        button.Content = row;
+    }
+    private static void Actions(StackPanel panel, params Button[] actions)
     {
         var grid = new Grid { ColumnSpacing = 10, RowSpacing = 8 };
         grid.ColumnDefinitions.Add(new ColumnDefinition()); grid.ColumnDefinitions.Add(new ColumnDefinition());
         for (var i = 0; i < actions.Length; i++) {
             if (i % 2 == 0) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var button = Action(actions[i].Title, actions[i].Command); Grid.SetColumn(button, i % 2); Grid.SetRow(button, i / 2); grid.Children.Add(button);
+            var button = actions[i]; Grid.SetColumn(button, i % 2); Grid.SetRow(button, i / 2); grid.Children.Add(button);
         }
         panel.Children.Add(grid);
     }
@@ -113,28 +127,73 @@ public sealed class ProjectSourcesSettingsControl : UserControl
             if (project.AllowsOriginalAudioImport)
                 body.Children.Add(ScreenReaderHeading.Mark(new Expander { Header = "Audio sources", Content = new AudioSourceControls(owner, scoped, showHeading: false, chooseAudio: () => RunAction("import-original-audio"), reviewAudio: () => RunAction("review-audio-timing"), compact:true), IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch }));
             if (project.IsYouTube) {
-                Actions(body, ("YouTube Details & Captions…", "youtube-captions"), ("Open in YouTube", "youtube-open-browser"));
+                var youtube = new StackPanel { Spacing = 8 };
+                var detailsButton = Action("YouTube Details & Captions…", "youtube-captions");
+                detailsButton.HorizontalAlignment = HorizontalAlignment.Left;
+                youtube.Children.Add(detailsButton);
+                youtube.Children.Add(MainWindow.BuildYouTubeProjectLinks(project));
+                body.Children.Add(ScreenReaderHeading.Mark(new Expander { Header = "YouTube video", Content = youtube, IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch }));
             }
             var imports = new StackPanel { Spacing = 8 };
-            Actions(imports, ("Import Transcript…", "import-transcript"), ("Import Summary…", "import-summary"), ("Import Descriptions…", "import-descriptions"), ("Import AD Audio…", "import-ad-audio"), ("Import Existing Assets…", "import-assets"));
+            var importedKinds = project.SavedResults.Where(result => result.ImportedSourceName != null)
+                .Select(result => result.Kind).ToHashSet();
+            Actions(imports, Action("Import Transcript…", "import-transcript", importedKinds.Contains("transcript")),
+                Action("Import Summary…", "import-summary", importedKinds.Contains("summary")),
+                Action("Import Descriptions…", "import-descriptions", importedKinds.Contains("descriptions")),
+                Action("Import AD Audio…", "import-ad-audio", importedKinds.Contains("adAudio")),
+                Action("Import Existing Assets…", "import-assets"));
             if (project.IsYouTube) {
-                var original = Action("Import Original Audio…", "import-original-audio");
+                var original = Action("Import Original Audio…", "import-original-audio", project.OriginalAudio != null);
                 original.IsEnabled = project.AllowsOriginalAudioImport;
                 imports.Children.Add(original);
+                imports.Children.Add(editor.BuildYouTubePlaybackControls(project, RunAction, inProjectSettings: true));
             }
             body.Children.Add(ScreenReaderHeading.Mark(new Expander { Header = "Import into this project", Content = imports, IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch }));
-            Actions(body, ("Export…", "export"), ("Open in Editor", "open-editor"), ("Open Project Folder", "show-folder"), ("Rename…", "rename-project"));
+            body.Children.Add(BuildImportedAssets(project, editor.CanDeleteProjectSettingsContent));
+            Actions(body, Action("Export…", "export"), Action("Open in Editor", "open-editor"),
+                Action("Open Project Folder", "show-folder"), Action("Rename…", "rename-project"));
             // Wrap the existing sections without changing their commands or expansion state.
             for(var i=0;i<body.Children.Count;i++) {
                 var child=body.Children[i]; body.Children.RemoveAt(i); body.Children.Insert(i,SettingsDialog.CompactCard(child));
             }
         } finally { rebuilding = false; UpdateProgress(); }
     }
+    private Expander BuildImportedAssets(StudioProject project, bool canDelete)
+    {
+        var panel = new StackPanel { Spacing = 8 };
+        if (project.OriginalAudio is { } audio) Row(panel, "Original audio", audio.SourceName);
+        if (project.YouTubePlaybackVideo is { } video) Row(panel, "Local playback video", video.SourceName);
+        var results = project.SavedResults;
+        foreach (var result in results)
+            if (result.ImportedSourceName is { } filename)
+            {
+                var review = result.State == "draft" ? " · Review needed" : "";
+                Row(panel, $"{LanguageResult.KindTitle(result.Kind)} · {OutputLanguage.Label(result.Language)} · Version {result.Version}{review}", filename);
+            }
+        foreach (var filename in results.SelectMany(result => result.ImportedNarrationSourceNames).Distinct().OrderBy(name => name))
+            Row(panel, "Narration audio", filename);
+        if (panel.Children.Count == 0) panel.Children.Add(Text("No imported assets"));
+
+        const string title = "Choose What to Delete…";
+        var button = Action(title, "delete-content");
+        button.HorizontalAlignment = HorizontalAlignment.Left;
+        button.IsEnabled = canDelete;
+        var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        label.Children.Add(MenuIcons.Create("delete-content"));
+        label.Children.Add(button.Content as TextBlock ?? new TextBlock { Text = title });
+        button.Content = label;
+        var item = new MenuFlyoutItem { Text = title, Icon = MenuIcons.Create("delete-content"), IsEnabled = canDelete };
+        item.Click += async (_, _) => await RunAction("delete-content");
+        var menu = new MenuFlyout();
+        menu.Items.Add(item);
+        button.ContextFlyout = menu;
+        panel.Children.Add(button);
+        return ScreenReaderHeading.Mark(new Expander { Header = "Imported assets", Content = panel, IsExpanded = true, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+    }
     private async System.Threading.Tasks.Task RunAction(string command)
     {
         if (scoped.Busy || actionRunning || scoped.Project is not { } project) return;
         if (command == "show-folder") { Process.Start(new ProcessStartInfo(project.Folder) { UseShellExecute = true }); return; }
-        if (command == "youtube-open-browser" && Services.YouTubeService.ProjectWatchURL(project.YoutubeURL) is { } url) { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); return; }
         actionRunning = true; UpdateProgress();
         try {
             var editor = App.EditorForProject(project); editor.Activate();

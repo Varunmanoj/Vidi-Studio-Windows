@@ -22,15 +22,40 @@ internal sealed record GeminiModelOption(string Id, string Label)
 
 internal static class GeminiVoices
 {
-    public static readonly string[] Names =
+    public static IReadOnlyList<Voice> Prebuilt { get; } = LoadPrebuilt();
+
+    private static IReadOnlyList<Voice> LoadPrebuilt()
     {
-        "Aoede", "Callirrhoe", "Charon", "Fenrir", "Kore", "Leda", "Orus", "Puck", "Zephyr"
-    };
+        using var defaults = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "engine", "ai-defaults.json")));
+        return defaults.RootElement.GetProperty("geminiPrebuiltVoices").EnumerateObject()
+            .Select(value => new Voice(value.Name, value.Name, "", "", Note: value.Value.GetString()!)).ToArray();
+    }
 
-    public static IReadOnlyList<Voice> Featured { get; } =
-        Names.Select(name => new Voice(name, name, "", "")).ToArray();
+    public static bool IsPrebuilt(string id) => Prebuilt.Any(voice => voice.Id == id);
 
-    public static IReadOnlyList<Voice> Voices => Featured;
+    public static Voice Selected(JsonObject settings)
+    {
+        var legacy = SettingsStore.GetString(settings["geminiVoice"], "Kore").Trim();
+        if (legacy.Length == 0) legacy = "Kore";
+        var vertex = SettingsStore.GetString(settings["aiProvider"]) == "vertex";
+        var key = vertex ? "vertexGeminiVoice" : "geminiVoice";
+        var id = vertex ? SettingsStore.GetString(settings[key], IsPrebuilt(legacy) ? legacy : "Kore").Trim() : legacy;
+        if (id.Length == 0) id = "Kore";
+        return new Voice(id, SettingsStore.GetString(settings[key + "Name"], id), "", "");
+    }
+
+    public static void Select(JsonObject settings, Voice voice)
+    {
+        var key = SettingsStore.GetString(settings["aiProvider"]) == "vertex" ? "vertexGeminiVoice" : "geminiVoice";
+        if (key == "geminiVoice" && settings["vertexGeminiVoice"] == null)
+        {
+            var previous = Selected(settings).Id;
+            settings["vertexGeminiVoice"] = IsPrebuilt(previous) ? previous : "Kore";
+        }
+        settings[key] = voice.Id;
+        if (IsPrebuilt(voice.Id)) settings.Remove(key + "Name");
+        else settings[key + "Name"] = voice.Name;
+    }
 }
 
 public sealed partial class SettingsDialog
@@ -226,7 +251,7 @@ public sealed partial class SettingsDialog
         return id;
     }
 
-    private async Task<List<Services.EngineEvent>> QueryGeminiCatalogAsync(string command, CancellationToken cancellation)
+    private async Task<List<Services.EngineEvent>> QueryGeminiCatalogAsync(string command, CancellationToken cancellation, string? search = null)
     {
         ConnectivityService.Shared.Require(OnlineService.Gemini);
         Directory.CreateDirectory(SettingsStore.DirectoryPath);
@@ -237,25 +262,22 @@ public sealed partial class SettingsDialog
             var enteredKey = SettingsStore.GetString(draft["apiKey"]).Trim();
             foreach (var secret in new[] { "apiKey", "sarvamApiKey", "elevenlabsApiKey" }) configData.Remove(secret);
             await File.WriteAllTextAsync(config, configData.ToJsonString(Models.Json.Options), cancellation);
-            return await model.Engine.RunAsync(new[] { command }, configPath: config, cancellation: cancellation,
+            var arguments = search == null ? new[] { command } : new[] { command, "--voice-search=" + search };
+            return await model.Engine.RunAsync(arguments, configPath: config, cancellation: cancellation,
                 apiKey: enteredKey);
         }
         finally { if (File.Exists(config)) File.Delete(config); }
     }
 
-    private async Task<List<Voice>> LoadGeminiVoicesAsync(CancellationToken cancellation)
+    private async Task<(List<Voice> Voices, bool HasMore)> SearchGeminiVoicesAsync(string query, CancellationToken cancellation)
     {
-        try
-        {
-            var events = await QueryGeminiCatalogAsync("list-voices", cancellation);
-            var found = events.LastOrDefault(item => item.Data.TryGetProperty("voices", out _));
-            if (found == null) return new();
-            return found.Data.GetProperty("voices").EnumerateArray()
-                .Select(item => new Voice(item.GetProperty("id").GetString() ?? "", item.GetProperty("name").GetString() ?? "", item.GetProperty("language").GetString() ?? "", item.GetProperty("gender").GetString() ?? ""))
-                .Where(item => item.Id.Length > 0).ToList();
-        }
-        catch (OperationCanceledException) { return new(); }
-        catch (Exception ex) { model.Engine.Log(ex.ToString()); status.Text = "Gemini voice catalog unavailable. Featured voices remain selectable."; return new(); }
+        var events = await QueryGeminiCatalogAsync("list-voices", cancellation, query);
+        var found = events.LastOrDefault(item => item.Data.TryGetProperty("voices", out _));
+        if (found == null) throw new InvalidOperationException("No voice library response.");
+        return (found.Data.GetProperty("voices").EnumerateArray()
+            .Select(item => new Voice(item.GetProperty("id").GetString()!, item.GetProperty("name").GetString()!,
+                item.GetProperty("language").GetString()!, "", Note: item.GetProperty("description").GetString()!))
+            .ToList(), found.Data.GetProperty("hasMore").GetBoolean());
     }
 
     private static void DetachFromVisualParent(FrameworkElement? element)

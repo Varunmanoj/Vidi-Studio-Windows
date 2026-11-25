@@ -467,7 +467,7 @@ public sealed partial class MainWindow
         if (id.StartsWith("cloud-")) { await CloudActionAsync(id,project); return; }
         switch (id) {
         case "open-project-here": await SwitchProjectAsync(project); return;
-        case "open-gallery-window":
+        case "open-gallery-window": OpenGalleryProject(project, newWindow: true); return;
         case "open-editor-window": App.OpenWindow(project.Folder); return;
         case "rename-project": await RenameProjectAsync(project); return;
         case "youtube-open-browser": OpenProjectInYouTube(project); return;

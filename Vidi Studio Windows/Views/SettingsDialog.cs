@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using System;
@@ -133,8 +134,30 @@ public sealed partial class SettingsDialog : Window
         mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == "gemini");
         await RefreshVoices();
         await Task.Delay(100);
-        if (voices.Count != GeminiVoices.Featured.Count || voices.Any(v => v.Id == "" || v.ToString() != v.Id) || localSpeechControls.Visibility != Visibility.Collapsed)
+        if (voices.Count != GeminiVoices.Prebuilt.Count || voices.Count < 30 || voices.Any(v => v.Id == "" || v.ToString() != v.Id)
+            || localSpeechControls.Visibility != Visibility.Collapsed || geminiVoiceControls.Visibility != Visibility.Visible)
             throw new InvalidOperationException("A stale local voice list or local speech controls remained visible for Gemini settings.");
+        if (summarySettingsCard is not { Visibility: Visibility.Visible, Parent: StackPanel narrationPage } ||
+            nativeSample is not { Visibility: Visibility.Visible } ||
+            !narrationPage.Children.Contains(nativeSample) ||
+            narrationPage.Children.IndexOf(nativeSample) >= narrationPage.Children.IndexOf(summarySettingsCard))
+            throw new InvalidOperationException("The Summary voice card must follow the narration provider's voice and sample controls.");
+        if (DraftAIConnection != AiConnection.Express)
+        {
+            var search = geminiCatalogControls.Children.OfType<TextBox>().Single();
+            VerifyFullWidthVoiceSearchForSmokeTest(search);
+            var selectedBeforeSearch = GeminiVoices.Selected(draft).Id;
+            search.Text = "Sulafat";
+            await Task.Delay(150);
+            var list = geminiCatalogControls.Children.OfType<ScrollViewer>().Single();
+            list.UpdateLayout();
+            var matches = ((StackPanel)list.Content).Children.OfType<Grid>()
+                .SelectMany(row => row.Children.OfType<RadioButton>()).ToArray();
+            if (matches.Length != 1 || !AutomationProperties.GetName(matches[0]).Contains("Sulafat") ||
+                GeminiVoices.Selected(draft).Id != selectedBeforeSearch)
+                throw new InvalidOperationException($"Gemini search for {search.Text} exposed {matches.Length} rows and selected {GeminiVoices.Selected(draft).Id}. Expected Sulafat and selection {selectedBeforeSearch}.");
+            search.Text = "";
+        }
         foreach (var provider in new[] { "windows-core", "sapi5", "piper" })
         {
             mode.SelectedItem = ((IEnumerable<SpeechEngineOption>)mode.ItemsSource).First(option => option.Id == provider);
@@ -714,8 +737,8 @@ public sealed partial class SettingsDialog : Window
                     return;
                 }
                 StopSample(false);
-                if (provider == "gemini") draft["geminiVoice"] = selected.Id;
-                else { draft[VoiceKey(provider)] = selected.Id; draft["systemVoice"] = selected.Id; }
+                if (provider == "gemini") return;
+                draft[VoiceKey(provider)] = selected.Id; draft["systemVoice"] = selected.Id;
                 UpdateSampleControls();
             };
         }
@@ -742,16 +765,18 @@ public sealed partial class SettingsDialog : Window
         restoreMenu.Items.Add(restoreItem); restoreSpeech.ContextFlyout = restoreMenu;
         speechGroup.Children.Add(restoreSpeech);
         panel.Children.Add(localSpeechControls);
-        BuildAdditionalSpeechControls(panel);
         var voiceGroup = AddNarrationGroup(panel, "Voices");
         nativeVoiceGroup = voiceGroup;
         if (piperControls.Parent is Panel previousVoiceHost) previousVoiceHost.Children.Remove(piperControls);
         voiceGroup.Children.Add(piperControls);
         voice.Header=null; sapiHost.Header=null;
-        CompactRow(voiceGroup,"Installed voice",voice,true); CompactRow(voiceGroup,"Optional SAPI host executable",sapiHost,true);
+        installedVoiceRow = CompactRow(voiceGroup,"Installed voice",voice,true); CompactRow(voiceGroup,"Optional SAPI host executable",sapiHost,true);
         var refresh = new Button { Content = "Refresh Voices" }; refresh.Click += async (_, _) => await RefreshVoices(); voiceGroup.Children.Add(refresh);
+        refreshVoiceList = refresh;
+        BuildGeminiVoiceControls(voiceGroup);
         var sample = new TextBox { Header = "Voice sample", Text = "Welcome to Vidi Studio. Create accessible video with clear audio descriptions.", MaxLength = 500, TextWrapping = TextWrapping.Wrap };
         sample.Header=null;
+        narrationSampleText = sample;
         var sampleSection = new StackPanel(); var sampleRows = CompactGroup(sampleSection,"Voice sample");
         CompactRow(sampleRows,"Sample text",sample,true); nativeSample=sampleSection; panel.Children.Add(sampleSection);
         var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -772,6 +797,7 @@ public sealed partial class SettingsDialog : Window
         UpdateSampleControls();
         nativeSampleButtons = controls;
         sampleRows.Children.Add(GeminiRowDivider()); sampleRows.Children.Add(controls);
+        BuildAdditionalSpeechControls(panel);
         _ = RefreshVoices();
     }
     private AiConnection DraftAIConnection =>
@@ -813,6 +839,7 @@ public sealed partial class SettingsDialog : Window
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(nativePreparingRing,"Preparing voice sample");
         if (sampleStopButton != null) sampleStopButton.IsEnabled = sampleState != SampleState.Stopped;
         UpdatePiperSampleControls();
+        updateGeminiBrowserSamples?.Invoke();
     }
     private async Task ToggleSampleAsync(string text) {
         if (sampleState != SampleState.Stopped) StopSample();
@@ -836,14 +863,13 @@ public sealed partial class SettingsDialog : Window
     private void FilterVoices()
     {
         var provider = (mode.SelectedItem as SpeechEngineOption)?.Id ?? "windows-core";
-        var key = provider == "gemini" ? "geminiVoice" : VoiceKey(provider);
-        var selected = SettingsStore.GetString(draft[key], provider == "gemini" ? "Kore" : "").Trim();
+        var key = VoiceKey(provider);
+        var selected = SettingsStore.GetString(draft[key]).Trim();
         var filtered = voices;
         voice.ItemsSource = filtered;
         var chosen = filtered.FirstOrDefault(v => v.Available && string.Equals(v.Id, selected, StringComparison.OrdinalIgnoreCase))
-            ?? (provider == "gemini" ? filtered.FirstOrDefault(v => v.Id == "Kore") ?? filtered.FirstOrDefault() : filtered.FirstOrDefault(v => v.Available && v.Group != VoiceGroups.Heading));
+            ?? filtered.FirstOrDefault(v => v.Available && v.Group != VoiceGroups.Heading);
         voice.SelectedItem = chosen;
-        if (provider == "gemini" && chosen != null) draft["geminiVoice"] = chosen.Id;
     }
     private async Task RefreshVoices()
     {
@@ -863,6 +889,7 @@ public sealed partial class SettingsDialog : Window
         localSpeechControls.Visibility = provider is "gemini" or "sarvam" or "elevenlabs" ? Visibility.Collapsed : Visibility.Visible;
         sapiHost.Visibility = provider == "sapi5" && DeveloperModeEnabled ? Visibility.Visible : Visibility.Collapsed;
         UpdateVoiceEngineVisibility(provider);
+        UpdateGeminiVoiceControls(provider);
         UpdateAdditionalSpeechVisibility(provider);
         UpdateSampleControls();
         voice.ItemsSource = null;
@@ -872,12 +899,7 @@ public sealed partial class SettingsDialog : Window
             if (provider is "sarvam" or "elevenlabs") return;
             if (provider == "gemini")
             {
-                voices = GeminiVoices.Featured.ToList();
-                var savedGemini = SettingsStore.GetString(draft["geminiVoice"], "Kore").Trim();
-                if (savedGemini.Length > 0 && !voices.Any(v => string.Equals(v.Id, savedGemini, StringComparison.OrdinalIgnoreCase)))
-                    voices.Add(new Voice(savedGemini, savedGemini, "", ""));
-                FilterVoices();
-                status.Text = $"{voices.Count} Gemini voices available.";
+                voices = GeminiVoices.Prebuilt.ToList();
                 return;
             }
             if (provider == "piper")
@@ -934,7 +956,7 @@ public sealed partial class SettingsDialog : Window
         }
         finally { if (ReferenceEquals(voiceCancellation, cancellation)) voiceCancellation = null; }
     }
-    private async Task Preview(string text)
+    private async Task Preview(string text, Voice? geminiVoiceOverride = null)
     {
         if (VoiceSampleSession.Busy) return;
         soundPreview.Stop();
@@ -1011,6 +1033,7 @@ public sealed partial class SettingsDialog : Window
                     previewConfig["aiProvider"] = connection == AiConnection.Developer ? "developer" : "vertex";
                     if (connection == AiConnection.GoogleSignIn) previewConfig["vertexAuth"] = "signin";
                 }
+                if (geminiVoiceOverride != null) GeminiVoices.Select(previewConfig, geminiVoiceOverride);
                 var enteredKey = SettingsStore.GetString(draft["apiKey"]).Trim();
                 await File.WriteAllTextAsync(config, previewConfig.ToJsonString(Models.Json.Options), cancellation.Token);
                 await model.Engine.RunAsync(new[] { "preview-tts", "--text", text, "--output", audio }, cancellation: cancellation.Token, configPath: config,

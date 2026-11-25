@@ -83,7 +83,7 @@ public static class MenuIcons
             "youtube-captions" or "YouTube Details & Captions…" => "\uE7F0",
             "youtube-browser" => "\uE714",
             "Segment Narration" => "\uE767",
-            "Search" => "\uE721", "Clear Search" => "\uE711", "Open Result" => "\uE8A7",
+            "Search" or "Search Voice Library" => "\uE721", "Clear Search" => "\uE711", "Open Result" => "\uE8A7",
             "Open project folder" => "\uE8B7",
             "Jump to Time…" => "\uE917",
             "Sort by start time" => "\uE917",

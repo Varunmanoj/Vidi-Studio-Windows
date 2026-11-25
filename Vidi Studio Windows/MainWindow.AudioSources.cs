@@ -87,20 +87,15 @@ public sealed partial class MainWindow
         {
             var inspectionArgs = new List<string> { "--output", output };
             if (file != null) inspectionArgs.AddRange(new[] { "--input", file });
-            if ((await Model.RunAsync("inspect-original-audio", inspectionArgs)).Count == 0 || !File.Exists(output)) return false;
+            if ((await RunImportWithWarningsAsync("inspect-original-audio", inspectionArgs)).Count == 0 || !File.Exists(output)) return false;
             var inspection = JsonSerializer.Deserialize<OriginalAudioInspection>(File.ReadAllText(output), Models.Json.Options)
                 ?? throw new IOException("The original audio could not be inspected.");
             var accepted = false;
             if (inspection.Status != "matched")
             {
-                var warning = new ContentDialog
-                {
-                    Title = inspection.Status == "unverified" ? "Duration could not be verified" : "Audio duration does not match",
-                    Content = inspection.SourceName + "\n\n" + inspection.Warning,
-                    CloseButtonText = "Cancel", PrimaryButtonText = "Import Anyway", SecondaryButtonText = "Choose Another File",
-                    DefaultButton = ContentDialogButton.Close
-                };
-                var answer = await ShowDialogAsync(warning, 620, 480);
+                var answer = await ShowImportDecisionAsync(
+                    inspection.Status == "unverified" ? "Duration Could Not Be Verified" : "Audio Duration Does Not Match",
+                    inspection.SourceName + "\n\n" + inspection.Warning, true, "Choose Another File");
                 if (answer == ContentDialogResult.Secondary)
                 {
                     var chosen = await PickOriginalAudioAsync();
@@ -110,14 +105,14 @@ public sealed partial class MainWindow
                 accepted = true;
             }
             if (file != null && project.OriginalAudio != null &&
-                !await Confirm("Replace imported original audio?", "Replace " + project.OriginalAudio.SourceName + " with " + inspection.SourceName + "?", "Replace")) return false;
+                await ShowImportDecisionAsync("Replace Imported Original Audio?", "Replace " + project.OriginalAudio.SourceName + " with " + inspection.SourceName + "?", true) != ContentDialogResult.Primary) return false;
             var args = new List<string>();
             args.AddRange(new[] { "--expected-audio-sha256", inspection.Sha256, "--expected-video-duration", (inspection.VideoDuration ?? 0).ToString(System.Globalization.CultureInfo.InvariantCulture) });
             if (file != null) args.AddRange(new[] { "--input", file, "--replace-existing" });
             if (accepted) args.Add("--allow-audio-mismatch");
             if (playback.HasValue) args.AddRange(new[] { "--playback-audio-source", playback.Value ? "imported" : "youtube" });
             if (transcription.HasValue) args.AddRange(new[] { "--transcription-audio-source", transcription.Value ? "imported" : "youtube" });
-            return (await Model.RunAsync(file == null ? "confirm-original-audio" : "import-original-audio", args)).Count > 0;
+            return (await RunImportWithWarningsAsync(file == null ? "confirm-original-audio" : "import-original-audio", args)).Count > 0;
         }
         catch (Exception ex) { await ShowError(ex); return false; }
         finally { if (File.Exists(output)) File.Delete(output); }

@@ -1,4 +1,4 @@
-param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [switch]$SkipBuild, [switch]$FrozenEngine, [string]$AppDirectory, [switch]$RequirePackage, [int]$TimeoutSeconds = 180, [string]$SummaryFixture, [switch]$GallerySettingsOnly, [switch]$ContextMenusOnly, [switch]$JumpOnly, [switch]$ExportSoundOnly, [switch]$ProjectSearchOnly, [switch]$YouTubeLayoutOnly, [switch]$DialogsOnly, [switch]$ShellOpenOnly)
+param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [switch]$SkipBuild, [switch]$FrozenEngine, [string]$AppDirectory, [switch]$RequirePackage, [int]$TimeoutSeconds = 180, [string]$SummaryFixture, [switch]$GallerySettingsOnly, [switch]$GeminiVoicesOnly, [switch]$ContextMenusOnly, [switch]$JumpOnly, [switch]$ExportSoundOnly, [switch]$ProjectSearchOnly, [switch]$YouTubeLayoutOnly, [switch]$DialogsOnly, [switch]$ShellOpenOnly)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $testRoot = Join-Path $projectRoot "build\ui-test-$Platform"
@@ -62,6 +62,7 @@ try {
     if ($YouTubeLayoutOnly) { $env:VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY = '1' }
     if ($ProjectSearchOnly) { $env:VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY = '1' }
     if ($GallerySettingsOnly) { $env:VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY = '1' }
+    if ($GeminiVoicesOnly) { $env:VIDISTUDIO_UI_SMOKE_GEMINI_VOICES_ONLY = '1' }
     if ($ExportSoundOnly) { $env:VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY = '1' }
     if ($JumpOnly) { $env:VIDISTUDIO_UI_SMOKE_JUMP_ONLY = '1' }
     if ($ContextMenusOnly) { $env:VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY = '1' }
@@ -89,6 +90,7 @@ public static class VidiActivation {
         if ($YouTubeLayoutOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY = '1' }
         if ($ProjectSearchOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY = '1' }
         if ($GallerySettingsOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY = '1' }
+        if ($GeminiVoicesOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_GEMINI_VOICES_ONLY = '1' }
         if ($ExportSoundOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY = '1' }
         if ($JumpOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_JUMP_ONLY = '1' }
         if ($ContextMenusOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_CONTEXT_MENUS_ONLY = '1' }

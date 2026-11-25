@@ -10,6 +10,7 @@ namespace Vidi_Studio_Windows;
 public sealed partial class MainWindow
 {
     internal bool CanUseProjectLanguageSettings => !Model.Busy && !HasUnsavedLanguageSummary;
+    internal bool CanDeleteProjectSettingsContent => CanUseProjectLanguageSettings && Model.Project is { IntegrityPlaceholder: false };
     internal StackPanel ProjectLanguageSettingsPanel(bool editing, Action<bool> setEditing, Action changed)
     {
         var panel = BuildLanguageResultsPanel(Model.Project!, true, editing, setEditing, changed);
@@ -43,6 +44,9 @@ public sealed partial class MainWindow
             case "import-ad-audio": await ImportExistingAssetsAsync(ImportScope.ADAudio); break;
             case "import-assets": await ImportExistingAssetsAsync(); break;
             case "import-original-audio": await ImportExistingAssetsAsync(ImportScope.OriginalAudio); break;
+            case "choose-playback-video":
+            case "remove-playback-video": await RunDesktopCommandAsync(command); break;
+            case "delete-content": if (CanDeleteProjectSettingsContent) await ShowLanguageDeletionAsync(); break;
             case "review-audio-timing": await ImportOriginalAudioAsync(null); break;
             case "youtube-captions": await ShowYouTubeDetailsAsync(true); break;
             case "export": await ShowAudioExportAsync(); break;

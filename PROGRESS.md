@@ -2810,3 +2810,53 @@ Installed ARM64 Debug 1.0.409.0 in the Windows 11 test VM with one registered ap
 Choose What to Delete shows independent Original Audio File and Local Playback Video checkboxes with context toggles. Absent attachments appear disabled. The existing confirmation lists the affected project files and the app releases any active media file before removing the selected attachment.
 
 Installed ARM64 Debug 1.0.410.0 in the Windows 11 test VM with one registered app and Start entry. The 177 source tests, seven installed-engine tests, JumpOnly and DialogsOnly passed. The native dialog verified both labels and context actions with neither attachment, only original audio, and only local playback video. Evidence is in `build/youtube-attachment-deletion-410-*.log`.
+
+## 1.0.411 · Project editor window state · 2026-11-25
+
+A new editor opens in a separate, maximized window. Opening, reactivating, or closing an editor no longer restores or changes the All Projects window. Normal opening reuses a matching editor. The 10:48 a.m. IST diagnostic entries behind the reported generic error showed a private YouTube owner-account check failing during editor startup. All Projects now shows Private Video Cannot Be Opened and explains the sign-in requirement without spawning another editor or modifying saved project files. Ownership checks remain in place.
+
+Installed the ARM64 Debug package 1.0.411.0 on Windows 11 in Parallels. Verified one current package and Start entry, launched from Start, and removed the temporary unpacked and rollback copies. ShellOpenOnly passed for normal, maximized and minimized All Projects, including unchanged window dimensions, separate maximized editors, reuse, opening through an external file, and a synthetic unconnected private project. DialogsOnly and GallerySettingsOnly passed separately with their native light/dark and layout coverage. The packaged engine passed doctor and seven YouTube playback regressions. The Mac and Windows menu/icon/layout source gates and 98 unit tests per checkout passed. Native x64 and a live connected private-project session were not tested. See `build/editor-window-411-*.log`.
+
+## 1.0.412 · Saved private YouTube projects open on Windows · 2026-11-25
+
+Reopening an existing private YouTube project no longer requires an active owner account. The editor opens saved results and shows either its attached local video or the local-video chooser. YouTube metadata refresh and online analysis still authorize the matching owner separately. Added playback-event lifetime guards to keep native player callbacks away from closed editor windows.
+
+Installed ARM64 1.0.412.0 on Windows 11 in Parallels and launched it from the single Start entry. The final packaged ShellOpenOnly run passed all three library window states, maximized editors, reuse and accessible handoff. It also passed two isolated private project fixtures, with and without a local playback copy, checking saved summary and transcript, unchanged manifests, disabled unauthorized online analysis, and expected playback UI. The earlier native failure closing the local-copy case did not recur after the playback lifecycle correction and allowing native close events to settle in the test. The installed engine passed doctor and seven packaged playback tests. Removed the temporary unpacked build and rollback copy. Native x64 and live YouTube authorization were not exercised. Evidence is in `build/editor-window-412-*.log`.
+
+## 1.0.417 · Imported assets in Project Settings · 2026-11-25
+
+Settings > Projects shows completed imports by filename, language and version, including replacement versions awaiting review. The corresponding import controls show a green checkmark and expose Imported to screen readers. The playback chooser has no empty filename row. Saved copies show their filename with replace and trash actions. The matching-channel Studio link and Choose What to Delete reuse the editor’s guarded actions and context menus.
+
+The installed ARM64 package reports 1.0.417.0 with one Start entry in Windows 11. The final packaged JumpOnly test passed with a completed replacement summary in review, its filename and checkmark, the playback attachment filename, an accessible deletion command, native Cancel and refresh after deleting the test summary. The test also checked the empty playback state and the absent, connected and disconnected YouTube Studio link states. Seven packaged playback tests and 99 focused menu/UI contract tests passed. The preceding 1.0.416 package passed GallerySettingsOnly and DialogsOnly. The earlier JumpOnly failures identified that completed imports awaiting review were excluded and the final test passed after that correction. Temporary build copies were cleared after checking the registered package. Native x64 and live YouTube authorization were outside this verification.
+
+## 1.0.418 · Readable media import durations · 2026-11-25
+
+The local playback import warning shows the YouTube and local durations on separate lines in hours, minutes, seconds and milliseconds as applicable. Original audio confirmation uses the same units for both durations and their difference. The playback chooser presents import failures in the existing error dialog, including when invoked from Project Settings.
+
+The installed ARM64 package reports 1.0.418.0 with one Start entry in Windows 11. The packaged JumpOnly smoke test passed, including a mismatched playback file and full-precision duration text in the playback error and original audio confirmation formatter. Seven packaged playback tests, 50 targeted import tests and 99 menu and UI contract tests passed. Temporary staging copies were cleared after checking the registered package.
+
+## 1.0.419 · Import warnings and explicit continuation · 2026-11-25
+
+The shared import decision works across source projects, YouTube playback files, captions, transcripts, descriptions, original audio, AD tracks and individual segment narration. Okay stops the uncommitted import, and Import Anyway applies the recoverable outcome described in the warning. Files already imported in a batch remain saved. Unreadable input stays blocked. The warning has a scoped, icon-bearing context menu and safe default. The shared guide was built and locally checked but not published.
+
+Installed and verified the Windows 11 ARM64 Debug package 1.0.419.0 with one registration and one Start entry. Removed the task-owned staging and rollback layouts. The frozen engine passed doctor and all 11 packaged import/playback tests. JumpOnly verified that a mismatched playback copy needs approval before writing, retains the reviewed duration and becomes available to the player. DialogsOnly verified native light/dark/compact layout, accessible Okay cancellation without writes, and the Import Anyway context-menu action. 100 paired menu/layout tests and the focused import UI contracts passed. Native x64, Narrator speech, and public distribution were not exercised. See `build/import-decisions-419-final-*.log`.
+
+## 1.0.421 · Inline Gemini narration voices · 2026-11-25
+
+Narration shows the active AI connection and the inline Voices browser with 30 prebuilt voices, language and style filters, live local search, sorting, and a Play Sample or Stop Sample action on each row. Each compatible connection keeps its own selection and queries its own Extended Voice Library. Express reports its unavailable state. See the shared design and parity guides for keyboard and accessibility behavior.
+
+Installed Windows 11 ARM64 Debug 1.0.421.0 with one package registration and Start entry. The installed frozen engine contains the corrected Gemini library voice request code. Engine doctor, 11 installed-engine playback/import tests, and 13 voice SDK and preview tests on Windows passed. The 124 focused source tests and paired menu icon, menu and UI parity checkers passed.
+
+The installed GeminiVoicesOnly smoke passed in light ordinary and dark compact Settings. It verified full-width search, named filtered rows, narrator selection retention and the synthesized playback lock. DialogsOnly passed on the 1.0.421 inline build. GallerySettingsOnly stopped before Narration because the Cloud Videos test pointer could not reach a video row. Native x64, Narrator speech and live billed audio generation were not exercised. See build/gemini-voices-421-checked-verify-handoff.log and build/gemini-voices-421-verify-handoff.log.
+
+Verified the single installed package in the signed-in account and removed the task-owned Windows staging directories and completed scheduled tasks.
+
+## 1.0.422 · Narration settings order · 2026-11-25
+
+Settings > Narration now shows the active provider’s voice and sample controls before the separate on-device Summary voice, matching Mac. The section order also governs keyboard and screen-reader traversal. The paired parity checks cover both layouts and reject early placement of the Windows Summary section.
+
+Built and installed Windows 11 ARM64 Debug 1.0.422.0 with one package registration and one Start entry. The frozen engine doctor and 101 paired menu and UI contract tests passed. The installed `GeminiVoicesOnly` smoke verified the order, full-width search, named filtered rows, selection retention and playback lock in light ordinary and dark compact Settings. Native x64 and audible Narrator were outside this verification. See `build/narration-order-422-verify-handoff.log`.
+
+The guide update passed its local production build and desktop and compact search and navigation checks. Publication is pending.
+
+Verified the single updated registration again after the smoke test and removed the temporary staging copy and both verification tasks.

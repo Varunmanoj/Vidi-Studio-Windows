@@ -40,6 +40,36 @@ public sealed class LanguageResult
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var field) &&
         field.ValueKind == JsonValueKind.String ? field.GetString() : null;
 
+    private JsonElement Field(string name) =>
+        Payload.ValueKind == JsonValueKind.Object && Payload.TryGetProperty(name, out var field) ? field : default;
+
+    private IEnumerable<JsonElement> Rows(string name) =>
+        Field(name) is { ValueKind: JsonValueKind.Array } rows ? rows.EnumerateArray().ToArray() : Array.Empty<JsonElement>();
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal string? ImportedSourceName
+    {
+        get
+        {
+            var source = ReadString(SourceAsset, "sourceName");
+            var filename = Kind switch {
+                "adAudio" => ReadString(Field("importedAudioDescription"), "sourceName"),
+                "descriptions" => source ?? ReadString(Field("importedADTranscript"), "sourceName"),
+                "summary" => source ?? (Origin is "imported" or "imported_modified" ? ReadString(Payload, "summaryOriginSource") : null),
+                _ => Rows("transcript").Where(row => ReadString(row, "origin") == "imported")
+                    .Select(row => ReadString(row, "originSource")).FirstOrDefault(name => name != null) ?? source
+            };
+            if (string.IsNullOrEmpty(filename)) return null;
+            return filename.StartsWith("vidistudio-youtube-", StringComparison.Ordinal) ? "YouTube captions (SRT)" : filename;
+        }
+    }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal IEnumerable<string> ImportedNarrationSourceNames => Kind == "descriptions"
+        ? Rows("cues").Where(row => ReadString(row, "audio") != null && ReadString(row, "audioOrigin") == "imported")
+            .Select(row => ReadString(row, "audioSourceName")).OfType<string>()
+        : Array.Empty<string>();
+
     [System.Text.Json.Serialization.JsonIgnore]
     internal string? AnalysisProvider
     {

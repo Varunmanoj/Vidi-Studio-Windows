@@ -134,7 +134,14 @@ public sealed class EngineClient
                     ? "choose-original-audio" : null;
                 if (events.Exists(e => e.Data.TryGetProperty("failureKind", out var kind) && kind.GetString() == "connectivity"))
                     { ConnectivityService.Shared.Check(); throw new ConnectivityException("Connection interrupted. Check your internet connection and try again. Completed results remain saved."); }
-                throw new ProcessingException(errDiagnostic, recovery, requestArguments[0]);
+                ImportIssueNotice? importIssue = null;
+                foreach (var item in events)
+                    if (item.Data.TryGetProperty("importIssue", out var issue) && issue.ValueKind == JsonValueKind.Object &&
+                        issue.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String &&
+                        issue.TryGetProperty("message", out var messageText) && messageText.ValueKind == JsonValueKind.String)
+                        importIssue = new(title.GetString()!, messageText.GetString()!,
+                            issue.TryGetProperty("token", out var token) && token.ValueKind == JsonValueKind.String ? token.GetString() : null);
+                throw new ProcessingException(errDiagnostic, recovery, requestArguments[0], importIssue);
             }
             return events;
         }

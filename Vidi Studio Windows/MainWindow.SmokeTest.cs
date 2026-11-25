@@ -1,5 +1,6 @@
 #if DEBUG
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Input;
@@ -29,10 +30,32 @@ public sealed partial class MainWindow
             var folder = Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT");
             if (folder == null) throw new InvalidOperationException("Smoke project is required.");
             Model.Open(folder);
+            if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GEMINI_VOICES_ONLY") == "1")
+            {
+                ShowEditor();
+                var geminiVoiceSettings = new Views.SettingsDialog(Model, this, 2);
+                var geminiDisplay = geminiVoiceSettings.ShowAsync();
+                var savedTheme = Model.Settings.Get("theme", "system");
+                try
+                {
+                    await Task.Delay(250);
+                    var ordinary = geminiVoiceSettings.AppWindow.Size;
+                    foreach (var (theme, width) in new[] { ("light", ordinary.Width), ("dark", Math.Min(ordinary.Width, 740)) })
+                    {
+                        PreviewTheme(theme);
+                        geminiVoiceSettings.AppWindow.Resize(new Windows.Graphics.SizeInt32(width, ordinary.Height));
+                        await Task.Delay(150);
+                        await geminiVoiceSettings.VerifyProviderSwitchingAsync();
+                    }
+                }
+                finally { geminiVoiceSettings.Close(); await geminiDisplay; PreviewTheme(savedTheme); }
+                await File.WriteAllTextAsync(report, "PASS: inline Gemini Narration controls before on-device Summary voice, full-width search, filtered accessible rows, selection retention, and playback lock in light ordinary and dark compact Settings.");
+                return;
+            }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_SHELL_OPEN_ONLY") == "1")
             {
                 await VerifyShellProjectOpeningForSmokeTestAsync(folder);
-                await File.WriteAllTextAsync(report, "PASS: external local file import shows accessible progress, opens a separate editor, reuses it on repeat, and returns to the same All Projects window on Close Window.");
+                await File.WriteAllTextAsync(report, "PASS: separate maximized editors, unchanged normal/maximized/minimized All Projects, accessible handoff and editor reuse. Saved private projects open without their owner account, with and without a local playback copy, while remote analysis stays blocked.");
                 return;
             }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY") == "1")
@@ -95,7 +118,7 @@ public sealed partial class MainWindow
             {
                 await VerifyJumpToTimeForSmokeTestAsync();
                 await VerifyPrivateYouTubePlaybackForSmokeTestAsync();
-                await File.WriteAllTextAsync(report, "PASS: Jump to Time plus the private YouTube playback chooser, portable copy, gallery thumbnail, native timeline seeking, and deletion.");
+                await File.WriteAllTextAsync(report, "PASS: Jump to Time, private YouTube playback, matching Studio links, and Project Settings imported filenames, deletion review, and refresh.");
                 return;
             }
             VerifyProjectConfigurationDeveloperModeForSmokeTest();
@@ -1170,6 +1193,111 @@ public sealed partial class MainWindow
                 GalleryPanel.Visibility != Visibility.Visible || App.WindowCountForSmokeTest != count - 1 ||
                 !searchAnnouncementWindowActive)
                 throw new InvalidOperationException("File > Close Window did not return focus to All Projects.");
+
+            var presenter = (Microsoft.UI.Windowing.OverlappedPresenter)AppWindow.Presenter;
+            var initialState = presenter.State;
+            try
+            {
+                foreach (var expected in new[]
+                {
+                    Microsoft.UI.Windowing.OverlappedPresenterState.Restored,
+                    Microsoft.UI.Windowing.OverlappedPresenterState.Maximized,
+                    Microsoft.UI.Windowing.OverlappedPresenterState.Minimized
+                })
+                {
+                    if (expected == Microsoft.UI.Windowing.OverlappedPresenterState.Restored) presenter.Restore();
+                    else if (expected == Microsoft.UI.Windowing.OverlappedPresenterState.Maximized) presenter.Maximize();
+                    else presenter.Minimize();
+                    await Task.Delay(100);
+                    if (presenter.State != expected) throw new InvalidOperationException($"Could not set All Projects to {expected}.");
+                    var position = AppWindow.Position;
+                    var size = AppWindow.Size;
+                    // Exercise the gallery command path and then the same editor's normal reuse path.
+                    OpenGalleryProject(imported, newWindow: true);
+                    deadline = DateTime.UtcNow.AddSeconds(5);
+                    while (!App.OpenEditorProjects.Any(project => project.Folder == imported.Folder) && DateTime.UtcNow < deadline)
+                        await Task.Delay(50);
+                    if (!App.OpenEditorProjects.Any(project => project.Folder == imported.Folder))
+                        throw new InvalidOperationException($"No editor opened with All Projects {expected}.");
+                    editor = App.EditorForProject(imported);
+                    if (editor.AppWindow.Presenter is not Microsoft.UI.Windowing.OverlappedPresenter
+                        { State: Microsoft.UI.Windowing.OverlappedPresenterState.Maximized })
+                        throw new InvalidOperationException("A new editor was not maximized in windowed mode.");
+                    OpenGalleryProject(imported);
+                    if (App.WindowCountForSmokeTest != count ||
+                        editor.AppWindow.Presenter is not Microsoft.UI.Windowing.OverlappedPresenter
+                        { State: Microsoft.UI.Windowing.OverlappedPresenterState.Maximized })
+                        throw new InvalidOperationException("Activating an existing editor changed its maximized state or created a duplicate.");
+                    if (presenter.State != expected || !AppWindow.Position.Equals(position) || !AppWindow.Size.Equals(size))
+                        throw new InvalidOperationException($"Opening an editor changed All Projects from {expected}.");
+                    await OpenVideoFileAsync(source);
+                    if (presenter.State != expected || App.WindowCountForSmokeTest != count)
+                        throw new InvalidOperationException($"External opening changed All Projects from {expected} or duplicated the editor.");
+                    closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    editor.Closed += (_, _) => closed.TrySetResult(true);
+                    await editor.RunDesktopCommandAsync("close-window");
+                    await closed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    if (presenter.State != expected) throw new InvalidOperationException($"Closing an editor changed All Projects from {expected}.");
+                }
+                presenter.Restore();
+                foreach (var hasCopy in new[] { false, true })
+                {
+                    // Let native close/collection events from the previous editor settle.
+                    await Task.Delay(350);
+                    Model.Engine.Log($"Window smoke: opening a saved private project with local playback copy: {hasCopy}.");
+                    var privateFolder = Path.Combine(library, $"private-open-{Guid.NewGuid():N}");
+                    Directory.CreateDirectory(privateFolder);
+                    var manifestPath = Path.Combine(privateFolder, "project.json");
+                    try
+                    {
+                        var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(fixtureFolder, "project.json")))!.AsObject();
+                        manifest["id"] = Path.GetFileName(privateFolder);
+                        manifest["sourceType"] = "youtube";
+                        manifest["youtubeURL"] = "https://www.youtube.com/watch?v=TESTvideo01";
+                        manifest["youtubePrivateChannelID"] = "smoke-unconnected-owner";
+                        if (hasCopy)
+                        {
+                            File.Copy(source, Path.Combine(privateFolder, "source.mp4"));
+                            manifest["youtubePlaybackVideo"] = new System.Text.Json.Nodes.JsonObject
+                            {
+                                ["path"] = "source.mp4", ["thumbnail"] = "", ["sourceName"] = "source.mp4",
+                                ["duration"] = manifest["duration"]!.GetValue<double>()
+                            };
+                        }
+                        var saved = manifest.ToJsonString();
+                        File.WriteAllText(manifestPath, saved);
+                        var privateProject = Models.StudioProject.TryLoad(privateFolder)
+                            ?? throw new InvalidOperationException("The private test manifest did not load.");
+                        OpenGalleryProject(privateProject);
+                        deadline = DateTime.UtcNow.AddSeconds(8);
+                        while (!App.OpenEditorProjects.Any(project => project.Folder == privateFolder) && DateTime.UtcNow < deadline)
+                            await Task.Delay(50);
+                        if (!App.OpenEditorProjects.Any(project => project.Folder == privateFolder))
+                            throw new InvalidOperationException("The saved private project did not open without the owner account.");
+                        editor = App.EditorForProject(privateProject);
+                        await Task.Delay(500);
+                        if (editor.Model.Project is not { RequiresLocalYouTubePlayback: true, HasSummary: true, HasTranscript: true } opened ||
+                            editor.Model.CanUseAI || opened.UsesYouTubePlayer ||
+                            (opened.ActiveLocalYouTubePlaybackPath != null) != hasCopy ||
+                            (editor.PrivateYouTubePlaybackPanel.Visibility == Visibility.Visible) == hasCopy ||
+                            App.WindowCountForSmokeTest != count || !IsProjectLibrary)
+                            throw new InvalidOperationException("The saved private project must open with its results, local playback state and remote analysis safeguards.");
+                        Model.Engine.Log($"Window smoke: verified the private editor with local playback copy: {hasCopy}.");
+                        closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                        editor.Closed += (_, _) => closed.TrySetResult(true);
+                        await editor.RunDesktopCommandAsync("close-window");
+                        await closed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                        if (File.ReadAllText(manifestPath) != saved)
+                            throw new InvalidOperationException("Opening the saved private project changed the file.");
+                    }
+                    finally { Directory.Delete(privateFolder, true); }
+                }
+            }
+            finally
+            {
+                if (initialState == Microsoft.UI.Windowing.OverlappedPresenterState.Maximized) presenter.Maximize();
+                else presenter.Restore();
+            }
         }
         finally { File.Delete(source); }
     }
@@ -2073,18 +2201,41 @@ public sealed partial class MainWindow
             Invoke(dialog, "Create Project");
             var failure = await notice.Task.WaitAsync(TimeSpan.FromSeconds(20));
             if (failure.Title?.ToString() != "Project Already Exists" ||
-                !Model.Status.Contains("Open it from All Projects", StringComparison.Ordinal) ||
-                failure.Content is not StackPanel message ||
-                !string.Join(" ", message.Children.OfType<TextBlock>().Select(text => text.Text)).Contains("Open it from All Projects", StringComparison.Ordinal))
+                !Model.Status.Contains("creates a separate project", StringComparison.Ordinal) ||
+                failure.DefaultButton != ContentDialogButton.Close ||
+                failure.ContextFlyout is not MenuFlyout options ||
+                !options.Items.OfType<MenuFlyoutItem>().Select(item => (item.Text, item.Icon != null))
+                    .SequenceEqual(new[] { ("Okay", true), ("Import Anyway", true) }))
                 throw new InvalidOperationException("New Project hid the duplicate diagnosis: " + failure.Title + " / " + Model.Status);
             await VerifyDialogThemesForSmokeTestAsync(failure, report, "duplicate-project-dialog");
             VerifyCompactDialogLayout(failure);
-            Invoke(failure, "Close");
+            Invoke(failure, "Okay");
             await create.WaitAsync(TimeSpan.FromSeconds(10));
             if (Model.Busy || Model.Project?.Folder != project.Folder ||
                 !original.SequenceEqual(await File.ReadAllBytesAsync(manifest)) ||
                 !folders.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(Directory.GetDirectories(library)))
                 throw new InvalidOperationException("A rejected duplicate changed the project, library or busy state.");
+            var contextPrompt = new TaskCompletionSource<ContentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+            void CaptureContext(ContentDialog dialog, Window window) => contextPrompt.TrySetResult(dialog);
+            Views.WindowedDialog.ReadyToShow += CaptureContext;
+            try
+            {
+                var decision = ShowImportDecisionAsync("Import Warning", "A usable file has a timing difference.", true);
+                var warning = await contextPrompt.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                var menu = (MenuFlyout)warning.ContextFlyout;
+                menu.ShowAt(warning);
+                var item = menu.Items.OfType<MenuFlyoutItem>().Single(option => option.Text == "Import Anyway");
+                var peer = new Microsoft.UI.Xaml.Automation.Peers.MenuFlyoutItemAutomationPeer(item);
+                ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(
+                    Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+                if (await decision.WaitAsync(TimeSpan.FromSeconds(10)) != ContentDialogResult.Primary)
+                    throw new InvalidOperationException("The import context command did not select the override.");
+            }
+            finally
+            {
+                if (contextPrompt.Task.IsCompletedSuccessfully) contextPrompt.Task.Result.Hide();
+                Views.WindowedDialog.ReadyToShow -= CaptureContext;
+            }
         }
         finally
         {
@@ -3169,6 +3320,24 @@ public sealed partial class MainWindow
                 }
                 await showing.WaitAsync(TimeSpan.FromSeconds(15));
             }
+            void CheckSettingsPlaybackControls(Models.StudioProject sample, string expectedTitle, bool canChoose, bool canRemove)
+            {
+                var controls = BuildYouTubePlaybackControls(sample, _ => Task.CompletedTask, inProjectSettings: true);
+                var choose = controls.Children.OfType<Button>().Single();
+                var fileRow = controls.Children.OfType<Grid>().SingleOrDefault();
+                var trash = fileRow?.Children.OfType<Button>().SingleOrDefault();
+                var items = ((MenuFlyout)controls.ContextFlyout).Items.OfType<MenuFlyoutItem>().ToArray();
+                if (AutomationProperties.GetName(choose) != expectedTitle || choose.IsEnabled != canChoose ||
+                    (trash != null) != canRemove || items.Length != (canRemove ? 2 : 1) ||
+                    items[0].Text != expectedTitle || items[0].IsEnabled != canChoose || items.Any(item => item.Icon == null))
+                    throw new InvalidOperationException("Project Settings playback controls and context menu disagree with the attachment state.");
+                if (canChoose && !canRemove && fileRow != null || (AutomationProperties.GetHelpText(choose) == "Imported") != canRemove)
+                    throw new InvalidOperationException("Settings playback showed an empty filename or the wrong imported status.");
+                if (trash != null && (AutomationProperties.GetName(trash) != "Remove Local Playback Video…" ||
+                    !trash.IsEnabled || items[1].Text != AutomationProperties.GetName(trash) || !items[1].IsEnabled))
+                    throw new InvalidOperationException("Project Settings did not expose the named trash action and context command.");
+            }
+            CheckSettingsPlaybackControls(Model.Project!, "Choose Local Playback Video…", canChoose: true, canRemove: false);
             await CheckAttachmentDeletionChoices(audioAvailable: false, videoAvailable: false);
             UpdateDesktopMenuStates();
             if (ChoosePrivatePlaybackVideo.Visibility != Visibility.Visible ||
@@ -3182,13 +3351,25 @@ public sealed partial class MainWindow
             var account = new YouTubeAccount("playback-test-account", "", "Test", "", "", "fixture-channel", "Test Channel", "", "");
             bool ShowsStudioInInspector() => YouTubeInspectorDetails.Children.OfType<StackPanel>()
                 .SelectMany(row => row.Children.OfType<Button>()).Any(button => button.Content as string == "Open in YouTube Studio");
+            void CheckSettingsStudioLink(bool connected)
+            {
+                var links = BuildYouTubeProjectLinks(Model.Project!);
+                var expected = connected ? new[] { "Open in YouTube", "Open in YouTube Studio" } : new[] { "Open in YouTube" };
+                var menu = (MenuFlyout)links.ContextFlyout;
+                if (!links.Children.OfType<Button>().Select(button => button.Content as string).SequenceEqual(expected) ||
+                    !menu.Items.OfType<MenuFlyoutItem>().Select(item => item.Text).SequenceEqual(expected) ||
+                    menu.Items.OfType<MenuFlyoutItem>().Any(item => item.Icon == null))
+                    throw new InvalidOperationException("Project Settings must expose the Studio link and menu only for a matching channel.");
+            }
             var studioMenu = desktopMenuItems["youtube-project-open-studio"].Last();
+            CheckSettingsStudioLink(connected: false);
             if (studioMenu.Visibility != Visibility.Visible || studioMenu.IsEnabled || ShowsStudioInInspector())
                 throw new InvalidOperationException("The unmatched Studio action was not disabled in the menu and hidden in the inspector.");
             YouTubeService.Shared.Accounts.Add(account);
             try
             {
                 ApplySettingsChanges(new[] { "youtubeAccounts" });
+                CheckSettingsStudioLink(connected: true);
                 if (!studioMenu.IsEnabled || !ShowsStudioInInspector())
                     throw new InvalidOperationException("Studio was unavailable for a confirmed channel match.");
             }
@@ -3199,6 +3380,7 @@ public sealed partial class MainWindow
             }
             if (studioMenu.IsEnabled || ShowsStudioInInspector())
                 throw new InvalidOperationException("Disconnecting a YouTube account left the Studio action available.");
+            CheckSettingsStudioLink(connected: false);
             var playerMenu = desktopMenuGroups.Last(group => group.Name == "Video Player").Item;
             var choices = playerMenu.Items.OfType<ToggleMenuFlyoutItem>().ToArray();
             var chooseCopy = playerMenu.Items.OfType<MenuFlyoutItem>().Single(item => Equals(item.Tag, "choose-playback-video"));
@@ -3211,6 +3393,7 @@ public sealed partial class MainWindow
             try
             {
                 await CheckAttachmentDeletionChoices(audioAvailable: true, videoAvailable: false);
+                CheckSettingsPlaybackControls(youtubeProject, "Choose Local Playback Video…", canChoose: false, canRemove: false);
                 UpdateInspector(youtubeProject);
                 UpdatePlaybackControls();
                 UpdateDesktopMenuStates();
@@ -3288,12 +3471,49 @@ public sealed partial class MainWindow
             }
             AssertPlayerChoices(Model.Project!, hasCopy: false);
             var before = original.Resolve(original.Source);
+            var beforeDurationCheck = await File.ReadAllTextAsync(path);
+            try
+            {
+                manifest["duration"] = 3723.456;
+                await File.WriteAllTextAsync(path, manifest.ToJsonString());
+                Model.Project = Models.StudioProject.Load(original.Folder);
+                string token;
+                var unchanged = await File.ReadAllBytesAsync(path);
+                try
+                {
+                    await Model.RunAsync("attach-youtube-playback", new[] { "--video", before }, throwOnProcessingError: true);
+                    throw new InvalidOperationException("The playback import accepted the mismatched test video without confirmation.");
+                }
+                catch (ProcessingException ex)
+                {
+                    if (!ex.Message.Contains("YouTube duration: 1 hour, 2 minutes, 3 seconds, 456 milliseconds\nLocal video duration:") ||
+                        ex.ImportIssue?.Token is not { } accepted)
+                        throw new InvalidOperationException("The playback warning did not preserve the readable durations and override.", ex);
+                    token = accepted;
+                }
+                if (!unchanged.SequenceEqual(await File.ReadAllBytesAsync(path)))
+                    throw new InvalidOperationException("The playback warning changed the saved project.");
+                await Model.RunAsync("attach-youtube-playback", new[] { "--video", before, "--accept-import-warning", token }, throwOnProcessingError: true);
+                if (Model.Project?.LocalYouTubePlaybackPath == null || Model.Project?.YouTubePlaybackVideo?.TimingAcceptedFor != 3723.456)
+                    throw new InvalidOperationException("The accepted local video was not available to the player.");
+                await Model.RunAsync("remove-youtube-playback");
+            }
+            finally
+            {
+                await File.WriteAllTextAsync(path, beforeDurationCheck);
+                Model.Project = Models.StudioProject.Load(original.Folder);
+                RefreshProject();
+            }
+            var audioWarning = new Models.OriginalAudioInspection { AudioDuration = 3723.456, VideoDuration = 3722, Difference = 1.456 }.Warning;
+            if (!audioWarning.Contains("Audio duration: 1 hour, 2 minutes, 3 seconds, 456 milliseconds\nVideo duration: 1 hour, 2 minutes, 2 seconds\nDifference: 1 second, 456 milliseconds"))
+                throw new InvalidOperationException("The original audio confirmation did not show readable durations.");
             var progressSeen = false;
             await Model.RunAsync("attach-youtube-playback", new[] { "--video", before }, throwOnProcessingError: true,
                 observeProgress: update => progressSeen |= update.Data.TryGetProperty("contentTransferProgress", out _));
             if (!progressSeen) throw new InvalidOperationException("No playback copy progress reached the editor.");
             var project = Model.Project!;
             var asset = project.YouTubePlaybackVideo ?? throw new InvalidOperationException("Playback clip did not persist.");
+            CheckSettingsPlaybackControls(project, "Replace Local Playback Video…", canChoose: true, canRemove: true);
             await CheckAttachmentDeletionChoices(audioAvailable: false, videoAvailable: true);
             if (project.YoutubeURL != link || project.Duration != original.Duration ||
                 project.LocalYouTubePlaybackPath is not { } copy || copy == before ||
@@ -3314,6 +3534,7 @@ public sealed partial class MainWindow
                 choices[1].IsEnabled || !choices[1].IsChecked)
                 throw new InvalidOperationException("The private playback copy did not expose the trash button and matching menu command.");
             AssertPlayerChoices(project, hasCopy: true);
+            await VerifySettingsImportedAssetsForSmokeTestAsync(asset.SourceName);
             await SeekAsync(2.5);
             await Task.Delay(500);
             if (Math.Abs(Position - 2.5) > .2 || Math.Abs(Playhead.Value - 2.5) > .2)
@@ -3331,6 +3552,82 @@ public sealed partial class MainWindow
             Model.Project = Models.StudioProject.Load(original.Folder);
             RefreshProject();
         }
+    }
+
+    private async Task VerifySettingsImportedAssetsForSmokeTestAsync(string playbackName)
+    {
+        static System.Collections.Generic.IEnumerable<DependencyObject> Elements(DependencyObject root)
+        {
+            yield return root;
+            for (var index = 0; index < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root); index++)
+                foreach (var element in Elements(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, index)))
+                    yield return element;
+        }
+        var input = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + "-settings-summary.txt");
+        try
+        {
+            await File.WriteAllTextAsync(input, "A saved summary imported for the Settings playback test.");
+            await Model.RunAsync("import-summary", new[] { "--input", input, "--replace-existing" }, throwOnProcessingError: true);
+            var imported = Model.Project!.SavedResults.Single(result => result.ImportedSourceName == Path.GetFileName(input));
+            var settings = new Views.SettingsDialog(Model, this, 1, Model.Project);
+            var showing = settings.ShowAsync();
+            var opened = new TaskCompletionSource<ContentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+            void Capture(ContentDialog dialog, Window window)
+            {
+                if (dialog.Title as string == "Delete Content by Language") opened.TrySetResult(dialog);
+            }
+            Views.WindowedDialog.ReadyToShow += Capture;
+            ContentDialog? active = null;
+            try
+            {
+                await Task.Delay(250);
+                Expander Group(string header) => Elements((DependencyObject)settings.Content).OfType<Expander>()
+                    .Single(expander => expander.Header as string == header);
+                DependencyObject Assets() => (DependencyObject)Group("Imported assets").Content;
+                bool ShowsFile(string filename) => Elements(Assets()).OfType<TextBlock>().Any(text => text.Text == filename);
+                Button SummaryImport() => Elements((DependencyObject)Group("Import into this project").Content).OfType<Button>()
+                    .Single(item => AutomationProperties.GetName(item) == "Import Summary…");
+                Group("Imported assets").StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+                await Task.Delay(200);
+                if (!ShowsFile(playbackName) || !ShowsFile(Path.GetFileName(input)))
+                    throw new InvalidOperationException("Project Settings did not show the saved playback and imported summary filenames. Rows: " +
+                        string.Join(", ", Elements(Assets()).OfType<TextBlock>().Select(text => text.Text)));
+                if (imported.State == "draft" && !Elements(Assets()).OfType<TextBlock>().Any(text => text.Text.EndsWith("Review needed", StringComparison.Ordinal)))
+                    throw new InvalidOperationException("The completed replacement import must show its review status.");
+                var summaryImport = SummaryImport();
+                if (AutomationProperties.GetHelpText(summaryImport) != "Imported" ||
+                    summaryImport.Content is not StackPanel status || !status.Children.OfType<FontIcon>().Any(icon => icon.Glyph == "\uE73E"))
+                    throw new InvalidOperationException("The imported summary did not get a named checkmark.");
+                var button = Elements(Assets()).OfType<Button>().Single(item => AutomationProperties.GetName(item) == "Choose What to Delete…");
+                if (!button.IsEnabled || button.ContextFlyout is not MenuFlyout menu ||
+                    menu.Items.Single() is not MenuFlyoutItem { Text: "Choose What to Delete…", IsEnabled: true, Icon: not null })
+                    throw new InvalidOperationException("Project Settings did not expose the enabled deletion command and menu action.");
+                void Invoke(Button action)
+                {
+                    var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(action);
+                    ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+                }
+                Invoke(button);
+                active = await opened.Task.WaitAsync(TimeSpan.FromSeconds(15));
+                Invoke(FindButton(active, "Cancel") ?? throw new InvalidOperationException("The Settings deletion dialog has no Cancel action."));
+                await Task.Delay(250);
+                if (!ShowsFile(Path.GetFileName(input))) throw new InvalidOperationException("Cancel removed the imported summary.");
+                await RunResultRequestAsync("delete-results",
+                    new { resultIDs = new[] { imported.Id }, components = new[] { "summary" }, exportPaths = Array.Empty<string>() });
+                await Task.Delay(200);
+                if (ShowsFile(Path.GetFileName(input)) || !ShowsFile(playbackName) ||
+                    AutomationProperties.GetHelpText(SummaryImport()) == "Imported")
+                    throw new InvalidOperationException("Project Settings did not refresh after deleting just the imported summary.");
+            }
+            finally
+            {
+                Views.WindowedDialog.ReadyToShow -= Capture;
+                active?.Hide();
+                settings.Close();
+                await showing;
+            }
+        }
+        finally { File.Delete(input); }
     }
 
     private void VerifyContextualMenusForSmokeTest()

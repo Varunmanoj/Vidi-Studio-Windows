@@ -65,35 +65,7 @@ public sealed partial class MainWindow
         }
         if (project.IsYouTube)
         {
-            var attachment = project.YouTubePlaybackVideo;
-            var playbackControls = new StackPanel { Spacing = 8 };
-            var fileRow = AddInfo(playbackControls, "Local playback video", attachment == null ?
-                project.OriginalAudio == null ? "No file selected" : "Remove the original audio file to choose a video." :
-                project.LocalYouTubePlaybackPath != null ? attachment.SourceName : "Playback file unavailable");
-            var menu = new MenuFlyout();
-            var choices = attachment == null ? new[] { "choose-playback-video" } : new[] { "choose-playback-video", "remove-playback-video" };
-            foreach (var id in choices)
-            {
-                var title = DesktopCommandTitle(id);
-                var enabled = id == "choose-playback-video" ? CanChooseYouTubePlaybackVideo(project) : CanChangeYouTubePlayback(project);
-                var button = new Button { Content = title, IsEnabled = enabled };
-                AutomationProperties.SetName(button, title);
-                ToolTipService.SetToolTip(button, title);
-                button.Click += async (_, _) => await RunDesktopCommandAsync(id);
-                if (id == "remove-playback-video")
-                {
-                    button.Content = MenuIcons.Create(id);
-                    fileRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                    Grid.SetColumn(button, 2);
-                    fileRow.Children.Add(button);
-                }
-                else playbackControls.Children.Add(button);
-                var item = new MenuFlyoutItem { Text = title, Icon = MenuIcons.Create(id), IsEnabled = enabled };
-                item.Click += async (_, _) => await RunDesktopCommandAsync(id);
-                menu.Items.Add(item);
-            }
-            playbackControls.ContextFlyout = menu;
-            YouTubeInspectorDetails.Children.Add(playbackControls);
+            YouTubeInspectorDetails.Children.Add(BuildYouTubePlaybackControls(project, id => RunDesktopCommandAsync(id)));
             if (!project.AllowsOriginalAudioImport)
             {
                 var blockedAudio = new Button { Content = "Choose Audio File…", IsEnabled = false };
@@ -107,6 +79,19 @@ public sealed partial class MainWindow
                 }
             }
         }
+        YouTubeInspectorDetails.Children.Add(BuildYouTubeProjectLinks(project));
+        var refresh = new Button { Content = "Refresh YouTube Details", IsEnabled = !youtubeInspectorRefreshing && Model.Idle };
+        ToolTipService.SetToolTip(refresh, refresh.Content);
+        refresh.Click += async (_, _) => await RefreshYouTubeInspectorAsync(); YouTubeInspectorDetails.Children.Add(refresh);
+        if (youtubeInspectorRefreshing) {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            row.Children.Add(new ProgressRing { IsActive = true, Width = 18, Height = 18 }); row.Children.Add(new TextBlock { Text = "Fetching YouTube details…", TextWrapping = TextWrapping.Wrap }); YouTubeInspectorDetails.Children.Add(row);
+        }
+        var missing = project.YouTubeMetadata is not JsonElement { ValueKind: JsonValueKind.Object };
+        if (missing && !youtubeInspectorRefreshing && youtubeInspectorLoaded.Add(project.Folder)) _ = RefreshYouTubeInspectorAsync();
+    }
+    internal static StackPanel BuildYouTubeProjectLinks(Models.StudioProject project)
+    {
         var links = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         var linkMenu = new MenuFlyout();
         void Link(string label, Action open)
@@ -124,17 +109,54 @@ public sealed partial class MainWindow
             Link("Open in YouTube Studio", () => OpenProjectInYouTubeStudio(project));
         links.ContextFlyout = linkMenu;
         links.SizeChanged += (_, args) => links.Orientation = args.NewSize.Width >= 325 ? Orientation.Horizontal : Orientation.Vertical;
-        YouTubeInspectorDetails.Children.Add(links);
-        var refresh = new Button { Content = "Refresh YouTube Details", IsEnabled = !youtubeInspectorRefreshing && Model.Idle };
-        ToolTipService.SetToolTip(refresh, refresh.Content);
-        refresh.Click += async (_, _) => await RefreshYouTubeInspectorAsync(); YouTubeInspectorDetails.Children.Add(refresh);
-        if (youtubeInspectorRefreshing) {
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            row.Children.Add(new ProgressRing { IsActive = true, Width = 18, Height = 18 }); row.Children.Add(new TextBlock { Text = "Fetching YouTube details…", TextWrapping = TextWrapping.Wrap }); YouTubeInspectorDetails.Children.Add(row);
-        }
-        var missing = project.YouTubeMetadata is not JsonElement { ValueKind: JsonValueKind.Object };
-        if (missing && !youtubeInspectorRefreshing && youtubeInspectorLoaded.Add(project.Folder)) _ = RefreshYouTubeInspectorAsync();
+        return links;
     }
+
+    internal StackPanel BuildYouTubePlaybackControls(Models.StudioProject project, Func<string, Task> run, bool inProjectSettings = false)
+    {
+        var attachment = project.YouTubePlaybackVideo;
+        var playbackControls = new StackPanel { Spacing = 8 };
+        var fileRow = !inProjectSettings || attachment != null || project.OriginalAudio != null
+            ? AddInfo(playbackControls, "Local playback video", attachment == null
+                ? project.OriginalAudio == null ? "No file selected" : "Remove the original audio file to choose a video."
+                : project.LocalYouTubePlaybackPath != null ? attachment.SourceName : "Playback file unavailable")
+            : null;
+        var menu = new MenuFlyout();
+        var choices = attachment == null ? new[] { "choose-playback-video" } : new[] { "choose-playback-video", "remove-playback-video" };
+        foreach (var id in choices)
+        {
+            var choosing = id == "choose-playback-video";
+            var title = choosing && inProjectSettings && attachment != null ? "Replace Local Playback Video…" : DesktopCommandTitle(id);
+            var enabled = choosing ? CanChooseYouTubePlaybackVideo(project) : CanChangeYouTubePlayback(project);
+            var button = new Button { IsEnabled = enabled };
+            AutomationProperties.SetName(button, title);
+            ToolTipService.SetToolTip(button, title);
+            button.Click += async (_, _) => await run(id);
+            if (choosing)
+            {
+                var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                label.Children.Add(MenuIcons.Create(id));
+                label.Children.Add(new TextBlock { Text = title, TextWrapping = TextWrapping.Wrap });
+                button.Content = label;
+                if (inProjectSettings && project.LocalYouTubePlaybackPath != null)
+                    ProjectSourcesSettingsControl.MarkImported(button);
+                playbackControls.Children.Add(button);
+            }
+            else if (fileRow != null)
+            {
+                button.Content = MenuIcons.Create(id);
+                fileRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                Grid.SetColumn(button, 2);
+                fileRow.Children.Add(button);
+            }
+            var item = new MenuFlyoutItem { Text = title, Icon = MenuIcons.Create(id), IsEnabled = enabled };
+            item.Click += async (_, _) => await run(id);
+            menu.Items.Add(item);
+        }
+        playbackControls.ContextFlyout = menu;
+        return playbackControls;
+    }
+
     private bool CanChangeYouTubePlayback(Models.StudioProject project) =>
         Model.Idle && project.IsYouTube && !project.IntegrityPlaceholder &&
         project.Integrity?.ManifestUnreadable != true && project.Integrity?.FolderMissing != true;
@@ -163,18 +185,20 @@ public sealed partial class MainWindow
         }
         if (!CanChooseYouTubePlaybackVideo(project)) return;
         var file = await NewProjectDialog.PickVideoAsync(this);
-        if (file != null) await AttachYouTubePlaybackVideoAsync(project, file.Path);
+        if (file == null) return;
+        try { await AttachYouTubePlaybackVideoAsync(project, file.Path); }
+        catch (ProcessingException ex) { await ShowError(ex); }
     }
 
     private async Task<bool> AttachYouTubePlaybackVideoAsync(Models.StudioProject project, string path)
     {
         if (!ReferenceEquals(Model.Project, project) || !CanChooseYouTubePlaybackVideo(project)) return false;
         var asset = project.YouTubePlaybackVideo;
-        if (asset != null && !await Confirm("Replace Local Playback Video?", $"Replace {asset.SourceName} with {Path.GetFileName(path)}?", "Replace")) return false;
+        if (asset != null && await ShowImportDecisionAsync("Replace Local Playback Video?", $"Replace {asset.SourceName} with {Path.GetFileName(path)}?", true) != ContentDialogResult.Primary) return false;
         if (!ReferenceEquals(Model.Project, project) || !CanChooseYouTubePlaybackVideo(project)) return false;
         var args = new List<string> { "--video", path };
         if (asset != null) args.Add("--replace-existing");
-        await ChangeYouTubePlaybackCopyAsync(() => Model.RunAsync("attach-youtube-playback", args, throwOnProcessingError: true));
+        await ChangeYouTubePlaybackCopyAsync(() => RunImportWithWarningsAsync("attach-youtube-playback", args));
         return Model.Project?.YouTubePlaybackVideo is { } attached && attached.Path != asset?.Path;
     }
 
@@ -707,7 +731,7 @@ public sealed partial class MainWindow
         try {
             var data = await service.DownloadAsync(caption, selectedAccount.Id, CancellationToken.None); await File.WriteAllBytesAsync(input, data);
             await File.WriteAllTextAsync(provenance, new JsonObject { ["videoID"] = id, ["trackID"] = caption.Id, ["language"] = caption.Language, ["name"] = caption.Name, ["trackKind"] = caption.Kind }.ToJsonString());
-            await Model.RunAsync("import-transcript", new[] { "--input", input, "--caption-provenance", provenance, "--replace-existing" });
+            await RunImportWithWarningsAsync("import-transcript", new[] { "--input", input, "--caption-provenance", provenance, "--replace-existing" });
         } catch (Exception ex) { await ShowError(ex); }
         finally { File.Delete(input); File.Delete(provenance); }
     }

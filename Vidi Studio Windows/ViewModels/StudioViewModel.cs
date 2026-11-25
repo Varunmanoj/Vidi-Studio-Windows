@@ -473,11 +473,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         var engine = CurrentNarrationEngine();
         if (engine == "elevenlabs") return SettingsStore.GetString(Settings.Data["elevenlabsSpeech"]?["voiceName"],SettingsStore.GetString(Settings.Data["elevenlabsSpeech"]?["voice"]));
         if (engine == "sarvam") return SarvamSpeech.Voice(Settings.Data);
-        if (engine == "gemini")
-        {
-            var gv = Settings.Get("geminiVoice", "Kore").Trim();
-            return string.IsNullOrEmpty(gv) ? "Kore" : gv;
-        }
+        if (engine == "gemini") return Views.GeminiVoices.Selected(Settings.Data).Name;
         if (engine == "piper")
         {
             var pv = Settings.Get("piperVoice", Settings.Get("systemVoice")).Trim();

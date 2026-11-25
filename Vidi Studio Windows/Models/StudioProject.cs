@@ -211,7 +211,7 @@ public sealed class ProjectPlaybackSettings
     public bool? FollowTranscript { get; set; }
 }
 
-public sealed record YouTubePlaybackVideoAsset(string Path, string Thumbnail, string SourceName, double Duration, bool UseYouTubePlayer = false, bool? HasAudio = null);
+public sealed record YouTubePlaybackVideoAsset(string Path, string Thumbnail, string SourceName, double Duration, bool UseYouTubePlayer = false, bool? HasAudio = null, double? TimingAcceptedFor = null);
 
 public sealed class StudioProject : INotifyPropertyChanged
 {
@@ -236,15 +236,19 @@ public sealed class StudioProject : INotifyPropertyChanged
     public List<LanguageResult>? LanguageResults { get; set; }
     public Dictionary<string, Dictionary<string, string>> ActiveResultIDs { get; set; } = new();
     public Dictionary<string, ExportResultProvenance> ExportResults { get; set; } = new();
+    public Dictionary<string, JsonElement>? ImportedAssets { get; set; }
     [JsonIgnore] public IReadOnlyList<LanguageResult> SavedResults {
         get {
             if (LanguageResults != null) return LanguageResults;
             var rows = new List<LanguageResult>();
             foreach (var kind in new[] { "transcript", "summary", "descriptions", "adAudio" }) {
                 var populated = kind switch { "transcript" => Transcript.Count > 0, "summary" => !string.IsNullOrWhiteSpace(Summary), "descriptions" => Cues.Count > 0 || ImportedADTranscript?.Segments.Count > 0, _ => ImportedAudioDescription != null };
-                if (populated) rows.Add(new LanguageResult { Id = Id + "-legacy-" + kind, Kind = kind,
+                if (!populated) continue;
+                var assetKind = kind == "descriptions" ? (ImportedADTranscript?.Mode == "combined" ? "combined" : "narration") : kind;
+                rows.Add(new LanguageResult { Id = Id + "-legacy-" + kind, Kind = kind,
                     Origin = kind == "summary" ? SummaryOrigin ?? "unknown" : "unknown",
-                    Payload = JsonSerializer.SerializeToElement(new { transcript = Transcript, summary = Summary, cues = Cues, narrationEngine = NarrationEngine, importedAudioDescription = ImportedAudioDescription, importedADTranscript = ImportedADTranscript }, Json.Options) });
+                    SourceAsset = ImportedAssets?.GetValueOrDefault(assetKind) ?? default,
+                    Payload = JsonSerializer.SerializeToElement(new { transcript = Transcript, summary = Summary, summaryOriginSource = SummaryOriginSource, cues = Cues, narrationEngine = NarrationEngine, importedAudioDescription = ImportedAudioDescription, importedADTranscript = ImportedADTranscript }, Json.Options) });
             }
             return rows;
         }
@@ -380,7 +384,8 @@ public sealed class StudioProject : INotifyPropertyChanged
         ? null : LocalYouTubePlaybackPath;
     [JsonIgnore] public bool UsesYouTubePlayer => IsYouTube && !RequiresLocalYouTubePlayback && ActiveLocalYouTubePlaybackPath == null;
     [JsonIgnore] public string? LocalYouTubePlaybackPath => IsYouTube &&
-        YouTubePlaybackVideo is { } asset && Math.Abs(asset.Duration - Duration) < 0.5
+        YouTubePlaybackVideo is { } asset && double.IsFinite(asset.Duration) && asset.Duration > 0 &&
+        double.IsFinite(Duration) && Duration > 0 && (asset.TimingAcceptedFor == Duration || Math.Abs(asset.Duration - Duration) < 0.5)
         ? ExistingAssetPath(asset.Path) : null;
     [JsonIgnore] public bool UsesStandaloneYouTubeAudio => IsYouTube && LocalYouTubePlaybackPath == null;
     [JsonIgnore] public bool AllowsOriginalAudioImport => IsYouTube && YouTubePlaybackVideo == null;

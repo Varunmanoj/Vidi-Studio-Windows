@@ -30,6 +30,8 @@ public static class OnlineRequirements
         existingBucketVideo ? connection == AiConnection.GoogleSignIn : !narration || connection != AiConnection.Express;
     internal static bool VideoAICommand(string command) => command is "analyze" or "regenerate-all" or "analyze-video" or
         "transcribe" or "generate-summary" or "generate-ad-cues" or "reanalyze-segment" or "reanalyze-transcript-segment";
+    internal static bool PrivateYouTubeAnalysisCommand(string command) => VideoAICommand(command) ||
+        command is "capture-frame" or "prepare-analysis-video" or "check-video-availability";
     internal static bool NarrationCommand(string command) => command is "synthesize-tts" or "synthesize-speech" or "preview-tts" or "synthesize-changed";
     internal static bool RequiresAIConnection(string command, bool usesGeminiNarration) =>
         NarrationCommand(command) ? usesGeminiNarration :

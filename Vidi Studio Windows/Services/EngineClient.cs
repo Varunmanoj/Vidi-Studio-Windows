@@ -66,7 +66,16 @@ public sealed class EngineClient
             // The Gemini key is held in Windows Credential Manager and handed to the engine per
             // process in the environment; it is never written to the config file on disk.
             if (geminiKey.Length > 0) start.Environment["VIDISTUDIO_API_KEY"] = geminiKey;
-            start.Environment["VIDISTUDIO_CLOUD_SUBJECT"] = YouTubeService.CloudSubject;
+            start.Environment.Remove("VIDISTUDIO_YOUTUBE_OWNER_SUBJECT");
+            var metadataIndex = requestArguments.IndexOf("--youtube-metadata");
+            if (metadataIndex >= 0 && metadataIndex + 1 < requestArguments.Count)
+            {
+                using var metadata = JsonDocument.Parse(File.ReadAllText(requestArguments[metadataIndex + 1]));
+                if (metadata.RootElement.TryGetProperty("visibility", out var visibility) && visibility.GetString() == "private" &&
+                    metadata.RootElement.TryGetProperty("channelID", out var channel) && channel.GetString() is { } channelId &&
+                    YouTubeService.Shared.PrivateConnection(channelId, settings) is { } owner)
+                    start.Environment["VIDISTUDIO_YOUTUBE_OWNER_SUBJECT"] = owner.Subject;
+            }
             start.Environment.Remove("VIDISTUDIO_VERTEX_KEY");
             if (vertexKey is { Length: > 0 })
                 start.Environment["VIDISTUDIO_VERTEX_KEY"] = vertexKey;
@@ -141,7 +150,17 @@ public sealed class EngineClient
                         issue.TryGetProperty("message", out var messageText) && messageText.ValueKind == JsonValueKind.String)
                         importIssue = new(title.GetString()!, messageText.GetString()!,
                             issue.TryGetProperty("token", out var token) && token.ValueKind == JsonValueKind.String ? token.GetString() : null);
-                throw new ProcessingException(errDiagnostic, recovery, requestArguments[0], importIssue);
+                var failureKind = events.Count > 0 && events[^1].Data.TryGetProperty("aiFailureKind", out var failure)
+                    && failure.ValueKind == JsonValueKind.String ? failure.GetString() : null;
+                var command = requestArguments[0];
+                var connection = command switch
+                {
+                    "check-api-key" => AiConnection.Developer,
+                    "vertex-check" => OnlineRequirements.Connection("vertex", vertexAuth),
+                    _ when Array.Exists(required, service => service == OnlineService.Gemini) => OnlineRequirements.Connection(aiProvider, vertexAuth),
+                    _ => (AiConnection?)null
+                };
+                throw new ProcessingException(errDiagnostic, recovery, command, importIssue, failureKind, connection);
             }
             return events;
         }

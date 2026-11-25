@@ -665,25 +665,47 @@ public sealed partial class MainWindow
             if (layoutFixture) return (video, true);
 #endif
             var selectedAccount = (account.SelectedItem as YouTubeAccount)?.Id;
+            YouTubeVideo current;
+            try
+            {
+                current = await service.VideoAsync(video.Id, accountId: selectedAccount);
+                current.RequireAvailable(allowPrivate: OwnedPrivateVideo(current));
+            }
+            catch (Exception ex) { await ShowError(ex); return null; }
+            var privateYouTubeApproved = current.Visibility == "private";
+            if (privateYouTubeApproved && !await ConfirmPrivateYouTubeOpenAsync(this)) return null;
             await OpenSharedVideoAsync("Opening YouTube project…", "shared-youtube-opening", async () =>
             {
-                var current = await service.VideoAsync(video.Id, accountId: selectedAccount);
-                current.RequireAvailable(allowPrivate: OwnedPrivateVideo(current));
-                Model.Reload();
-                if (Model.ExistingProjectForYouTube(current.Url) is { } existing) return existing.Folder;
+                if (await ExistingYouTubeProjectForEditorAsync(current) is { } existing) return existing.Folder;
                 if (playlist.SelectedItem is YouTubePlaylist chosen && chosen.Id.Length > 0)
                     current.Data["openedFromPlaylist"] = YouTubeService.PlaylistData(chosen);
                 var metadata = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
                 try
                 {
                     File.WriteAllText(metadata, current.Data.ToJsonString());
-                    await Model.RunAsync("import-youtube", new[] { "--url", current.Url, "--library", Model.Settings.Get("libraryPath"), "--youtube-metadata", metadata }, false);
+                    var arguments = new List<string> { "--url", current.Url, "--library", Model.Settings.Get("libraryPath"), "--youtube-metadata", metadata };
+                    if (privateYouTubeApproved) arguments.Add("--open-private-youtube");
+                    await Model.RunAsync("import-youtube", arguments, false, throwOnProcessingError: true);
                     return Model.Project is { } project && SharedYouTubeLink.VideoId(project.YoutubeURL) == current.Id ? project.Folder : null;
                 }
                 finally { File.Delete(metadata); }
-            }, chooseCaptions.IsChecked == true ? editor => editor.ShowYouTubeDetailsAsync(true) : null);
+            }, chooseCaptions.IsChecked == true ? editor => editor.ShowYouTubeDetailsAsync(true) : null, privateYouTubeApproved);
         }
         return null;
+    }
+    private async Task<Models.StudioProject?> ExistingYouTubeProjectForEditorAsync(YouTubeVideo video)
+    {
+        Model.Reload();
+        var existing = Model.ExistingProjectForYouTube(video.Url);
+        if (existing == null || existing.RequiresLocalYouTubePlayback == (video.Visibility == "private")) return existing;
+        var metadata = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+        try
+        {
+            File.WriteAllText(metadata, video.Data.ToJsonString());
+            await Model.Engine.RunAsync(new[] { "update-youtube-metadata", "--project", existing.Folder, "--youtube-metadata", metadata });
+            return Models.StudioProject.Load(existing.Folder);
+        }
+        finally { File.Delete(metadata); }
     }
     private async Task ShowYouTubeDetailsAsync(bool showCaptions = false)
     {

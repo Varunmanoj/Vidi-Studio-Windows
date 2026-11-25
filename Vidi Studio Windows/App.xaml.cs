@@ -113,16 +113,24 @@ public partial class App : Application
         library.BringToForeground(restoreMinimized: false);
     }
 
-    internal static MainWindow OpenOrActivateEditor(string folder)
+    internal static MainWindow OpenOrActivateEditor(string folder, bool privateYouTubeApproved = false)
     {
+        RequireEditorAccess(folder, privateYouTubeApproved);
         var editor = Windows.FirstOrDefault(window => window.IsEditingFolder(folder));
-        if (editor == null) return OpenWindow(folder);
+        if (editor == null) return OpenWindow(folder, privateYouTubeApproved);
         editor.BringToForeground();
         return editor;
     }
 
-    public static MainWindow OpenWindow(string? folder = null)
+    private static void RequireEditorAccess(string? folder, bool approved)
     {
+        if (!approved && folder != null && Models.StudioProject.TryLoad(folder)?.RequiresLocalYouTubePlayback == true)
+            throw new PrivateYouTubeAccessException();
+    }
+
+    public static MainWindow OpenWindow(string? folder = null, bool privateYouTubeApproved = false)
+    {
+        RequireEditorAccess(folder, privateYouTubeApproved);
         if (folder != null) ProjectLibrary();
         var window = new MainWindow(folder);
         Windows.Add(window);

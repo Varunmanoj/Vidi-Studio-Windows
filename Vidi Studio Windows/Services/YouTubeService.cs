@@ -18,7 +18,7 @@ namespace Vidi_Studio_Windows.Services;
 
 internal sealed class PrivateYouTubeAccessException : InvalidOperationException
 {
-    public PrivateYouTubeAccessException() : base(YouTubeVideo.PrivateVideoRecovery) { }
+    public PrivateYouTubeAccessException() : base(YouTubeVideo.PrivateVideoMessage) { }
 }
 
 public sealed record YouTubeAccount(string Id, string Subject, string Name, string Email, string Photo, string ChannelId, string ChannelName, string ChannelPhoto, string Uploads)
@@ -53,8 +53,9 @@ public sealed record YouTubeVideo(JsonObject Data)
             ? uri : null;
     public override string ToString() => Title + " · " + Visibility + " · " + DurationLabel + " · " + Data["channelTitle"];
     public string ChannelId => Data["channelID"]?.ToString() ?? "";
-    internal const string PrivateVideoRecovery = "Connect the video’s owner in YouTube Accounts and sign in to Google Cloud with the same account, or import the original video file.";
-    internal const string PrivateVideoMessage = "Private Video Cannot Be Opened. " + PrivateVideoRecovery;
+    internal const string PrivateVideoMessage = "Private YouTube videos are not supported.";
+    internal const string PrivateOpenTitle = "Open Private YouTube Video?";
+    internal const string PrivateAnalysisMessage = "Private YouTube video analysis is not supported.";
 
     public void RequireAvailable(bool allowPrivate = false)
     {
@@ -92,7 +93,7 @@ public sealed record YouTubeCaption(string Id, string Language, string Name, str
 internal sealed class YouTubeNotFoundException(string? message = null) : InvalidOperationException(message) { }
 internal sealed class YouTubeLinkIssueException(string message) : InvalidOperationException(message)
 {
-    internal const string UnavailableMessage = "YouTube couldn’t find an accessible video at this link. Check the URL. For a private video, connect its owner in YouTube Accounts and use the same Google account for Vertex AI.";
+    internal const string UnavailableMessage = "YouTube couldn’t find an accessible video at this link. Check the URL.";
 }
 internal sealed class YouTubeAccessExpiredException : InvalidOperationException { public YouTubeAccessExpiredException() : base("Google access was revoked or has expired. Sign in again from YouTube Accounts.") { } }
 
@@ -330,9 +331,8 @@ public sealed class YouTubeService
     }
     internal YouTubeAccount? PrivateConnection(string channelId, SettingsStore settings)
     {
-        if (!settings.GetBool("vertexConnected") || string.IsNullOrWhiteSpace(settings.Get("vertexProject")) ||
-            string.IsNullOrEmpty(CloudSubject) || string.IsNullOrEmpty(channelId)) return null;
-        return Accounts.FirstOrDefault(account => account.Subject == CloudSubject && account.ChannelId == channelId);
+        if (string.IsNullOrEmpty(channelId)) return null;
+        return Selected is { } selected && selected.ChannelId == channelId ? selected : Accounts.FirstOrDefault(account => account.ChannelId == channelId);
     }
 
     internal async Task<YouTubeVideo> ProjectVideoAsync(string id, string? privateChannelId, SettingsStore settings, CancellationToken ct = default)

@@ -1149,6 +1149,33 @@ public sealed partial class MainWindow
         finally { busy.SetValue(Model, original); openSettings?.Hide(); UpdateDesktopMenuStates(); }
     }
 
+    private async Task OpenSavedPrivateProjectForSmokeTestAsync(Models.StudioProject project, bool approve)
+    {
+        var opened = new TaskCompletionSource<ContentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Capture(ContentDialog dialog, Window window)
+        {
+            if (dialog.Title as string == YouTubeVideo.PrivateOpenTitle) opened.TrySetResult(dialog);
+        }
+        Views.WindowedDialog.ReadyToShow += Capture;
+        var opening = OpenGalleryProjectAsync(project);
+        try
+        {
+            var dialog = await opened.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            if (dialog.DefaultButton != ContentDialogButton.Close || dialog.PrimaryButtonText != "Open Anyway" || dialog.CloseButtonText != "Cancel")
+                throw new InvalidOperationException("The saved-private warning did not offer the expected choices.");
+            var label = approve ? "Open Anyway" : "Cancel";
+            var button = FindButton(dialog, label) ?? throw new InvalidOperationException("Missing saved-private action: " + label);
+            var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(button);
+            ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+            await opening.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            Views.WindowedDialog.ReadyToShow -= Capture;
+            if (!opening.IsCompleted && opened.Task.IsCompletedSuccessfully) opened.Task.Result.Hide();
+        }
+    }
+
     private async Task VerifyShellProjectOpeningForSmokeTestAsync(string fixtureFolder)
     {
         var library = Path.GetDirectoryName(fixtureFolder)!;
@@ -1213,7 +1240,7 @@ public sealed partial class MainWindow
                     var position = AppWindow.Position;
                     var size = AppWindow.Size;
                     // Exercise the gallery command path and then the same editor's normal reuse path.
-                    OpenGalleryProject(imported, newWindow: true);
+                    await OpenGalleryProjectAsync(imported, newWindow: true);
                     deadline = DateTime.UtcNow.AddSeconds(5);
                     while (!App.OpenEditorProjects.Any(project => project.Folder == imported.Folder) && DateTime.UtcNow < deadline)
                         await Task.Delay(50);
@@ -1223,7 +1250,7 @@ public sealed partial class MainWindow
                     if (editor.AppWindow.Presenter is not Microsoft.UI.Windowing.OverlappedPresenter
                         { State: Microsoft.UI.Windowing.OverlappedPresenterState.Maximized })
                         throw new InvalidOperationException("A new editor was not maximized in windowed mode.");
-                    OpenGalleryProject(imported);
+                    await OpenGalleryProjectAsync(imported);
                     if (App.WindowCountForSmokeTest != count ||
                         editor.AppWindow.Presenter is not Microsoft.UI.Windowing.OverlappedPresenter
                         { State: Microsoft.UI.Windowing.OverlappedPresenterState.Maximized })
@@ -1268,12 +1295,21 @@ public sealed partial class MainWindow
                         File.WriteAllText(manifestPath, saved);
                         var privateProject = Models.StudioProject.TryLoad(privateFolder)
                             ?? throw new InvalidOperationException("The private test manifest did not load.");
-                        OpenGalleryProject(privateProject);
+                        try
+                        {
+                            App.OpenOrActivateEditor(privateFolder);
+                            throw new InvalidOperationException("The private editor opened through an unapproved route.");
+                        }
+                        catch (PrivateYouTubeAccessException) { }
+                        await OpenSavedPrivateProjectForSmokeTestAsync(privateProject, approve: false);
+                        if (App.OpenEditorProjects.Any(project => project.Folder == privateFolder))
+                            throw new InvalidOperationException("Cancel opened the saved private project.");
+                        await OpenSavedPrivateProjectForSmokeTestAsync(privateProject, approve: true);
                         deadline = DateTime.UtcNow.AddSeconds(8);
                         while (!App.OpenEditorProjects.Any(project => project.Folder == privateFolder) && DateTime.UtcNow < deadline)
                             await Task.Delay(50);
                         if (!App.OpenEditorProjects.Any(project => project.Folder == privateFolder))
-                            throw new InvalidOperationException("The saved private project did not open without the owner account.");
+                            throw new InvalidOperationException("The approved private editor did not open.");
                         editor = App.EditorForProject(privateProject);
                         await Task.Delay(500);
                         if (editor.Model.Project is not { RequiresLocalYouTubePlayback: true, HasSummary: true, HasTranscript: true } opened ||
@@ -1282,6 +1318,14 @@ public sealed partial class MainWindow
                             (editor.PrivateYouTubePlaybackPanel.Visibility == Visibility.Visible) == hasCopy ||
                             App.WindowCountForSmokeTest != count || !IsProjectLibrary)
                             throw new InvalidOperationException("The saved private project must open with its results, local playback state and remote analysis safeguards.");
+                        var previousProvider = editor.Model.Settings.Get("aiProvider");
+                        foreach (var provider in new[] { "developer", "vertex" })
+                        {
+                            editor.Model.Settings.Set("aiProvider", provider);
+                            if (editor.Model.CanUseAI || editor.CanRunDesktopCommand("analyze") || editor.CanRunDesktopCommand("transcribe"))
+                                throw new InvalidOperationException("Analysis was enabled for a private project with " + provider);
+                        }
+                        editor.Model.Settings.Set("aiProvider", previousProvider);
                         Model.Engine.Log($"Window smoke: verified the private editor with local playback copy: {hasCopy}.");
                         closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
                         editor.Closed += (_, _) => closed.TrySetResult(true);

@@ -2860,3 +2860,33 @@ Built and installed Windows 11 ARM64 Debug 1.0.422.0 with one package registrati
 The guide update passed its local production build and desktop and compact search and navigation checks. Publication is pending.
 
 Verified the single updated registration again after the smoke test and removed the temporary staging copy and both verification tasks.
+
+## 1.0.423 · Vertex AI error guidance · 2026-11-25
+
+The editor shows a private YouTube recovery message when Vertex rejects an owner-verified link. The message points to a Video File project or a private Cloud Storage copy. A rejected video or an unreadable bucket object leaves other projects eligible for AI. Project and credential errors identify the active provider, and Retry AI checks that connection.
+
+Built and installed Windows 11 ARM64 Debug 1.0.423.0 with one package registration and Start entry. The staged frozen engine and media doctor passed. The installed `DialogsOnly` suite passed with light and dark appearances, native dialog sizing and cancellation. The 32 Vertex tests, 101 paired menu and layout tests, and the C# error-message harness passed. The exact private-link rejection was reproduced in the installed Mac app. No live Vertex request was made on Windows, and native x64 and audible Narrator were not exercised. Rechecked the sole installed registration and removed the temporary staging and both completed verification tasks. See `build/vertex-access-423-verify-handoff.log`.
+
+The shared Help guide passed its local production build, search, navigation and both desktop feeds. Publication is pending.
+
+## 1.0.424 · Private YouTube opening and analysis · 2026-11-25
+
+Disabled private YouTube video analysis at the control, command and engine layers before any provider switch. The editor retains the local player, saved results, imports and applicable processing. My YouTube Videos and Fetch Details share the native Cancel/Open Anyway warning for owner-authorized private videos. Other editor entry points reject private projects.
+
+Installed Windows 11 ARM64 1.0.424.0 with one package registration and Start entry. Frozen engine doctor passed. JumpOnly verified the private fixture’s approved and blocked opening, both provider guards, local playback with and without an attachment, and retained saved results. YouTubeLayoutOnly passed with synthetic video and account data, including the Fetch Details validation cases. Live YouTube sign-in and private opening were exercised on Mac through Fetch Details. Native Windows x64 was not tested.
+
+## 1.0.425 · Concise private YouTube warnings · 2026-11-25
+
+The private-video opening error now says “Private YouTube videos are not supported.” The approved opening confirmation states the analysis limitation and offers Cancel or Open Anyway. Private-video errors no longer direct users to connect accounts.
+
+Installed Windows 11 ARM64 1.0.425.0 with one package registration and Start entry. The frozen engine doctor, installed JumpOnly and YouTubeLayoutOnly suites, 40 focused source tests, C# error presentation, and 101 paired menu and layout checks passed. The native Windows suites used fixtures. The exact direct-open wording was observed in the installed Mac app. The website Help update passed its local build and search checks and remains unpublished.
+
+Rechecked the single installed package and Start entry, removed the temporary staging copy, and unregistered both completed verification tasks.
+
+## 1.0.426 · Reopen saved private YouTube projects · 2026-11-25
+
+All Projects can reopen a saved private YouTube project after the shared Cancel/Open Anyway confirmation, including through its existing menu commands. Saved projects open without a new YouTube lookup. Local playback and saved results are available and video analysis stays disabled with either provider.
+
+Installed Windows 11 ARM64 1.0.426.0 with one package registration and Start entry. The frozen engine doctor, installed ShellOpenOnly and JumpOnly suites, and 101 paired menu and layout checks passed. The native fixture exercised both confirmation choices, editor reuse, local playback with and without a file, retained saved results, and the analysis guard with both providers. The actual reported project was reopened on the installed Mac. Windows x64 was not tested. The desktop Help guide updates passed local verification and are pending publication.
+
+Rechecked the single installed package and Start entry, removed the temporary stage and unregistered the two completed verification tasks.

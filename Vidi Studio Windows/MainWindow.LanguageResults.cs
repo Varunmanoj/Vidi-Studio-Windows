@@ -355,9 +355,9 @@ public sealed partial class MainWindow
             dialog.PrimaryButtonText = translate.IsChecked == true ? "Translate and Copy" : "Copy";
             var differentLanguages = CopyLanguagesDiffer(source, (target.SelectedItem as OutputLanguage)?.Id);
             translationStatus.Text = differentLanguages ? "Gemini is unavailable. Check connection and API key." : "Choose a different target language.";
-            translationStatus.Visibility = !differentLanguages || translate.IsChecked == true && !Model.CanUseAI ? Visibility.Visible : Visibility.Collapsed;
+            translationStatus.Visibility = !differentLanguages || translate.IsChecked == true && !Model.CanUseTextAI ? Visibility.Visible : Visibility.Collapsed;
             dialog.IsPrimaryButtonEnabled = CanCopyLanguageResults && differentLanguages && boxes.Any(v => v.Value.IsEnabled && v.Value.IsChecked == true) &&
-                (translate.IsChecked != true || Model.CanUseAI && (target.SelectedItem as OutputLanguage)?.Id is not null and not "auto");
+                (translate.IsChecked != true || Model.CanUseTextAI && (target.SelectedItem as OutputLanguage)?.Id is not null and not "auto");
         }
         void RefreshTargets() {
             var selected = (target.SelectedItem as OutputLanguage)?.Id ?? "en";
@@ -393,7 +393,7 @@ public sealed partial class MainWindow
         Refresh(); RefreshTargets();
         if (await ShowDialogAsync(dialog, 650, 700) != ContentDialogResult.Primary || !CanCopyLanguageResults || Model.Project?.Id != project.Id ||
             !CopyLanguagesDiffer(source, (target.SelectedItem as OutputLanguage)?.Id)) return;
-        if (translate.IsChecked == true && (!Model.CanUseAI || (target.SelectedItem as OutputLanguage)?.Id is null or "auto")) return;
+        if (translate.IsChecked == true && (!Model.CanUseTextAI || (target.SelectedItem as OutputLanguage)?.Id is null or "auto")) return;
         var kinds = allKinds.Where(k => boxes[k].IsEnabled && boxes[k].IsChecked == true).ToArray();
         if (kinds.Length == 0) return;
         var results = kinds.ToDictionary(k => k, k => ((LanguageResult)pickers[k].SelectedItem).Id);

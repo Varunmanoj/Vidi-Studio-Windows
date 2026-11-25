@@ -89,13 +89,13 @@ public sealed class TextTimingDialog : ContentDialog
         ToolTipService.SetToolTip(distribute, "Give every line an equal share of the video");
         distribute.Click += (_, _) => { if (!aligning) { Distribute(); RefreshRows(); UpdateState(); } };
         actions.Children.Add(distribute);
-        var ai = new Button { Content = "Auto-time with Gemini", IsEnabled = model.CanUseAI };
+        var ai = new Button { Content = "Auto-time with Gemini", IsEnabled = model.CanUseTextAI };
         ToolTipService.SetToolTip(ai, model.HasApiKey
             ? "Ask Gemini for proposed timing; review every row before saving"
             : "Enter your Gemini API key in Settings to auto-time text");
         ai.Click += async (_, _) => await AlignAsync();
         void UpdateOnline(object? sender, EventArgs e) {
-            ai.IsEnabled = model.CanUseAI && !aligning;
+            ai.IsEnabled = model.CanUseTextAI && !aligning;
             ToolTipService.SetToolTip(ai, model.OnlineReason("align-imported-text") ?? "Ask Gemini for proposed timing; review every row before saving");
         }
         Loaded += (_, _) => { ConnectivityService.Shared.Changed += UpdateOnline; UpdateOnline(this, EventArgs.Empty); };
@@ -210,7 +210,7 @@ public sealed class TextTimingDialog : ContentDialog
 
     private async Task AlignAsync()
     {
-        if (!model.CanUseAI || model.Busy || aligning || rows.Count == 0) return;
+        if (!model.CanUseTextAI || model.Busy || aligning || rows.Count == 0) return;
         aligning = true;
         IsPrimaryButtonEnabled = false;
         var input = Path.Combine(Path.GetTempPath(), "vidistudio-align-" + Guid.NewGuid() + ".txt");

@@ -338,8 +338,8 @@ public sealed partial class MainWindow
         if (OnlineRequirements.Services(id, project, Model.Settings).Any(service => ConnectivityService.Shared.Reason(service) != null)) return false;
         return id switch {
             "youtube-open-browser" => YouTubeService.ProjectWatchURL(project.YoutubeURL) != null,
-            "analyze" or "transcribe" or "generate-summary" => Model.CanUseAI,
-            "generate-ad-cues" => Model.CanUseAI && project.SavedResults.Any(r => r.Kind == "transcript" && r.State == "saved") && project.SavedResults.Any(r => r.Kind == "summary" && r.State == "saved"),
+            "analyze" or "transcribe" or "generate-summary" => !project.RequiresLocalYouTubePlayback && Model.CanUseTextAI,
+            "generate-ad-cues" => !project.RequiresLocalYouTubePlayback && Model.CanUseTextAI && project.SavedResults.Any(r => r.Kind == "transcript" && r.State == "saved") && project.SavedResults.Any(r => r.Kind == "summary" && r.State == "saved"),
             "delete-content" => project.SavedResults.Count > 0 || project.Exports.Count > 0 || project.Thumbnails.Count > 0 || project.Cues.Count > 0 || project.HasTranscript || project.HasSummary || (project.IsYouTube && (project.OriginalAudio != null || project.YouTubePlaybackVideo != null)),
             "prepare-video" => !project.IsYouTube || ConnectivityService.Shared.Available(OnlineService.YouTube),
             _ => true
@@ -467,7 +467,7 @@ public sealed partial class MainWindow
         if (id.StartsWith("cloud-")) { await CloudActionAsync(id,project); return; }
         switch (id) {
         case "open-project-here": await SwitchProjectAsync(project); return;
-        case "open-gallery-window": OpenGalleryProject(project, newWindow: true); return;
+        case "open-gallery-window": await OpenGalleryProjectAsync(project, newWindow: true); return;
         case "open-editor-window": App.OpenWindow(project.Folder); return;
         case "rename-project": await RenameProjectAsync(project); return;
         case "youtube-open-browser": OpenProjectInYouTube(project); return;

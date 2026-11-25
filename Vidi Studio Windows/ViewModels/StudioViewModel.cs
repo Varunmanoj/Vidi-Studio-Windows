@@ -109,7 +109,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             cue.IsQueuedForNarration = IsSynthesizingNarration && NarratingSegmentId != cue.Id && narratingQueueIds.Contains(cue.Id);
         }
     }
-    private AiConnection ActiveAIConnection => OnlineRequirements.Connection(Settings.Get("aiProvider"), Settings.Get("vertexAuth"));
+    internal AiConnection ActiveAIConnection => OnlineRequirements.Connection(Settings.Get("aiProvider"), Settings.Get("vertexAuth"));
     private IEnumerable<AiConnection> ConfiguredAIConnections()
     {
         if (Settings.HasDeveloperKey && !Settings.DeveloperKeyInvalid) yield return AiConnection.Developer;
@@ -138,10 +138,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         "sarvam" => !string.IsNullOrWhiteSpace(Settings.Get("sarvamApiKey")) && Settings.Get("sarvamKeyStatus") != "invalid" && ConnectivityService.Shared.Available(OnlineService.Sarvam),
         _ => true
     };
-    public bool CanUseAI => ConnectivityService.Shared.Available(OnlineService.Gemini) &&
-        (Project?.PrivateYouTubeChannel is { } channel
-            ? YouTubeService.Shared.PrivateConnection(channel, Settings) != null && ReadyAIConnections().Contains(AiConnection.GoogleSignIn)
-            : ReadyAIConnections().Any());
+    public bool CanUseTextAI => ConnectivityService.Shared.Available(OnlineService.Gemini) && ReadyAIConnections().Any();
+    public bool CanUseAI => Project?.RequiresLocalYouTubePlayback != true && CanUseTextAI;
     public string? OnlineReason(string command, IEnumerable<string>? extra = null) => OnlineRequirements.Services(command, Project, Settings, extra).Select(ConnectivityService.Shared.Reason).FirstOrDefault(s => s != null);
     public void RefreshConnectivity() { Changed(nameof(CanUseAI)); }
     public void ClearAiIssue()
@@ -151,9 +149,9 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         Changed(nameof(AiIssueTitle)); Changed(nameof(AiIssueMessage)); Changed(nameof(AiIssueKind));
         Changed(nameof(AiProcessingBlocked)); Changed(nameof(CanUseAI));
     }
-    private void DetectAiIssue(string? detail)
+    private void DetectAiIssue(string? detail, AiConnection connection)
     {
-        if (AIServiceIssueDetector.Detect(detail) is not { } issue) return;
+        if (AIServiceIssueDetector.Detect(detail, connection) is not { } issue) return;
         AiIssueTitle = issue.Title; AiIssueMessage = issue.Message; AiIssueKind = issue.Kind;
         Changed(nameof(AiIssueTitle)); Changed(nameof(AiIssueMessage)); Changed(nameof(AiIssueKind));
         Changed(nameof(AiProcessingBlocked)); Changed(nameof(CanUseAI));
@@ -647,18 +645,18 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public Func<string, string, string, Task<bool>>? ConfirmCloudAction { get; set; }
     private async Task<bool> AuthorizeAIConnectionAsync(string command, StudioProject? project, bool throwOnProcessingError)
     {
+        if (project?.RequiresLocalYouTubePlayback == true && OnlineRequirements.PrivateYouTubeAnalysisCommand(command))
+        {
+            Status = YouTubeVideo.PrivateAnalysisMessage;
+            if (throwOnProcessingError) throw new ProcessingException(Status);
+            return false;
+        }
         if (!OnlineRequirements.RequiresAIConnection(command, Settings.Get("ttsMode") == "gemini")) return true;
         bool requiresCloudAnalysis = (project?.ReferencesCloudVideo == true ||
             (long.TryParse(project?.CloudVideo?.GetValueOrDefault("size"), out var size) && size > Views.NewProjectDialog.MaximumLocalVideoBytes))
             && OnlineRequirements.VideoAICommand(command);
-        if (project?.PrivateYouTubeChannel is { } channel && YouTubeService.Shared.PrivateConnection(channel, Settings) == null)
-        {
-            Status = YouTubeVideo.PrivateVideoMessage;
-            if (throwOnProcessingError) throw new ProcessingException(Status);
-            return false;
-        }
         var ready = ReadyAIConnections().Where(connection =>
-            OnlineRequirements.Supports(connection, requiresCloudAnalysis || project?.PrivateYouTubeChannel != null,
+            OnlineRequirements.Supports(connection, requiresCloudAnalysis,
                                         OnlineRequirements.NarrationCommand(command))).ToList();
         if (ready.Contains(ActiveAIConnection)) return true;
         if (ready.Count == 0)
@@ -753,6 +751,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         var requestArguments = extra?.ToArray() ?? Array.Empty<string>();
         extra = requestArguments;
         var requestFolder = Project?.Folder;
+        var requestAIConnection = command == "check-api-key" ? AiConnection.Developer : ActiveAIConnection;
+        var usesAIConnection = command == "vertex-check" || OnlineRequirements.Services(command, Project, Settings, requestArguments).Contains(OnlineService.Gemini);
         var requestProjectID = needsProject ? Project?.Id : null;
         var canRecoverYouTubeAudio = Project?.AllowsOriginalAudioImport == true &&
             command is "export-youtube-original-audio" or "export-youtube-described-audio" or "combine-imported-audio";
@@ -943,13 +943,20 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         catch (OperationCanceledException) { Status = "Cancelled. Completed results remain saved."; }
         catch (ProcessingException ex)
         {
-            Status = ex.DisplayMessage(Settings.GetBool("developerMode"), Settings.Get("apiKey"));
+            var message = ex.DisplayMessage(Settings.GetBool("developerMode"), Settings.Get("apiKey"));
+            Status = ex.IssueTitle is { } title ? $"{title}. {message}" : message;
             if (canRecoverYouTubeAudio && requestFolder != null && ex.RecoveryAction == "choose-original-audio")
                 audioRecovery = new(requestFolder, command, requestArguments);
-            else DetectAiIssue(ex.Diagnostic);
+            else if (usesAIConnection && !ex.IsMediaAccessFailure && requestAIConnection == ActiveAIConnection)
+                DetectAiIssue(ex.Diagnostic, requestAIConnection);
             if (throwOnProcessingError && audioRecovery == null) throw;
         }
-        catch (Exception ex) { Engine.Log(ex.ToString()); Status = "Could not finish. Check Settings and the diagnostic log, then retry."; DetectAiIssue(ex.Message); }
+        catch (Exception ex)
+        {
+            Engine.Log(ex.ToString());
+            Status = "Could not finish. Check Settings and the diagnostic log, then retry.";
+            if (usesAIConnection && requestAIConnection == ActiveAIConnection) DetectAiIssue(ex.Message, requestAIConnection);
+        }
         finally
         {
             if (youtubeMetadataFile != null) File.Delete(youtubeMetadataFile);

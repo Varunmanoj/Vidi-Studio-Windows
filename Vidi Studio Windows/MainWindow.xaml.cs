@@ -426,6 +426,15 @@ public sealed partial class MainWindow : Window
     private Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog, int width = 680, int height = 460)
         => Views.WindowedDialog.ShowAsync(dialog, this, width, height);
     private async Task<bool> Confirm(string title, string text, string action = "Continue") => await ShowDialogAsync(Dialog(title, DialogMessage(text), action)) == ContentDialogResult.Primary;
+    internal static async Task<bool> ConfirmPrivateYouTubeOpenAsync(Window owner) =>
+        await Views.WindowedDialog.ShowAsync(new ContentDialog
+        {
+            Title = YouTubeVideo.PrivateOpenTitle,
+            Content = DialogMessage(YouTubeVideo.PrivateAnalysisMessage),
+            PrimaryButtonText = "Open Anyway",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        }, owner) == ContentDialogResult.Primary;
     private Task ShowConnectivityNoticeAsync(string reason) => ShowError(new ConnectivityException(reason));
     private async Task ShowError(Exception ex)
     {
@@ -441,7 +450,8 @@ public sealed partial class MainWindow : Window
         {
             ConnectivityException => "Internet Connection Required",
             ProcessingException { IsDuplicateProject: true } => "Project Already Exists",
-            PrivateYouTubeAccessException => "Private YouTube Access Required",
+            ProcessingException { IssueTitle: { } issueTitle } => issueTitle,
+            PrivateYouTubeAccessException => "Video Unavailable",
             _ => "Action could not finish"
         };
         await ShowDialogAsync(new ContentDialog { Title = title, Content = DialogMessage(message), CloseButtonText = "Close" });
@@ -534,7 +544,8 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    private async Task OpenSharedVideoAsync(string message, string automationId, Func<Task<string?>> resolveProject, Func<MainWindow, Task>? editorOpened = null)
+    private async Task OpenSharedVideoAsync(string message, string automationId, Func<Task<string?>> resolveProject,
+        Func<MainWindow, Task>? editorOpened = null, bool privateYouTubeApproved = false)
     {
         if (Model.Busy || SharedVideoRing.IsActive)
         {
@@ -565,7 +576,7 @@ public sealed partial class MainWindow : Window
             if (remaining > TimeSpan.Zero) await Task.Delay(remaining);
             if (!windowClosed)
             {
-                var editor = App.OpenOrActivateEditor(folder);
+                var editor = App.OpenOrActivateEditor(folder, privateYouTubeApproved);
                 if (editorOpened != null && await editor.windowReady.Task && !editor.windowClosed)
                     await editorOpened(editor);
             }
@@ -630,9 +641,16 @@ public sealed partial class MainWindow : Window
             if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary) && !dialog.OpenSelectedYouTubeInEditor) return;
             List<EngineEvent>? created = null;
             StudioProject? projectToOpen = null;
+            var privateYouTubeApproved = false;
             if (dialog.IsYouTube)
             {
-                if (dialog.OpenSelectedYouTubeInEditor)
+                if (dialog.SelectedYouTubeVideo is { Visibility: "private" } privateVideo)
+                {
+                    if (!dialog.PrivateYouTubeOpenApproved && !await ConfirmPrivateYouTubeOpenAsync(this)) return;
+                    privateYouTubeApproved = true;
+                    projectToOpen = await ExistingYouTubeProjectForEditorAsync(privateVideo);
+                }
+                else if (dialog.OpenSelectedYouTubeInEditor)
                 {
                     Model.Reload();
                     projectToOpen = Model.ExistingProjectForYouTube(dialog.YouTubeUrl);
@@ -648,6 +666,7 @@ public sealed partial class MainWindow : Window
                             metadata = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
                             File.WriteAllText(metadata, chosen.Data.ToJsonString());
                             arguments.AddRange(new[] { "--youtube-metadata", metadata });
+                            if (privateYouTubeApproved) arguments.Add("--open-private-youtube");
                         }
                         created = await RunImportWithWarningsAsync("import-youtube", arguments, needsProject: false);
                     }
@@ -662,7 +681,8 @@ public sealed partial class MainWindow : Window
             if (projectToOpen == null && created?.Any(item => item.Data.TryGetProperty("project", out _)) == true)
                 projectToOpen = Model.Project;
             if (projectToOpen == null) return;
-            var editor = dialog.OpenSelectedYouTubeInEditor ? App.OpenOrActivateEditor(projectToOpen.Folder) : App.OpenWindow(projectToOpen.Folder);
+            var editor = dialog.OpenSelectedYouTubeInEditor || privateYouTubeApproved
+                ? App.OpenOrActivateEditor(projectToOpen.Folder, privateYouTubeApproved) : App.OpenWindow(projectToOpen.Folder);
             if (imports.HasAny && await editor.windowReady.Task && !editor.windowClosed)
                 await editor.ImportSelectedAssetsAsync(imports, dialog.CombineRequested);
             if (dialog.ChooseYouTubeCaptions && await editor.windowReady.Task && !editor.windowClosed)
@@ -686,6 +706,18 @@ public sealed partial class MainWindow : Window
     {
         if (changingProject || Model.Busy) return;
         if (Model.Project?.Folder == selected.Folder) return;
+        if (selected.RequiresLocalYouTubePlayback)
+        {
+            changingProject = true;
+            try
+            {
+                var current = Model.Projects.FirstOrDefault(project => project.Folder == Model.Project?.Folder);
+                ProjectList.SelectedItem = ProjectGrid.SelectedItem = current;
+                await ShowError(new PrivateYouTubeAccessException());
+            }
+            finally { changingProject = false; }
+            return;
+        }
         changingProject = true;
         var previous = Model.Projects.FirstOrDefault(project => project.Folder == Model.Project?.Folder);
         try
@@ -1167,6 +1199,7 @@ public sealed partial class MainWindow : Window
             || activeProject.IntegrityPlaceholder
             || activeProject.Integrity?.ManifestUnreadable == true
             || activeProject.Integrity?.FolderMissing == true) return;
+        if (activeProject.RequiresLocalYouTubePlayback && OnlineRequirements.PrivateYouTubeAnalysisCommand(command)) return;
         if (command == "synthesize-tts")
         {
             await SynthesizeNarrationWithConfirmationAsync();
@@ -2498,8 +2531,11 @@ public sealed partial class MainWindow : Window
         if (Model.Busy) return;
         try
         {
-            var events = await Model.RunAsync("check-api-key", null, false);
-            if (events.Any(item => item.Data.TryGetProperty("models", out _))) Model.ClearAiIssue();
+            var connection = Model.ActiveAIConnection;
+            var developer = connection == AiConnection.Developer;
+            var events = await Model.RunAsync(developer ? "check-api-key" : "vertex-check", null, false);
+            if (connection == Model.ActiveAIConnection && events.Any(item => item.Data.TryGetProperty(developer ? "models" : "vertexModels", out _)))
+                Model.ClearAiIssue();
             UpdateApiKeyUi();
         }
         catch (Exception ex) { await ShowError(ex); }
@@ -2518,7 +2554,8 @@ public sealed partial class MainWindow : Window
         string? reason = null;
         if (!GenerateCurrent.IsEnabled)
         {
-            reason = Model.OnlineReason("transcribe") ?? (Model.IsApiKeyInvalid
+            reason = Model.Project?.RequiresLocalYouTubePlayback == true ? YouTubeVideo.PrivateAnalysisMessage
+                : Model.OnlineReason("transcribe") ?? (Model.IsApiKeyInvalid
                 ? "Update your Gemini API key in Settings."
                 : !Model.HasApiKey ? "Configure an AI provider in Settings."
                 : Model.AiIssueTitle ?? "Available when processing finishes.");

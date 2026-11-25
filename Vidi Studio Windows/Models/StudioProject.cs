@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Vidi_Studio_Windows.Services;
 
 namespace Vidi_Studio_Windows.Models;
 
@@ -809,15 +810,16 @@ public sealed class NarrationFailure
 /// <summary>Persistent Gemini quota/service failure that pauses every AI action.</summary>
 public static class AIServiceIssueDetector
 {
-    public static (string Title, string Message, string Kind)? Detect(string? rawDetail)
+    internal static (string Title, string Message, string Kind)? Detect(string? rawDetail, AiConnection connection = AiConnection.Developer)
     {
         if (string.IsNullOrWhiteSpace(rawDetail)) return null;
         var detail = rawDetail.ToLowerInvariant();
         if (detail.Contains("api key not valid") || detail.Contains("api_key_invalid") || detail.Contains("invalid api key")) return null;
         if (detail.Contains("quota") || detail.Contains("resource_exhausted") || detail.Contains("429") ||
             detail.Contains("billing") || detail.Contains("credit") || detail.Contains("spend") || detail.Contains("rate limit"))
-            return ("Gemini Usage Limit Reached",
-                "Your Gemini key has no remaining quota or credits for AI processing. AI actions are paused. Add billing or credits in Google AI Studio, or wait for the limit to reset, then choose Retry AI.",
+            return ("Gemini Usage Limit Reached", connection == AiConnection.Developer
+                ? "AI processing reached a usage limit. Add billing or credits in Google AI Studio, or wait for the limit to reset, then choose Retry AI."
+                : "AI processing reached a usage limit. Check billing and quota for your Vertex AI connection, then choose Retry AI.",
                 "quota");
         if (detail.Contains("503") || detail.Contains("service unavailable") || detail.Contains("overloaded") ||
             detail.Contains("deadline exceeded") || detail.Contains("try again later"))
@@ -825,9 +827,12 @@ public static class AIServiceIssueDetector
                 "Gemini could not process the request because the service is temporarily unavailable. AI actions are paused until you retry successfully or the service recovers.",
                 "service");
         if (detail.Contains("permission_denied") || detail.Contains("permission denied"))
-            return ("Gemini AI Access Needs Attention",
-                "Gemini refused an AI processing request. Check the key's project permissions and AI Studio access, then retry. AI actions are paused until then.",
+        {
+            var vertexIssue = ProcessingException.VertexAccessIssue(rawDetail, connection);
+            return (vertexIssue?.Title ?? "Gemini AI Access Needs Attention",
+                vertexIssue?.Message ?? "Check your Gemini key’s project permissions and AI Studio access, then retry.",
                 "access");
+        }
         return null;
     }
 }

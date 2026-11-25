@@ -487,16 +487,23 @@ public sealed partial class MainWindow
         GalleryList.SelectedItem = selected;
         UpdateDesktopMenuStates();
     }
-    private void GalleryProject_Click(object sender, ItemClickEventArgs e)
+    private async void GalleryProject_Click(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is StudioProject project) OpenGalleryProject(project);
+        if (e.ClickedItem is StudioProject project) await OpenGalleryProjectAsync(project);
     }
 
-    private void OpenGalleryProject(StudioProject project, bool newWindow = false)
+    private async Task OpenGalleryProjectAsync(StudioProject project, bool newWindow = false)
     {
-        if (windowClosed) return;
-        if (newWindow) App.OpenWindow(project.Folder);
-        else App.OpenOrActivateEditor(project.Folder);
+        if (windowClosed || Model.Busy) return;
+        var privateVideo = project.RequiresLocalYouTubePlayback;
+        if (privateVideo && !await ConfirmPrivateYouTubeOpenAsync(this)) return;
+        if (windowClosed || Model.Busy) return;
+        try
+        {
+            if (newWindow) App.OpenWindow(project.Folder, privateYouTubeApproved: privateVideo);
+            else App.OpenOrActivateEditor(project.Folder, privateYouTubeApproved: privateVideo);
+        }
+        catch (Exception ex) { await ShowError(ex); }
     }
     private async void NewProject_Click(object sender, RoutedEventArgs e) => await ShowNewProjectDialogAsync(false);
     private int editorActionHoverVersion;

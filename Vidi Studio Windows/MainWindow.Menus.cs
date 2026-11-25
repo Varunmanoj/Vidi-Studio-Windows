@@ -719,7 +719,8 @@ public sealed partial class MainWindow
             "segment-one-play" => VideoTransportAvailable && Model.Project is { } playbackProject &&
                 (!playbackProject.UsesYouTubePlayer || ConnectivityService.Shared.Available(OnlineService.YouTube)),
             "segment-one-skip" => VideoTransportAvailable && (Model.Project?.UsesYouTubePlayer != true || ConnectivityService.Shared.Available(OnlineService.YouTube)),
-            "segment-one-reanalyze" or "segment-one-rewrite" => Model.CanUseAI,
+            "segment-one-reanalyze" => Model.CanUseAI,
+            "segment-one-rewrite" => Model.CanUseTextAI,
             "segment-one-synthesize" => Model.CanNarrate,
             "segment-one-preview" => segment.AudioReady || ReferenceEquals(previewingSegment, segment),
             "segment-one-preview-stop" => ReferenceEquals(previewingSegment, segment),
@@ -805,8 +806,8 @@ public sealed partial class MainWindow
             if (selected.IntegrityPlaceholder || selected.Integrity?.ManifestUnreadable == true || selected.Integrity?.FolderMissing == true) return false;
             return id switch {
                 "delete-content" => selected.SavedResults.Count > 0 || selected.Exports.Count > 0 || selected.Thumbnails.Count > 0 || selected.Cues.Count > 0 || selected.HasTranscript || selected.HasSummary || (selected.IsYouTube && (selected.OriginalAudio != null || selected.YouTubePlaybackVideo != null)),
-                "analyze" or "transcribe" or "generate-summary" => Model.CanUseAI,
-                "generate-ad-cues" => Model.CanUseAI && selected.SavedResults.Any(r => r.Kind == "transcript" && r.State == "saved") && selected.SavedResults.Any(r => r.Kind == "summary" && r.State == "saved"),
+                "analyze" or "transcribe" or "generate-summary" => !selected.RequiresLocalYouTubePlayback && Model.CanUseTextAI,
+                "generate-ad-cues" => !selected.RequiresLocalYouTubePlayback && Model.CanUseTextAI && selected.SavedResults.Any(r => r.Kind == "transcript" && r.State == "saved") && selected.SavedResults.Any(r => r.Kind == "summary" && r.State == "saved"),
                 "prepare-video" => !selected.IsYouTube || ConnectivityService.Shared.Available(OnlineService.YouTube),
                 _ => true
             };
@@ -1136,7 +1137,7 @@ public sealed partial class MainWindow
             case "open-gallery-window":
             case "open-selected-project":
                 if (SelectedGalleryProject() is { } openingProject)
-                    OpenGalleryProject(openingProject, newWindow: id == "open-gallery-window");
+                    await OpenGalleryProjectAsync(openingProject, newWindow: id == "open-gallery-window");
                 break;
             case "focus-search": FocusSearch(); break;
             case "clear-search": ClearSearch(); break;

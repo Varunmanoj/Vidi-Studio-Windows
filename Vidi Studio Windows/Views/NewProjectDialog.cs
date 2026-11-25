@@ -31,6 +31,7 @@ public sealed class NewProjectDialog : ContentDialog
     internal Func<Window, Task<(YouTubeVideo Video, bool OpenInEditor)?>>? BrowseYouTubeVideo { get; set; }
     internal YouTubeVideo? SelectedYouTubeVideo { get; private set; }
     internal bool OpenSelectedYouTubeInEditor { get; private set; }
+    internal bool PrivateYouTubeOpenApproved { get; private set; }
     public bool ChooseYouTubeCaptions => chooseYouTubeCaptions.IsChecked == true && IsYouTube;
     private readonly CheckBox chooseYouTubeCaptions = new() { Content = "Choose YouTube captions after creating" };
     private readonly Window owner;
@@ -514,7 +515,7 @@ public sealed class NewProjectDialog : ContentDialog
                 youtubeUrl.Text = result.Video.Url;
                 ApplyYouTubePreview(result.Video);
                 UpdateCreationState();
-                if (result.OpenInEditor && IsPrimaryButtonEnabled)
+                if (result.Video.Visibility == "private" || result.OpenInEditor && IsPrimaryButtonEnabled)
                 {
                     OpenSelectedYouTubeInEditor = true;
                     Hide();
@@ -557,6 +558,16 @@ public sealed class NewProjectDialog : ContentDialog
         {
             var video = await fetchVideo(id, settings, request.Token);
             if (youtubeInspection != request || request.IsCancellationRequested || id != ValidYouTubeId(YouTubeUrl)) return;
+            if (video.Visibility == "private")
+            {
+                if (CompanionWindow is not { } window || !await MainWindow.ConfirmPrivateYouTubeOpenAsync(window) ||
+                    youtubeInspection != request || request.IsCancellationRequested || id != ValidYouTubeId(YouTubeUrl)) return;
+                PrivateYouTubeOpenApproved = true;
+                ApplyYouTubePreview(video);
+                OpenSelectedYouTubeInEditor = true;
+                Hide();
+                return;
+            }
             ApplyYouTubePreview(video);
         }
         catch (OperationCanceledException) { }

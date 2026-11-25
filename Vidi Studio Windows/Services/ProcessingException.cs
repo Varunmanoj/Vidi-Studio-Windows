@@ -5,7 +5,7 @@ namespace Vidi_Studio_Windows.Services;
 
 public sealed record ImportIssueNotice(string Title, string Message, string? Token);
 
-public sealed class ProcessingException : Exception
+internal sealed class ProcessingException : Exception
 {
     private const string DuplicateProjectDiagnostic = "This project already exists. Please continue with the existing project or delete the existing project before continuing.";
     private const string DurationPart = @"[0-9]+ (?:days?|hours?|minutes?|seconds?|milliseconds?)";
@@ -15,15 +15,20 @@ public sealed class ProcessingException : Exception
     public string Diagnostic { get; }
     public bool IsDuplicateProject { get; }
     public ImportIssueNotice? ImportIssue { get; }
-    public ProcessingException(string diagnostic, string? recoveryAction = null, string? command = null, ImportIssueNotice? importIssue = null)
+    public string? IssueTitle { get; }
+    public bool IsMediaAccessFailure { get; }
+    public ProcessingException(string diagnostic, string? recoveryAction = null, string? command = null,
+        ImportIssueNotice? importIssue = null, string? failureKind = null, AiConnection? connection = null)
         : base(importIssue?.Message ?? (recoveryAction == "choose-original-audio"
             ? "YouTube audio could not be retrieved. Choose a matching audio file to retry this export. Existing exports are unchanged."
-            : UserMessage(diagnostic, command)))
+            : AccessIssue(diagnostic, failureKind, connection)?.Message ?? UserMessage(diagnostic, command)))
     {
         RecoveryAction = recoveryAction;
         ImportIssue = importIssue;
         Diagnostic = diagnostic;
         IsDuplicateProject = IsDuplicateProjectFailure(diagnostic, command);
+        IssueTitle = AccessIssue(diagnostic, failureKind, connection)?.Title;
+        IsMediaAccessFailure = failureKind == "private-youtube-video" || IsCloudVideoAccessFailure(diagnostic);
     }
 
     public string DisplayMessage(bool developerMode, string apiKey)
@@ -35,11 +40,36 @@ public sealed class ProcessingException : Exception
     private static bool IsDuplicateProjectFailure(string diagnostic, string? command) =>
         command is ("import-video" or "import-youtube") && diagnostic == DuplicateProjectDiagnostic;
 
+    private static bool IsCloudVideoAccessFailure(string diagnostic) =>
+        diagnostic.Contains("storage.objects.get", StringComparison.OrdinalIgnoreCase) &&
+        diagnostic.Contains("gcp-sa-aiplatform", StringComparison.OrdinalIgnoreCase);
+
+    private static (string Title, string Message)? AccessIssue(string diagnostic, string? failureKind, AiConnection? connection)
+    {
+        if (failureKind == "private-youtube-video" || diagnostic == YouTubeVideo.PrivateAnalysisMessage)
+            return ("AI Analysis Unavailable", YouTubeVideo.PrivateAnalysisMessage);
+        if (diagnostic == YouTubeVideo.PrivateVideoMessage)
+            return ("Video Unavailable", YouTubeVideo.PrivateVideoMessage);
+        if (IsCloudVideoAccessFailure(diagnostic))
+            return ("Vertex AI Needs Video Access", "Ask your Google Cloud administrator to grant the Vertex AI service agent read access to this video, then retry.");
+        return VertexAccessIssue(diagnostic, connection);
+    }
+
+    internal static (string Title, string Message)? VertexAccessIssue(string diagnostic, AiConnection? connection)
+    {
+        var detail = diagnostic.ToLowerInvariant();
+        if (!(detail.Contains("permission_denied") || detail.Contains("permission denied") || detail.Contains("unauthenticated") ||
+              detail.StartsWith("401 ", StringComparison.Ordinal) || detail.StartsWith("403 ", StringComparison.Ordinal) || detail.Contains("api key"))) return null;
+        return connection switch
+        {
+            AiConnection.GoogleSignIn => ("Vertex AI Access Needs Attention", "Check Google sign-in and your Vertex AI permissions for the Cloud project, then try again."),
+            AiConnection.Express => ("Vertex AI Express Access Needs Attention", "Check your Vertex AI Express API key and its restrictions in Settings → AI, then try again."),
+            _ => null
+        };
+    }
+
     private static string UserMessage(string diagnostic, string? command)
     {
-        if (diagnostic.Contains("storage.objects.get", StringComparison.OrdinalIgnoreCase) &&
-            diagnostic.Contains("gcp-sa-aiplatform", StringComparison.OrdinalIgnoreCase))
-            return "Ask your Google Cloud administrator to grant the Vertex AI service agent read access to this video, then retry.";
         if (command == "attach-youtube-playback" && Regex.IsMatch(diagnostic,
             @"\APlayback video duration does not match\.\n\nYouTube duration: " + DurationLabel +
             @"\nLocal video duration: " + DurationLabel + @"\z"))

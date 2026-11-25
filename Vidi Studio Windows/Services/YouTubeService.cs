@@ -56,6 +56,7 @@ public sealed record YouTubeVideo(JsonObject Data)
     internal const string PrivateVideoMessage = "Private YouTube videos are not supported.";
     internal const string PrivateOpenTitle = "Open Private YouTube Video?";
     internal const string PrivateAnalysisMessage = "Private YouTube video analysis is not supported.";
+    internal const string PrivateRefreshSignInMessage = "Sign in to the owning channel in YouTube Accounts on this device to refresh this private video.";
 
     public void RequireAvailable(bool allowPrivate = false)
     {
@@ -315,7 +316,7 @@ public sealed class YouTubeService
             if (response.StatusCode == HttpStatusCode.NotFound) throw new YouTubeNotFoundException();
             var body = JsonNode.Parse(await response.Content.ReadAsStringAsync(ct)); var reason = body?["error"]?["errors"]?[0]?["reason"]?.ToString();
             if (reason is "quotaExceeded" or "dailyLimitExceeded") throw new InvalidOperationException("VidiStudio’s YouTube allowance has been reached. Try again later.");
-            if (response.StatusCode == HttpStatusCode.Unauthorized) throw new InvalidOperationException("Google access has expired. Sign in again from YouTube Accounts.");
+            if (response.StatusCode == HttpStatusCode.Unauthorized) throw new YouTubeAccessExpiredException();
             throw new InvalidOperationException("YouTube did not allow this request. Check the selected account’s video permissions and your connection.");
         }
         return JsonNode.Parse(await response.Content.ReadAsStringAsync(ct))!.AsObject();
@@ -346,7 +347,29 @@ public sealed class YouTubeService
         return video;
     }
 
-    internal async Task<YouTubeVideo> VideoForNewProjectAsync(string id, SettingsStore settings, CancellationToken ct)
+    internal async Task<YouTubeVideo> RefreshedProjectVideoAsync(string id, Models.StudioProject project, SettingsStore settings, CancellationToken ct = default)
+    {
+        try
+        {
+            if (project.PrivateYouTubeChannel is { } privateChannelId)
+                return await ProjectVideoAsync(id, privateChannelId, settings, ct);
+            var knownChannelId = project.YouTubeMetadata is { ValueKind: JsonValueKind.Object } metadata &&
+                metadata.TryGetProperty("channelID", out var channel) && channel.ValueKind == JsonValueKind.String
+                ? channel.GetString() : null;
+            return await VideoForNewProjectAsync(id, settings, ct, knownChannelId);
+        }
+        catch (InvalidOperationException ex) when (ex is PrivateYouTubeAccessException
+            || ex is YouTubeLinkIssueException && ex.Message == YouTubeVideo.PrivateVideoMessage
+            || ex is YouTubeAccessExpiredException && project.RequiresLocalYouTubePlayback)
+        {
+            throw new YouTubeLinkIssueException(YouTubeVideo.PrivateRefreshSignInMessage);
+        }
+    }
+
+    internal Task<YouTubeVideo> VideoForNewProjectAsync(string id, SettingsStore settings, CancellationToken ct) =>
+        VideoForNewProjectAsync(id, settings, ct, knownChannelId: null);
+
+    private async Task<YouTubeVideo> VideoForNewProjectAsync(string id, SettingsStore settings, CancellationToken ct, string? knownChannelId)
     {
         try
         {
@@ -363,6 +386,14 @@ public sealed class YouTubeService
         catch (YouTubeNotFoundException)
         {
             // Missing public metadata can also mean the link is private.
+        }
+
+        if (!string.IsNullOrEmpty(knownChannelId))
+        {
+            if (PrivateConnection(knownChannelId, settings) == null)
+                throw new YouTubeLinkIssueException(YouTubeLinkIssueException.UnavailableMessage);
+            try { return await ProjectVideoAsync(id, knownChannelId, settings, ct); }
+            catch (YouTubeNotFoundException) { throw new YouTubeLinkIssueException(YouTubeLinkIssueException.UnavailableMessage); }
         }
 
         var accounts = Accounts.Where(account => PrivateConnection(account.ChannelId, settings)?.Id == account.Id).ToList();

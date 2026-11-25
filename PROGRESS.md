@@ -2890,3 +2890,27 @@ All Projects can reopen a saved private YouTube project after the shared Cancel/
 Installed Windows 11 ARM64 1.0.426.0 with one package registration and Start entry. The frozen engine doctor, installed ShellOpenOnly and JumpOnly suites, and 101 paired menu and layout checks passed. The native fixture exercised both confirmation choices, editor reuse, local playback with and without a file, retained saved results, and the analysis guard with both providers. The actual reported project was reopened on the installed Mac. Windows x64 was not tested. The desktop Help guide updates passed local verification and are pending publication.
 
 Rechecked the single installed package and Start entry, removed the temporary stage and unregistered the two completed verification tasks.
+
+## 1.0.427 · Consistent private YouTube analysis status · 2026-11-25
+
+The Transcript, Summary, and Description tabs show “Private YouTube video analysis is not supported.” and give the same reason for disabled generation. A matching, generic Vertex 403 on a non-public or unclassified YouTube URL shows a project media access alert. Explicit provider and bucket errors keep their own guidance.
+
+Rebuilt the frozen engine and installed Windows 11 ARM64 1.0.427.0 with one package registration and Start entry. Engine doctor, native ShellOpenOnly and JumpOnly, paired Swift/C# error presentation and 101 menu and layout parity tests passed. JumpOnly asserted the same status and accessibility help on all three tabs of a saved private fixture, with disabled generation and the connection warning bars closed. The temporary Windows stage was removed after package verification. Native Windows x64 and live AI analysis were outside this local verification. The updated Help guide passed local navigation, search and desktop feed checks and is pending publication.
+
+## 1.0.428 · Refresh private YouTube details in the editor · 2026-11-25
+
+The inspector and Project menu refresh route uses the connected owning channel for stale public or unlisted metadata. The menu reveals the inspector. The existing editor shows the saved Visibility and Fetched values after the update.
+
+Installed Windows 11 ARM64 1.0.428.0 with one package registration and Start entry. The frozen engine doctor, installed ShellOpenOnly and JumpOnly suites, and 101 menu and layout parity tests passed. JumpOnly exercised the Project menu revealing the inspector on a private fixture. A C# harness using the production lookup methods and simulated YouTube responses passed the signed-out path, owner fallback, known private path, mismatched owner rejection, disconnected owner and missing video cases. Live owner refresh was verified on Mac using the reported project. Native Windows x64 was outside this local verification. The Help guide passed local search, navigation and generated feed checks and is pending publication.
+
+## 1.0.429 · Private YouTube metadata sign-in guidance · 2026-11-25
+
+When the connected YouTube channel cannot authorize refresh of a private video, the inspector shows sign-in guidance. It retains the saved details, ends the spinner and re-enables Refresh YouTube Details. The analysis warning remains separate. The Refresh icon matches the menu action.
+
+Installed Windows 11 ARM64 1.0.429.0 with one package and Start entry. The engine doctor, installed ShellOpenOnly and JumpOnly suites, and paired Swift/C# error presentation and 101 menu and layout tests passed. JumpOnly invoked the real menu refresh on a private fixture without a connected owner. It checked the exact inline message, stopped spinner, active retry control and byte-for-byte unchanged manifest. The production Windows account was not signed in as the owning channel. No live Windows owner refresh was run. The Help guide passed local verification and is pending publication.
+
+## 1.0.430 · Private YouTube refresh sign-in dialog · 2026-11-25
+
+An explicit signed-out private-video refresh shows the YouTube Sign-In Required dialog with OK. The editor ends the spinner and keeps the saved details available. An automatic metadata lookup does not open that dialog.
+
+Installed Windows 11 ARM64 1.0.430.0 with one package and Start entry. The frozen engine doctor, installed ShellOpenOnly and JumpOnly suites, and 101 paired menu and layout tests passed. JumpOnly exercised a signed-out private fixture, checked that automatic refresh stayed quiet, verified the exact dialog message and absence of a second message in the inspector, invoked OK through accessibility, and checked the saved project manifest by byte comparison. Native Windows x64 was outside this local verification.

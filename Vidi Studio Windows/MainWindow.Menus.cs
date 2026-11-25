@@ -1178,7 +1178,10 @@ public sealed partial class MainWindow
                 if (youtubeBrowserCanRun?.Invoke(id) == true) youtubeBrowserRun?.Invoke(id); break;
             case "youtube-browser": await ShowYouTubeBrowserAsync(); break;
             case "youtube-details": await ShowYouTubeDetailsAsync(); break;
-            case "youtube-refresh": await RefreshYouTubeInspectorAsync(); break;
+            case "youtube-refresh":
+                if (!InspectorSplitView.IsPaneOpen) ToggleInspector_Click(this, e);
+                await RefreshYouTubeInspectorAsync();
+                break;
             case "youtube-project-open-studio":
                 if (Model.Project is { } studioProject) OpenProjectInYouTubeStudio(studioProject);
                 break;

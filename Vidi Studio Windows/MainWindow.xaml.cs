@@ -2574,11 +2574,18 @@ public sealed partial class MainWindow : Window
         var hasKey = Model.HasApiKey;
         var isInvalid = Model.IsApiKeyInvalid;
         var canUseAi = Model.CanUseAI && Model.Idle;
+        var privateYouTube = desktopEditorVisible && Model.Project?.RequiresLocalYouTubePlayback == true;
         try { Services.ShellIntegration.UpdateContextMenuState(); } catch { }
+
+        if (PrivateYouTubeAnalysisBar != null)
+        {
+            PrivateYouTubeAnalysisBar.Message = YouTubeVideo.PrivateAnalysisMessage;
+            PrivateYouTubeAnalysisBar.IsOpen = privateYouTube;
+        }
 
         if (ApiKeyWarningBar != null)
         {
-            ApiKeyWarningBar.IsOpen = !hasKey;
+            ApiKeyWarningBar.IsOpen = !hasKey && !privateYouTube;
             if (isInvalid)
             {
                 ApiKeyWarningBar.Severity = InfoBarSeverity.Error;
@@ -2595,7 +2602,7 @@ public sealed partial class MainWindow : Window
 
         if (AiWarningBar != null)
         {
-            AiWarningBar.IsOpen = Model.AiProcessingBlocked;
+            AiWarningBar.IsOpen = Model.AiProcessingBlocked && !privateYouTube;
             AiWarningBar.Title = Model.AiIssueTitle ?? "Gemini AI Processing Paused";
             AiWarningBar.Message = (Model.AiIssueMessage ?? "Gemini AI processing is paused.") +
                 " Existing transcripts, descriptions, narration, and exports are unchanged.";

@@ -21,14 +21,15 @@ internal sealed class ProcessingException : Exception
         ImportIssueNotice? importIssue = null, string? failureKind = null, AiConnection? connection = null)
         : base(importIssue?.Message ?? (recoveryAction == "choose-original-audio"
             ? "YouTube audio could not be retrieved. Choose a matching audio file to retry this export. Existing exports are unchanged."
-            : AccessIssue(diagnostic, failureKind, connection)?.Message ?? UserMessage(diagnostic, command)))
+            : AccessIssue(diagnostic, failureKind, connection, command)?.Message ?? UserMessage(diagnostic, command)))
     {
         RecoveryAction = recoveryAction;
         ImportIssue = importIssue;
         Diagnostic = diagnostic;
         IsDuplicateProject = IsDuplicateProjectFailure(diagnostic, command);
-        IssueTitle = AccessIssue(diagnostic, failureKind, connection)?.Title;
-        IsMediaAccessFailure = failureKind == "private-youtube-video" || IsCloudVideoAccessFailure(diagnostic);
+        IssueTitle = AccessIssue(diagnostic, failureKind, connection, command)?.Title;
+        IsMediaAccessFailure = failureKind is "private-youtube-video" or "youtube-video-access" ||
+            diagnostic == YouTubeVideo.PrivateAnalysisMessage || IsCloudVideoAccessFailure(diagnostic);
     }
 
     public string DisplayMessage(bool developerMode, string apiKey)
@@ -44,10 +45,14 @@ internal sealed class ProcessingException : Exception
         diagnostic.Contains("storage.objects.get", StringComparison.OrdinalIgnoreCase) &&
         diagnostic.Contains("gcp-sa-aiplatform", StringComparison.OrdinalIgnoreCase);
 
-    private static (string Title, string Message)? AccessIssue(string diagnostic, string? failureKind, AiConnection? connection)
+    private static (string Title, string Message)? AccessIssue(string diagnostic, string? failureKind, AiConnection? connection, string? command)
     {
         if (failureKind == "private-youtube-video" || diagnostic == YouTubeVideo.PrivateAnalysisMessage)
             return ("AI Analysis Unavailable", YouTubeVideo.PrivateAnalysisMessage);
+        if (failureKind == "youtube-video-access")
+            return ("AI Analysis Unavailable", "AI could not access this YouTube video. " + YouTubeVideo.PrivateAnalysisMessage);
+        if (diagnostic == YouTubeVideo.PrivateVideoMessage && command == "update-youtube-metadata")
+            return ("YouTube Details Could Not Be Refreshed", YouTubeVideo.PrivateRefreshSignInMessage);
         if (diagnostic == YouTubeVideo.PrivateVideoMessage)
             return ("Video Unavailable", YouTubeVideo.PrivateVideoMessage);
         if (IsCloudVideoAccessFailure(diagnostic))

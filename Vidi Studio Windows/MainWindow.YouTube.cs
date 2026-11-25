@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
@@ -44,6 +45,7 @@ public sealed partial class MainWindow
 
     private readonly HashSet<string> youtubeInspectorLoaded = new();
     private bool youtubeInspectorRefreshing;
+    private (string Folder, string Message)? youtubeInspectorRefreshIssue;
     private void PopulateYouTubeInspector(Models.StudioProject project) {
         if (project.YouTubeMetadata is JsonElement { ValueKind: JsonValueKind.Object } value) {
             string Get(string key) => value.TryGetProperty(key, out var found) && found.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) && found.ToString().Length > 0 ? found.ToString() : "Unavailable";
@@ -80,15 +82,29 @@ public sealed partial class MainWindow
             }
         }
         YouTubeInspectorDetails.Children.Add(BuildYouTubeProjectLinks(project));
-        var refresh = new Button { Content = "Refresh YouTube Details", IsEnabled = !youtubeInspectorRefreshing && Model.Idle };
-        ToolTipService.SetToolTip(refresh, refresh.Content);
+        const string refreshTitle = "Refresh YouTube Details";
+        var refreshLabel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        refreshLabel.Children.Add(MenuIcons.Create(refreshTitle));
+        refreshLabel.Children.Add(new TextBlock { Text = refreshTitle });
+        var refresh = new Button { Content = refreshLabel, IsEnabled = !youtubeInspectorRefreshing && Model.Idle };
+        AutomationProperties.SetName(refresh, refreshTitle);
+        ToolTipService.SetToolTip(refresh, refreshTitle);
         refresh.Click += async (_, _) => await RefreshYouTubeInspectorAsync(); YouTubeInspectorDetails.Children.Add(refresh);
         if (youtubeInspectorRefreshing) {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             row.Children.Add(new ProgressRing { IsActive = true, Width = 18, Height = 18 }); row.Children.Add(new TextBlock { Text = "Fetching YouTube details…", TextWrapping = TextWrapping.Wrap }); YouTubeInspectorDetails.Children.Add(row);
         }
+        else if (youtubeInspectorRefreshIssue is { } issue && issue.Folder == project.Folder)
+        {
+            var status = new TextBlock { Text = issue.Message, TextWrapping = TextWrapping.Wrap };
+            AutomationProperties.SetAutomationId(status, "youtube-details-refresh-status");
+            AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
+            status.Loaded += (_, _) => FrameworkElementAutomationPeer.CreatePeerForElement(status)?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+            YouTubeInspectorDetails.Children.Add(status);
+        }
         var missing = project.YouTubeMetadata is not JsonElement { ValueKind: JsonValueKind.Object };
-        if (missing && !youtubeInspectorRefreshing && youtubeInspectorLoaded.Add(project.Folder)) _ = RefreshYouTubeInspectorAsync();
+        if (missing && !youtubeInspectorRefreshing && youtubeInspectorLoaded.Add(project.Folder))
+            _ = RefreshYouTubeInspectorAsync(showPrivateSignInDialog: false);
     }
     internal static StackPanel BuildYouTubeProjectLinks(Models.StudioProject project)
     {
@@ -220,24 +236,33 @@ public sealed partial class MainWindow
         }
     }
 
-    private async Task RefreshYouTubeInspectorAsync() {
+    private async Task RefreshYouTubeInspectorAsync(bool showPrivateSignInDialog = true) {
         if (youtubeInspectorRefreshing || Model.Project is not { IsYouTube: true } project) return;
+        youtubeInspectorLoaded.Add(project.Folder);
+        youtubeInspectorRefreshIssue = null;
+        var privateSignInRequired = false;
         youtubeInspectorRefreshing = true; UpdateInspector(project);
         var file = Path.Combine(Path.GetTempPath(), "vidistudio-youtube-" + Guid.NewGuid() + ".json");
         try {
-            var url = new Uri(project.YoutubeURL ?? "");
-            var id = url.Query.TrimStart('?').Split('&').FirstOrDefault(v => v.StartsWith("v="))?[2..] ?? "";
-            var video = await YouTubeService.Shared.ProjectVideoAsync(id, project.PrivateYouTubeChannel, Model.Settings);
-            video.RequireAvailable(allowPrivate: project.PrivateYouTubeChannel != null);
+            var id = project.YoutubeURL is { } link ? SharedYouTubeLink.VideoId(link) : null;
+            if (id == null) throw new YouTubeLinkIssueException(YouTubeLinkIssueException.UnavailableMessage);
+            var video = await YouTubeService.Shared.RefreshedProjectVideoAsync(id, project, Model.Settings);
             while (Model.Busy && Model.Project?.Folder == project.Folder) await Task.Delay(100);
             if (Model.Project?.Folder != project.Folder) return;
             File.WriteAllText(file, video.Data.ToJsonString());
-            await Model.RunAsync("update-youtube-metadata", new[] { "--youtube-metadata", file });
-        } catch (Exception ex) { if (Model.Project?.Folder == project.Folder) await ShowErrorMessage("YouTube Details Could Not Be Refreshed", ex.Message); }
+            await Model.RunAsync("update-youtube-metadata", new[] { "--youtube-metadata", file }, throwOnProcessingError: true);
+        } catch (Exception ex) {
+            if (Model.Project?.Folder == project.Folder) {
+                privateSignInRequired = ex.Message == YouTubeVideo.PrivateRefreshSignInMessage;
+                if (!privateSignInRequired) youtubeInspectorRefreshIssue = (project.Folder, ex.Message);
+            }
+        }
         finally {
             File.Delete(file); youtubeInspectorRefreshing = false;
             if (Model.Project is { } currentProject) UpdateInspector(currentProject);
         }
+        if (privateSignInRequired && showPrivateSignInDialog && !windowClosed && Model.Project?.Folder == project.Folder)
+            await ShowErrorMessage("YouTube Sign-In Required", YouTubeVideo.PrivateRefreshSignInMessage);
     }
     private async void YouTubeBrowser_Click(object sender, RoutedEventArgs e) => await ShowYouTubeBrowserAsync();
     private async Task<(YouTubeVideo Video, bool OpenInEditor)?> ShowYouTubeBrowserAsync(Window? pickerOwner = null)
@@ -723,9 +748,9 @@ public sealed partial class MainWindow
         var id = new Uri(project.YoutubeURL ?? "").Query.TrimStart('?').Split('&').FirstOrDefault(v => v.StartsWith("v="))?[2..] ?? "";
         async Task Refresh() {
             try {
-                var video = await service.ProjectVideoAsync(id, project.PrivateYouTubeChannel, Model.Settings, cancellation.Token); details.Text = video.ToString() + "\n" + video.Data["description"] + "\nPublished: " + video.Published + "\nViews: " + (video.Data["viewCount"]?.ToString() ?? "Unavailable") + " · Likes: " + (video.Data["likeCount"]?.ToString() ?? "Unavailable") + " · Comments: " + (video.Data["commentCount"]?.ToString() ?? "Unavailable") + "\nLanguage: " + (video.Data["language"]?.ToString() ?? "Unavailable") + " · Audio language: " + (video.Data["audioLanguage"]?.ToString() ?? "Unavailable") + "\nCategory: " + (video.Data["categoryID"]?.ToString() ?? "Unavailable") + " · Embedding allowed: " + (video.Data["embeddable"]?.ToString() ?? "Unavailable") + "\nProcessing: " + (video.Data["uploadStatus"]?.ToString() ?? "Unavailable") + " · Live status: " + (video.Data["liveStatus"]?.ToString() ?? "Unavailable") + "\nTags: " + string.Join(", ", video.Data["tags"]?.AsArray().Select(t => t?.ToString()) ?? Array.Empty<string>());
-                video.RequireAvailable(allowPrivate: project.PrivateYouTubeChannel != null); var file = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
-                try { File.WriteAllText(file, video.Data.ToJsonString()); await Model.RunAsync("update-youtube-metadata", new[] { "--youtube-metadata", file }); }
+                var video = await service.RefreshedProjectVideoAsync(id, project, Model.Settings, cancellation.Token); details.Text = video.ToString() + "\n" + video.Data["description"] + "\nPublished: " + video.Published + "\nViews: " + (video.Data["viewCount"]?.ToString() ?? "Unavailable") + " · Likes: " + (video.Data["likeCount"]?.ToString() ?? "Unavailable") + " · Comments: " + (video.Data["commentCount"]?.ToString() ?? "Unavailable") + "\nLanguage: " + (video.Data["language"]?.ToString() ?? "Unavailable") + " · Audio language: " + (video.Data["audioLanguage"]?.ToString() ?? "Unavailable") + "\nCategory: " + (video.Data["categoryID"]?.ToString() ?? "Unavailable") + " · Embedding allowed: " + (video.Data["embeddable"]?.ToString() ?? "Unavailable") + "\nProcessing: " + (video.Data["uploadStatus"]?.ToString() ?? "Unavailable") + " · Live status: " + (video.Data["liveStatus"]?.ToString() ?? "Unavailable") + "\nTags: " + string.Join(", ", video.Data["tags"]?.AsArray().Select(t => t?.ToString()) ?? Array.Empty<string>());
+                var file = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+                try { File.WriteAllText(file, video.Data.ToJsonString()); await Model.RunAsync("update-youtube-metadata", new[] { "--youtube-metadata", file }, throwOnProcessingError: true); }
                 finally { File.Delete(file); }
             } catch (Exception ex) { status.Text = ex.Message; }
         }

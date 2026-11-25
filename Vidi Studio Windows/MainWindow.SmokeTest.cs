@@ -3330,6 +3330,57 @@ public sealed partial class MainWindow
             await File.WriteAllTextAsync(path, manifest.ToJsonString());
             Model.Project = Models.StudioProject.Load(original.Folder);
             RefreshProject();
+            var previousSection = Section.SelectedIndex;
+            try
+            {
+                foreach (var section in new[] { 0, 1, 2 })
+                {
+                    Section.SelectedIndex = section;
+                    RenderSection();
+                    UpdateApiKeyUi();
+                    if (!PrivateYouTubeAnalysisBar.IsOpen || PrivateYouTubeAnalysisBar.Message != YouTubeVideo.PrivateAnalysisMessage ||
+                        ApiKeyWarningBar.IsOpen || AiWarningBar.IsOpen || GenerateCurrent.IsEnabled ||
+                        AutomationProperties.GetHelpText(GenerateCurrent) != YouTubeVideo.PrivateAnalysisMessage)
+                        throw new InvalidOperationException("Private YouTube analysis status differed on section " + section);
+                }
+            }
+            finally { Section.SelectedIndex = previousSection; RenderSection(); }
+            var inspectorWasOpen = InspectorSplitView.IsPaneOpen;
+            var beforeRefresh = await File.ReadAllBytesAsync(path);
+            var signInDialog = new TaskCompletionSource<ContentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+            void CaptureSignInDialog(ContentDialog dialog, Window window)
+            {
+                if (dialog.Title as string == "YouTube Sign-In Required") signInDialog.TrySetResult(dialog);
+            }
+            Views.WindowedDialog.ReadyToShow += CaptureSignInDialog;
+            try
+            {
+                if (inspectorWasOpen) ToggleInspector_Click(this, new RoutedEventArgs());
+                await RefreshYouTubeInspectorAsync(showPrivateSignInDialog: false).WaitAsync(TimeSpan.FromSeconds(10));
+                if (signInDialog.Task.IsCompleted)
+                    throw new InvalidOperationException("Automatic private refresh opened a sign-in dialog.");
+                var refreshing = RunDesktopCommandAsync("youtube-refresh");
+                var dialog = await signInDialog.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                var message = string.Join(" ", DialogControls((UIElement)dialog.Content).OfType<TextBlock>().Select(item => item.Text));
+                var inline = YouTubeInspectorDetails.Children.OfType<TextBlock>().Any(
+                    item => item.Text == YouTubeVideo.PrivateRefreshSignInMessage);
+                var refresh = YouTubeInspectorDetails.Children.OfType<Button>().Single(
+                    item => AutomationProperties.GetName(item) == "Refresh YouTube Details");
+                if (!InspectorSplitView.IsPaneOpen || youtubeInspectorRefreshing || !refresh.IsEnabled || inline ||
+                    message != YouTubeVideo.PrivateRefreshSignInMessage ||
+                    !beforeRefresh.SequenceEqual(await File.ReadAllBytesAsync(path)))
+                    throw new InvalidOperationException("Signed-out private refresh did not show the sign-in dialog and preserve saved details.");
+                var okay = FindButton(dialog, "OK") ?? throw new InvalidOperationException("YouTube sign-in dialog omitted OK.");
+                var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(okay);
+                ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+                await refreshing.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            finally
+            {
+                Views.WindowedDialog.ReadyToShow -= CaptureSignInDialog;
+                if (signInDialog.Task.IsCompletedSuccessfully) signInDialog.Task.Result.Hide();
+                if (InspectorSplitView.IsPaneOpen != inspectorWasOpen) ToggleInspector_Click(this, new RoutedEventArgs());
+            }
             async Task CheckAttachmentDeletionChoices(bool audioAvailable, bool videoAvailable)
             {
                 var opened = new TaskCompletionSource<ContentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);

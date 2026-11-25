@@ -47,7 +47,7 @@ public static class MenuIcons
             "cloud-rename" => "\uE70F",
             "cloud-remove" => "\uE738",
             "cloud-upload" => "\uE898",
-            "Refresh Buckets" or "Refresh Files" => "\uE72C",
+            "Refresh Buckets" or "Refresh Files" or "Refresh YouTube Details" => "\uE72C",
             "Load Thumbnail" => "\uEB9F",
             "Table" or "Table View" => "\uE80A",
             "List" => "\uE8FD",

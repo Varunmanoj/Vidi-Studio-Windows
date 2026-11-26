@@ -3047,19 +3047,29 @@ public sealed partial class MainWindow
         {
             ProjectSplitView.IsPaneOpen = true;
             await Task.Delay(260);
+            if (EditorProjectLayoutButton.Visibility != Visibility.Visible || EditorProjectLayoutButton.ActualWidth <= 0)
+                throw new InvalidOperationException("Opening the project pane did not show its layout button.");
             if (!Search.Focus(FocusState.Programmatic)) throw new InvalidOperationException("The open project pane is not keyboard reachable.");
             await RunDesktopCommandAsync("show-projects");
             await Task.Delay(160);
-            if (ProjectSplitView.IsPaneOpen || !ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), EditorProjectListButton))
+            if (ProjectSplitView.IsPaneOpen || EditorProjectLayoutButton.Visibility != Visibility.Collapsed ||
+                !ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), EditorProjectListButton))
                 throw new InvalidOperationException("Closing the project pane did not preserve a reachable keyboard focus.");
             // Reversing an unfinished transition must leave the final requested state usable.
             await RunDesktopCommandAsync("show-projects");
             await RunDesktopCommandAsync("show-projects");
             await RunDesktopCommandAsync("show-projects");
             await Task.Delay(260);
-            if (!ProjectSplitView.IsPaneOpen || LibraryPanel.ActualWidth <= 0 ||
+            if (!ProjectSplitView.IsPaneOpen || LibraryPanel.ActualWidth <= 0 || EditorProjectLayoutButton.Visibility != Visibility.Visible ||
                 DesktopCommandTitle("show-projects") != "Hide Project List")
                 throw new InvalidOperationException("Rapid project-pane toggles lost their final layout or menu state.");
+            if (!EditorProjectLayoutButton.Focus(FocusState.Programmatic))
+                throw new InvalidOperationException("The project pane layout button is not keyboard reachable.");
+            await RunDesktopCommandAsync("show-projects");
+            await Task.Delay(260);
+            if (EditorProjectLayoutButton.Visibility != Visibility.Collapsed ||
+                !ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), EditorProjectListButton))
+                throw new InvalidOperationException("Hiding the layout button did not return focus to the project pane toggle.");
         }
         finally
         {

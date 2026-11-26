@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using System;
 using System.IO;
@@ -27,8 +28,30 @@ public sealed partial class MainWindow
     private bool desktopEditorVisible;
     private bool? desktopPlaybackWasPlaying;
     private bool desktopPlaybackWasStarted;
-    internal IEnumerable<(string Label, string Shortcut)> DesktopShortcutReference =>
-        DesktopShortcuts.Select(entry => (DesktopCommandTitle(entry.Key), entry.Value.Text));
+    private static readonly (string Title, string[] Commands)[] ShortcutReferenceGroups =
+    {
+        ("Projects and Windows", new[] { "new-project", "open-cloud-videos", "youtube-browser", "open-project", "settings", "project-settings", "close-window", "help" }),
+        ("Editor Navigation", new[] { "focus-search", "show-projects", "show-inspector", "project-list", "project-grid", "transcript", "summary", "descriptions", "ad-transcript", "ad-overview" }),
+        ("Video Playback", new[] { "preview", "fullscreen", "play", "stop", "back", "forward", "jump-to-time", "narration" }),
+        ("Transcript Overlay", new[] { "caption-cycle", "caption-off", "caption-transcript", "caption-ad-transcript" }),
+        ("Summary Reading", new[] { "summary-play", "summary-pause", "summary-stop", "summary-previous-sentence", "summary-next-sentence", "summary-previous-paragraph", "summary-next-paragraph", "summary-zoom-in", "summary-zoom-out", "summary-zoom-reset" }),
+        ("Segment Editing", new[] { "segment-edit-mode", "reanalyze-selection", "add", "segment-select-all", "segment-deselect-all", "segment-edit-selected", "segment-delete-selected", "follow", "undo", "redo" }),
+        ("Generation and Narration", new[] { "analyze", "transcribe", "generate-summary", "generate-ad-cues", "synthesize-tts", "delete-narration" }),
+        ("Import and Export", new[] { "import-assets", "import-transcript", "import-summary", "import-descriptions", "export" }),
+        ("YouTube Browser", new[] { "youtube-accounts", "youtube-open-editor", "youtube-open-browser", "youtube-refresh-list", "youtube-load-videos", "youtube-load-playlists" })
+    };
+
+    internal IEnumerable<(string Title, IEnumerable<(string Label, string Shortcut)> Rows)> DesktopShortcutReference =>
+        ShortcutReferenceGroups.Select(group => (group.Title, group.Commands.Select(id => (ShortcutReferenceTitle(id), DesktopShortcuts[id].Text))));
+
+    private string ShortcutReferenceTitle(string id) => id switch
+    {
+        "transcribe" => "Generate or Regenerate Transcript…",
+        "generate-summary" => "Generate or Regenerate Summary…",
+        "generate-ad-cues" => "Generate or Regenerate Audio Descriptions…",
+        "synthesize-tts" => "Generate or Regenerate All AD Audio…",
+        _ => DesktopCommandTitle(id)
+    };
     /// <summary>Current window appearance, shared with companion windows such as Help.</summary>
     internal ElementTheme CurrentTheme => Root.ActualTheme;
 
@@ -269,6 +292,7 @@ public sealed partial class MainWindow
         ["transcribe"] = (VirtualKey.T, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+T"),
         ["generate-summary"] = (VirtualKey.S, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+S"),
         ["generate-ad-cues"] = (VirtualKey.D, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+D"),
+        ["synthesize-tts"] = (VirtualKey.N, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+N"),
         ["import-transcript"] = (VirtualKey.I, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+I"),
         ["import-summary"] = (VirtualKey.M, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+M"),
         ["import-descriptions"] = (VirtualKey.D, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+D"),
@@ -280,6 +304,41 @@ public sealed partial class MainWindow
         ["youtube-load-playlists"] = (VirtualKey.L, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+L"),
         ["import-assets"] = (VirtualKey.I, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift, "Ctrl+Alt+Shift+I")
     };
+
+    private static string ShortcutTooltip(string command, string label) =>
+        DesktopShortcuts.TryGetValue(command, out var binding) ? $"{label} ({binding.Text})" : label;
+
+    private static void SetShortcutTooltip(FrameworkElement control, string? command, string label)
+    {
+        var shortcut = command == null ? null : DesktopShortcuts[command].Text;
+        ToolTipService.SetToolTip(control, shortcut == null ? label : $"{label} ({shortcut})");
+        AutomationProperties.SetAcceleratorKey(control, shortcut ?? "");
+    }
+
+    private void InitializeEditorShortcutTooltips()
+    {
+        foreach (var (control, command, label) in new (FrameworkElement, string, string)[] {
+            (VideoRewindButton, "back", "Rewind five seconds"),
+            (VideoForwardButton, "forward", "Forward five seconds"),
+            (VideoStopButton, "stop", "Stop video"),
+            (FullScreenVideoButton, "fullscreen", "View video full screen. Press Esc to return."),
+            (Follow, "follow", "Follow active segment"),
+            (InspectorSettingsButton, "settings", "Settings"),
+            (EditorImportAssetsButton, "import-assets", "Import existing assets"),
+            (BulkImportAssetsButton, "import-assets", "Import existing assets"),
+            (SegmentEditSelectedButton, "segment-edit-selected", "Edit selected segments"),
+            (SegmentDeleteSelectedButton, "segment-delete-selected", "Delete selected segments"),
+            (SummaryStopButton, "summary-stop", "Stop summary reading"),
+            (SummaryPreviousSentenceButton, "summary-previous-sentence", "Previous summary sentence"),
+            (SummaryNextSentenceButton, "summary-next-sentence", "Next summary sentence"),
+            (SummaryPreviousParagraphButton, "summary-previous-paragraph", "Previous summary paragraph"),
+            (SummaryNextParagraphButton, "summary-next-paragraph", "Next summary paragraph"),
+            (SummaryZoomInButton, "summary-zoom-in", "Zoom in"),
+            (SummaryZoomOutButton, "summary-zoom-out", "Zoom out"),
+            (SummaryZoomResetButton, "summary-zoom-reset", "Actual size (100%)")
+        })
+            SetShortcutTooltip(control, command, label);
+    }
 
     private MenuFlyoutSubItem LibraryLanguageMenu()
     {
@@ -513,6 +572,8 @@ public sealed partial class MainWindow
                 : (name is "Filter Projects by Source" or "Sort Projects" or "Analysis" ? Visibility.Visible : Visibility.Collapsed);
             if (name is "Filter Projects by Source" or "Sort Projects") group.IsEnabled = !desktopEditorVisible;
             if (name == "Analysis" && !desktopEditorVisible) group.IsEnabled = SelectedGalleryProject() != null && Model.Idle;
+            if (name == "Cloud Storage" && desktopEditorVisible)
+                group.Visibility = Model.Project?.CloudConsoleUrl != null ? Visibility.Visible : Visibility.Collapsed;
             if (name == "Summary Reading") {
                 group.Visibility = desktopEditorVisible && Section.SelectedIndex == 1 && !summaryEditMode ? Visibility.Visible : Visibility.Collapsed;
                 group.IsEnabled &= !summaryEditMode;
@@ -572,7 +633,7 @@ public sealed partial class MainWindow
             var project = ProjectManagementTarget();
             return id switch
             {
-                "cloud-upload" => Model.Settings.GetBool("vertexConnected"),
+                "cloud-upload" => !desktopEditorVisible && Model.Settings.GetBool("vertexConnected"),
                 "cloud-rename" => VerifiedCloudPermissions(project).Rename,
                 "cloud-remove" => VerifiedCloudPermissions(project).Delete,
                 _ => project?.CloudVideo != null

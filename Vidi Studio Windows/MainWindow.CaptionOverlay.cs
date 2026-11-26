@@ -25,7 +25,7 @@ public sealed partial class MainWindow
         };
         CaptionOverlayButton.Opacity = mode == "off" ? .55 : 1;
         var tooltip = $"Transcript overlay: {label}. Open the menu to choose Off, Transcript, or AD Transcript.";
-        ToolTipService.SetToolTip(CaptionOverlayButton, tooltip);
+        SetShortcutTooltip(CaptionOverlayButton, "caption-cycle", tooltip + " Cycle the overlay");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(CaptionOverlayButton, $"Transcript overlay: {label}");
         SetItem(CaptionOffItem, mode == "off");
         SetItem(CaptionTranscriptItem, mode == "transcript");

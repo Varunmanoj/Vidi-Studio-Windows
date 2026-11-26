@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using System;
 using System.Diagnostics;
@@ -13,11 +14,12 @@ namespace Vidi_Studio_Windows.Views;
 public sealed partial class SettingsDialog
 {
     private bool shortcutReferenceExpanded = false;
-    private static void AddInformationRow(StackPanel panel, string label, string detail)
+    private static TextBlock AddInformationRow(StackPanel panel, string label, string detail)
     {
         var value = new TextBlock { Text = detail, TextWrapping = TextWrapping.Wrap, Opacity = .7 };
         value.TextAlignment = TextAlignment.Right;
         CompactRow(panel,label,value,true);
+        return value;
     }
 
     private void BuildHelp(StackPanel panel)
@@ -31,8 +33,30 @@ public sealed partial class SettingsDialog
         guide.Children.Add(openHelp);
         guide.Children.Add(GeminiRowDivider());
         var shortcuts = new StackPanel();
-        if(menuOwner!=null) foreach(var (label,shortcut) in menuOwner.DesktopShortcutReference) AddInformationRow(shortcuts,label,shortcut);
-        var reference = new Expander { Header = "Keyboard shortcut reference", Content = shortcuts, IsExpanded = shortcutReferenceExpanded, HorizontalAlignment = HorizontalAlignment.Stretch };
+        if (menuOwner != null)
+        {
+            foreach (var (title, rows) in menuOwner.DesktopShortcutReference)
+            {
+                shortcuts.Children.Add(ScreenReaderHeading.Mark(new TextBlock
+                {
+                    Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                    TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 4)
+                }));
+                var group = new StackPanel();
+                shortcuts.Children.Add(new AccessibilityGroup(title + " shortcuts") { Child = group });
+                foreach (var (label, shortcut) in rows)
+                {
+                    var key = AddInformationRow(group, label, shortcut);
+                    // The key is readable text following the action, not an input named by it.
+                    key.ClearValue(AutomationProperties.LabeledByProperty);
+                }
+            }
+        }
+        var reference = new Expander
+        {
+            Header = "Keyboard shortcut reference", Content = shortcuts, IsExpanded = shortcutReferenceExpanded,
+            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch
+        };
         reference.Expanding += (_, _) => shortcutReferenceExpanded = true;
         reference.Collapsed += (_, _) => shortcutReferenceExpanded = false;
         var menu = MenuAccessKeys.Create();
@@ -173,10 +197,35 @@ public sealed partial class SettingsDialog
         if (!reference.IsExpanded || !referenceToggle.IsChecked)
             throw new InvalidOperationException("Help reference menu did not expand the same shortcut list.");
         await Task.Delay(80);
+        var groups = (StackPanel)reference.Content;
+        var headings = groups.Children.OfType<TextBlock>().ToArray();
+        var expected = menuOwner!.DesktopShortcutReference.ToArray();
+        if (!headings.Select(heading => heading.Text).SequenceEqual(expected.Select(group => group.Title)) ||
+            headings.Any(heading => AutomationProperties.GetHeadingLevel(heading) != Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2))
+            throw new InvalidOperationException("Settings Help shortcut sections must appear in order as screen-reader headings.");
+        var sections = groups.Children.OfType<AccessibilityGroup>().ToArray();
+        if (sections.Length != expected.Length ||
+            sections.Where((section, index) => !SpeechItems<TextBlock>(section)
+                .Select(text => text.Text).SequenceEqual(expected[index].Rows.SelectMany(row => new[] { row.Label, row.Shortcut }))).Any())
+            throw new InvalidOperationException("Settings Help shortcut rows must appear under the matching headings.");
+        var newProjectKey = SpeechItems<TextBlock>(sections[0]).Single(text => text.Text == "Ctrl+N");
+        if (Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(newProjectKey)?.GetName() != newProjectKey.Text)
+            throw new InvalidOperationException("Settings Help must expose the shortcut itself after its action.");
         if (!SpeechItems<TextBlock>(currentSectionPanel!).Any(text => text.Text == "Jump to Time…") ||
             !SpeechItems<TextBlock>(currentSectionPanel!).Any(text => text.Text == "Ctrl+Shift+J"))
             throw new InvalidOperationException("Settings Help lost Jump to Time and its shortcut.");
         var shortcutLabels = SpeechItems<TextBlock>(reference).Select(text => text.Text).ToArray();
+        foreach (var (label, key) in new[] {
+            ("Generate or Regenerate Transcript…", "Ctrl+Alt+Shift+T"),
+            ("Generate or Regenerate Summary…", "Ctrl+Alt+Shift+S"),
+            ("Generate or Regenerate Audio Descriptions…", "Ctrl+Alt+Shift+D"),
+            ("Generate or Regenerate All AD Audio…", "Ctrl+Alt+Shift+N")
+        })
+        {
+            var index = Array.IndexOf(shortcutLabels, label);
+            if (index < 0 || index + 1 >= shortcutLabels.Length || shortcutLabels[index + 1] != key)
+                throw new InvalidOperationException("Settings Help lost the generation shortcut for " + label);
+        }
         var cloudLabel = Array.IndexOf(shortcutLabels, "Open Cloud Videos…");
         var youtubeLabel = Array.IndexOf(shortcutLabels, "My YouTube Videos…");
         if (cloudLabel < 0 || youtubeLabel <= cloudLabel ||

@@ -791,6 +791,10 @@
           "title": "Summary Markdown editor"
         },
         {
+          "id": "generate-and-regenerate-project-content",
+          "title": "Generate and regenerate project content"
+        },
+        {
           "id": "look-more-closely-at-a-section",
           "title": "Look more closely at a section"
         },

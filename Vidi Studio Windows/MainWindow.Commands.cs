@@ -88,7 +88,9 @@ public sealed partial class MainWindow
         SummaryPlayButton.Content = state == Services.SummaryReadbackState.Stopped ? "Play" : state == Services.SummaryReadbackState.Preparing ? "Preparing…" : state == Services.SummaryReadbackState.Playing ? "Pause" : "Resume";
         var online = true; // Summary speech always resolves to a local engine.
         SummaryPlayButton.IsEnabled = state != Services.SummaryReadbackState.Preparing && (online || state is Services.SummaryReadbackState.Playing or Services.SummaryReadbackState.Paused);
-        ToolTipService.SetToolTip(SummaryPlayButton, online ? "Read summary" : ConnectivityService.Shared.Reason(OnlineService.Gemini));
+        SetShortcutTooltip(SummaryPlayButton,
+            state == Services.SummaryReadbackState.Playing ? "summary-pause" : "summary-play",
+            $"{SummaryPlayButton.Content} summary reading");
         SummaryStopButton.IsEnabled = state != Services.SummaryReadbackState.Stopped;
         var navigating = state != Services.SummaryReadbackState.Preparing && online;
         SummaryPreviousSentenceButton.IsEnabled = navigating && readback.CanGoPreviousSentence;
@@ -116,10 +118,11 @@ public sealed partial class MainWindow
     private void ProjectPane_Closing(SplitView sender, SplitViewPaneClosingEventArgs args)
     {
         // Keep keyboard focus reachable when the control containing it slides away.
-        for (DependencyObject? focused = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
+        if (sender.XamlRoot is not { } xamlRoot) return;
+        for (DependencyObject? focused = FocusManager.GetFocusedElement(xamlRoot) as DependencyObject;
              focused != null; focused = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(focused))
         {
-            if (!ReferenceEquals(focused, LibraryPanel)) continue;
+            if (!ReferenceEquals(focused, LibraryPanel) && !ReferenceEquals(focused, EditorProjectLayoutButton)) continue;
             EditorProjectListButton.Focus(FocusState.Programmatic);
             break;
         }
@@ -131,7 +134,7 @@ public sealed partial class MainWindow
         var grid = ProjectGrid.Visibility == Visibility.Visible;
         EditorProjectLayoutIcon.Glyph = grid ? "\uE8FD" : "\uE80A";
         var layoutLabel = grid ? "Switch project list to list view" : "Switch project list to grid view";
-        ToolTipService.SetToolTip(EditorProjectLayoutButton, layoutLabel);
+        SetShortcutTooltip(EditorProjectLayoutButton, grid ? "project-list" : "project-grid", layoutLabel);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditorProjectLayoutButton, layoutLabel);
         var visibleLibrary = ProjectSplitView.IsPaneOpen;
         if (!changingProject && visibleLibrary && SelectedBrowserProject() == null && Model.Project is { } openProject)
@@ -161,15 +164,16 @@ public sealed partial class MainWindow
     {
         if (EditorProjectListButton == null || TopInspectorToggle == null || ProjectSplitView == null || InspectorSplitView == null) return;
         EditorProjectListButton.IsChecked = ProjectSplitView.IsPaneOpen;
+        EditorProjectLayoutButton.Visibility = ProjectSplitView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
         TopInspectorToggle.IsChecked = InspectorSplitView.IsPaneOpen;
         var projectLabel = ProjectSplitView.IsPaneOpen ? "Hide project list" : "Show project list";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditorProjectListButton, projectLabel);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(EditorProjectListButton, ProjectSplitView.IsPaneOpen ? "Project list shown" : "Project list hidden");
-        ToolTipService.SetToolTip(EditorProjectListButton, projectLabel);
+        SetShortcutTooltip(EditorProjectListButton, "show-projects", projectLabel);
         var inspectorLabel = DesktopCommandTitle("show-inspector");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(TopInspectorToggle, inspectorLabel);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(TopInspectorToggle, InspectorSplitView.IsPaneOpen ? "Inspector shown" : "Inspector hidden");
-        ToolTipService.SetToolTip(TopInspectorToggle, inspectorLabel + " (" + DesktopShortcuts["show-inspector"].Text + ")");
+        SetShortcutTooltip(TopInspectorToggle, "show-inspector", inspectorLabel);
     }
     private async void PanelVisibilityToggle_Changed(object sender, RoutedEventArgs e)
     {

@@ -286,6 +286,10 @@ public sealed partial class MainWindow
             };
             foreach (var (button, tooltip) in controls)
             {
+                var command = ReferenceEquals(button, GenerateCurrent) ? "transcribe"
+                    : ReferenceEquals(button, EditModeButton) ? "segment-edit-mode" : "add";
+                if (tooltip.Content is not string text || !text.Contains(DesktopShortcuts[command].Text, StringComparison.Ordinal))
+                    throw new InvalidOperationException("The rendered editor tooltip lost its shortcut for " + command);
                 Hover(EditorSectionHeading);
                 await Task.Delay(200);
                 var target = ReferenceEquals(tooltip, GenerateUnavailableToolTip) ? (FrameworkElement)GenerateUnavailableHoverTarget : button;
@@ -326,6 +330,26 @@ public sealed partial class MainWindow
         try
         {
             ProjectSplitView.IsPaneOpen = false; InspectorSplitView.IsPaneOpen = true;
+            var cloudGroups = desktopMenuGroups.Where(entry => entry.Name == "Cloud Storage").Select(entry => entry.Item).ToArray();
+            var project = Model.Project!;
+            var savedCloud = project.CloudVideo;
+            try
+            {
+                foreach (var cloud in new Dictionary<string, string>?[] {
+                    null, new() { ["bucket"] = "ui-smoke-fixture", ["object"] = "test.mp4", ["ownership"] = "referenced" }
+                })
+                {
+                    project.CloudVideo = cloud;
+                    UpdateDesktopMenuStates();
+                    if (cloudGroups.Length == 0 || cloudGroups.Any(group => (group.Visibility == Visibility.Visible) != (cloud != null)))
+                        throw new InvalidOperationException("The editor Cloud Storage menu must follow the open project source.");
+                }
+            }
+            finally
+            {
+                project.CloudVideo = savedCloud;
+                UpdateDesktopMenuStates();
+            }
             var scale = Root.XamlRoot.RasterizationScale;
             foreach (var theme in new[] { "light", "dark" })
             {
@@ -339,6 +363,24 @@ public sealed partial class MainWindow
                     {
                         Section.SelectedIndex = index; UpdateSectionPresentation(); await Task.Delay(100); Root.UpdateLayout();
                         VerifyEditorButtonTooltipsForSmokeTest();
+                        if (CurrentGenerationCommand is { } command)
+                        {
+                            var shortcut = DesktopShortcuts[command].Text;
+                            if (GenerateCurrentToolTip.Content is not string tooltip || !tooltip.Contains(shortcut, StringComparison.Ordinal) ||
+                                AutomationProperties.GetAcceleratorKey(InspectorGenerate) != shortcut ||
+                                desktopMenuItems[command].Last().KeyboardAcceleratorTextOverride != shortcut ||
+                                GenerateCurrent.IsEnabled != CanRunDesktopCommand(command))
+                                throw new InvalidOperationException("Generation menu, button, and tooltip must share " + shortcut);
+                        }
+                        if (index is 2 or 3 or 4)
+                        {
+                            var button = index == 4 ? OverviewGenerateAllAudioButton : InspectorSynthesizeNarrationButton;
+                            const string shortcut = "Ctrl+Alt+Shift+N";
+                            if (ToolTipService.GetToolTip(button) is not string tooltip || !tooltip.Contains(shortcut, StringComparison.Ordinal) ||
+                                AutomationProperties.GetAcceleratorKey(button) != shortcut ||
+                                desktopMenuItems["synthesize-tts"].Last().KeyboardAcceleratorTextOverride != shortcut)
+                                throw new InvalidOperationException("Narration generation must show the same shortcut in the menu and tooltip.");
+                        }
                         if (index == 4)
                         {
                             var panels = new[] { OverviewProjectDetails, OverviewTranscript, OverviewSummary, OverviewStatistics, OriginStatistics };
@@ -460,6 +502,7 @@ public sealed partial class MainWindow
             ProjectSplitView.IsPaneOpen = originalProjects; InspectorSplitView.IsPaneOpen = originalInspector;
             AppWindow.Resize(originalSize); PreviewTheme(originalTheme);
         }
+        await VerifyProjectPaneTransitionsForSmokeTestAsync();
         ShowGallery_Click(this, new RoutedEventArgs());
     }
 

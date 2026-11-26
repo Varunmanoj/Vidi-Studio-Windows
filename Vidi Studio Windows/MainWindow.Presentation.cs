@@ -540,6 +540,7 @@ public sealed partial class MainWindow
         var label = editing ? $"Done editing {section}" : $"Edit {section}";
         EditModeToolTip.Content = $"{label} ({DesktopShortcuts["segment-edit-mode"].Text})";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditModeButton, label);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAcceleratorKey(EditModeButton, DesktopShortcuts["segment-edit-mode"].Text);
     }
 
     private void UpdateEditorActionVisibility()
@@ -559,10 +560,11 @@ public sealed partial class MainWindow
         EmptySectionActions.Visibility = empty && Model.Idle ? Visibility.Visible : Visibility.Collapsed;
         var name = index switch { 0 => "Transcript", 1 => "Summary", _ => "Audio Descriptions" };
         EmptySectionTitle.Text = $"Your {name.ToLowerInvariant()} appears here";
-        EmptySectionGenerate.Content = $"Generate {name}";
-        EmptySectionGenerate.IsEnabled = CanRunDesktopCommand(index switch { 0 => "transcribe", 1 => "generate-summary", _ => "generate-ad-cues" });
+        EmptySectionGenerate.Content = CurrentGenerationCommand is { } command ? DesktopCommandTitle(command) : $"Generate {name}";
+        EmptySectionGenerate.IsEnabled = CurrentGenerationCommand is { } generation && CanRunDesktopCommand(generation);
         ToolTipService.SetToolTip(EmptySectionGenerate, GenerateCurrentToolTip.Content);
         EmptySectionImport.Content = index switch { 0 => "Import Transcript…", 1 => "Import Summary…", _ => "Import Descriptions…" };
+        SetShortcutTooltip(EmptySectionImport, index switch { 0 => "import-transcript", 1 => "import-summary", _ => "import-descriptions" }, EmptySectionImport.Content.ToString()!);
         EmptySectionImport.IsEnabled = Model.Idle;
     }
 
@@ -571,11 +573,18 @@ public sealed partial class MainWindow
         await RunDesktopCommandAsync(Section.SelectedIndex switch { 0 => "import-transcript", 1 => "import-summary", _ => "import-descriptions" });
     }
 
-    private void GenerateCurrent_Click(object sender, RoutedEventArgs e)
+    private string? CurrentGenerationCommand => Section.SelectedIndex switch
     {
-        var command = Section.SelectedIndex switch { 0 => "transcribe", 1 => "generate-summary", 2 => "generate-ad-cues", _ => "synthesize-tts" };
-        Command_Click(new Button { Tag = command }, e);
+        0 => "transcribe", 1 => "generate-summary", 2 => "generate-ad-cues", _ => null
+    };
+
+    private async void GenerateCurrent_Click(object sender, RoutedEventArgs e)
+    {
+        if (CurrentGenerationCommand is { } command) await RunDesktopCommandAsync(command);
     }
+
+    private async void GenerateNarration_Click(object sender, RoutedEventArgs e) =>
+        await RunDesktopCommandAsync("synthesize-tts");
     private async void EditMode_Click(object sender, RoutedEventArgs e)
     {
         if (Section.SelectedIndex == 1)
@@ -720,6 +729,7 @@ public sealed partial class MainWindow
         InspectorNarrationControls.Visibility = index is 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
         UpdateInspectorSpeechInfo();
         Narration.Visibility = index is 2 or 3 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        SetShortcutTooltip(Narration, EditorCommandVisible("narration") ? "narration" : null, "Toggle narration");
         Follow.Visibility = index is 0 or 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
         EditModeButton.Visibility = index is 0 or 1 or 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
         EditorAddButton.Visibility = index is 0 or 1 or 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
@@ -730,11 +740,14 @@ public sealed partial class MainWindow
             2 => "Add or import audio descriptions",
             _ => "Import audio descriptions"
         };
-        EditorAddToolTip.Content = addLabel;
+        EditorAddToolTip.Content = EditorCommandVisible("add") ? ShortcutTooltip("add", addLabel) : addLabel;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(EditorAddButton, addLabel);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAcceleratorKey(EditorAddButton, EditorCommandVisible("add") ? DesktopShortcuts["add"].Text : "");
         if (CaptionOverlayButton != null) CaptionOverlayButton.Visibility = index is 0 or 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
         SetEditModeButton((index == 1 ? summaryEditMode : editMode));
         EditToolbar.Visibility = editMode && index is 0 or 2 or 3 ? Visibility.Visible : Visibility.Collapsed;
+        SetShortcutTooltip(SegmentUndoButton, EditorCommandVisible("undo") ? "undo" : null, "Undo segment edit");
+        SetShortcutTooltip(SegmentRedoButton, EditorCommandVisible("redo") ? "redo" : null, "Redo segment edit");
         UpdateBulkActionState();
         OverviewPanel.Visibility = index == 4 ? Visibility.Visible : Visibility.Collapsed;
         var overview = p.OverviewProject;

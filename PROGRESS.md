@@ -2930,3 +2930,31 @@ The centered Processing card sends one Windows UI Automation notification with t
 Built, inspected and installed the Windows 11 ARM64 development package at 1.0.432.0 with one package registration and Start entry. Installed engine doctor and DialogsOnly passed. GallerySettingsOnly passed on the foreground retry after an initial pointer failure in the Cloud browser check. A separate UI Automation client received exactly one “Processing. Adding the video to your project…” notification for each real local import from All Projects and from an open editor. Both imports opened their new editors. Native Windows x64 and spoken Narrator output were outside verification.
 
 The paired menu and layout suites passed 103 tests per checkout, and the local Help build and navigation passed. The website guide is unpublished. Logs are in build/processing-announcement-432-verify-handoff.log, build/processing-announcement-432-native.log, build/processing-announcement-432-gallery.log and build/processing-announcement-432-final-check.log.
+
+## 1.0.433.0 · Editor shortcuts and Project menu · 2026-11-26
+
+Transcript, Summary and Descriptions use Ctrl+Alt+Shift+T, S and D in their respective sections. Generate or Regenerate All AD Audio uses Ctrl+Alt+Shift+N in Descriptions, AD Transcript and Overview. Buttons and menus share the guarded actions and existing confirmations. Hover tooltips include the active shortcut wherever the editor button has one, and Windows exposes it separately through UI Automation. In the editor, Project > Cloud Storage appears only for a project linked to a bucket video. All Projects retains cloud upload.
+
+The paired menu and layout suites passed 103 tests per checkout. The live Help and Keyboard Shortcuts pages at commit d6f8a8a passed both platform layouts, wide and compact searches and anchor navigation.
+
+Installed Windows 11 ARM64 1.0.433.0 with one app registration and Start entry. DialogsOnly passed. GallerySettingsOnly passed on the foreground retry after a pointer miss in the Cloud browser test. It verified gate visibility with local and bucket-backed fixtures, showed matching generation shortcuts in the menus and across all five editor sections in both themes and compact and ordinary windows, and checked actual pointer hovers on Generate, Add and Edit. In a separate installed-app test, Ctrl+Alt+Shift+N opened the real regeneration confirmation from Overview. Cancel closed it and preserved the saved audio byte for byte. Native Windows x64 and live AI generation were outside this verification. See build/editor-shortcuts-433-verify-handoff.log, build/editor-shortcuts-433-gallery.log and build/editor-shortcuts-433-keyboard.log.
+
+The final installed engine passed doctor and the ARM64 MSIX passed manifest, architecture, speech host and bundled asset verification. Removed the disposable test data and Windows staging layout. See build/editor-shortcuts-433-final-check.log.
+
+## 1.0.434.0 · Editor Projects sidebar layout · 2026-11-26
+
+The Windows editor’s layout button is visible while the Projects sidebar is open. It preserves the current list or grid preference and continues to expose the destination view and shortcut. Closing the sidebar moves focus back to its toggle if focus was on the layout button or inside the sidebar. The View menu actions and accelerators can open the sidebar in either layout.
+
+Both desktop checkouts passed 103 paired menu and layout tests. The guide update passed the local production build, search and navigation at wide and compact sizes. Publication is pending.
+
+Installed Windows 11 ARM64 1.0.434.0 with one app registration and Start entry. DialogsOnly passed and GallerySettingsOnly passed on the foreground retry after a Cloud browser test pointer miss. The installed editor’s sidebar regression checks verified visibility during normal and reversed transitions and focus handoff from the layout button. A separate UI Automation check used Ctrl+B to open and close the sidebar, invoked the visible layout button, confirmed both shortcut labels, and used Ctrl+Alt+1 to reopen List View. Native Windows x64 was outside runtime verification. See build/project-sidebar-434-verify-handoff.log, build/project-sidebar-434-gallery.log, and build/project-sidebar-434-native.log.
+
+The installed engine passed doctor. The ARM64 package inspection verified the manifest, executable architectures, speech host and media assets. Removed disposable fixtures and the staging layout. See build/project-sidebar-434-final-check.log.
+
+## 1.0.435.0 · Grouped Help shortcuts · 2026-11-26
+
+Settings > Help presents the same nine task headings as Mac under its existing keyboard reference disclosure. The Windows reference uses the available pane width, keeps each key beside its action where it fits, and reflows at narrow widths. Its action and key are readable in order with UI Automation. All 53 native key bindings remain listed.
+
+Both desktop checkouts passed 103 paired menu and layout tests. The guide update passed local TypeScript, the production build, and wide and compact search and navigation. Publication is pending.
+
+Installed Windows 11 ARM64 1.0.435.0 with one app registration and Start entry. The final installed GallerySettingsOnly suite passed on the foreground retry after a Cloud browser test pointer miss. Its Help checks verified all nine accessibility headings and their rows, the actual Ctrl+N accessibility name, and the reference disclosure's state across navigation. A separate native UI Automation measurement verified approximately 95% of the reference width was used at 1040 logical pixels and 93% at 760, in both light and dark. At ordinary width the first action and key were on the same line. The ARM64 package inspection and installed engine doctor passed. Removed the temporary staging and fixtures. Native Windows x64 was outside runtime verification. See build/grouped-shortcuts-435-gallery.log, build/grouped-shortcuts-435-final-native.log, and build/grouped-shortcuts-435-final-check.log.

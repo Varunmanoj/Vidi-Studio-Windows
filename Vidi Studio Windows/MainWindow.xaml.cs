@@ -90,6 +90,7 @@ public sealed partial class MainWindow : Window
         onDeviceNarrator = new OnDeviceNarrator(Model.Settings, Model.Engine);
         onDeviceNarrator.Failed += message => Model.ReportStatus(message);
         InitializeComponent();
+        InitializeEditorShortcutTooltips();
         Model.ConfirmCloudAction = Confirm;
         EditorSearch.TextChanging += (_, _) => UpdateEditorSearch();
         ProjectSplitView.RegisterPropertyChangedCallback(SplitView.IsPaneOpenProperty, (_, _) => SyncPanelVisibilityToggles());
@@ -1179,7 +1180,8 @@ public sealed partial class MainWindow : Window
         ChoosePrivatePlaybackVideo.IsEnabled = Model.Project is { } current && CanChooseYouTubePlaybackVideo(current);
         VideoPlayPauseButton.Content = playing ? "\uE769" : "\uE768";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(VideoPlayPauseButton, playing ? "Pause video" : "Play video");
-        ToolTipService.SetToolTip(VideoPlayPauseButton, !playing && Model.Project?.UsesYouTubePlayer == true ? ConnectivityService.Shared.Reason(OnlineService.YouTube) ?? "Play video" : playing ? "Pause video" : "Play video");
+        SetShortcutTooltip(VideoPlayPauseButton, "play", !playing && Model.Project?.UsesYouTubePlayer == true
+            ? ConnectivityService.Shared.Reason(OnlineService.YouTube) ?? "Play video" : playing ? "Pause video" : "Play video");
         UpdateDesktopPlaybackState();
     }
     private async void VideoStop_Click(object sender, RoutedEventArgs e) => await RunDesktopCommandAsync("stop");
@@ -2325,7 +2327,7 @@ public sealed partial class MainWindow : Window
         UpdateTimelineVisibility();
         var action = showPreview ? "Hide" : "Show";
         AutomationProperties.SetName(PreviewToggleButton, $"{action} Preview");
-        ToolTipService.SetToolTip(PreviewToggleButton, $"{action} video preview ({DesktopShortcuts["preview"].Text})");
+        SetShortcutTooltip(PreviewToggleButton, "preview", $"{action} video preview");
         UpdateSummaryZoomControls();
     }
 
@@ -2553,17 +2555,21 @@ public sealed partial class MainWindow : Window
 
     private void UpdateEditorGenerationTooltip()
     {
+        var command = CurrentGenerationCommand;
         var action = AutomationProperties.GetName(GenerateCurrent);
         string? reason = null;
         if (!GenerateCurrent.IsEnabled)
         {
             reason = Model.Project?.RequiresLocalYouTubePlayback == true ? YouTubeVideo.PrivateAnalysisMessage
-                : Model.OnlineReason("transcribe") ?? (Model.IsApiKeyInvalid
+                : (command is { } id ? Model.OnlineReason(id) : null) ?? (Model.IsApiKeyInvalid
                 ? "Update your Gemini API key in Settings."
                 : !Model.HasApiKey ? "Configure an AI provider in Settings."
                 : Model.AiIssueTitle ?? "Available when processing finishes.");
         }
-        var label = reason == null ? action : $"{action} {reason}";
+        var label = command == null ? action : ShortcutTooltip(command, action);
+        if (reason != null) label += " " + reason;
+        foreach (var control in new[] { GenerateCurrent, InspectorGenerate, EmptySectionGenerate })
+            AutomationProperties.SetAcceleratorKey(control, command == null ? "" : DesktopShortcuts[command].Text);
         GenerateCurrentToolTip.Content = label;
         GenerateUnavailableToolTip.Content = label;
         GenerateUnavailableHoverTarget.Visibility = GenerateCurrent.IsEnabled ? Visibility.Collapsed : Visibility.Visible;
@@ -2648,7 +2654,7 @@ public sealed partial class MainWindow : Window
             ToolTipService.SetToolTip(button, string.IsNullOrEmpty(tooltip) ? null : tooltip);
         }
 
-        GenerateCurrent.IsEnabled = InspectorGenerate.IsEnabled = canUseAi;
+        GenerateCurrent.IsEnabled = InspectorGenerate.IsEnabled = CurrentGenerationCommand is { } generation && CanRunDesktopCommand(generation);
         UpdateEditorGenerationTooltip();
         UpdateEmptySectionActions();
         OverviewGenerateAllAudioButton.Content = project?.AllADAudioTitle ?? "Generate All AD Audio";
@@ -2658,7 +2664,7 @@ public sealed partial class MainWindow : Window
         foreach (var button in new[] { OverviewGenerateAllAudioButton, InspectorSynthesizeNarrationButton })
         {
             button.IsEnabled = CanRunDesktopCommand("synthesize-tts");
-            ToolTipService.SetToolTip(button, "Generate audio for every AD segment using the selected voice and set it as the primary voice");
+            SetShortcutTooltip(button, "synthesize-tts", project?.AllADAudioTitle ?? "Generate All AD Audio");
         }
         foreach (var button in new[] { OverviewGenerateChangedAudioButton, InspectorSynthesizeChangedButton })
         {
@@ -2670,7 +2676,7 @@ public sealed partial class MainWindow : Window
         SetAiButton(RefreshAnalysisButton, "Refresh Gemini video analysis availability status");
         SetAiButton(OcrFrameButton, "Read on-screen text from current video frame using Gemini vision");
         InspectorExportButton.IsEnabled = Model.Idle && Model.Project != null;
-        ToolTipService.SetToolTip(InspectorExportButton, "Open export dialog to produce video, audio, or caption outputs");
+        SetShortcutTooltip(InspectorExportButton, "export", "Open export dialog to produce video, audio, or caption outputs");
 
         UpdateMenuKeyStates(hasKey);
     }

@@ -2958,3 +2958,55 @@ Settings > Help presents the same nine task headings as Mac under its existing k
 Both desktop checkouts passed 103 paired menu and layout tests. The guide update passed local TypeScript, the production build, and wide and compact search and navigation. Publication is pending.
 
 Installed Windows 11 ARM64 1.0.435.0 with one app registration and Start entry. The final installed GallerySettingsOnly suite passed on the foreground retry after a Cloud browser test pointer miss. Its Help checks verified all nine accessibility headings and their rows, the actual Ctrl+N accessibility name, and the reference disclosure's state across navigation. A separate native UI Automation measurement verified approximately 95% of the reference width was used at 1040 logical pixels and 93% at 760, in both light and dark. At ordinary width the first action and key were on the same line. The ARM64 package inspection and installed engine doctor passed. Removed the temporary staging and fixtures. Native Windows x64 was outside runtime verification. See build/grouped-shortcuts-435-gallery.log, build/grouped-shortcuts-435-final-native.log, and build/grouped-shortcuts-435-final-check.log.
+
+## 1.0.436.0 · Collapsible Help shortcuts and YouTube source copying · 2026-11-26
+
+Settings Help starts each of its nine shortcut sections collapsed. The native disclosure and checked context menu share state, and the current Settings window preserves individual choices across pages. Video Information has matching copy buttons and row context actions for a YouTube video's ID and full saved URL when present.
+
+Installed Windows 11 ARM64 1.0.436.0 with one package registration and Start entry. GallerySettingsOnly passed on the foreground retry after a Cloud browser test pointer miss. It verified the shortcut section headings, context toggles, independent expansion and retained state, plus copy action names, tooltips, menu icons and availability. A separate installed UI Automation check opened two sections, verified the paired keys and retained state, and confirmed both copy buttons wrote exact text from a disposable YouTube project, including the URL time offset. The ARM64 package check and installed engine doctor passed. Removed the fixture and VM staging. See build/shortcut-sections-and-youtube-copy-436-gallery.log, build/shortcut-sections-and-youtube-copy-436-native.log and build/shortcut-sections-and-youtube-copy-436-final-check.log. Native Windows x64 was outside runtime verification.
+
+Both checkouts passed 103 paired menu and layout tests each. The guide passed TypeScript, the production build and wide and compact search and navigation locally. The website guide update is unpublished.
+
+## 1.0.437.0 · Expand and collapse all Help shortcuts · 2026-11-26
+
+Settings Help adds Expand All and Collapse All above its shortcut sections and in the reference's context menu. Both paths set the same disclosure states. Expand All opens a closed reference, and Collapse All keeps its existing parent state.
+
+Installed Windows 11 ARM64 1.0.437.0 with one package registration and Start entry. GallerySettingsOnly passed, covering the two labeled bulk buttons, matching icon menu commands, expansion of a closed parent, collapse with open and closed parent states, and retained individual expansion after changing Settings pages. An independent native UI Automation test verified nine collapsed defaults and both button actions in light and dark at 1040 and 760 logical pixels, with the buttons adjacent and visible. See build/shortcut-bulk-actions-437-verify-handoff.log and build/shortcut-bulk-actions-437-native.log. Native Windows x64 was outside runtime verification.
+
+Both desktop checkouts passed 103 paired menu and layout tests each. The guide passed TypeScript, the production build and normal and compact search and navigation locally. Publication is pending.
+
+The ARM64 MSIX manifest, executable architecture, speech host and media assets verified, and the installed engine passed doctor. Removed the disposable Windows staging and test fixtures. See build/shortcut-bulk-actions-437-final-check.log.
+
+## 1.0.439.0 · Search and capture Help shortcuts · 2026-11-26
+
+Settings Help searches action names and typed key combinations. It opens matching sections, preserves the browsing expansion when cleared, and disables bulk buttons and context commands when there is nothing to expand or collapse. The focused search field uses native preview key events to insert the pressed combination and show exact key matches. Regular typing, editing and focus navigation remain available.
+
+Installed Windows 11 ARM64 1.0.439.0 with one registration and one Start entry. The native UI Automation checks passed at 1040 and 760 logical pixels in light and dark appearance. They verified the field name and geometry, both bulk states, typed action and key results, and exact capture of Ctrl+Shift+J, Ctrl+Alt+Shift+T and F1. Regular typing and selection still worked, and a shortcut delivered after focus moved away left the query intact. Clearing restored the previous expansion. See build/shortcut-search-439-native.log. Native x64 and screen-reader speech were outside this run.
+
+Each desktop passed 104 paired menu and layout tests. The matching website guide update passed TypeScript, the production build and local search and navigation at 1440 and 390 CSS pixels. The guide update is unpublished.
+
+The installed GallerySettingsOnly suite passed on its foreground retry after an initial Cloud browser pointer miss. It exercised shortcut focus and clear menu commands, the disabled bulk states, automatic matching-section expansion, and the saved browsing expansion after clearing. The ARM64 MSIX manifest and assets, installed engine doctor, and single package registration and Start entry verified. See build/shortcut-search-439-gallery.log and build/shortcut-search-439-final-check.log.
+
+Removed both temporary build stages, test fixtures, and completed scheduled tasks. See build/shortcut-search-439-cleanup-tasks.log.
+
+## 1.0.440.0 · Visible shortcut search hint · 2026-11-26
+
+Settings Help shows “Type an action name or press a shortcut.” beside the Search shortcuts field. The field exposes the same wording as accessibility help.
+
+Installed Windows 11 ARM64 1.0.440.0 with one registration and Start entry. Native checks verified field help, action and key capture, and bulk controls in light and dark at 1040 and 760 logical pixels. Screenshots at all four combinations show the hint beside the input, wrapping to two lines at the narrower width. See build/shortcut-search-hint-440-native.log and the corresponding light and dark PNGs. Native x64 and screen-reader speech were outside this run.
+
+Both checkouts passed 104 paired menu and layout tests. The guide passed TypeScript, the production build, and local navigation and search at 1440 and 390 CSS pixels. Publication is pending.
+
+The installed GallerySettingsOnly suite passed on its foreground retry. The ARM64 MSIX contents and installed engine doctor passed. Verified one app registration and Start entry, then removed the temporary staging, fixtures, and completed jobs. See build/shortcut-search-hint-440-gallery.log, build/shortcut-search-hint-440-final-check.log, and build/shortcut-search-hint-440-cleanup-tasks.log.
+
+## 1.0.442.0 · Settings Find, Close and shortcut result announcements · 2026-11-26
+
+Ctrl+F opens the reference and moves focus to Search shortcuts from Settings Help. Repeating Find preserves the current query. Alt+F4 uses the native close path on every Settings page and in the standalone Help window. Search result counts go through a UI Automation notification after input settles, including consecutive searches that produce the same count.
+
+Installed Windows 11 ARM64 1.0.441.0 for the scoped key changes, then replaced it with 1.0.442.0. The final native keyboard run verified Ctrl+F from the selected Help sidebar, preserved results and search focus, and Alt+F4 on Appearance, Projects, Narration, AI, YouTube Accounts, Developer prompts, Storage, Help and About. It also verified that Alt+F4 closes the standalone Help reader with the documentation pane focused and leaves Settings and All Projects open. A separate native UI Automation listener received “1 shortcut found” twice from repeated Ctrl+Shift+J, “No shortcuts found” from Ctrl+Shift+K, “10 shortcuts found” from a summary query, and “66 shortcuts found” for Ctrl. The matching-row count excludes separators. See build/settings-shortcuts-442-native.log and build/settings-shortcuts-442-uia.log. Native x64 and speech output were outside verification.
+
+The 104 paired menu and layout tests passed. The website guide passed TypeScript, the production build, and local search and navigation at 1440 and 390 CSS pixels. Publication is pending.
+
+The installed GallerySettingsOnly suite passed after correcting the result counter to count each shortcut once. It covered the native notification paths for zero, one, repeated equal counts and the full Ctrl match set. The final ARM64 MSIX and installed engine doctor passed, and Windows verified one registration and Start entry. See build/settings-shortcuts-442-gallery.log and build/settings-shortcuts-442-final-check.log.
+
+Removed the temporary 441 and 442 build stages, notification listener, and completed test jobs. See build/settings-shortcuts-442-cleanup-tasks.log.

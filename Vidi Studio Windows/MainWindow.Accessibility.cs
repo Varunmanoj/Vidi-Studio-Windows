@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Linq;
 using System.Threading.Tasks;
+using Vidi_Studio_Windows.Models;
 
 namespace Vidi_Studio_Windows;
 
@@ -121,6 +122,7 @@ public sealed partial class MainWindow
         await VerifyPanelVisibilityTogglesForSmokeTestAsync();
         await VerifyEditorSectionMenusAndTitlesForSmokeTestAsync();
         VerifyLanguageInspectorForSmokeTest();
+        VerifyYouTubeInspectorCopyForSmokeTest();
         var project = Model.Project ?? throw new InvalidOperationException("Inspector fixture missing.");
         foreach (var editing in new[] { false, true })
         {
@@ -130,6 +132,34 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Project Settings must share the same single language.");
         }
         ShowGallery_Click(this, new RoutedEventArgs());
+    }
+
+    private void VerifyYouTubeInspectorCopyForSmokeTest()
+    {
+        const string videoID = "AbcDef432_1";
+        const string url = "https://www.youtube.com/watch?v=AbcDef432_1&t=6";
+        var panel = new StackPanel();
+        AddVideoSourceInformation(panel, new StudioProject { SourceType = "youtube", YoutubeURL = url });
+        var expected = new[] {
+            (Value: videoID, Name: "Copy YouTube Video ID", Id: "copy-youtube-video-id"),
+            (Value: url, Name: "Copy YouTube URL", Id: "copy-youtube-url")
+        };
+        foreach (var (row, item) in panel.Children.OfType<Grid>().Zip(expected))
+        {
+            if (row.Children[1] is not TextBlock text || text.Text != item.Value ||
+                row.Children.OfType<Button>().SingleOrDefault() is not { } button ||
+                AutomationProperties.GetName(button) != item.Name || !Equals(ToolTipService.GetToolTip(button), item.Name) ||
+                AutomationProperties.GetAutomationId(button) != item.Id || row.ContextFlyout is not MenuFlyout menu ||
+                menu.Items.OfType<MenuFlyoutItem>().Single() is not { } command ||
+                command.Text != item.Name || !Equals(command.Tag, item.Id) || command.Icon == null)
+                throw new InvalidOperationException("YouTube inspector source rows must expose named, matching copy actions.");
+        }
+        if (panel.Children.Count != expected.Length) throw new InvalidOperationException("YouTube copy rows are incomplete.");
+        panel.Children.Clear();
+        AddVideoSourceInformation(panel, new StudioProject { Source = "sample.mp4" });
+        AddVideoSourceInformation(panel, new StudioProject { SourceType = "youtube", YoutubeURL = "" });
+        if (panel.Children.OfType<Grid>().Any(row => row.Children.OfType<Button>().Any() || row.ContextFlyout != null))
+            throw new InvalidOperationException("Local and unavailable video sources must not expose copy actions.");
     }
 
     private async Task VerifyPreviewToolbarForSmokeTestAsync()

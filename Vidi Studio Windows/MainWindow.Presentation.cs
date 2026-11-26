@@ -1,6 +1,8 @@
 using Vidi_Studio_Windows.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Media;
 using System;
 using System.Collections.Generic;
@@ -10,6 +12,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Vidi_Studio_Windows.Models;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
 
 namespace Vidi_Studio_Windows;
@@ -843,6 +846,67 @@ public sealed partial class MainWindow
         ToolTipService.SetToolTip(text, value); Grid.SetColumn(text, 1); row.Children.Add(text); panel.Children.Add(row);
         return row;
     }
+
+    private void AddVideoSourceInformation(StackPanel panel, StudioProject project)
+    {
+        if (!project.IsYouTube)
+        {
+            AddInfo(panel, "Source", Path.GetFileName(project.Source));
+            return;
+        }
+        AddCopyableVideoInfo(panel, "Video ID", SharedYouTubeLink.VideoId(project.YoutubeURL), "Copy YouTube Video ID",
+            "YouTube video ID copied", "copy-youtube-video-id");
+        AddCopyableVideoInfo(panel, "Source URL", project.YoutubeURL, "Copy YouTube URL",
+            "YouTube URL copied", "copy-youtube-url");
+    }
+
+    private void AddCopyableVideoInfo(StackPanel panel, string label, string? value, string title, string confirmation, string id)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            AddInfo(panel, label, "Not available");
+            return;
+        }
+        var row = AddInfo(panel, label, value);
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var copy = new Button
+        {
+            Content = new SymbolIcon(Symbol.Copy), Padding = new Thickness(5),
+            VerticalAlignment = VerticalAlignment.Top
+        };
+        AutomationProperties.SetName(copy, title);
+        AutomationProperties.SetAutomationId(copy, id);
+        ToolTipService.SetToolTip(copy, title);
+        Grid.SetColumn(copy, 2);
+        row.Children.Add(copy);
+
+        void CopyValue()
+        {
+            var message = confirmation;
+            try
+            {
+                var data = new DataPackage();
+                data.SetText(value);
+                Clipboard.SetContent(data);
+            }
+            catch (Exception ex)
+            {
+                Model.Engine.Log(ex.ToString());
+                message = "Could not copy " + label;
+            }
+            Model.ReportStatus(message);
+            FrameworkElementAutomationPeer.CreatePeerForElement(copy)?.RaiseNotificationEvent(
+                AutomationNotificationKind.Other, AutomationNotificationProcessing.MostRecent, message, id);
+        }
+
+        var menu = Views.MenuAccessKeys.Create();
+        var action = new MenuFlyoutItem { Text = title, Tag = id, Icon = new SymbolIcon(Symbol.Copy) };
+        copy.Click += (_, _) => CopyValue();
+        action.Click += (_, _) => CopyValue();
+        menu.Items.Add(action);
+        row.ContextFlyout = menu;
+    }
+
     private async void UpdateInspector(StudioProject p)
     {
         RefreshLanguagePanel();
@@ -878,7 +942,7 @@ public sealed partial class MainWindow
                 ProjectDetails.Children.Add(button);
             }
         }
-        AddInfo(VideoDetails, "Source", p.IsYouTube ? p.YoutubeURL ?? "" : Path.GetFileName(p.Source));
+        AddVideoSourceInformation(VideoDetails, p);
         AddInfo(VideoDetails, "Duration", NarrationTimeFormat.ProjectDuration(p.Duration), NarrationTimeFormat.SpokenProjectDuration(p.Duration));
         AddInfo(VideoDetails, "Resolution", p.IsYouTube && p.Width <= 0 ? "Not available from YouTube" : $"{p.Width} × {p.Height}");
         if (p.IsYouTube) PopulateYouTubeInspector(p);

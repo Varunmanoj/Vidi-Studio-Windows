@@ -30,6 +30,7 @@ public sealed partial class SettingsDialog
         autoApplyTimer.Start();
         Activated += (_, args) =>
         {
+            shortcutSearchWindowActive = args.WindowActivationState != WindowActivationState.Deactivated;
             if (args.WindowActivationState == WindowActivationState.Deactivated && !closed) ApplyPreferences();
         };
         AppWindow.Closing += (_, args) => args.Cancel = !ApplyPreferences();

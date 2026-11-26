@@ -324,6 +324,7 @@ public sealed partial class SettingsDialog : Window
         Title = "Vidi Studio Settings";
         WindowAppearance.ApplyIcon(this);
         layout = new Grid { Padding = new Thickness(24, 0, 24, 20), ColumnSpacing = 24 };
+        layout.PreviewKeyDown += HandleHelpShortcutSearch;
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(32) });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -417,6 +418,7 @@ public sealed partial class SettingsDialog : Window
         {
             // Developer prompts is hidden unless Developer mode is on in Appearance.
             var section = SelectedSection;
+            focusHelpShortcutSearch = null;
             if (section < 0) return;
             if (section == 4 && !DeveloperModeEnabled)
             {

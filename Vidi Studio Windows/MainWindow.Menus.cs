@@ -44,6 +44,22 @@ public sealed partial class MainWindow
     internal IEnumerable<(string Title, IEnumerable<(string Label, string Shortcut)> Rows)> DesktopShortcutReference =>
         ShortcutReferenceGroups.Select(group => (group.Title, group.Commands.Select(id => (ShortcutReferenceTitle(id), DesktopShortcuts[id].Text))));
 
+    private static readonly (VirtualKey Key, VirtualKeyModifiers Modifiers, string Command)[] DesktopShortcutAliases =
+    {
+        ((VirtualKey)187, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "summary-zoom-in"),
+        (VirtualKey.Add, VirtualKeyModifiers.Control, "summary-zoom-in"),
+        (VirtualKey.Subtract, VirtualKeyModifiers.Control, "summary-zoom-out")
+    };
+
+    internal static string? ShortcutReferenceKey(VirtualKey key, VirtualKeyModifiers modifiers)
+    {
+        foreach (var shortcut in DesktopShortcuts.Values)
+            if (shortcut.Key == key && shortcut.Modifiers == modifiers) return shortcut.Text;
+        foreach (var alias in DesktopShortcutAliases)
+            if (alias.Key == key && alias.Modifiers == modifiers) return DesktopShortcuts[alias.Command].Text;
+        return key == VirtualKey.F11 && modifiers == VirtualKeyModifiers.None ? DesktopShortcuts["fullscreen"].Text : null;
+    }
+
     private string ShortcutReferenceTitle(string id) => id switch
     {
         "transcribe" => "Generate or Regenerate Transcript…",
@@ -160,10 +176,7 @@ public sealed partial class MainWindow
                 catch (OperationCanceledException) { }
                 catch (Exception ex) { await ShowError(ex); }
             }, () => CanRunDesktopCommand(id));
-        foreach (var (key, modifiers, command) in new[] {
-            ((VirtualKey)187, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, "summary-zoom-in"),
-            (VirtualKey.Add, VirtualKeyModifiers.Control, "summary-zoom-in"),
-            (VirtualKey.Subtract, VirtualKeyModifiers.Control, "summary-zoom-out") })
+        foreach (var (key, modifiers, command) in DesktopShortcutAliases)
             AddShortcut(key, modifiers, async (_, _) => await RunDesktopCommandAsync(command), () => CanRunDesktopCommand(command));
         AddShortcut(VirtualKey.F11, VirtualKeyModifiers.None, (_, _) => FullScreen_Click(this, new RoutedEventArgs()));
         GalleryGrid.SelectionChanged += (_, _) => UpdateDesktopMenuStates();

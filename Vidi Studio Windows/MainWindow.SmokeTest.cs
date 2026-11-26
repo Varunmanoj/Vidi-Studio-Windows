@@ -774,7 +774,9 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("New Project did not follow dark mode or disable Create without a source.");
             await VerifyDialogThemesForSmokeTestAsync(newProject, report, "new-project-window");
             PreviewTheme("dark");
+            newProject.VerifyLocalAccessibilityForSmokeTest(selected: false);
             await newProject.InspectVideoForSmokeTestAsync(Model.Project!.Resolve(Model.Project.Source));
+            newProject.VerifyLocalAccessibilityForSmokeTest(selected: true);
             if (!newProject.IsPrimaryButtonEnabled || newProject.VideoPath == null || !newProject.DetailsForSmokeTest.Contains("320 × 180"))
                 throw new InvalidOperationException("New Project did not preview local video details before creation: " + newProject.DetailsForSmokeTest);
             if (newProject.ActualWidth <= 0 || newProject.ActualHeight <= 0)
@@ -1938,6 +1940,7 @@ public sealed partial class MainWindow
                             throw new InvalidOperationException("File project command completed without opening its dialog: " + id + ", Cloud connected: " + Model.Settings.GetBool("vertexConnected"));
                         projectDialog = await ready.Task;
                         projectDialog.VerifyInitialSourceForSmokeTest(id);
+                        if (id == "new-project") projectDialog.VerifyLocalAccessibilityForSmokeTest(selected: false);
                     } finally {
                         Views.WindowedDialog.ReadyToShow -= Capture;
                         projectDialog?.Hide();
@@ -2241,7 +2244,9 @@ public sealed partial class MainWindow
         try
         {
             var dialog = await sourceDialog.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            dialog.VerifyLocalAccessibilityForSmokeTest(selected: false);
             await dialog.InspectVideoForSmokeTestAsync(project.Resolve(project.Source));
+            dialog.VerifyLocalAccessibilityForSmokeTest(selected: true);
             Invoke(dialog, "Create Project");
             var failure = await notice.Task.WaitAsync(TimeSpan.FromSeconds(20));
             if (failure.Title?.ToString() != "Project Already Exists" ||

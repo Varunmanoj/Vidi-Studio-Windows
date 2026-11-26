@@ -54,10 +54,17 @@ public sealed class ConnectivityService
             _ => $"Cannot reach {name}. Check your connection or try again later."
         };
     }
-    public string? Notice => Enum.GetValues<OnlineService>().All(Available) ? null
-        : states.Values.Contains(ConnectionState.Offline)
-        ? "You’re offline. Online processing and YouTube playback need internet. You can continue working with local files and installed voices."
-        : string.Join(" ", Enum.GetValues<OnlineService>().Select(Reason).Where(s => s != null));
+    public string? Notice
+    {
+        get
+        {
+            if (states.Values.Contains(ConnectionState.Offline))
+                return "You’re offline. Online processing and YouTube playback need internet. You can continue working with local files and installed voices.";
+            var unreachable = Enum.GetValues<OnlineService>().Where(service => State(service) == ConnectionState.Unreachable);
+            var notice = string.Join(" ", unreachable.Select(Reason));
+            return notice.Length > 0 ? notice : null;
+        }
+    }
     private bool HasRoute()
     {
         try { return NetworkInformation.GetConnectionProfiles().Any(p => p.GetNetworkConnectivityLevel() != NetworkConnectivityLevel.None); }

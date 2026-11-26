@@ -1,4 +1,6 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
@@ -48,6 +50,8 @@ public sealed class NewProjectDialog : ContentDialog
     private readonly RadioButton cloud = new() { GroupName = "project-source", Content = "Cloud Storage" };
     private readonly StackPanel cloudModeFields = new();
     private readonly Grid videoFileRow = new() { ColumnSpacing = 12 };
+    private readonly Button chooseVideo = new() { HorizontalAlignment = HorizontalAlignment.Right };
+    private bool choosingVideo;
     private readonly ComboBox cloudMode = new() { Header = "Video source", ItemsSource = new[] { "Upload Local Video", "Choose from Cloud Storage" }, SelectedIndex = 0 };
     private readonly Button browseCloud = new() { HorizontalAlignment = HorizontalAlignment.Right };
     private bool browsing;
@@ -148,8 +152,30 @@ public sealed class NewProjectDialog : ContentDialog
         if (attempts != 2 || ImportedCloudProject != project)
             throw new InvalidOperationException("New Project did not accept the project from the separate browser.");
     }
-    internal async Task InspectVideoForSmokeTestAsync(string path) => await InspectVideoAsync(await StorageFile.GetFileFromPathAsync(path));
+    internal Task InspectVideoForSmokeTestAsync(string path) => InspectVideoAsync(path);
     internal string DetailsForSmokeTest => details.Text;
+    internal void VerifyLocalAccessibilityForSmokeTest(bool selected)
+    {
+        var expectedChooser = selected ? "Choose Different Video…" : "Choose Video…";
+        foreach (var (control, name, kind, pattern) in new (Control, string, AutomationControlType, PatternInterface)[] {
+            (local, "Video File", AutomationControlType.RadioButton, PatternInterface.SelectionItem),
+            (youtube, "YouTube Video", AutomationControlType.RadioButton, PatternInterface.SelectionItem),
+            (cloud, "Cloud Storage", AutomationControlType.RadioButton, PatternInterface.SelectionItem),
+            (createDescription, "Create Audio Description in VidiStudio", AutomationControlType.RadioButton, PatternInterface.SelectionItem),
+            (importDescription, "I already have Audio Description files", AutomationControlType.RadioButton, PatternInterface.SelectionItem),
+            (chooseVideo, expectedChooser, AutomationControlType.Button, PatternInterface.Invoke)
+        })
+        {
+            var peer = FrameworkElementAutomationPeer.CreatePeerForElement(control);
+            if (peer == null || peer.GetName() != name || peer.GetAutomationControlType() != kind || peer.GetPattern(pattern) == null)
+                throw new InvalidOperationException("New Project does not expose the native role, name and action for " + name);
+        }
+        if (FrameworkElementAutomationPeer.CreatePeerForElement(local)?.GetPattern(PatternInterface.SelectionItem)
+                is not Microsoft.UI.Xaml.Automation.Provider.ISelectionItemProvider { IsSelected: true } ||
+            videoFileRow.ContextFlyout is not MenuFlyout menu ||
+            menu.Items.Single() is not MenuFlyoutItem { Icon: not null })
+            throw new InvalidOperationException("New Project must expose the selected source and the chooser context action.");
+    }
     internal FrameworkElement YouTubeFieldsForSmokeTest => youtubeFields;
     internal void SetAssetsForSmokeTest(ImportAssetSelection selection) { importDescription.IsChecked = true; assets.SetFilesForSmokeTest(selection); }
     internal void ScrollToAssetsForSmokeTest() => form.ChangeView(null, form.ScrollableHeight, null, true);
@@ -225,21 +251,30 @@ public sealed class NewProjectDialog : ContentDialog
         local.VerticalContentAlignment = VerticalAlignment.Center;
         youtube.VerticalContentAlignment = VerticalAlignment.Center;
         cloud.VerticalContentAlignment = VerticalAlignment.Center;
-        local.Content = SourceLabel("\uE8B2", "Video File");
-        youtube.Content = SourceLabel("\uE768", "YouTube Video");
-        cloud.Content = SourceLabel("\uE753", "Cloud Storage");
+        SetIconLabel(local, "\uE8B2", "Video File");
+        SetIconLabel(youtube, "\uE768", "YouTube Video");
+        SetIconLabel(cloud, "\uE753", "Cloud Storage");
         cloud.IsEnabled = settings.GetBool("vertexConnected");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(cloud, "Cloud Storage");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(cloud, "Cloud Storage requires Google sign-in in AI settings.");
-        var chooser = new Button { Content = SourceLabel("\uE8B7", "Choose Video…"), HorizontalAlignment = HorizontalAlignment.Right };
-        chooser.Click += async (_, _) => await ChooseVideoAsync();
+        SetIconLabel(chooseVideo, "\uE8B7", "Choose Video…");
+        chooseVideo.Click += async (_, _) => await ChooseVideoAsync();
+        var videoMenu = MenuAccessKeys.Create();
+        var chooseVideoItem = new MenuFlyoutItem { Text = ChooseVideoTitle, Icon = MenuIcons.Create("choose-playback-video") };
+        chooseVideoItem.Click += async (_, _) => await ChooseVideoAsync();
+        videoMenu.Opening += (_, _) =>
+        {
+            chooseVideoItem.Text = ChooseVideoTitle;
+            chooseVideoItem.IsEnabled = CanChooseVideo;
+        };
+        videoMenu.Items.Add(chooseVideoItem);
         var fileRow = videoFileRow;
+        fileRow.ContextFlyout = videoMenu;
         fileRow.ColumnDefinitions.Add(new ColumnDefinition());
         fileRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         fileRow.Children.Add(new TextBlock { Text = "Video file", VerticalAlignment = VerticalAlignment.Center });
-        Grid.SetColumn(chooser, 1); fileRow.Children.Add(chooser);
+        Grid.SetColumn(chooseVideo, 1); fileRow.Children.Add(chooseVideo);
         cloudModeFields.Children.Add(cloudMode);
-        browseCloud.Content = SourceLabel("\uE753", "Choose from Cloud Storage…");
+        SetIconLabel(browseCloud, "\uE753", "Choose from Cloud Storage…");
         browseCloud.Click += async (_, _) => await BrowseCloudVideosAsync();
         var cloudMenu = MenuAccessKeys.Create();
         var browseItem = new MenuFlyoutItem { Text = "Choose from Cloud Storage…", Icon = MenuIcons.Create("open-cloud-videos") };
@@ -260,7 +295,8 @@ public sealed class NewProjectDialog : ContentDialog
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(youtubeUrl,"YouTube video URL");
         youtubeRow.Children.Add(youtubeUrl);
         Grid.SetColumn(fetchDetails,1); youtubeRow.Children.Add(fetchDetails);
-        var browseYouTube = new Button { Content = SourceLabel("\uE768", "My YouTube Videos…") };
+        var browseYouTube = new Button();
+        SetIconLabel(browseYouTube, "\uE768", "My YouTube Videos…");
         browseYouTube.Click += async (_, _) => await BrowseYouTubeVideosAsync();
         var youtubeMenu = MenuAccessKeys.Create();
         var browseYouTubeItem = new MenuFlyoutItem { Text = "My YouTube Videos…", Icon = MenuIcons.Create("youtube-browser") };
@@ -362,7 +398,7 @@ public sealed class NewProjectDialog : ContentDialog
             try
             {
                 var picker = new FolderPicker(); picker.FileTypeFilter.Add("*");
-                WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(owner));
+                WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(CompanionWindow ?? owner));
                 if (await picker.PickSingleFolderAsync() is { } folder) { LibraryPath = folder.Path; UpdateCreationState(); }
             }
             catch (Exception ex) { libraryLocation.Text = "The folder chooser could not open: " + ex.Message; }
@@ -391,18 +427,26 @@ public sealed class NewProjectDialog : ContentDialog
         PrimaryButtonClick += (_, args) => { if (!IsPrimaryButtonEnabled) args.Cancel = true; };
         SecondaryButtonClick += (_, args) => { args.Cancel = !IsSecondaryButtonEnabled; CombineRequested = !args.Cancel; };
         Closing += (_, _) => { inspection?.Cancel(); youtubeInspection?.Cancel(); preview.Source = null; };
-        Opened += (_, _) => UpdateSource();
+        Opened += (_, _) =>
+        {
+            UpdateSource();
+            (IsYouTube ? youtube : IsCloud ? cloud : local).Focus(FocusState.Programmatic);
+        };
         if (openCloud && cloud.IsEnabled) { cloudMode.SelectedIndex = 1; cloud.IsChecked = true; }
         else if (openYouTube) youtube.IsChecked = true; else local.IsChecked = true;
         UpdateSource();
     }
 
-    private static StackPanel SourceLabel(string glyph, string label)
+    private static void SetIconLabel(ContentControl control, string glyph, string label)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-        row.Children.Add(new FontIcon { Glyph = glyph, FontSize = 16, VerticalAlignment = VerticalAlignment.Center });
+        var icon = new FontIcon { Glyph = glyph, FontSize = 16, VerticalAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetAccessibilityView(icon, AccessibilityView.Raw);
+        row.Children.Add(icon);
         row.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
-        return row;
+        AutomationProperties.SetAccessibilityView(row, AccessibilityView.Raw);
+        control.Content = row;
+        AutomationProperties.SetName(control, label);
     }
     private void UpdateSource()
     {
@@ -411,7 +455,7 @@ public sealed class NewProjectDialog : ContentDialog
         browseCloud.Visibility = selectObject ? Visibility.Visible : Visibility.Collapsed;
         browseCloud.IsEnabled = CanBrowseCloud;
         selectedFile.Visibility = selectObject ? Visibility.Collapsed : Visibility.Visible;
-        preview.Visibility = !selectObject && validLocal ? Visibility.Visible : Visibility.Collapsed;
+        preview.Visibility = !selectObject && validLocal && preview.Source != null ? Visibility.Visible : Visibility.Collapsed;
         videoFileRow.Visibility = selectObject ? Visibility.Collapsed : Visibility.Visible;
         UpdateLocalDetailsVisibility();
         localCard.Visibility = IsYouTube ? Visibility.Collapsed : Visibility.Visible;
@@ -479,7 +523,7 @@ public sealed class NewProjectDialog : ContentDialog
             sourceReady &= YouTubeService.Shared.PrivateConnection(video.ChannelId, settings) != null;
         if (IsCloud) sourceReady = CanUploadCloudVideo(settings) && cloudMode.SelectedIndex == 0 && validLocal;
         var assetsReady = !ImportAssetsAfterCreation || !assets.Selection.HasAny || assets.CanImport;
-        IsPrimaryButtonEnabled = sourceReady && assetsReady && !string.IsNullOrWhiteSpace(LibraryPath);
+        IsPrimaryButtonEnabled = !choosingVideo && sourceReady && assetsReady && !string.IsNullOrWhiteSpace(LibraryPath);
         PrimaryButtonText = ImportAssetsAfterCreation ? "Create Project & Open Editor" : "Create Project";
         SecondaryButtonText = ImportAssetsAfterCreation && assets.Selection.ADAudioPath != null ? "Create Project & Combine" : "";
         IsSecondaryButtonEnabled = IsPrimaryButtonEnabled;
@@ -603,28 +647,59 @@ public sealed class NewProjectDialog : ContentDialog
         Grid.SetColumn(information, 1); card.Children.Add(information);
         youtubePreview.Child = card; youtubePreview.Visibility = Visibility.Visible;
     }
+    private string ChooseVideoTitle => VideoPath == null ? "Choose Video…" : "Choose Different Video…";
+    private bool CanChooseVideo => !choosingVideo && !browsing && !IsYouTube &&
+        (!IsCloud || cloudMode.SelectedIndex == 0) && CompanionWindow != null;
+    private static readonly string[] videoExtensions = { ".mp4", ".mov", ".m4v", ".mkv", ".avi", ".webm" };
+
     private async Task ChooseVideoAsync()
     {
-        var pickerOwner = CompanionWindow ?? owner;
-        while (await PickVideoAsync(pickerOwner) is { } file)
+        if (!CanChooseVideo || CompanionWindow is not { } pickerOwner) return;
+        choosingVideo = true;
+        UpdateCreationState();
+        try
         {
-            var choice = await CheckVideoSizeAsync(pickerOwner, settings, file.Path, IsCloud);
-            if (choice == VideoImportChoice.Smaller) continue;
-            if (choice == VideoImportChoice.Cancel) return;
-            if (choice == VideoImportChoice.Cloud)
+            var picker = new Microsoft.Windows.Storage.Pickers.FileOpenPicker(pickerOwner.AppWindow.Id);
+            foreach (var extension in videoExtensions) picker.FileTypeFilter.Add(extension);
+            while (await picker.PickSingleFileAsync() is { Path: { Length: > 0 } path } && CompanionWindow == pickerOwner)
             {
-                cloudMode.SelectedIndex = 0;
-                cloud.IsChecked = true;
+                var choice = await CheckVideoSizeAsync(pickerOwner, settings, path, IsCloud);
+                if (CompanionWindow != pickerOwner || choice == VideoImportChoice.Cancel) return;
+                if (choice == VideoImportChoice.Smaller) continue;
+                if (choice == VideoImportChoice.Cloud)
+                {
+                    cloudMode.SelectedIndex = 0;
+                    cloud.IsChecked = true;
+                }
+                await InspectVideoAsync(path);
+                return;
             }
-            await InspectVideoAsync(file);
-            return;
+        }
+        catch (Exception ex)
+        {
+            if (CompanionWindow == pickerOwner)
+            {
+                details.Text = "The video chooser could not open this file.";
+                FrameworkElementAutomationPeer.CreatePeerForElement(details)?.RaiseNotificationEvent(
+                    AutomationNotificationKind.ActionAborted, AutomationNotificationProcessing.MostRecent, details.Text, "new-project-video");
+                new EngineClient(settings).Log(ex.ToString());
+            }
+        }
+        finally
+        {
+            choosingVideo = false;
+            if (CompanionWindow == pickerOwner)
+            {
+                UpdateCreationState();
+                chooseVideo.Focus(FocusState.Programmatic);
+            }
         }
     }
 
     internal static async Task<StorageFile?> PickVideoAsync(Window owner)
     {
         var picker = new FileOpenPicker();
-        foreach (var ext in new[] { ".mp4", ".mov", ".m4v", ".mkv", ".avi", ".webm" }) picker.FileTypeFilter.Add(ext);
+        foreach (var ext in videoExtensions) picker.FileTypeFilter.Add(ext);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(owner));
         return await picker.PickSingleFileAsync();
     }
@@ -680,36 +755,47 @@ public sealed class NewProjectDialog : ContentDialog
         };
     }
 
-    private async Task InspectVideoAsync(StorageFile file)
+    private async Task InspectVideoAsync(string path)
     {
         inspection?.Cancel();
         var request = new CancellationTokenSource(); inspection = request;
-        validLocal = false; VideoPath = null; UpdateSource();
-        selectedFile.Text = file.Name;
+        validLocal = false; VideoPath = null; preview.Source = null; UpdateSource();
+        selectedFile.Text = Path.GetFileName(path);
         details.Text = "Reading video details…";
-        preview.Source = MediaSource.CreateFromStorageFile(file); preview.Visibility = Visibility.Visible;
         try
         {
-            var metadata = await ProbeAsync(file.Path, request.Token);
+            var metadata = await ProbeAsync(path, request.Token);
             if (inspection != request || request.IsCancellationRequested) return;
-            videoRequiresCloud = new FileInfo(file.Path).Length > MaximumLocalVideoBytes;
-            VideoPath = file.Path;
+            videoRequiresCloud = new FileInfo(path).Length > MaximumLocalVideoBytes;
+            VideoPath = path;
             validLocal = true;
             details.Text = metadata;
+            SetIconLabel(chooseVideo, "\uE8B7", ChooseVideoTitle);
+            try { preview.Source = MediaSource.CreateFromUri(new Uri(path)); }
+            catch (Exception ex) when (ex is ArgumentException or System.Runtime.InteropServices.COMException)
+            { new EngineClient(settings).Log(ex.ToString()); }
             UpdateSource();
+            FrameworkElementAutomationPeer.CreatePeerForElement(selectedFile)?.RaiseNotificationEvent(
+                AutomationNotificationKind.ActionCompleted, AutomationNotificationProcessing.MostRecent,
+                "Selected video: " + selectedFile.Text, "new-project-video");
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            if (inspection != request) return;
-            details.Text = "Could not read this video's details. Check FFprobe in Settings → Storage. " + ex.Message;
+            if (inspection != request || request.IsCancellationRequested) return;
+            SetIconLabel(chooseVideo, "\uE8B7", ChooseVideoTitle);
+            details.Text = "Could not read this video. Choose another file or check FFprobe in Settings → Storage.";
+            FrameworkElementAutomationPeer.CreatePeerForElement(details)?.RaiseNotificationEvent(
+                AutomationNotificationKind.ActionAborted, AutomationNotificationProcessing.MostRecent, details.Text, "new-project-video");
+            new EngineClient(settings).Log(ex.ToString());
         }
         finally { if (inspection == request) inspection = null; request.Dispose(); }
     }
     private async Task<string> ProbeAsync(string path, CancellationToken token)
     {
         var executable = settings.Get("ffprobePath");
-        if (string.IsNullOrWhiteSpace(executable)) executable = "ffprobe.exe";
+        var bundled = Path.Combine(AppContext.BaseDirectory, "engine-bin", "media", "ffprobe.exe");
+        if (string.IsNullOrWhiteSpace(executable)) executable = File.Exists(bundled) ? bundled : "ffprobe.exe";
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var arg in new[] { "-v", "error", "-show_format", "-show_streams", "-of", "json", path }) start.ArgumentList.Add(arg);

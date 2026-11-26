@@ -10,11 +10,11 @@
    <Border.Shadow><ThemeShadow/></Border.Shadow>
    <ScrollViewer x:Name="ProgressScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="18">
-     <TextBlock x:Name="Heading" Text="Processing" FontSize="20" FontWeight="SemiBold"/>
+     <TextBlock x:Name="Heading" Text="Processing" FontSize="20" FontWeight="SemiBold" AutomationProperties.HeadingLevel="Level2"/>
      <StackPanel x:Name="ProcessingPanel" Spacing="16">
       <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-       <ProgressRing x:Name="ProcessingRing" Width="36" Height="36" IsActive="False"/>
-       <TextBlock x:Name="ProcessingStatus" Grid.Column="1" TextWrapping="Wrap" FontSize="15" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>
+       <ProgressRing x:Name="ProcessingRing" Width="36" Height="36" IsActive="False" AutomationProperties.AccessibilityView="Raw"/>
+       <TextBlock x:Name="ProcessingStatus" Grid.Column="1" TextWrapping="Wrap" FontSize="15" VerticalAlignment="Center" AutomationProperties.AutomationId="ProcessingStatus"/>
       </Grid>
       <Button Content="Cancel processing" Click="CancelProcessing_Click" HorizontalAlignment="Right"/>
      </StackPanel>

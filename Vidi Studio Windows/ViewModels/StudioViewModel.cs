@@ -42,7 +42,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     private StudioProject? project;
     public StudioProject? Project { get => project; set { project = value; Changed(); } }
     private bool busy;
-    public bool Busy { get => busy; private set { busy = value; Changed(); Changed(nameof(Idle)); Changed(nameof(IsAnalyzing)); Changed(nameof(ProcessingStageTitle)); } }
+    public bool Busy { get => busy; private set { busy = value; if (!value) HasAnnouncedProcessing = false; Changed(); Changed(nameof(Idle)); Changed(nameof(IsAnalyzing)); Changed(nameof(ProcessingStageTitle)); } }
+    internal bool HasAnnouncedProcessing { get; set; }
     public bool Idle => !Busy;
     public bool IsExporting { get; private set; }
     private string status = "Import a video or open an existing project to begin.";
@@ -808,7 +809,13 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         using var deletionActivity = DeletionActivity.BeginForCommand(command, Project?.Name ?? "Project");
         Busy = true;
         operation = new();
-        Status = "Starting…";
+        Status = command switch
+        {
+            "import-video" => "Adding the video to your project…",
+            "import-youtube" => "Adding the YouTube video…",
+            "generate-thumbnails" => "Creating timeline pictures…",
+            _ => "Starting…"
+        };
         ExportSession? exportSession = null;
         if (command.StartsWith("export-", StringComparison.Ordinal) && Project is { } exportProject)
         {

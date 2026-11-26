@@ -118,7 +118,7 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         Views.WindowAppearance.ApplyMaterial(this);
-        ActiveExports.Observe(Model);
+        ActiveExports.Observe(Model, this, () => !SharedVideoRing.IsActive);
         Model.PropertyChanged += UpdateStatusFooter;
         DeletionActivity.Changed += DeletionActivityChanged;
         CloudImportActivity.Changed += DeletionActivityChanged;
@@ -288,6 +288,9 @@ public sealed partial class MainWindow : Window
         var cloudImport = desktopEditorVisible && !editorBusy ? CloudImportActivity.Current : default;
         var importing = cloudImport.Message != null;
         StatusText.Visibility = deleting || importing ? Visibility.Collapsed : Visibility.Visible;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetLiveSetting(StatusText, ActiveExports.IsShowingProcessing
+            ? Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Off
+            : Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
         if (StatusRing != null)
         {
             StatusRing.IsActive = editorBusy || (importing && cloudImport.Fraction == null);

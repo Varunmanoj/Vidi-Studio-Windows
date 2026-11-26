@@ -371,7 +371,7 @@ public sealed partial class SettingsDialog : Window
         Grid.SetRow(footer, 3); Grid.SetColumnSpan(footer, 2); layout.Children.Add(footer);
         var progress = new ProgressOverlay();
         Grid.SetRowSpan(progress, 4); Grid.SetColumnSpan(progress, 2); layout.Children.Add(progress);
-        progress.Observe(model);
+        progress.Observe(model, this);
         App.OpenProjectsChanged += ReceiveOpenProjectsChanged;
         Closed += (_, _) => progress.Detach();
         Content = layout;

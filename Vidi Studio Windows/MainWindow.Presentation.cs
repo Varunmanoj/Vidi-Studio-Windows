@@ -847,17 +847,20 @@ public sealed partial class MainWindow
         return row;
     }
 
-    private void AddVideoSourceInformation(StackPanel panel, StudioProject project)
+    private void AddVideoSourceInformation(StackPanel panel, StudioProject project, string identifierSuffix = "")
     {
         if (!project.IsYouTube)
         {
             AddInfo(panel, "Source", Path.GetFileName(project.Source));
             return;
         }
-        AddCopyableVideoInfo(panel, "Video ID", SharedYouTubeLink.VideoId(project.YoutubeURL), "Copy YouTube Video ID",
-            "YouTube video ID copied", "copy-youtube-video-id");
+        var videoID = SharedYouTubeLink.VideoId(project.YoutubeURL);
+        if (videoID is null && project.YouTubeMetadata is { ValueKind: JsonValueKind.Object } metadata &&
+            metadata.TryGetProperty("videoID", out var savedID) && savedID.ValueKind == JsonValueKind.String)
+            videoID = savedID.GetString()?.Trim();
+        AddCopyableVideoInfo(panel, "Video ID", videoID, "Copy YouTube Video ID", "YouTube video ID copied", "copy-youtube-video-id" + identifierSuffix);
         AddCopyableVideoInfo(panel, "Source URL", project.YoutubeURL, "Copy YouTube URL",
-            "YouTube URL copied", "copy-youtube-url");
+            "YouTube URL copied", "copy-youtube-url" + identifierSuffix);
     }
 
     private void AddCopyableVideoInfo(StackPanel panel, string label, string? value, string title, string confirmation, string id)

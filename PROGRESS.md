@@ -3010,3 +3010,15 @@ The 104 paired menu and layout tests passed. The website guide passed TypeScript
 The installed GallerySettingsOnly suite passed after correcting the result counter to count each shortcut once. It covered the native notification paths for zero, one, repeated equal counts and the full Ctrl match set. The final ARM64 MSIX and installed engine doctor passed, and Windows verified one registration and Start entry. See build/settings-shortcuts-442-gallery.log and build/settings-shortcuts-442-final-check.log.
 
 Removed the temporary 441 and 442 build stages, notification listener, and completed test jobs. See build/settings-shortcuts-442-cleanup-tasks.log.
+
+## 1.0.443 · Shortcut result details and YouTube inspector copy buttons · 2026-11-26
+
+One shortcut match in Settings Help announces the action and keys with the count. Video Information and YouTube Information each show the YouTube video ID and full saved source URL with separate accessible copy buttons and matching row menu actions. The YouTube inspector starts with the saved title and channel. Channel ID and Fetched remain visible.
+
+Installed and launched Windows 11 ARM64 1.0.443.0 in Parallels. An external UI Automation listener received the complete Jump to Time announcement twice from Ctrl+Shift+J, the full Settings announcement including Comma, the no-match message, and the same multiple-result counts shown on screen. The native keyboard suite and separate GallerySettingsOnly retry passed. The initial combined run hit pointer placement failures in its video browser double-click checks. All 105 paired menu, layout and model tests passed. See `build/settings-details-443-{verify-handoff,native,uia,gallery}.log`. Native x64 and audible screen reader speech were outside verification.
+
+The website guide passed TypeScript, production build, and local navigation and search at 1440 and 390 CSS pixels. Publication is pending.
+
+The installed YouTubeLayoutOnly retry passed the inspector assertions for the repeated ID and URL, separate copy buttons and context commands, title and channel order, and absence of Information source. It rendered the browser in light and dark at both test widths, then timed out in the later New Project cases. See `build/settings-details-443-youtube.log`.
+
+Final ARM64 MSIX inspection and installed engine doctor passed. Windows verified one version 1.0.443.0 registration and Start entry. Removed the temporary fixtures, staging directory, and scheduled test jobs. See `build/settings-details-443-final-check.log` and `build/settings-details-443-cleanup-tasks.log`.

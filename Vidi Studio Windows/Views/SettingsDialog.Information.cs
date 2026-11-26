@@ -40,6 +40,18 @@ public sealed partial class SettingsDialog
         string.Join(" ", text.ToLowerInvariant().Replace('+', ' ').Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
             .Select(word => ShortcutKeyNames.GetValueOrDefault(word, word)));
 
+    private static string SingleShortcutAnnouncement(string label, string shortcut)
+    {
+        var keys = shortcut.Split('+').Select(key => key switch
+        {
+            "Ctrl" => "Control", "," => "Comma", "=" => "Equals", "-" => "Minus",
+            "[" => "Left bracket", "]" => "Right bracket",
+            "Left" => "Left arrow", "Right" => "Right arrow",
+            _ => key
+        });
+        return $"1 shortcut found. {label.TrimEnd('.', '…')}. {string.Join(" plus ", keys)}.";
+    }
+
     private static bool IsShortcutKeyDown(VirtualKey key) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
 
@@ -273,6 +285,7 @@ public sealed partial class SettingsDialog
             var exactKey = capturedShortcutSearch is { } capture ? ShortcutKeyWords(capture.Key) : null;
             var keyQuery = ShortcutKeyWords(query);
             var count = 0;
+            (string Label, string Shortcut)? firstMatch = null;
             refreshing = true;
             foreach (var group in groups)
             {
@@ -281,6 +294,7 @@ public sealed partial class SettingsDialog
                 foreach (var (label, shortcut) in group.Rows)
                 {
                     if (isSearching && !Matches(label, shortcut)) continue;
+                    firstMatch ??= (label, shortcut);
                     var key = AddInformationRow(group.Panel, label, shortcut);
                     key.ClearValue(AutomationProperties.LabeledByProperty);
                     rowCount++;
@@ -297,7 +311,9 @@ public sealed partial class SettingsDialog
             results.Visibility = isSearching ? Visibility.Visible : Visibility.Collapsed;
             if (announce)
             {
-                pendingAnnouncement = isSearching ? message : "Shortcut search cleared";
+                pendingAnnouncement = !isSearching ? "Shortcut search cleared"
+                    : count == 1 && firstMatch is { } match ? SingleShortcutAnnouncement(match.Label, match.Shortcut)
+                    : message;
                 resultAnnouncementTimer.Stop();
                 resultAnnouncementTimer.Start();
             }
@@ -618,8 +634,9 @@ public sealed partial class SettingsDialog
         try
         {
             foreach (var (query, expectedStatus) in new[] {
-                ("Jump to Time", "1 shortcut found"),
-                ("New Project", "1 shortcut found"),
+                ("Jump to Time", "1 shortcut found. Jump to Time. Control plus Shift plus J."),
+                ("New Project", "1 shortcut found. New Project. Control plus N."),
+                ("Ctrl+,", "1 shortcut found. Settings. Control plus Comma."),
                 ("zzzz unavailable shortcut", "No shortcuts found"),
                 ("different unavailable shortcut", "No shortcuts found"),
                 ("Ctrl", $"{expected.SelectMany(group => group.Rows).Count(row => row.Shortcut.StartsWith("Ctrl+"))} shortcuts found")

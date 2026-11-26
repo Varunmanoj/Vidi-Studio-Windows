@@ -156,6 +156,17 @@ public sealed partial class MainWindow
         }
         if (panel.Children.Count != expected.Length) throw new InvalidOperationException("YouTube copy rows are incomplete.");
         panel.Children.Clear();
+        AddVideoSourceInformation(panel, new StudioProject
+        {
+            SourceType = "youtube",
+            YouTubeMetadata = System.Text.Json.JsonSerializer.SerializeToElement(new { videoID })
+        });
+        var fallbackRow = panel.Children.OfType<Grid>().First();
+        if (fallbackRow.Children[1] is not TextBlock fallback || fallback.Text != videoID ||
+            fallbackRow.Children.OfType<Button>().SingleOrDefault() is not { } fallbackCopy ||
+            AutomationProperties.GetName(fallbackCopy) != "Copy YouTube Video ID")
+            throw new InvalidOperationException("A saved YouTube video ID must stay copyable when its URL is unavailable.");
+        panel.Children.Clear();
         AddVideoSourceInformation(panel, new StudioProject { Source = "sample.mp4" });
         AddVideoSourceInformation(panel, new StudioProject { SourceType = "youtube", YoutubeURL = "" });
         if (panel.Children.OfType<Grid>().Any(row => row.Children.OfType<Button>().Any() || row.ContextFlyout != null))

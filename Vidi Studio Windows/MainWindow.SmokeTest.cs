@@ -1649,6 +1649,34 @@ public sealed partial class MainWindow
             var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(button);
             ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
         }
+        var inspectorFixture = new Models.StudioProject
+        {
+            SourceType = "youtube",
+            YoutubeURL = "https://www.youtube.com/watch?v=M7lc1UVf-VE",
+            YouTubeMetadata = JsonSerializer.SerializeToElement(new { title = "Saved video title", channelTitle = "Saved channel", videoID = "M7lc1UVf-VE", fetchedAt = 1 })
+        };
+        YouTubeInspectorDetails.Children.Clear();
+        try
+        {
+            PopulateYouTubeInspector(inspectorFixture);
+            var rows = YouTubeInspectorDetails.Children.OfType<Grid>().ToArray();
+            var fields = rows.SelectMany(row => row.Children.OfType<TextBlock>()).Select(text => text.Text).ToArray();
+            if (!fields.Take(4).SequenceEqual(new[] { "YouTube title", "Saved video title", "Channel", "Saved channel" }) ||
+                !fields.Contains("Fetched") || fields.Contains("Information source"))
+                throw new InvalidOperationException("YouTube Information must start with the title and channel and retain Fetched.");
+            foreach (var (label, value, id) in new[] {
+                ("Video ID", "M7lc1UVf-VE", "copy-youtube-video-id-youtube-information"),
+                ("Source URL", inspectorFixture.YoutubeURL, "copy-youtube-url-youtube-information")
+            })
+            {
+                var row = rows.Single(item => item.Children.OfType<TextBlock>().FirstOrDefault()?.Text == label);
+                if (row.Children.OfType<TextBlock>().Last().Text != value ||
+                    AutomationProperties.GetAutomationId(row.Children.OfType<Button>().Single()) != id ||
+                    row.ContextFlyout is not MenuFlyout menu || !Equals(menu.Items.OfType<MenuFlyoutItem>().Single().Tag, id))
+                    throw new InvalidOperationException("YouTube Information must provide a copy button and menu for " + label);
+            }
+        }
+        finally { YouTubeInspectorDetails.Children.Clear(); }
         var originalLayout = Model.Settings.Get("youtubeVideoLayout", "list");
         var originalTheme = Model.Settings.Get("theme", "system");
         var scale = Root.XamlRoot.RasterizationScale;

@@ -50,13 +50,12 @@ public sealed partial class MainWindow
         if (project.YouTubeMetadata is JsonElement { ValueKind: JsonValueKind.Object } value) {
             string Get(string key) => value.TryGetProperty(key, out var found) && found.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) && found.ToString().Length > 0 ? found.ToString() : "Unavailable";
             void Row(string label, string key) => AddInfo(YouTubeInspectorDetails, label, Get(key));
-            AddInfo(YouTubeInspectorDetails, "Information source", "YouTube Data API · saved in this project");
             Row("YouTube title", "title"); Row("Channel", "channelTitle"); Row("Visibility", "visibility");
             Row("Published", "publishedAt"); Row("Views", "viewCount"); Row("Likes", "likeCount"); Row("Comments", "commentCount");
             AddInfo(YouTubeInspectorDetails, "Captions", Get("captionsAvailable") == "True" ? "Available" : "Not reported");
             Row("Language", "language"); Row("Audio language", "audioLanguage"); Row("Category", "categoryID");
             Row("Embedding allowed", "embeddable"); Row("Processing", "uploadStatus"); Row("Live status", "liveStatus");
-            Row("Video ID", "videoID"); Row("Channel ID", "channelID");
+            Row("Channel ID", "channelID");
             if (value.TryGetProperty("fetchedAt", out var at) && at.TryGetDouble(out var seconds)) AddInfo(YouTubeInspectorDetails, "Fetched", DateTimeOffset.FromUnixTimeSeconds((long)seconds).LocalDateTime.ToString("g"));
             foreach (var field in new[] { ("Description", "description"), ("Tags", "tags") }) {
                 if (Get(field.Item2) == "Unavailable") continue;
@@ -67,6 +66,7 @@ public sealed partial class MainWindow
         }
         if (project.IsYouTube)
         {
+            AddVideoSourceInformation(YouTubeInspectorDetails, project, "-youtube-information");
             YouTubeInspectorDetails.Children.Add(BuildYouTubePlaybackControls(project, id => RunDesktopCommandAsync(id)));
             if (!project.AllowsOriginalAudioImport)
             {

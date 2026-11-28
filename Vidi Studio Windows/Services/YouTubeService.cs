@@ -190,20 +190,8 @@ public sealed class YouTubeService
         try {
             var query = new Dictionary<string, string> { ["client_id"] = ClientId, ["redirect_uri"] = redirect, ["response_type"] = "code", ["scope"] = "openid email profile " + scope, ["state"] = state, ["code_challenge"] = challenge, ["code_challenge_method"] = "S256", ["access_type"] = "offline", ["prompt"] = "consent select_account" };
             Process.Start(new ProcessStartInfo("https://accounts.google.com/o/oauth2/v2/auth?" + string.Join("&", query.Select(v => Uri.EscapeDataString(v.Key) + "=" + Uri.EscapeDataString(v.Value)))) { UseShellExecute = true });
-            while (true) {
-                using var socket = await listener.AcceptTcpClientAsync(timeout.Token); using var stream = socket.GetStream();
-                using var reader = new StreamReader(stream, Encoding.ASCII, false, 1024, true);
-                var line = await reader.ReadLineAsync(timeout.Token) ?? "";
-                if (line.Length > 8192 || !line.StartsWith("GET /")) continue;
-                var path = line.Split(' ').ElementAtOrDefault(1) ?? "/";
-                var values = new Uri("http://127.0.0.1" + path).Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries).Select(v => v.Split('=', 2)).GroupBy(v => Uri.UnescapeDataString(v[0])).ToDictionary(g => g.Key, g => Uri.UnescapeDataString(g.First().ElementAtOrDefault(1) ?? ""));
-                if (values.GetValueOrDefault("state") != state) continue;
-                values.TryGetValue("code", out var returnedCode);
-                await stream.WriteAsync(GoogleSignInReturn.Response(cloud, !string.IsNullOrEmpty(returnedCode)), timeout.Token);
-                if (string.IsNullOrEmpty(returnedCode)) throw new InvalidOperationException("Google sign-in was cancelled or permission was not granted.");
-                code = returnedCode;
-                break;
-            }
+            code = await GoogleSignInReturn.ReceiveCodeAsync(listener, state, cloud, timeout.Token)
+                ?? throw new InvalidOperationException("Google sign-in was cancelled or permission was not granted.");
         } finally { listener.Stop(); }
         var result = await TokenAsync(new() { ["client_id"] = ClientId, ["client_secret"] = ClientSecret, ["code"] = code, ["redirect_uri"] = redirect, ["code_verifier"] = verifier, ["grant_type"] = "authorization_code" }, ct, cloud ? "Settings > AI" : "YouTube Accounts");
         var token = result["access_token"]?.ToString(); var refresh = result["refresh_token"]?.ToString();

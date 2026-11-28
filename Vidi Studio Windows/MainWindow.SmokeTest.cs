@@ -8,9 +8,13 @@ using System;
 using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Vidi_Studio_Windows.Services;
@@ -456,6 +460,12 @@ public sealed partial class MainWindow
             {
                 await VerifyShellProjectOpeningForSmokeTestAsync(folder);
                 await File.WriteAllTextAsync(report, "PASS: separate maximized editors, unchanged normal/maximized/minimized All Projects, accessible handoff and editor reuse. Saved private projects open without their owner account, with and without a local playback copy, while remote analysis stays blocked.");
+                return;
+            }
+            if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GOOGLE_RETURN_ONLY") == "1")
+            {
+                await VerifyGoogleSignInReturnForSmokeTestAsync();
+                await File.WriteAllTextAsync(report, "PASS: The installed YouTube and Google Cloud callbacks ignored incomplete requests and delivered complete branded success and cancellation pages over loopback.");
                 return;
             }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY") == "1")
@@ -2040,12 +2050,36 @@ public sealed partial class MainWindow
         finally { MoveTooltipTestCursor(original.X, original.Y); }
     }
 
-    private async Task VerifyYouTubeLayoutForSmokeTestAsync(string report)
+    private static async Task VerifyGoogleSignInReturnForSmokeTestAsync()
     {
         foreach (var cloud in new[] { true, false })
         foreach (var receivedCode in new[] { true, false })
         {
-            var response = System.Text.Encoding.UTF8.GetString(GoogleSignInReturn.Response(cloud, receivedCode));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            var endpoint = (IPEndPoint)listener.LocalEndpoint;
+            var receive = GoogleSignInReturn.ReceiveCodeAsync(listener, "smoke", cloud, timeout.Token);
+            using (var incomplete = new TcpClient())
+            {
+                await incomplete.ConnectAsync(endpoint.Address, endpoint.Port, timeout.Token);
+                using var partialRequest = incomplete.GetStream();
+                await partialRequest.WriteAsync("GET /?state=smoke&code=incomplete HTTP/1.1\r\n"u8.ToArray(), timeout.Token);
+                incomplete.Client.Shutdown(SocketShutdown.Send);
+                if (await partialRequest.ReadAsync(new byte[1], timeout.Token) != 0)
+                    throw new InvalidOperationException("An incomplete browser request consumed the sign-in callback.");
+            }
+            using var browser = new TcpClient();
+            await browser.ConnectAsync(endpoint.Address, endpoint.Port, timeout.Token);
+            using var stream = browser.GetStream();
+            var result = receivedCode ? "code=complete" : "error=access_denied";
+            var request = $"GET /?state=smoke&{result} HTTP/1.1\r\nHost: {endpoint}\r\nX-Test: {new string('x', 4096)}\r\n";
+            await stream.WriteAsync(Encoding.ASCII.GetBytes(request), timeout.Token);
+            await stream.WriteAsync("\r\n"u8.ToArray(), timeout.Token);
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            var response = await reader.ReadToEndAsync(timeout.Token);
+            if (await receive != (receivedCode ? "complete" : null))
+                throw new InvalidOperationException("The browser callback returned the wrong sign-in result.");
             var parts = response.Split("\r\n\r\n", 2);
             var service = cloud ? "Google Cloud" : "YouTube";
             var heading = receivedCode ? "Return to VidiStudio" : "Sign-in didn’t finish";
@@ -2059,6 +2093,11 @@ public sealed partial class MainWindow
                 (!receivedCode && !parts[1].Contains("start a new sign-in in VidiStudio")))
                 throw new InvalidOperationException("The packaged Google sign-in return page is missing its branding or expected status.");
         }
+    }
+
+    private async Task VerifyYouTubeLayoutForSmokeTestAsync(string report)
+    {
+        await VerifyGoogleSignInReturnForSmokeTestAsync();
         static System.Collections.Generic.IEnumerable<FrameworkElement> Elements(DependencyObject root) {
             if (root is FrameworkElement element) yield return element;
             for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root); i++)

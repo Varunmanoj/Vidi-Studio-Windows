@@ -1,4 +1,4 @@
-param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [switch]$SkipBuild, [switch]$FrozenEngine, [string]$AppDirectory, [switch]$RequirePackage, [int]$TimeoutSeconds = 180, [string]$SummaryFixture, [switch]$GallerySettingsOnly, [switch]$GeminiVoicesOnly, [switch]$ContextMenusOnly, [switch]$JumpOnly, [switch]$ExportSoundOnly, [switch]$GenerationAnnouncementsOnly, [switch]$ProjectSearchOnly, [switch]$YouTubeLayoutOnly, [switch]$DialogsOnly, [switch]$ShellOpenOnly)
+param([ValidateSet('ARM64','x64')][string]$Platform = 'ARM64', [switch]$SkipBuild, [switch]$FrozenEngine, [string]$AppDirectory, [switch]$RequirePackage, [int]$TimeoutSeconds = 180, [string]$SummaryFixture, [switch]$GallerySettingsOnly, [switch]$GeminiVoicesOnly, [switch]$ContextMenusOnly, [switch]$JumpOnly, [switch]$ExportSoundOnly, [switch]$GenerationAnnouncementsOnly, [switch]$ProjectSearchOnly, [switch]$GoogleReturnOnly, [switch]$YouTubeLayoutOnly, [switch]$DialogsOnly, [switch]$ShellOpenOnly)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $testRoot = Join-Path $projectRoot "build\ui-test-$Platform"
@@ -59,6 +59,7 @@ try {
     $env:VIDISTUDIO_UI_SMOKE_REPORT = $report
     if ($ShellOpenOnly) { $env:VIDISTUDIO_UI_SMOKE_SHELL_OPEN_ONLY = '1' }
     if ($DialogsOnly) { $env:VIDISTUDIO_UI_SMOKE_DIALOGS_ONLY = '1' }
+    if ($GoogleReturnOnly) { $env:VIDISTUDIO_UI_SMOKE_GOOGLE_RETURN_ONLY = '1' }
     if ($YouTubeLayoutOnly) { $env:VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY = '1' }
     if ($ProjectSearchOnly) { $env:VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY = '1' }
     if ($GallerySettingsOnly) { $env:VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY = '1' }
@@ -88,6 +89,7 @@ public static class VidiActivation {
         $payloadValues = @{VIDISTUDIO_UI_SMOKE_REPORT=$report;VIDISTUDIO_UI_SMOKE_PROJECT=$folder;VIDISTUDIO_CONFIG=$configFile}
         if ($ShellOpenOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_SHELL_OPEN_ONLY = '1' }
         if ($DialogsOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_DIALOGS_ONLY = '1' }
+        if ($GoogleReturnOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_GOOGLE_RETURN_ONLY = '1' }
         if ($YouTubeLayoutOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY = '1' }
         if ($ProjectSearchOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY = '1' }
         if ($GallerySettingsOnly) { $payloadValues.VIDISTUDIO_UI_SMOKE_GALLERY_SETTINGS_ONLY = '1' }
@@ -134,6 +136,7 @@ public static class VidiPackageIdentity {
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_GENERATION_ANNOUNCEMENTS_ONLY -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_JUMP_ONLY -ErrorAction SilentlyContinue
+    Remove-Item Env:VIDISTUDIO_UI_SMOKE_GOOGLE_RETURN_ONLY -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY -ErrorAction SilentlyContinue
     Remove-Item Env:VIDISTUDIO_UI_SMOKE_SHELL_OPEN_ONLY -ErrorAction SilentlyContinue

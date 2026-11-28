@@ -77,6 +77,95 @@ public sealed partial class MainWindow
             observedGenerationAnnouncements = null;
         }
     }
+    private void VerifyPreviewContextMenu(params string[] expected)
+    {
+        if (PreviewPanel.ContextFlyout is not MenuFlyout menu)
+            throw new InvalidOperationException("The video preview must have a context menu.");
+        UpdatePreviewContextMenu(menu);
+        var entries = menu.Items.Where(item => item.Visibility == Visibility.Visible)
+            .Select(item => item.Tag as string ?? "-");
+        if (!entries.SequenceEqual(expected))
+            throw new InvalidOperationException("Unexpected preview context menu: " + string.Join(", ", entries));
+    }
+
+    private async Task VerifyYouTubePreviewContextMenuAsync()
+    {
+        var original = Model.Project ?? throw new InvalidOperationException("Playback fixture not loaded.");
+        var manifestPath = original.Resolve("project.json");
+        var saved = await File.ReadAllTextAsync(manifestPath);
+        var manifest = JsonNode.Parse(saved)!.AsObject();
+        manifest["sourceType"] = "youtube";
+        manifest["source"] = "";
+        manifest["youtubeURL"] = "https://www.youtube.com/watch?v=TESTvideo01";
+        manifest["youtubeMetadata"] = new JsonObject { ["visibility"] = "unlisted" };
+        var playbackPath = $"playback/{Guid.NewGuid():N}.mp4";
+        var playbackFile = original.Resolve(playbackPath);
+        var menu = (MenuFlyout)PreviewPanel.ContextFlyout;
+        var window = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        if (!GetTooltipTestCursor(out var cursor)) throw new InvalidOperationException("Cannot get test pointer position.");
+
+        try
+        {
+            await File.WriteAllTextAsync(manifestPath, manifest.ToJsonString());
+            Model.Open(original.Folder);
+            VerifyPreviewContextMenu("copy-to", "project-settings");
+
+            Directory.CreateDirectory(Path.GetDirectoryName(playbackFile)!);
+            File.Copy(original.Resolve(original.Source), playbackFile);
+            manifest["youtubePlaybackVideo"] = new JsonObject
+            {
+                ["path"] = playbackPath, ["thumbnail"] = "", ["sourceName"] = Path.GetFileName(original.Source),
+                ["duration"] = original.Duration
+            };
+            await File.WriteAllTextAsync(manifestPath, manifest.ToJsonString());
+            Model.Open(original.Folder);
+            Activate();
+            FocusTooltipTestWindow(window);
+            foreach (var embedded in new[] { false, true, false })
+            {
+                await RunDesktopCommandAsync(embedded ? "use-youtube-player" : "use-local-video-player");
+                var surface = embedded ? (FrameworkElement)YouTubePlayer : Player;
+                for (var attempt = 0; attempt < 30 &&
+                    (surface.Visibility != Visibility.Visible || embedded && YouTubePlayer.Source == null); attempt++)
+                    await Task.Delay(100);
+                if (surface.Visibility != Visibility.Visible || embedded && YouTubePlayer.Source == null ||
+                    Model.Project?.UsesYouTubePlayer != embedded)
+                    throw new InvalidOperationException($"The preview did not switch to embedded={embedded}: {Model.Status}");
+                var center = surface.TransformToVisual(Root).TransformPoint(
+                    new Windows.Foundation.Point(surface.ActualWidth / 2, surface.ActualHeight / 2));
+                var scale = Root.XamlRoot.RasterizationScale;
+                var point = new TooltipTestPoint { X = (int)(center.X * scale), Y = (int)(center.Y * scale) };
+                if (!MapTooltipClientPoint(window, ref point) || !MoveTooltipTestCursor(point.X, point.Y))
+                    throw new InvalidOperationException("Cannot reach the video preview with the test pointer.");
+                var opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                void ObserveOpen(object? _, object __) => opened.TrySetResult();
+                menu.Opened += ObserveOpen;
+                try
+                {
+                    SendTooltipMouseMove(0x0008, 0, 0, 0, UIntPtr.Zero); // Right button down
+                    SendTooltipMouseMove(0x0010, 0, 0, 0, UIntPtr.Zero); // Right button up
+                    await opened.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    VerifyPreviewContextMenu("copy-to", "project-settings", "-", "use-youtube-player", "use-local-video-player");
+                    var choices = menu.Items.OfType<ToggleMenuFlyoutItem>().Where(item => item.Visibility == Visibility.Visible).ToArray();
+                    if (choices.Any(item => !item.IsEnabled) || choices[0].IsChecked != embedded || choices[1].IsChecked == embedded)
+                        throw new InvalidOperationException("The preview menu checkmark did not follow the active YouTube player.");
+                }
+                finally
+                {
+                    menu.Opened -= ObserveOpen;
+                    menu.Hide();
+                }
+            }
+        }
+        finally
+        {
+            await File.WriteAllTextAsync(manifestPath, saved);
+            Model.Open(original.Folder);
+            File.Delete(playbackFile);
+            MoveTooltipTestCursor(cursor.X, cursor.Y);
+        }
+    }
+
     private async Task VerifySmallerAICopyAsync(string fixtureFolder)
     {
         var work = Path.Combine(Path.GetDirectoryName(fixtureFolder)!, "ai-copy-" + Guid.NewGuid());
@@ -118,6 +207,7 @@ public sealed partial class MainWindow
             if (result == null) throw new InvalidOperationException("Smaller AI copy import failed. " + Model.Status);
             Model.Open(result.Data.GetProperty("project").GetString()!);
             ShowEditor();
+            VerifyPreviewContextMenu("copy-to", "project-settings");
             UpdateDesktopMenuStates();
             var command = editorMenus.Single(menu => menu.Title == "Project").Items.OfType<MenuFlyoutItem>()
                 .Single(item => Equals(item.Tag, "regenerate-ai-copy"));
@@ -147,6 +237,7 @@ public sealed partial class MainWindow
                     throw new InvalidOperationException("Both playback choices must be listed, with only the active one checked.");
             }
             VerifyPlaybackChoices(useCopy: false);
+            VerifyPreviewContextMenu("copy-to", "project-settings", "-", "play-original-video", "play-smaller-ai-copy");
             foreach (var useCopy in new[] { true, false })
             {
                 var playbackAction = useCopy ? "play-smaller-ai-copy" : "play-original-video";
@@ -217,6 +308,7 @@ public sealed partial class MainWindow
             manifest["useAnalysisCopy"] = true;
             File.WriteAllText(projectManifest, manifest.ToJsonString());
             Model.Open(project.Folder);
+            VerifyPreviewContextMenu("copy-to", "project-settings", "-", "play-original-video", "play-smaller-ai-copy", "-", "regenerate-ai-copy");
             var oldPath = project.Resolve(copy.Path);
             foreach (var approve in new[] { false, true })
             {
@@ -393,8 +485,9 @@ public sealed partial class MainWindow
             {
                 ShowEditor();
                 await Task.Delay(300);
+                await VerifyYouTubePreviewContextMenuAsync();
                 await VerifyMatchingContextMenusForSmokeTestAsync(report);
-                await File.WriteAllTextAsync(report, "PASS: Mac/Windows context hierarchy, order, separators, dynamic titles, offline export, content deletion, developer/source filtering, clicked target guards, editor sidebar, row menus, summary reading menu and background scope.");
+                await File.WriteAllTextAsync(report, "PASS: Mac/Windows context hierarchy, order, separators, dynamic titles, offline export, content deletion, developer/source filtering, clicked target guards, editor sidebar, row menus, summary reading menu and background scope. Native right-click opened the same preview menu on local and embedded YouTube surfaces after switching, with the active source checked.");
                 return;
             }
             ShowEditor();

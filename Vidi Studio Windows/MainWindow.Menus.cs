@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using System;
 using System.IO;
 using System.Collections.Generic;
@@ -103,23 +104,27 @@ public sealed partial class MainWindow
             catch (OperationCanceledException) { }
             catch (Exception ex) { await ShowError(ex); }
         };
-        var playerMenu = new MenuFlyout();
+        var playerMenu = Views.MenuAccessKeys.Create();
+        playerMenu.Items.Add(Command("copy-to"));
+        playerMenu.Items.Add(Command("project-settings"));
+        playerMenu.Items.Add(Separator());
         playerMenu.Items.Add(Command("play-original-video"));
         playerMenu.Items.Add(Command("play-smaller-ai-copy"));
         playerMenu.Items.Add(Separator());
         playerMenu.Items.Add(Command("regenerate-ai-copy"));
-        playerMenu.Opening += (_, _) =>
+        playerMenu.Items.Add(Separator());
+        playerMenu.Items.Add(Command("use-youtube-player"));
+        playerMenu.Items.Add(Command("use-local-video-player"));
+        PreviewPanel.ContextFlyout = playerMenu;
+        playerMenu.Opening += (_, _) => UpdatePreviewContextMenu(playerMenu);
+        // WebView2 can handle the pointer event before the preview receives a context request.
+        YouTubePlayer.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, args) =>
         {
-            UpdateDesktopMenuStates();
-            NormalizeMenuSeparators(playerMenu.Items);
-        };
-        Player.ContextRequested += (_, args) =>
-        {
-            if (Model.Project is not { IsYouTube: false, AnalysisCopy: not null }) return;
-            if (args.TryGetPosition(Player, out var point)) playerMenu.ShowAt(Player, point);
-            else playerMenu.ShowAt(Player);
+            var pointer = args.GetCurrentPoint(PreviewPanel);
+            if (pointer.Properties.PointerUpdateKind != Microsoft.UI.Input.PointerUpdateKind.RightButtonReleased) return;
             args.Handled = true;
-        };
+            playerMenu.ShowAt(PreviewPanel, pointer.Position);
+        }), handledEventsToo: true);
         static MenuFlyoutSeparator Separator() => new();
         MenuFlyoutSubItem Submenu(string title, params MenuFlyoutItemBase[] entries)
         {
@@ -717,6 +722,19 @@ public sealed partial class MainWindow
             or "close-window" or "help" or "website" or "about" or "project-list" or "project-grid" or "open-selected-project" or "open-gallery-window" or "generate-ad-cues"
             or "analyze" or "prepare-video" or "transcribe" or "generate-summary" or "show-in-finder" or "open-configuration"
             or "rename-project" or "trash-project" || id.StartsWith("projects-", StringComparison.Ordinal);
+    }
+
+    private void UpdatePreviewContextMenu(MenuFlyout playerMenu)
+    {
+        UpdateDesktopMenuStates();
+        var project = Model.Project;
+        foreach (var item in playerMenu.Items.OfType<MenuFlyoutItem>())
+        {
+            if ((item.Tag is "use-youtube-player" or "use-local-video-player" && project?.CanChooseYouTubePlayer != true) ||
+                (item.Tag is "regenerate-ai-copy" && project?.AnalysisCopy == null))
+                item.Visibility = Visibility.Collapsed;
+        }
+        NormalizeMenuSeparators(playerMenu.Items);
     }
 
     private static void NormalizeMenuSeparators(IList<MenuFlyoutItemBase> items)

@@ -893,6 +893,7 @@ public sealed partial class MainWindow : Window
                 await YouTubePlayer.EnsureCoreWebView2Async();
                 if (loadedProject != p.Folder || loadedPlaybackSource != sourceKey) return;
                 YouTubePlayer.CoreWebView2.Settings.AreDevToolsEnabled = false;
+                YouTubePlayer.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
                 YouTubePlayer.CoreWebView2.SetVirtualHostNameToFolderMapping("vidistudio.local", AppContext.BaseDirectory, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.DenyCors);
                 YouTubePlayer.Source = new Uri("https://vidistudio.local/Assets/youtube.html?id=" + id + "&originalAudio=" + (p.UsesStandaloneYouTubeAudio && p.AudioSources?.Playback == "imported" ? "1" : "0") + "&startAt=" + position.ToString(CultureInfo.InvariantCulture));
             }

@@ -11,6 +11,76 @@ using Vidi_Studio_Windows.Models;
 namespace Vidi_Studio_Windows;
 public sealed partial class MainWindow
 {
+    private async Task VerifyEditorPaneGeometryAsync(string report)
+    {
+        var presenter = AppWindow.Presenter as Microsoft.UI.Windowing.OverlappedPresenter;
+        var maximized = presenter?.State == Microsoft.UI.Windowing.OverlappedPresenterState.Maximized;
+        presenter?.Restore();
+        var initialSize = AppWindow.Size;
+        var theme = Root.RequestedTheme;
+        var thumbnails = ThumbnailImagesRow.Visibility;
+        var scale = Root.XamlRoot.RasterizationScale;
+        var directory = Path.GetDirectoryName(report)!;
+        double Top(FrameworkElement e) => e.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point()).Y;
+        double Bottom(FrameworkElement e) => Top(e) + e.ActualHeight;
+        static TextBlock? FindTextBlock(DependencyObject parent, string text)
+        {
+            if (parent is TextBlock block && block.Text == text) return block;
+            for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+                if (FindTextBlock(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, i), text) is { } found) return found;
+            return null;
+        }
+        try
+        {
+            foreach (var appearance in new[] { ElementTheme.Light, ElementTheme.Dark })
+            {
+                Root.RequestedTheme = appearance;
+                foreach (var (width, height) in new[] { (1120, 760), (1280, 610), (880, 610) })
+                {
+                    AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(width * scale), (int)(height * scale)));
+                    await Task.Delay(120);
+                    foreach (var section in new[] { 0, 1, 2, 3 })
+                    {
+                        Section.SelectedIndex = section;
+                        ThumbnailImagesRow.Visibility = section == 0 ? Visibility.Collapsed : Visibility.Visible;
+                        RenderTimelineThumbnails(Model.Project!);
+                        await Task.Delay(80);
+                        Root.UpdateLayout();
+                        var view = section == 1 ? (FrameworkElement)SummaryPanel : Segments;
+                        var item = section == 1 ? SummaryRichText.Children.OfType<TextBlock>().FirstOrDefault() :
+                            Segments.ContainerFromIndex(0) is ListViewItem { Content: Segment segment } container
+                                ? FindTextBlock(container, segment.Text) : null;
+                        var beside = Grid.GetRow(PreviewPanel) == Grid.GetRow(TimelinePanel);
+                        var videoRight = PreviewPanel.TransformToVisual(TimelinePanel).TransformPoint(new Windows.Foundation.Point(PreviewPanel.ActualWidth, 0)).X;
+                        var detail = $"{(beside ? "adjacent" : "stacked")} {appearance} {Root.ActualWidth}x{Root.ActualHeight}, section {section}: preview {PreviewPanel.ActualHeight}, timeline {TimelinePanel.ActualHeight}, content {view.ActualHeight}, text {item?.ActualHeight} at {((item == null) ? 0 : Top(item))}, viewport {Top(view)} to {Bottom(view)}, notices {NoticeViewport.ActualHeight}";
+                        if (ProjectHeader.ActualHeight > 56 || Top(EditorSearch) > Bottom(ProjectTitle) ||
+                            PreviewPanel.ActualHeight < 45 || TimelinePanel.ActualHeight < 90 ||
+                            (ThumbnailImagesRow.Visibility == Visibility.Visible && (ThumbnailImagesRow.ActualHeight < 35 || Thumbnails.Children.Count == 0)) ||
+                            (beside ? videoRight > 1 || Math.Abs(Top(PreviewPanel) - Top(TimelinePanel)) > 1 : Bottom(PreviewPanel) > Top(TimelinePanel) + 1) ||
+                            Bottom(TimelinePanel) > Top(EditorSectionToolbar) + 1 ||
+                            Bottom(EditorSectionToolbar) > Top(view) + 1 || Bottom(view) > Bottom(EditorPanes) + 1 ||
+                            Bottom(EditorPanes) > Top(StatusFooter) + 1 || view.ActualHeight < 28 || item == null || item.ActualHeight < 16 ||
+                            Math.Min(Bottom(item), Bottom(view)) - Math.Max(Top(item), Top(view)) < Math.Min(20, item.ActualHeight) - 1)
+                        {
+                            await CaptureSmokeImage(Root, Path.Combine(directory, "editor-panes-failure.png"));
+                            throw new InvalidOperationException("Editor must show the preview, timeline and first content item together. " + detail);
+                        }
+                        File.AppendAllText(Path.Combine(directory, "editor-pane-geometry.txt"), detail + Environment.NewLine);
+                    }
+                    await CaptureSmokeImage(Root, Path.Combine(directory, $"editor-panes-{appearance}-{width}x{height}.png"));
+                }
+            }
+        }
+        finally
+        {
+            Section.SelectedIndex = 0;
+            ThumbnailImagesRow.Visibility = thumbnails;
+            Root.RequestedTheme = theme;
+            AppWindow.Resize(initialSize);
+            if (maximized) presenter?.Maximize();
+        }
+    }
+
     private async Task VerifyProjectSearchForSmokeTestAsync()
     {
         static void Check(bool value, string message) { if (!value) throw new InvalidOperationException(message); }

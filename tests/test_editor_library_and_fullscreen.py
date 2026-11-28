@@ -12,7 +12,9 @@ class EditorProjectControls(unittest.TestCase):
         self.assertIn('x:Name="EditorProjectLayoutButton"', xaml)
         self.assertIn('x:Name="EditorProjectListButton"', xaml)
         self.assertIn('Click="ToggleGrid_Click"', xaml)
-        self.assertIn('Click="ToggleLibrary_Click"', xaml)
+        toggle = xaml.split('x:Name="EditorProjectListButton"', 1)[1].split('>', 1)[0]
+        self.assertIn('Checked="PanelVisibilityToggle_Changed"', toggle)
+        self.assertIn('Unchecked="PanelVisibilityToggle_Changed"', toggle)
         self.assertIn('private void UpdateEditorProjectButtons()', commands)
         self.assertIn('UpdateEditorProjectButtons();', commands)
 
@@ -32,8 +34,12 @@ class EditorProjectControls(unittest.TestCase):
 
     def test_fullscreen_is_in_view_and_playback_with_shortcuts(self):
         menus = (APP / 'MainWindow.Menus.cs').read_text(encoding='utf-8')
-        self.assertIn('Menu("View",\n                Command("preview"), Command("fullscreen"), Command("toggle-timeline")', menus)
-        self.assertIn('Menu("Playback",\n                Command("preview"), Command("fullscreen"), Command("play")', menus)
+        view = menus.split('Menu("View",', 1)[1].split('Menu("Playback",', 1)[0]
+        playback = menus.split('Menu("Playback",', 1)[1].split('Menu("Project",', 1)[0]
+        for menu in (view, playback):
+            self.assertLess(menu.index('Command("preview")'), menu.index('Command("fullscreen")'))
+        self.assertLess(view.index('Command("fullscreen")'), view.index('Command("toggle-timeline")'))
+        self.assertLess(playback.index('Command("fullscreen")'), playback.index('Command("play")'))
         self.assertIn('["fullscreen"] = (VirtualKey.F, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, "Ctrl+Alt+F")', menus)
         self.assertIn('AddShortcut(VirtualKey.F11, VirtualKeyModifiers.None', menus)
 

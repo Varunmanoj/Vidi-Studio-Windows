@@ -129,6 +129,7 @@ public sealed partial class MainWindow
             {
                 ShowEditor();
                 await Task.Delay(300);
+                await VerifyEditorPaneGeometryAsync(report);
                 await VerifyProjectSearchForSmokeTestAsync();
                 await File.WriteAllTextAsync(report, "PASS: native editor/all-project search focus, live typing and immediate segment restoration after manual/icon/menu clearing; all saved versions and drafts; four prefix labels navigate before a colon or query, with tab isolation and scoped results; complete matching summary sentences; read-only results; selected version unchanged while typing; old-result opening; draft Review Later and Keep Both; all-occurrence highlights in four tabs; Appearance toggle/color/context menus, live sample preview with both matches and readable contrast, immediate preview updates, and live saved preferences; all-highlight default restoration from the button and menu below search settings; narrow layout; native spoken search counts, coalesced typing, zero matches and gallery clearing.");
                 return;

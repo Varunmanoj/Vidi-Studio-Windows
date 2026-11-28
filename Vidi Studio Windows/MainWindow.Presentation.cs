@@ -453,6 +453,15 @@ public sealed partial class MainWindow
         }
     }
 
+    private void TimelineHeader_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (TimelineTransport == null || TimelineHeading == null || TimeLabel == null) return;
+        // Center transport only when both side labels fit with a gap.
+        var sideWidth = Math.Max(TimelineHeading.ActualWidth, TimeLabel.ActualWidth) + 8;
+        var row = TimelineHeader.ActualWidth >= TimelineTransport.ActualWidth + 2 * sideWidth ? 0 : 1;
+        if (Grid.GetRow(TimelineTransport) != row) Grid.SetRow(TimelineTransport, row);
+    }
+
     private void GalleryToolbar_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (GalleryToolbarActions == null || GallerySearchHost == null) return;

@@ -95,6 +95,8 @@ public sealed partial class MainWindow : Window
         InitializeEditorShortcutTooltips();
         Model.ConfirmCloudAction = Confirm;
         Model.ConfirmRegeneration = ConfirmRegenerationAsync;
+        Root.SizeChanged += (_, _) => UpdateNoticeViewport();
+        EditorWorkspace.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => UpdateNoticeViewport());
         EditorSearch.TextChanging += (_, _) => UpdateEditorSearch();
         ProjectSplitView.RegisterPropertyChangedCallback(SplitView.IsPaneOpenProperty, (_, _) => SyncPanelVisibilityToggles());
         InspectorSplitView.RegisterPropertyChangedCallback(SplitView.IsPaneOpenProperty, (_, _) => SyncPanelVisibilityToggles());
@@ -2387,8 +2389,38 @@ public sealed partial class MainWindow : Window
         UpdateTimelineVisibility();
     }
 
-    private void UpdateTimelineVisibility() =>
+    private void UpdateTimelineVisibility()
+    {
         TimelinePanel.Visibility = timelineVisible && PreviewPanel.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
+        UpdateEditorPaneLayout();
+    }
+
+    private void UpdateNoticeViewport()
+    {
+        // Keep long or multiple notices keyboard-scrollable above a usable editor.
+        NoticeViewport.MaxHeight = EditorWorkspace.Visibility == Visibility.Visible
+            ? Math.Max(72, Root.ActualHeight - 530) : double.PositiveInfinity;
+    }
+
+    private void EditorPanes_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateEditorPaneLayout();
+
+    private void UpdateEditorPaneLayout()
+    {
+        if (EditorPanes == null || EditToolbar == null || !ReferenceEquals(PreviewPanel.Parent, EditorPanes)) return;
+        var showPreview = PreviewPanel.Visibility == Visibility.Visible;
+        var editHeight = EditToolbar.Visibility == Visibility.Visible ? EditToolbar.ActualHeight : 0;
+        var remaining = EditorPanes.ActualHeight - TimelinePanel.ActualHeight - EditorControlsGroup.ActualHeight - editHeight;
+        // A short viewport can fit a wider video beside the tracks while keeping the text below both.
+        var besideTimeline = showPreview && TimelinePanel.Visibility == Visibility.Visible &&
+            EditorPanes.ActualWidth >= 500 && remaining < 175;
+        var previewHeight = besideTimeline ? TimelinePanel.ActualHeight : double.NaN;
+        var videoWidth = besideTimeline ? Math.Min(220, EditorPanes.ActualWidth * .27) : 0;
+        PreviewRow.Height = showPreview && !besideTimeline ? new GridLength(2, GridUnitType.Star) : new GridLength(0);
+        CompactVideoColumn.Width = new GridLength(videoWidth);
+        Grid.SetRow(PreviewPanel, besideTimeline ? 1 : 0);
+        Grid.SetColumnSpan(PreviewPanel, besideTimeline ? 1 : 2);
+        if (!PreviewPanel.Height.Equals(previewHeight)) PreviewPanel.Height = previewHeight;
+    }
     private void ToggleThumbnailImages_Click(object sender, RoutedEventArgs e)
     {
         ThumbnailImagesRow.Visibility = ThumbnailImagesRow.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;

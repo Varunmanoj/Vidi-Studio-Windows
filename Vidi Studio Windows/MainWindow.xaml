@@ -35,12 +35,12 @@
    <DataTemplate x:Key="SegmentRow">
     <Grid>
      <Border Background="#550078D4" CornerRadius="6" Visibility="{Binding IsActive, Converter={StaticResource VisibleWhenTrue}}" IsHitTestVisible="False"/>
-    <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Padding="8,16,8,16">
+    <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Padding="8,8">
      <Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto" MinWidth="72"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions>
       <Button Content="&#xE768;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" Padding="4" VerticalAlignment="Top" Tag="{Binding}" Click="SegmentPlay_Click" AutomationProperties.Name="{Binding PlayLabel}" ToolTipService.ToolTip="{Binding PlayLabel}"/>
       <TextBlock Grid.Column="1" Text="{Binding SegmentNumberText}" AutomationProperties.Name="{Binding SegmentNumberLabel}" MinWidth="28" TextAlignment="Right" FontFamily="Cascadia Mono" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
       <StackPanel Grid.Column="2"><TextBlock Text="{Binding StartLabel}" AutomationProperties.Name="{Binding StartAnnouncement}"/><TextBlock Text="{Binding EndLabel}" AutomationProperties.Name="{Binding EndAnnouncement}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
-      <StackPanel Grid.Column="3" Spacing="8">
+      <StackPanel Grid.Column="3" Spacing="4">
        <TextBlock Text="{Binding KindLabel}" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Visibility="{Binding ShowKind, Converter={StaticResource VisibleWhenTrue}}"/>
        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel Orientation="Horizontal" Spacing="6" Visibility="{Binding ShowOrigin, Converter={StaticResource VisibleWhenTrue}}" ToolTipService.ToolTip="{Binding OriginLabel}" AutomationProperties.Name="{Binding OriginLabel}"><FontIcon Glyph="{Binding OriginGlyph}" FontSize="12"><FontIcon.Foreground><SolidColorBrush Color="{Binding OriginColor}"/></FontIcon.Foreground></FontIcon><TextBlock Text="{Binding OriginLabel}" FontWeight="SemiBold"><TextBlock.Foreground><SolidColorBrush Color="{Binding OriginColor}"/></TextBlock.Foreground></TextBlock></StackPanel><TextBlock Grid.Column="1" Text="{Binding DurationLabel}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontFamily="Cascadia Mono" AutomationProperties.Name="{Binding DurationAnnouncement}" ToolTipService.ToolTip="Segment duration"/></Grid>
        <StackPanel Orientation="Horizontal" Spacing="6" Visibility="{Binding IsTimingFlagged, Converter={StaticResource VisibleWhenTrue}}" ToolTipService.ToolTip="{Binding TimingFlagHelp}" AutomationProperties.Name="Description timing overlaps. Needs retiming."><FontIcon Glyph="&#xE7BA;" FontSize="12" Foreground="#D87919"/><TextBlock Text="Overlap" FontWeight="SemiBold" Foreground="#D87919"/></StackPanel>
@@ -64,28 +64,29 @@
   </Grid>
   <MenuBar AutomationProperties.Name="Main menu" x:Name="MainMenu" Grid.Row="1" Background="Transparent"/>
   <Border x:Name="AppSurface" Grid.Row="2" Grid.RowSpan="4" Background="{ThemeResource LayerFillColorDefaultBrush}" IsHitTestVisible="False"/>
-  <StackPanel Grid.Row="2">
+  <ScrollViewer x:Name="NoticeViewport" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Notifications">
+   <StackPanel>
    <StackPanel x:Name="SharedVideoProgress" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8" Margin="8" Visibility="Collapsed">
     <ProgressRing x:Name="SharedVideoRing" Width="20" Height="20" IsActive="False" AutomationProperties.Name="Opening YouTube project" AutomationProperties.AutomationId="shared-youtube-opening"/>
     <TextBlock x:Name="SharedVideoProgressText" Text="Opening YouTube project…" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>
    </StackPanel>
    <views:ConnectivityNotice/>
-   <InfoBar x:Name="PrivateYouTubeAnalysisBar" Severity="Informational" IsOpen="False" IsClosable="False" Margin="16,8,16,0"/>
-   <InfoBar x:Name="ApiKeyWarningBar" Severity="Warning" IsOpen="False" IsClosable="False" Margin="16,8,16,0"
+   <InfoBar x:Name="PrivateYouTubeAnalysisBar" Visibility="{Binding IsOpen, RelativeSource={RelativeSource Self}, Converter={StaticResource VisibleWhenTrue}}" Severity="Informational" IsOpen="False" IsClosable="False" Margin="16,8,16,0"/>
+   <InfoBar x:Name="ApiKeyWarningBar" Visibility="{Binding IsOpen, RelativeSource={RelativeSource Self}, Converter={StaticResource VisibleWhenTrue}}" Severity="Warning" IsOpen="False" IsClosable="False" Margin="16,8,16,0"
             Title="Gemini API Key Required"
             Message="Application features are disabled until a personal Gemini API key is configured. Please enter your API key in Settings (Gemini API tab) to enable project creation, transcription, video analysis, summaries, descriptions, narration, and exports.">
     <InfoBar.ActionButton>
      <Button Content="Enter API Key" Style="{StaticResource AccentButtonStyle}" Click="OpenGeminiSettings_Click" ToolTipService.ToolTip="Open AI settings"/>
     </InfoBar.ActionButton>
    </InfoBar>
-   <InfoBar x:Name="AiWarningBar" Severity="Warning" IsOpen="False" IsClosable="False" Margin="16,8,16,0"
+   <InfoBar x:Name="AiWarningBar" Visibility="{Binding IsOpen, RelativeSource={RelativeSource Self}, Converter={StaticResource VisibleWhenTrue}}" Severity="Warning" IsOpen="False" IsClosable="False" Margin="16,8,16,0"
             Title="Gemini AI Processing Paused"
             Message="AI reprocessing is disabled after a Gemini quota, billing, or service error. Existing work is unchanged.">
     <InfoBar.ActionButton>
      <Button Content="Retry AI" Click="AiRetry_Click" ToolTipService.ToolTip="Retry AI processing"/>
     </InfoBar.ActionButton>
    </InfoBar>
-   <InfoBar x:Name="ProjectIntegrityBar" Severity="Warning" IsOpen="False" IsClosable="False" Margin="16,8,16,8"
+   <InfoBar x:Name="ProjectIntegrityBar" Visibility="{Binding IsOpen, RelativeSource={RelativeSource Self}, Converter={StaticResource VisibleWhenTrue}}" Severity="Warning" IsOpen="False" IsClosable="False" Margin="16,8,16,8"
             Title="Project Files Missing"
             Message="Some files that belong to this project are missing.">
     <InfoBar.ActionButton>
@@ -99,7 +100,8 @@
      </StackPanel>
     </InfoBar.Content>
    </InfoBar>
-  </StackPanel>
+   </StackPanel>
+  </ScrollViewer>
   <Grid x:Name="ProjectHeader" Grid.Row="3" Padding="20,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" MinHeight="54">
    <Grid x:Name="GalleryToolbar" ColumnSpacing="12" SizeChanged="GalleryToolbar_SizeChanged">
     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -122,13 +124,7 @@
     </Grid>
    </Grid>
    <Grid x:Name="EditorProjectHeader" Visibility="Collapsed" ColumnSpacing="12">
-    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-    <Grid Grid.Row="1" Grid.ColumnSpan="2" MaxWidth="520" HorizontalAlignment="Stretch" Margin="0,8,0,0">
-     <TextBox x:Name="EditorSearch" MinHeight="32" PlaceholderText="Search project" AutomationProperties.Name="Search project text" AutomationProperties.AutomationId="editor-search" Padding="36,5,42,5" CornerRadius="18"/>
-     <SymbolIcon Symbol="Find" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="12,0,0,0" IsHitTestVisible="False"/>
-     <Button x:Name="EditorClearSearch" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0" Content="&#xE711;" FontFamily="Segoe Fluent Icons" Padding="5" Visibility="Collapsed" Tag="clear-search" Click="SearchCommand_Click" AutomationProperties.Name="Clear Search" AutomationProperties.AutomationId="editor-clear-search" ToolTipService.ToolTip="Clear Search"/>
-    </Grid>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="3*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="2*" MaxWidth="520"/></Grid.ColumnDefinitions>
    <Grid HorizontalAlignment="Left" VerticalAlignment="Center" ColumnSpacing="8">
     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <TextBlock AutomationProperties.HeadingLevel="Level1" x:Name="ProjectTitle" Text="All Projects" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -137,6 +133,11 @@
    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
     <ToggleButton x:Name="TopInspectorToggle" Content="&#xE8A0;" FontFamily="Segoe Fluent Icons" Tag="show-inspector" Checked="PanelVisibilityToggle_Changed" Unchecked="PanelVisibilityToggle_Changed" Visibility="Collapsed" ToolTipService.ToolTip="Hide Inspector (Ctrl+Shift+B)" AutomationProperties.Name="Hide Inspector" AutomationProperties.AutomationId="show-inspector"/>
    </StackPanel>
+    <Grid Grid.Column="2" VerticalAlignment="Center">
+     <TextBox x:Name="EditorSearch" MinHeight="32" PlaceholderText="Search project" AutomationProperties.Name="Search project text" AutomationProperties.AutomationId="editor-search" Padding="36,5,42,5" CornerRadius="18"/>
+     <SymbolIcon Symbol="Find" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="12,0,0,0" IsHitTestVisible="False"/>
+     <Button x:Name="EditorClearSearch" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0" Content="&#xE711;" FontFamily="Segoe Fluent Icons" Padding="5" Visibility="Collapsed" Tag="clear-search" Click="SearchCommand_Click" AutomationProperties.Name="Clear Search" AutomationProperties.AutomationId="editor-clear-search" ToolTipService.ToolTip="Clear Search"/>
+    </Grid>
    </Grid>
   </Grid>
   <Grid x:Name="GalleryPanel" Grid.Row="4" Padding="28,24" RowSpacing="22">
@@ -236,7 +237,6 @@
     </Grid>
     </SplitView.Pane>
     <SplitView.Content>
-     <Grid><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
       <SplitView x:Name="ProjectSplitView" DisplayMode="Inline" PanePlacement="Left" IsPaneOpen="False" OpenPaneLength="240" PaneBackground="{ThemeResource LayerFillColorAltBrush}" PaneClosing="ProjectPane_Closing">
        <SplitView.Pane>
     <Grid x:Name="LibraryPanel" Padding="12" RowSpacing="10" Background="{ThemeResource LayerFillColorAltBrush}">
@@ -248,16 +248,28 @@
     </Grid>
        </SplitView.Pane>
        <SplitView.Content>
-    <Grid>
-     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-     <Grid x:Name="PreviewPanel" Height="150" Background="Black"><MediaPlayerElement x:Name="Player" AreTransportControlsEnabled="True"/><WebView2 x:Name="YouTubePlayer" Visibility="Collapsed"/>
+    <Grid x:Name="EditorPanes" SizeChanged="EditorPanes_SizeChanged">
+     <Grid.ColumnDefinitions><ColumnDefinition x:Name="CompactVideoColumn" Width="0"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+     <Grid.RowDefinitions>
+      <RowDefinition x:Name="PreviewRow" Height="2*" MaxHeight="320"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="3*"/>
+     </Grid.RowDefinitions>
+     <Grid x:Name="PreviewPanel" Grid.ColumnSpan="2" Background="Black"><MediaPlayerElement x:Name="Player" AreTransportControlsEnabled="True"/><WebView2 x:Name="YouTubePlayer" Visibility="Collapsed"/>
       <StackPanel x:Name="PrivateYouTubePlaybackPanel" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" Margin="12">
        <TextBlock Text="Private YouTube video" Foreground="White" FontWeight="SemiBold" HorizontalAlignment="Center" TextWrapping="Wrap"/>
        <Button x:Name="ChoosePrivatePlaybackVideo" Content="Choose Local Playback Video…" HorizontalAlignment="Center"/>
       </StackPanel>
       <StackPanel x:Name="CaptionOverlay" Visibility="Collapsed" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,16,16,48" Spacing="4" IsHitTestVisible="False"><Border x:Name="DialogueCaptionBox" Padding="12,6" CornerRadius="4"><TextBlock x:Name="CaptionText" TextWrapping="Wrap" TextAlignment="Center"/></Border><Border x:Name="DescriptionCaptionBox" Padding="12,6" CornerRadius="4"><TextBlock x:Name="DescriptionCaptionText" TextWrapping="Wrap" TextAlignment="Center"/></Border></StackPanel></Grid>
-     <StackPanel Grid.Row="1" x:Name="TimelinePanel" Spacing="4" Padding="18,8">
-      <Grid><TextBlock AutomationProperties.HeadingLevel="Level2" Text="Timeline" FontWeight="SemiBold"/><TextBlock x:Name="TimeLabel" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></Grid>
+     <StackPanel Grid.Row="1" Grid.Column="1" x:Name="TimelinePanel" VerticalAlignment="Top" SizeChanged="EditorPanes_SizeChanged" Spacing="4" Padding="18,8">
+      <Grid x:Name="TimelineHeader" SizeChanged="TimelineHeader_SizeChanged">
+       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+       <TextBlock x:Name="TimelineHeading" SizeChanged="TimelineHeader_SizeChanged" HorizontalAlignment="Left" VerticalAlignment="Center" AutomationProperties.HeadingLevel="Level2" Text="Timeline" FontWeight="SemiBold"/>
+       <TextBlock x:Name="TimeLabel" SizeChanged="TimelineHeader_SizeChanged" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+       <StackPanel x:Name="TimelineTransport" Grid.Row="1" SizeChanged="TimelineHeader_SizeChanged" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8"><Button x:Name="VideoRewindButton" Content="&#xE892;" FontFamily="Segoe Fluent Icons" Click="Rewind_Click" ToolTipService.ToolTip="Rewind five seconds" AutomationProperties.Name="Rewind five seconds"/><Button x:Name="VideoPlayPauseButton" Content="&#xE768;" FontFamily="Segoe Fluent Icons" Click="PlayPause_Click" AutomationProperties.Name="Play video"/><Button x:Name="VideoStopButton" Content="&#xE71A;" FontFamily="Segoe Fluent Icons" Click="VideoStop_Click" Visibility="Collapsed" AutomationProperties.Name="Stop video" ToolTipService.ToolTip="Stop video"/><Button x:Name="VideoForwardButton" Content="&#xE893;" FontFamily="Segoe Fluent Icons" Click="Forward_Click" ToolTipService.ToolTip="Forward five seconds" AutomationProperties.Name="Forward five seconds"/></StackPanel>
+      </Grid>
       <Grid x:Name="ThumbnailImagesRow" Visibility="Collapsed" ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="Thumbnails" VerticalAlignment="Center"/>
        <Border Grid.Column="1" Height="42" CornerRadius="5" Background="{ThemeResource ControlFillColorSecondaryBrush}">
         <Grid><TextBlock x:Name="ThumbnailEmpty" Text="No thumbnails" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12"/>
@@ -268,10 +280,9 @@
         </Grid>
        </Border>
       </Grid>
-      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8"><Button x:Name="VideoRewindButton" Content="&#xE892;" FontFamily="Segoe Fluent Icons" Click="Rewind_Click" ToolTipService.ToolTip="Rewind five seconds" AutomationProperties.Name="Rewind five seconds"/><Button x:Name="VideoPlayPauseButton" Content="&#xE768;" FontFamily="Segoe Fluent Icons" Click="PlayPause_Click" AutomationProperties.Name="Play video"/><Button x:Name="VideoStopButton" Content="&#xE71A;" FontFamily="Segoe Fluent Icons" Click="VideoStop_Click" Visibility="Collapsed" AutomationProperties.Name="Stop video" ToolTipService.ToolTip="Stop video"/><Button x:Name="VideoForwardButton" Content="&#xE893;" FontFamily="Segoe Fluent Icons" Click="Forward_Click" ToolTipService.ToolTip="Forward five seconds" AutomationProperties.Name="Forward five seconds"/></StackPanel>
       <Grid ColumnSpacing="12" RowSpacing="5"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="22"/><RowDefinition Height="22"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><TextBlock Text="Transcript" VerticalAlignment="Center"/><Canvas x:Name="TranscriptTrack" Grid.Column="1" Height="22" SizeChanged="Track_SizeChanged" Background="{ThemeResource ControlFillColorSecondaryBrush}"/><TextBlock AutomationProperties.HeadingLevel="Level2" Grid.Row="1" Text="Audio Description" VerticalAlignment="Center"/><Canvas x:Name="DescriptionTrack" Grid.Row="1" Grid.Column="1" Height="22" Background="{ThemeResource ControlFillColorSecondaryBrush}"/><Canvas x:Name="TimelineScrubSurface" Grid.Column="1" Grid.RowSpan="2" Background="Transparent" SizeChanged="TimelineScrubSurface_SizeChanged" PointerPressed="TimelineScrubSurface_PointerPressed" PointerMoved="TimelineScrubSurface_PointerMoved" PointerReleased="TimelineScrubSurface_PointerReleased" PointerCaptureLost="TimelineScrubSurface_PointerCaptureLost" AutomationProperties.Name="Timeline playhead; click or drag to seek and play"><Canvas x:Name="TimelineCursor" Width="16" Height="49" IsHitTestVisible="False"><Border Width="3" Height="42" Canvas.Left="6.5" Canvas.Top="7" Background="#E52B32" CornerRadius="1"/><Polygon Points="0,0 16,0 8,11" Fill="#E52B32"/></Canvas></Canvas><Slider x:Name="Playhead" Grid.Row="2" Grid.Column="1" MinHeight="16" Minimum="0" Maximum="1" ValueChanged="Playhead_Changed" PointerPressed="Playhead_PointerPressed" PointerReleased="Playhead_PointerReleased" PointerCaptureLost="Playhead_PointerCaptureLost" AutomationProperties.Name="Video position"><Slider.Resources><SolidColorBrush x:Key="SliderThumbBackground" Color="#E52B32"/><SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="#FF3B42"/><SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="#C02026"/><SolidColorBrush x:Key="SliderTrackValueFill" Color="#E52B32"/><SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="#FF3B42"/><SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="#C02026"/></Slider.Resources></Slider></Grid>
      </StackPanel>
-     <views:AccessibilityGroup x:Name="EditorControlsGroup" Grid.Row="2" AutomationProperties.Name="Editor section controls"><Grid x:Name="EditorSectionToolbar" Padding="14,10" ColumnSpacing="8" RowSpacing="10" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,1">
+     <views:AccessibilityGroup x:Name="EditorControlsGroup" Grid.Row="2" Grid.ColumnSpan="2" SizeChanged="EditorPanes_SizeChanged" AutomationProperties.Name="Editor section controls"><Grid x:Name="EditorSectionToolbar" Padding="14,5" ColumnSpacing="8" RowSpacing="4" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,1">
       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
       <TextBlock x:Name="EditorSectionHeading" Grid.ColumnSpan="2" Text="Transcript" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" TextAlignment="Center" VerticalAlignment="Center" AutomationProperties.HeadingLevel="Level2"/>
@@ -298,7 +309,7 @@
       </ScrollViewer>
       <StackPanel x:Name="EditorSectionActions" Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8"><Button x:Name="ClearSegmentFilterButton" Content="&#xE711;" FontFamily="Segoe Fluent Icons" Tag="clear-segment-filter" Click="ClearSegmentView_Click" Visibility="Collapsed" ToolTipService.ToolTip="Clear Filter" AutomationProperties.Name="Clear Filter"/><Button x:Name="ClearSegmentSortButton" Content="&#xE7A7;" FontFamily="Segoe Fluent Icons" Tag="clear-segment-sort" Click="ClearSegmentView_Click" Visibility="Collapsed" ToolTipService.ToolTip="Clear Sort: restore Start Time order" AutomationProperties.Name="Clear Sort"/><Grid x:Name="GenerateCurrentGroup"><Button x:Name="GenerateCurrent" Content="&#xE90A;" PointerEntered="EditorActionTooltip_PointerEntered" PointerExited="EditorActionTooltip_Dismiss" PointerPressed="EditorActionTooltip_Dismiss" FontFamily="Segoe Fluent Icons" Click="GenerateCurrent_Click" AutomationProperties.Name="Generate content for this section"><ToolTipService.ToolTip><ToolTip x:Name="GenerateCurrentToolTip" Content="Generate content for this section"/></ToolTipService.ToolTip></Button><Border x:Name="GenerateUnavailableHoverTarget" PointerEntered="EditorActionTooltip_PointerEntered" PointerExited="EditorActionTooltip_Dismiss" PointerPressed="EditorActionTooltip_Dismiss" Background="Transparent" Visibility="Collapsed" AutomationProperties.AccessibilityView="Raw"><ToolTipService.ToolTip><ToolTip x:Name="GenerateUnavailableToolTip" Content="Configure an AI provider in Settings."/></ToolTipService.ToolTip></Border></Grid><Button x:Name="EditorAddButton" Content="&#xE710;" PointerEntered="EditorActionTooltip_PointerEntered" PointerExited="EditorActionTooltip_Dismiss" PointerPressed="EditorActionTooltip_Dismiss" FontFamily="Segoe Fluent Icons" Click="AddOrImport_Click" AutomationProperties.Name="Add or import content"><ToolTipService.ToolTip><ToolTip x:Name="EditorAddToolTip" Content="Add or import content"/></ToolTipService.ToolTip></Button><Button x:Name="EditModeButton" Content="&#xE70F;" PointerEntered="EditorActionTooltip_PointerEntered" PointerExited="EditorActionTooltip_Dismiss" PointerPressed="EditorActionTooltip_Dismiss" Style="{StaticResource AccentButtonStyle}" FontFamily="Segoe Fluent Icons" Click="EditMode_Click" AutomationProperties.Name="Edit this section"><ToolTipService.ToolTip><ToolTip x:Name="EditModeToolTip" Content="Edit this section"/></ToolTipService.ToolTip></Button><Button x:Name="EditorMoreButton" Content="&#xE712;" FontFamily="Segoe Fluent Icons" Click="SegmentMore_Click" Visibility="Collapsed" AutomationProperties.Name="More editor options" ToolTipService.ToolTip="More editor options"/></StackPanel>
      </Grid></views:AccessibilityGroup>
-     <Grid Grid.Row="4" Padding="14,0">
+     <Grid Grid.Row="4" Grid.ColumnSpan="2" Padding="14,0">
       <Grid x:Name="ProjectSearchResults" Visibility="Collapsed" Canvas.ZIndex="5" RowSpacing="8" AutomationProperties.Name="Project search results" AutomationProperties.AutomationId="project-search-results">
        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
        <TextBlock x:Name="ProjectSearchCount" Margin="0,8" Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="project-search-count"/>
@@ -471,7 +482,7 @@
         </StackPanel>
        </Grid>
       </Grid>
-     <ScrollViewer x:Name="EditToolbar" Grid.Row="3" Visibility="Collapsed" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"><views:AccessibilityGroup  AutomationProperties.Name="Segment selection controls"><StackPanel Orientation="Horizontal" Spacing="6" Padding="14,8"><Button x:Name="AudioSourcesButton" Content="&#xE767;" FontFamily="Segoe Fluent Icons" Click="AudioSources_Click" Visibility="Collapsed" AutomationProperties.Name="Audio sources" ToolTipService.ToolTip="Choose audio for playback, export, and transcription"/><FontIcon x:Name="AudioSourcesSummary" Glyph="&#xE714;" FontSize="18" VerticalAlignment="Center" Visibility="Collapsed"/><Button x:Name="BulkImportAssetsButton" Content="&#xE896;" FontFamily="Segoe Fluent Icons" Click="ImportAssets_Click" ToolTipService.ToolTip="Import a transcript, summary, AD transcript, or AD audio into this project" AutomationProperties.Name="Import existing assets"/><Button x:Name="BulkOriginButton" Content="&#xE8EC;" FontFamily="Segoe Fluent Icons" Click="BulkOrigin_Click" ToolTipService.ToolTip="Change the origin for every selected segment" AutomationProperties.Name="Set origin for selected segments"/><Button x:Name="BulkNarrateButton" Content="&#xE767;" FontFamily="Segoe Fluent Icons" Click="BulkNarrate_Click" ToolTipService.ToolTip="Generate audio for the selected descriptions" AutomationProperties.Name="Generate Audio for Descriptions"/><Button x:Name="BulkShiftButton" Content="&#xE823;" FontFamily="Segoe Fluent Icons" Click="BulkShift_Click" ToolTipService.ToolTip="Shift the timing of every selected segment" AutomationProperties.Name="Shift selected timing"/><Button x:Name="MergeSelectedButton" Content="&#xEA3C;" FontFamily="Segoe Fluent Icons" Click="MergeSelected_Click" ToolTipService.ToolTip="Merge consecutive selected transcript segments" AutomationProperties.Name="Merge selected transcript segments" Visibility="Collapsed"/><Button x:Name="SegmentEditSelectedButton" Content="&#xE70F;" FontFamily="Segoe Fluent Icons" Click="Edit_Click" ToolTipService.ToolTip="Edit selected segment" AutomationProperties.Name="Edit selected segment"/><Button x:Name="SegmentDeleteSelectedButton" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Click="DeleteSegments_Click" ToolTipService.ToolTip="Delete selected segments" AutomationProperties.Name="Delete selected segments"/><DropDownButton x:Name="SelectionMenuButton" Padding="10,5" MinHeight="30" ToolTipService.ToolTip="Selection options" AutomationProperties.Name="Selection options">
+     <ScrollViewer x:Name="EditToolbar" Grid.Row="3" Grid.ColumnSpan="2" SizeChanged="EditorPanes_SizeChanged" Visibility="Collapsed" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"><views:AccessibilityGroup  AutomationProperties.Name="Segment selection controls"><StackPanel Orientation="Horizontal" Spacing="6" Padding="14,8"><Button x:Name="AudioSourcesButton" Content="&#xE767;" FontFamily="Segoe Fluent Icons" Click="AudioSources_Click" Visibility="Collapsed" AutomationProperties.Name="Audio sources" ToolTipService.ToolTip="Choose audio for playback, export, and transcription"/><FontIcon x:Name="AudioSourcesSummary" Glyph="&#xE714;" FontSize="18" VerticalAlignment="Center" Visibility="Collapsed"/><Button x:Name="BulkImportAssetsButton" Content="&#xE896;" FontFamily="Segoe Fluent Icons" Click="ImportAssets_Click" ToolTipService.ToolTip="Import a transcript, summary, AD transcript, or AD audio into this project" AutomationProperties.Name="Import existing assets"/><Button x:Name="BulkOriginButton" Content="&#xE8EC;" FontFamily="Segoe Fluent Icons" Click="BulkOrigin_Click" ToolTipService.ToolTip="Change the origin for every selected segment" AutomationProperties.Name="Set origin for selected segments"/><Button x:Name="BulkNarrateButton" Content="&#xE767;" FontFamily="Segoe Fluent Icons" Click="BulkNarrate_Click" ToolTipService.ToolTip="Generate audio for the selected descriptions" AutomationProperties.Name="Generate Audio for Descriptions"/><Button x:Name="BulkShiftButton" Content="&#xE823;" FontFamily="Segoe Fluent Icons" Click="BulkShift_Click" ToolTipService.ToolTip="Shift the timing of every selected segment" AutomationProperties.Name="Shift selected timing"/><Button x:Name="MergeSelectedButton" Content="&#xEA3C;" FontFamily="Segoe Fluent Icons" Click="MergeSelected_Click" ToolTipService.ToolTip="Merge consecutive selected transcript segments" AutomationProperties.Name="Merge selected transcript segments" Visibility="Collapsed"/><Button x:Name="SegmentEditSelectedButton" Content="&#xE70F;" FontFamily="Segoe Fluent Icons" Click="Edit_Click" ToolTipService.ToolTip="Edit selected segment" AutomationProperties.Name="Edit selected segment"/><Button x:Name="SegmentDeleteSelectedButton" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Click="DeleteSegments_Click" ToolTipService.ToolTip="Delete selected segments" AutomationProperties.Name="Delete selected segments"/><DropDownButton x:Name="SelectionMenuButton" Padding="10,5" MinHeight="30" ToolTipService.ToolTip="Selection options" AutomationProperties.Name="Selection options">
      <DropDownButton.Content><FontIcon Glyph="&#xE73A;" FontSize="14"/></DropDownButton.Content>
      <DropDownButton.Flyout>
       <MenuFlyout Opening="ContextMenuAccess_Opening" Opened="ContextMenuAccess_Opened">
@@ -490,26 +501,23 @@
     </Grid>
        </SplitView.Content>
       </SplitView>
-     <Grid Grid.Row="1" Padding="10,4" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
-      <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-       <Button x:Name="EditorProjectLayoutButton" Style="{StaticResource CompactButton}" Padding="8,4" Visibility="Collapsed" Click="ToggleGrid_Click" ToolTipService.ToolTip="Switch project list view" AutomationProperties.Name="Switch project list view"><FontIcon x:Name="EditorProjectLayoutIcon" FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE80A;"/></Button>
-       <ToggleButton x:Name="EditorProjectListButton" Padding="8,4" Checked="PanelVisibilityToggle_Changed" Unchecked="PanelVisibilityToggle_Changed" ToolTipService.ToolTip="Show or hide project list" AutomationProperties.Name="Show or hide project list" AutomationProperties.AutomationId="show-projects"><FontIcon x:Name="EditorProjectListIcon" FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE8F1;"/></ToggleButton>
-      </StackPanel>
-     </Grid>
-     </Grid>
     </SplitView.Content>
    </SplitView>
   </ContentControl>
-   <Border x:Name="StatusFooter" Grid.Row="5" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="14,7">
+   <Border x:Name="StatusFooter" Grid.Row="5" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="10,4">
     <Grid ColumnSpacing="10">
-     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-     <ProgressRing x:Name="StatusRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" VerticalAlignment="Center" AutomationProperties.AccessibilityView="Raw"/>
-     <StackPanel Grid.Column="1" VerticalAlignment="Center">
+     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <StackPanel Grid.Column="0" Visibility="{Binding Visibility, ElementName=EditorWorkspace}" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+       <Button x:Name="EditorProjectLayoutButton" Style="{StaticResource CompactButton}" Padding="8,4" Visibility="Collapsed" Click="ToggleGrid_Click" ToolTipService.ToolTip="Switch project list view" AutomationProperties.Name="Switch project list view"><FontIcon x:Name="EditorProjectLayoutIcon" FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE80A;"/></Button>
+       <ToggleButton x:Name="EditorProjectListButton" Padding="8,4" Checked="PanelVisibilityToggle_Changed" Unchecked="PanelVisibilityToggle_Changed" ToolTipService.ToolTip="Show or hide project list" AutomationProperties.Name="Show or hide project list" AutomationProperties.AutomationId="show-projects"><FontIcon x:Name="EditorProjectListIcon" FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE8F1;"/></ToggleButton>
+      </StackPanel>
+     <ProgressRing Grid.Column="1" x:Name="StatusRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" VerticalAlignment="Center" AutomationProperties.AccessibilityView="Raw"/>
+     <StackPanel Grid.Column="2" VerticalAlignment="Center">
       <ProgressBar x:Name="ContentTransferProgressBar" Minimum="0" Maximum="1" Visibility="Collapsed" AutomationProperties.Name="Copy or translation progress"/>
       <TextBlock x:Name="StatusStageTitle" FontWeight="SemiBold" FontSize="12" Visibility="Collapsed"/>
       <TextBlock x:Name="StatusText" AutomationProperties.LiveSetting="Polite" Text="{x:Bind Model.Status, Mode=OneWay}" TextWrapping="Wrap" FontSize="12"/>
      </StackPanel>
-     <Button x:Name="CancelProcessingButton" Grid.Column="2" Content="Cancel processing" Click="Cancel_Click" Visibility="Collapsed" VerticalAlignment="Center" ToolTipService.ToolTip="Cancel processing"/>
+     <Button x:Name="CancelProcessingButton" Grid.Column="3" Content="Cancel processing" Click="Cancel_Click" Visibility="Collapsed" VerticalAlignment="Center" ToolTipService.ToolTip="Cancel processing"/>
     </Grid>
    </Border>
   <views:ProgressOverlay x:Name="ActiveExports" Grid.RowSpan="6"/>

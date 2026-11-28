@@ -96,12 +96,13 @@ public sealed class NewProjectDialog : ContentDialog
     private CancellationTokenSource? inspection;
     private CancellationTokenSource? youtubeInspection;
     private string? fetchedYouTubeId;
-    internal enum VideoImportChoice { Local, Cloud, Smaller, Cancel }
+    internal enum VideoImportChoice { Local, Cloud, Reduce, Smaller, Cancel }
     internal const long MaximumLocalVideoBytes = 2_000_000_000;
     internal const long MaximumCloudVideoBytes = 2L * 1024 * 1024 * 1024 - 500 * 1024;
 
     private bool validLocal;
     private bool videoRequiresCloud;
+    public bool SmallerAICopy { get; private set; }
     public bool IsYouTube => youtube.IsChecked == true;
     public string? VideoPath { get; private set; }
     public string YouTubeUrl => youtubeUrl.Text.Trim();
@@ -671,7 +672,7 @@ public sealed class NewProjectDialog : ContentDialog
                     cloudMode.SelectedIndex = 0;
                     cloud.IsChecked = true;
                 }
-                await InspectVideoAsync(path);
+                await InspectVideoAsync(path, choice == VideoImportChoice.Reduce);
                 return;
             }
         }
@@ -704,13 +705,13 @@ public sealed class NewProjectDialog : ContentDialog
         return await picker.PickSingleFileAsync();
     }
 
-    private static bool CanUploadCloudVideo(SettingsStore settings) =>
+    internal static bool CanUploadCloudVideo(SettingsStore settings) =>
         CredentialStore.HasGoogleSignIn &&
         !string.IsNullOrWhiteSpace(settings.Get("vertexProject")) &&
         !string.IsNullOrWhiteSpace(settings.Get("vertexBucket"));
 
     internal static string AnalysisSizeWarning(long size) =>
-        $"This video is {size / 1_000_000_000d:0.00} GB and is too large for analysis. Choose a smaller video.";
+        $"This video ({size / 1_000_000_000d:0.00} GB) exceeds the analysis limit. Create a smaller AI copy and keep the original for playback.";
 
     internal static async Task<VideoImportChoice> CheckVideoSizeAsync(Window owner, SettingsStore settings, string path, bool asCloud = false)
     {
@@ -727,35 +728,47 @@ public sealed class NewProjectDialog : ContentDialog
             return VideoImportChoice.Cancel;
         }
 
-        if (asCloud && size <= MaximumCloudVideoBytes) return VideoImportChoice.Cloud;
+        if (asCloud && size <= MaximumLocalVideoBytes) return VideoImportChoice.Cloud;
         if (!asCloud && size <= MaximumLocalVideoBytes) return VideoImportChoice.Local;
         var fitsCloud = size <= MaximumCloudVideoBytes;
         var offerUpload = fitsCloud && CanUploadCloudVideo(settings);
-        var sizeLabel = $"{size / 1_000_000_000d:0.00} GB";
-        var message = !fitsCloud
-            ? AnalysisSizeWarning(size)
-                : offerUpload
-                ? $"This video is {sizeLabel}. Video File projects accept videos up to 2 GB. Choose a smaller video or upload this one to Cloud Storage."
-                : $"This video is {sizeLabel}. Video File projects accept videos up to 2 GB. Choose a smaller video and try again.";
+        var message = AnalysisSizeWarning(size);
         var alert = new ContentDialog
         {
             Title = "Video Is Too Large",
             Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
             PrimaryButtonText = "Choose a Smaller Video",
-            SecondaryButtonText = offerUpload ? "Upload to Cloud Storage" : "",
+            SecondaryButtonText = "Create Smaller AI Copy",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary
         };
-        var result = await WindowedDialog.ShowAsync(alert, owner, 720, 320);
+        bool uploadSelected = false;
+        if (offerUpload)
+        {
+            var upload = new Button { Content = "Upload to Cloud Storage" };
+            void ChooseUpload() { uploadSelected = true; alert.Hide(); }
+            upload.Click += (_, _) => ChooseUpload();
+            var menu = new MenuFlyout();
+            var item = new MenuFlyoutItem { Text = "Upload to Cloud Storage", Icon = MenuIcons.Create("cloud-upload") };
+            item.Click += (_, _) => ChooseUpload();
+            menu.Items.Add(item);
+            upload.ContextFlyout = menu;
+            var content = new StackPanel { Spacing = 12 };
+            content.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
+            content.Children.Add(upload);
+            alert.Content = content;
+        }
+        var result = await WindowedDialog.ShowAsync(alert, owner, 720, 340);
+        if (uploadSelected) return VideoImportChoice.Cloud;
         return result switch
         {
             ContentDialogResult.Primary => VideoImportChoice.Smaller,
-            ContentDialogResult.Secondary when offerUpload => VideoImportChoice.Cloud,
+            ContentDialogResult.Secondary => VideoImportChoice.Reduce,
             _ => VideoImportChoice.Cancel
         };
     }
 
-    private async Task InspectVideoAsync(string path)
+    private async Task InspectVideoAsync(string path, bool smallerAICopy = false)
     {
         inspection?.Cancel();
         var request = new CancellationTokenSource(); inspection = request;
@@ -766,7 +779,8 @@ public sealed class NewProjectDialog : ContentDialog
         {
             var metadata = await ProbeAsync(path, request.Token);
             if (inspection != request || request.IsCancellationRequested) return;
-            videoRequiresCloud = new FileInfo(path).Length > MaximumLocalVideoBytes;
+            SmallerAICopy = smallerAICopy;
+            videoRequiresCloud = !smallerAICopy && new FileInfo(path).Length > MaximumLocalVideoBytes;
             VideoPath = path;
             validLocal = true;
             details.Text = metadata;

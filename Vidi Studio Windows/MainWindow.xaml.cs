@@ -40,8 +40,9 @@ public sealed partial class MainWindow : Window
     private double youtubePlaybackPosition;
     private double? pendingYouTubePlaybackSeek;
     private bool youtubePlaybackDetachedForChange;
+    private double? analysisCopyReplacementPosition;
     private bool videoPlaybackFailed;
-    private bool VideoTransportAvailable => Model.Project is { CanPlayVideo: true } && !youtubePlaybackDetachedForChange && !videoPlaybackFailed;
+    private bool VideoTransportAvailable => Model.Project is { CanPlayVideo: true } && !youtubePlaybackDetachedForChange && analysisCopyReplacementPosition == null && !videoPlaybackFailed;
     private string? activeCue;
     private bool applyingProjectPlaybackPreferences;
     private double youtubePosition;
@@ -151,7 +152,7 @@ public sealed partial class MainWindow : Window
         video.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
             if (windowClosed || pendingYouTubePlaybackSeek is not { } target ||
-                Model.Project is not { IsYouTube: true, LocalYouTubePlaybackPath: not null }) return;
+                (Model.Project is not { IsYouTube: true, LocalYouTubePlaybackPath: not null } && Model.Project?.AnalysisCopy == null)) return;
             pendingYouTubePlaybackSeek = null;
             if (target > 0) video.PlaybackSession.Position = TimeSpan.FromSeconds(target);
         });
@@ -482,6 +483,24 @@ public sealed partial class MainWindow : Window
             == ContentDialogResult.Primary;
     }
 
+    private async Task CreateOrRegenerateAnalysisCopyAsync()
+    {
+        if (Model.Project is not { } project) return;
+        var saved = StudioProject.TryLoad(project.Folder) ?? project;
+        if ((project.AnalysisCopy != null || saved.AnalysisCopy != null) && !await ConfirmRegenerationAsync("Regenerate Smaller AI Copy?",
+                "The new copy will replace the current AI copy after it is saved.", "Regenerate Smaller AI Copy")) return;
+        if (Model.Project is not { } current || current.Folder != project.Folder || !CanRunDesktopCommand("regenerate-ai-copy")) return;
+        if (loadedProject == current.Folder && current.AnalysisCopy is { } copy && loadedPlaybackSource == current.Resolve(copy.Path))
+        {
+            // Release the MediaPlayer file handle before the engine replaces the copy.
+            analysisCopyReplacementPosition = video.PlaybackSession.Position.TotalSeconds;
+            video.Pause();
+            video.Source = null;
+        }
+        try { await Model.RunAsync("regenerate-ai-copy", throwOnProcessingError: true); }
+        finally { if (analysisCopyReplacementPosition.HasValue) RefreshProject(); }
+    }
+
     internal static async Task<bool> ConfirmPrivateYouTubeOpenAsync(Window owner) =>
         await Views.WindowedDialog.ShowAsync(new ContentDialog
         {
@@ -573,7 +592,7 @@ public sealed partial class MainWindow : Window
             if (Model.ExistingProjectForVideo(candidate) is { } replacementProject) return replacementProject.Folder;
             var command = choice == Views.NewProjectDialog.VideoImportChoice.Cloud ? "cloud-create" : "import-video";
             var imported = await RunImportWithWarningsAsync(command,
-                new[] { "--video", candidate, "--library", Model.Settings.Get("libraryPath") }, needsProject: false);
+                new[] { "--video", candidate, "--library", Model.Settings.Get("libraryPath") }.Concat(choice == Views.NewProjectDialog.VideoImportChoice.Reduce ? new[] { "--smaller-ai-copy" } : Array.Empty<string>()), needsProject: false);
             return imported.LastOrDefault(item => item.Data.TryGetProperty("project", out _))?.Data.GetProperty("project").GetString();
         });
     }
@@ -730,7 +749,7 @@ public sealed partial class MainWindow : Window
                 }
             }
             else if (dialog.VideoPath is { } path)
-                created = await RunImportWithWarningsAsync(dialog.IsCloud ? "cloud-create" : "import-video", new[] { "--video", path, "--library", dialog.LibraryPath }, needsProject: false);
+                created = await RunImportWithWarningsAsync(dialog.IsCloud ? "cloud-create" : "import-video", new[] { "--video", path, "--library", dialog.LibraryPath }.Concat(dialog.SmallerAICopy ? new[] { "--smaller-ai-copy" } : Array.Empty<string>()), needsProject: false);
             else return;
             // Cancelled processing returns no events and leaves the previous project selected.
             // Never apply the new files to that previous project.
@@ -826,6 +845,7 @@ public sealed partial class MainWindow : Window
             loadedPlaybackSource = null;
             pendingYouTubePlaybackSeek = null;
             youtubePlaybackDetachedForChange = false;
+            analysisCopyReplacementPosition = null;
             youtubePlaybackPosition = 0;
             StopProjectPlayback();
             Player.Visibility = Visibility.Collapsed;
@@ -834,10 +854,10 @@ public sealed partial class MainWindow : Window
             video.Source = null;
             return;
         }
-        var nativePath = p.IsYouTube ? p.ActiveLocalYouTubePlaybackPath : p.Resolve(p.Source);
+        var nativePath = p.IsYouTube ? p.ActiveLocalYouTubePlaybackPath : p.Resolve(p.UsesAnalysisCopyForPlayback ? p.AnalysisCopy!.Path : p.Source);
         var sourceKey = p.UsesYouTubePlayer ? p.YoutubeURL : nativePath;
         var sameProject = loadedProject == p.Folder;
-        if (sameProject && loadedPlaybackSource == sourceKey && !youtubePlaybackDetachedForChange) return;
+        if (sameProject && loadedPlaybackSource == sourceKey && !youtubePlaybackDetachedForChange && analysisCopyReplacementPosition == null) return;
         var position = 0.0;
         if (sameProject && p.IsYouTube)
         {
@@ -847,11 +867,14 @@ public sealed partial class MainWindow : Window
                     ? youtubePlaybackPosition : video.PlaybackSession.Position.TotalSeconds);
             position = Math.Clamp(position, 0, p.Duration);
         }
+        if (sameProject && p.AnalysisCopy != null)
+            position = Math.Clamp(analysisCopyReplacementPosition ?? video.PlaybackSession.Position.TotalSeconds, 0, p.Duration);
         youtubePlaybackPosition = youtubePosition = position;
         youtubePlaying = false;
-        pendingYouTubePlaybackSeek = p.IsYouTube && nativePath != null ? position : null;
+        pendingYouTubePlaybackSeek = (p.IsYouTube || p.AnalysisCopy != null) && nativePath != null ? position : null;
         loadedPlaybackSource = sourceKey;
         youtubePlaybackDetachedForChange = false;
+        analysisCopyReplacementPosition = null;
         videoPlaybackFailed = false;
         videoPlaybackStarted = false; segmentPreviewPaused = false;
         StopIndicationSound(true);
@@ -2445,6 +2468,8 @@ public sealed partial class MainWindow : Window
             if (Model.Project is { } project) RenderTimelineThumbnails(project);
         }
         if (changed.Contains("libraryPath") || changed.Contains("projectLocations")) Filter();
+        if (changed.Any(name => name.StartsWith("vertex", StringComparison.Ordinal)) && Model.Project is { } cloudProject)
+            UpdateInspector(cloudProject);
         if (changed.Contains("youtubeAccounts") && Model.Project is { IsYouTube: true } youtubeProject)
         {
             YouTubeInspectorDetails.Children.Clear();

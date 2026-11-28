@@ -16,6 +16,11 @@
        <ProgressRing x:Name="ProcessingRing" Width="36" Height="36" IsActive="False" AutomationProperties.AccessibilityView="Raw"/>
        <TextBlock x:Name="ProcessingStatus" Grid.Column="1" TextWrapping="Wrap" FontSize="15" VerticalAlignment="Center" AutomationProperties.AutomationId="ProcessingStatus"/>
       </Grid>
+      <Grid x:Name="CopyProgressPanel" ColumnSpacing="12" Visibility="Collapsed">
+       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <ProgressBar x:Name="CopyProgress" Maximum="100" AutomationProperties.Name="Smaller AI copy progress"/>
+       <TextBlock x:Name="CopyPercent" Grid.Column="1" AutomationProperties.AccessibilityView="Raw"/>
+      </Grid>
       <Button Content="Cancel processing" Click="CancelProcessing_Click" HorizontalAlignment="Right"/>
      </StackPanel>
      <views:ExportProgressView x:Name="Exports"/>

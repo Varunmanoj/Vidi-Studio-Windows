@@ -55,6 +55,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     private string status = "Import a video or open an existing project to begin.";
     public string Status { get => status; private set { status = value; Changed(); } }
     /// <summary>Shows a message in the status bar, for example when live narration cannot speak.</summary>
+    public double? AICopyProgress { get; private set; }
     public void ReportStatus(string message) => Status = message;
     public string? ContentTransferCommand { get; private set; }
     public (string ProjectId, string Provider)? ActiveAIProcessing { get; private set; }
@@ -736,7 +737,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             string stage = command == "generate-summary" ? "summary" : command is ("generate-ad-cues" or "reanalyze-segment") ? "audio_descriptions" : "youtube_transcript";
             string modelId = SettingsStore.GetString(Settings.Data["vertexExpressModels"]?[stage], "gemini-3-flash-preview");
             long limit = modelId.StartsWith("gemini-3") ? 256_000_000 : 15_000_000;
-            if (Project?.CloudVideo != null || (Project is { HasLocalSource: true } local && new FileInfo(local.Resolve(local.Source)).Length > limit)) {
+            if ((Project?.CloudVideo != null && Project.AnalysisCopy == null) || (Project is { HasLocalSource: true } local && new FileInfo(local.Resolve(local.AnalysisCopy?.Path ?? local.Source)).Length > limit)) {
                 string projectId = vertexVideoTask && Project?.ReferencesCloudVideo == true
                     ? Project.CloudVideo?.GetValueOrDefault("project") ?? "" : Settings.Get("vertexProject");
                 if (!CredentialStore.HasGoogleSignIn || projectId.Length == 0) throw new InvalidOperationException("Connect Google and choose a Cloud project in Settings > AI for this task.");
@@ -803,6 +804,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         var completionSucceeded = false;
         var hasExportOutput = false;
         var hasGeneratedProject = false;
+        var makingAICopy = command == "regenerate-ai-copy" || extra?.Contains("--smaller-ai-copy") == true;
+        AICopyProgress = makingAICopy ? 0 : null;
         IsExporting = command.StartsWith("export-", StringComparison.Ordinal) && Project != null;
         ContentTransferCommand = command is "copy-results" or "translate-results" or "attach-youtube-playback" ? command : null;
         ContentTransferProgress = null;
@@ -847,9 +850,10 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             Changed(nameof(ActiveNarrationStatusText));
         }
         using var deletionActivity = DeletionActivity.BeginForCommand(command, Project?.Name ?? "Project");
+        if (makingAICopy) Status = "Preparing smaller AI copy…";
         Busy = true;
         operation = new();
-        Status = command switch
+        if (!makingAICopy) Status = command switch
         {
             "import-video" => "Adding the video to your project…",
             "import-youtube" => "Adding the YouTube video…",
@@ -877,6 +881,8 @@ public sealed class StudioViewModel : INotifyPropertyChanged
                     ActiveAIProcessing = (requestProjectID, name);
                     Changed(nameof(ActiveAIProcessing));
                 }
+                if (makingAICopy && e.Progress is { } copyFraction)
+                    AICopyProgress = Math.Clamp(copyFraction, 0, 1);
                 Status = e.Data.TryGetProperty("error", out var errorFlag) && errorFlag.ValueKind == System.Text.Json.JsonValueKind.True
                     ? new ProcessingException(e.Message, command: command).DisplayMessage(Settings.GetBool("developerMode"), Settings.Get("apiKey"))
                     : e.Message;
@@ -983,7 +989,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             if (pendingNarrationFailures is { } narrationReport) { pendingNarrationFailures = null; NarrationFailures?.Invoke(this, narrationReport); }
             if (command is "check-api-key" or "list-models" || IsAICommand(command)) ClearAiIssue();
             var exportSummary = result.LastOrDefault(e => e.Data.TryGetProperty("exportSummary", out _));
-            Status = exportSummary?.Message ?? "Complete";
+            Status = makingAICopy ? result.LastOrDefault(e => e.Data.TryGetProperty("project", out _))?.Message ?? "Complete" : exportSummary?.Message ?? "Complete";
             hasExportOutput = result.Any(e => e.Data.TryGetProperty("export", out var path) &&
                 path.ValueKind == System.Text.Json.JsonValueKind.String && !string.IsNullOrWhiteSpace(path.GetString()));
             completionSucceeded = !result.Any(e => e.Data.TryGetProperty("error", out var error) &&
@@ -1025,10 +1031,11 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             ContentTransferCommand = null; ContentTransferProgress = null;
             ProcessingSection = null; VideoPreparation = null; processingPlan.Clear();
             var wasCancelled = operation.IsCancellationRequested;
+            AICopyProgress = null;
             operation.Dispose(); operation = null; IsExporting = false; Busy = false;
-            CompletionSound.Complete(command, Settings.GetBool("soundAfterExport", true),
+            CompletionSound.Complete(makingAICopy ? "regenerate-ai-copy" : command, Settings.GetBool("soundAfterExport", true),
                 Settings.GetBool("soundAfterGeneration", true), completionSucceeded, wasCancelled,
-                hasExportOutput, hasGeneratedProject);
+                hasExportOutput, hasGeneratedProject, Settings.GetBool("soundAfterAICopy", true));
         }
         if (connectionFailure != null) await NotifyConnectivityAsync(connectionFailure);
         if (audioRecovery != null && YouTubeAudioRecoveryRequested is { } recover)

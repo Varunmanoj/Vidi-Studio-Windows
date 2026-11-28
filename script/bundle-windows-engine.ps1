@@ -14,7 +14,8 @@ try {
     $ErrorActionPreference = 'Continue'
     $vertexData = @()
     if (Test-Path Config/vertex-desktop.json) { $vertexData = @('--add-data', "$engineProjectRoot/Config/vertex-desktop.json;.") }
-    & $Python -m PyInstaller --noconfirm --onedir --name vidistudio-engine --distpath dist/windows --workpath build/engine --specpath build --add-data "$engineProjectRoot/engine/ai-defaults.json;." --add-data "$engineProjectRoot/engine/sarvam-voices.json;." @vertexData --collect-all keyring --collect-all google_crc32c --collect-all google.genai --collect-submodules sarvamai --copy-metadata sarvamai --collect-all yt_dlp --collect-all yt_dlp_ejs --copy-metadata yt-dlp --copy-metadata yt-dlp-ejs @sslData engine/vidistudio_engine.py 2>&1 | ForEach-Object { Write-Host $_ }
+    # The frozen interpreter does not read PYTHONUTF8 from the launching app.
+    & $Python -m PyInstaller --noconfirm --onedir --python-option 'X utf8' --name vidistudio-engine --distpath dist/windows --workpath build/engine --specpath build --add-data "$engineProjectRoot/engine/ai-defaults.json;." --add-data "$engineProjectRoot/engine/sarvam-voices.json;." @vertexData --collect-all keyring --collect-all google_crc32c --collect-all google.genai --collect-submodules sarvamai --copy-metadata sarvamai --collect-all yt_dlp --collect-all yt_dlp_ejs --copy-metadata yt-dlp --copy-metadata yt-dlp-ejs @sslData engine/vidistudio_engine.py 2>&1 | ForEach-Object { Write-Host $_ }
     $engineBuildExit = $LASTEXITCODE
     $ErrorActionPreference = $oldErrorPreference
     if ($engineBuildExit -ne 0) { throw 'Engine packaging failed.' }
@@ -22,6 +23,13 @@ try {
     if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $denoBinary)) { throw 'The locked YouTube JavaScript runtime is unavailable.' }
     New-Item -ItemType Directory -Force dist/windows/vidistudio-engine/media | Out-Null
     Copy-Item -LiteralPath $denoBinary -Destination dist/windows/vidistudio-engine/media/deno.exe -Force
+    # Preserve the architecture-specific media tools staged by the package builder.
+    foreach ($name in @('ffmpeg.exe', 'ffprobe.exe')) {
+        $stagedTool = Join-Path 'runtime/engine/media' $name
+        if (Test-Path -LiteralPath $stagedTool) {
+            Copy-Item -LiteralPath $stagedTool -Destination (Join-Path 'dist/windows/vidistudio-engine/media' $name) -Force
+        }
+    }
     if (Test-Path -LiteralPath runtime/engine) { Remove-Item -LiteralPath runtime/engine -Recurse -Force }
     New-Item -ItemType Directory -Force runtime/engine | Out-Null
     Copy-Item -Path 'dist/windows/vidistudio-engine/*' -Destination runtime/engine -Recurse -Force

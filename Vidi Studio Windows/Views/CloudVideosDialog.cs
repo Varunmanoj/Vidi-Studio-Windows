@@ -184,7 +184,7 @@ internal sealed class CloudVideosDialog : ContentDialog
             await WaitUntilAsync(() => notice != null);
         }
         finally { WindowedDialog.ReadyToShow -= CaptureWarning; }
-        if (notice is not { Content: TextBlock warning, PrimaryButtonText: "Choose a Smaller Video", CloseButtonText: "Cancel" } ||
+        if (notice is not { Content: TextBlock warning, PrimaryButtonText: "Choose a Smaller Video", SecondaryButtonText: "Create Smaller AI Copy", CloseButtonText: "Cancel" } ||
             warning.Text != NewProjectDialog.AnalysisSizeWarning(3_260_000_000) || ImportedProject != null)
             throw new InvalidOperationException("Cloud import must warn before downloading an oversized video.");
     }
@@ -441,6 +441,9 @@ internal sealed class CloudVideosDialog : ContentDialog
         menu.Items.Clear();
         var sourceForMenu = CaptureSource();
         menu.Items.Add(videoSelection.ModeItem(!loading && list.Items.Count > 0));
+        if (long.TryParse(Selection?.Size, out var size) && size > NewProjectDialog.MaximumLocalVideoBytes)
+            menu.Items.Add(Item("Create Smaller AI Copy", "Smaller AI Copy",
+                () => sourceForMenu == CaptureSource() ? OpenSelectedVideoAsync(true) : Task.CompletedTask, openEditor.IsEnabled));
         menu.Items.Add(Item("Open in Editor", "Open in Editor",
             () => sourceForMenu == CaptureSource() ? OpenSelectedVideoAsync() : Task.CompletedTask, openEditor.IsEnabled));
         if (Selection is { } file && file.Thumbnail == null && previewedFile != file)
@@ -548,26 +551,34 @@ internal sealed class CloudVideosDialog : ContentDialog
 
     private CloudVideoSelection? CaptureSelection() =>
         openEditor.IsEnabled && Selection is { } file ? new(ProjectID, Bucket, file.Name, file.Generation) : null;
-    private async Task OpenSelectedVideoAsync()
+    private Task OpenSelectedVideoAsync() => OpenSelectedVideoAsync(false);
+
+    private async Task OpenSelectedVideoAsync(bool smallerAICopy)
     {
         if (CaptureSelection() is not { } selected || ImportVideo is not { } import) return;
-        if (long.TryParse(Selection?.Size, out var size) && size > NewProjectDialog.MaximumCloudVideoBytes)
+        var importLimit = settings.Get("aiProvider") == "vertex" && settings.Get("vertexAuth", "signin") == "signin"
+            ? NewProjectDialog.MaximumCloudVideoBytes : NewProjectDialog.MaximumLocalVideoBytes;
+        if (!smallerAICopy && long.TryParse(Selection?.Size, out var size) && size > importLimit)
         {
             var warning = new ContentDialog
             {
                 Title = "Video Is Too Large",
                 Content = new TextBlock { Text = NewProjectDialog.AnalysisSizeWarning(size), TextWrapping = TextWrapping.Wrap },
                 PrimaryButtonText = "Choose a Smaller Video",
+                SecondaryButtonText = "Create Smaller AI Copy",
                 CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Primary
             };
-            if (await WindowedDialog.ShowAsync(warning, owner, 620, 300) == ContentDialogResult.Primary && !closed)
+            var result = await WindowedDialog.ShowAsync(warning, owner, 720, 320);
+            if (result == ContentDialogResult.Primary && !closed)
             {
                 list.SelectedIndex = -1;
                 list.Focus(FocusState.Keyboard);
             }
-            return;
+            if (result != ContentDialogResult.Secondary || closed || selected != CaptureSelection()) return;
+            smallerAICopy = true;
         }
+        selected = selected with { SmallerAICopy = smallerAICopy };
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         importCancellation = cancellation;
         try
@@ -603,11 +614,11 @@ internal sealed class CloudVideosDialog : ContentDialog
         if (closed || importCancellation is not { IsCancellationRequested: false } ||
             update.Data.TryGetProperty("networkActive", out _) || update.Data.TryGetProperty("ping", out _) ||
             update.Data.TryGetProperty("error", out _)) return;
-        var byteTransfer = update.Message.StartsWith("Downloading video:", StringComparison.Ordinal);
+        var byteTransfer = update.Message.StartsWith("Downloading video:", StringComparison.Ordinal) || update.Message.Contains("AI copy");
         if (byteTransfer && update.Progress is double fraction && double.IsFinite(fraction))
         {
             transfer.Value = Math.Clamp(fraction, 0, 1) * 100;
-            AnnounceImportStatus(update.Message, (int)(transfer.Value / 10));
+            AnnounceImportStatus(update.Message.Contains("AI copy") ? $"{update.Message}, {transfer.Value:F0} percent" : update.Message, (int)(transfer.Value / 10));
             transfer.Visibility = Visibility.Visible;
             progress.Visibility = Visibility.Collapsed;
         }
@@ -953,7 +964,7 @@ internal sealed class CloudVideosDialog : ContentDialog
         actions + "</Grid>";
 }
 
-internal sealed record CloudVideoSelection(string Project, string Bucket, string Name, string Generation)
+internal sealed record CloudVideoSelection(string Project, string Bucket, string Name, string Generation, bool SmallerAICopy = false)
 {
     internal string[] Arguments(string command) =>
         new[] { command, "--source-project", Project, "--source-bucket", Bucket, "--name", Name, "--source-generation", Generation };

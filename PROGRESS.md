@@ -3052,3 +3052,57 @@ Installed the ARM64 package on Windows 11, with one registration and Start entry
 See build/editor-pane-geometry.txt, build/editor-panes-{Light,Dark}-*.png, and build/editor-panes-447-{build,verify}-verified.log. Native x64 and audible Narrator were not tested. The local Help guide passed TypeScript, production build, desktop/mobile search and navigation. Publication is pending.
 
 Reopened Cyber security course in the ordinary installed Windows editor. An independent UI Automation client found Hide Preview, the timeline playhead, the section picker and the first transcript row on screen at the same time. The transcript viewport measured 295 physical pixels high and the first row occupied 123 visible pixels. The course editor was left open. The separate installed DialogsOnly suite passed. GallerySettingsOnly initially missed its cloud-browser fixture row with the test pointer and passed on a separate retry, including preview hide/restore and keyboard/menu checks. See build/editor-panes-447-live.log and build/editor-panes-447-gallery.log.
+
+## 2026-11-28 — Smaller AI video copies, 1.0.448.0
+
+New Project and local-file opening accept oversized originals after the user chooses Create Smaller AI Copy. Upload Local Video sends the reduced MP4 to the configured bucket. The existing-bucket picker and standalone browser expose conversion on opening, from Actions and from each applicable row. Manifest metadata keeps the original and reduced video distinct. The local preview, View > Video Player and player menu share the project's playback choice. The inspector lists both files. Narration settings provide a separate completion sound and preview. Conversion exposes an accessible percentage and Cancel.
+
+Built, installed and launched the ARM64 Debug package in Windows 11 Parallels. The installed package reports 1.0.448.0 under one Start entry. The bundled engine and media doctor and ARM64 package identity validation passed. The installed-app ExportSoundOnly run invoked the native local and cloud-upload size dialogs for a 2,150,000,001-byte test file, exercised Cancel and Create Smaller AI Copy before publication, then encoded real video, checked the project metadata, changed the preview source through both menu states, and regenerated with the completion sound turned off. GallerySettingsOnly and DialogsOnly also passed, covering the configured bucket browser, transfer progress, row actions and modal decisions.
+
+142 paired tests passed from each checkout, covering menu/UI parity, simulated Vertex and Gemini routing, original bucket generation, uploading only the derivative, failed publication rollback, cancellation, and failed regeneration preserving the previous file. The Mac and Windows completion policies passed 1,424 cases each. The paired documentation was built and checked locally and remains unpublished. Live Google services, x64 execution and audible screen-reader output were not exercised.
+
+A subsequent installed-engine test uncovered missing FFmpeg binaries after a frozen-engine rebuild. The bundler now carries staged FFmpeg and FFprobe into the refreshed runtime. Repackaged and reinstalled the ARM64 app, verified the staged media binaries, and repeated ExportSoundOnly. The final installed engine converted a 2,150,000,001-byte padded 5-second MP4 to a 67,643-byte H.264/AAC file and verified the full original by SHA-256, using the packaged FFmpeg without a configured external binary. Removed the QA media and validation task and restored the VM’s original idle-pause setting.
+
+## 2026-11-28 — Smaller AI Copy inspector and original-source exports (1.0.449.0)
+
+A separate native Smaller AI Copy expander shows the copy details and readable file size. The inspector button, context menu and Project menu share the Create Smaller AI Copy and Regenerate Smaller AI Copy action. The inspector disclosure exposes a named UI Automation group and expand/collapse state.
+
+The installed ARM64 engine exported closed and open captions with audio description at the 640 × 360 original resolution while the 160 × 90 playback copy was selected. The closed-caption test verified the combined text and the original video stream’s SHA-256. 144 paired regression cases passed in each checkout. Native x64 execution and audible Narrator output were not exercised. The guide is unpublished.
+
+Installed the ARM64 Debug package in the Windows 11 VM and verified a single Start registration, bundled media and engine doctor. ExportSoundOnly verified creation using the editor’s Project command, UI Automation collapse/expand, the copy size units, checked playback selection and regeneration through the native inspector button. A broader native tooltip check caught the missing button tooltip. Added the matching tooltip, reinstalled 1.0.449.0 and passed ExportSoundOnly and GallerySettingsOnly. The latter exercised native inspector disclosure names and states plus editor tooltips and wide/compact light/dark gallery and Settings layouts.
+
+## 2026-11-28 — AI copy file actions (1.0.450.0)
+
+The Smaller AI Copy inspector row has a named eye button beside the filename. Its native information dialog and filename context menu offer Open File and Open Folder. Open File uses the Windows file association. Open Folder asks File Explorer to select the specific file. Missing and superseded copies are checked before launch.
+
+Built and installed the ARM64 Debug package in Windows 11 Parallels and verified the packaged engine, media tools and unique Start registration. ExportSoundOnly and GallerySettingsOnly passed, including the eye button accessibility name, context menu choices and the native information dialog. External player and Explorer launches were verified on Mac only. Both desktop checkouts passed 111 focused tests. Website Help was tested locally and is unpublished.
+
+## 2026-11-28 — Original and AI copy file actions (1.0.451.0)
+
+Added matching original and AI-copy inspector actions and joined them in the editor Project menu beside Open Project in File Explorer. Existing copies show regeneration only above 2 GB. Manual upload is restricted to a bucket-sourced project without a cloud copy and requires Google sign-in, a configured Google Cloud project, and a destination bucket. Cloud action groups are hidden when their prerequisites are absent.
+
+Installed the ARM64 Debug package in Windows 11 Parallels with one Start entry and verified the bundled engine and media tools. ExportSoundOnly passed and exercised both native inspector dialogs, both Project submenus and the project-folder command, the absence of regeneration and cloud actions on a small local project, and the 2,000,000,000 / 2,000,000,001 byte boundary. Both checkouts passed 143 focused tests. Native x64 and external Windows player and file-manager launches were not exercised. No live cloud uploads were made.
+
+The final Windows reinstall passed ExportSoundOnly and GallerySettingsOnly, including a signed-out bucket fixture that verified the Cloud Storage menu stays hidden without the configured connection.
+
+## 2026-11-28 — Editor size limit for creating an AI copy (1.0.452.0)
+
+The Project menu and inspector keep Create Smaller AI Copy visible and disabled for local videos of 2,000,000,000 bytes or less. The original file’s size governs both creation and regeneration. Existing-copy playback and file actions remain available.
+
+Installed the Windows 11 ARM64 Debug package with a single Start entry. The frozen-engine and media doctor passed. ExportSoundOnly verified the disabled Create command and inspector button on a small project, tested the exact 2,000,000,000 and 2,000,000,001 byte thresholds, and exercised existing-copy playback and file information after encoding a test copy through the engine. Both checkouts passed 143 focused tests and the menu and layout checks.
+
+GallerySettingsOnly also passed on the packaged app, including native menu access and light, dark and compact layouts for the gallery and editor toolbar. Windows x64 and audible screen-reader output were not tested.
+
+## 2026-11-28 — Playback switch labels and Inspector source (1.0.453.0)
+
+The View > Video Player and preview context commands name the next and current playback sources. Video Information shows Preview Source with the selected version and filename when an AI copy exists. Both surfaces follow the effective local playback source and the project saves the selection.
+
+Built and installed the ARM64 Debug package in Windows 11 Parallels with one Start entry and a passing frozen-engine and media doctor. ExportSoundOnly verified the active player path, saved selection, both dynamic menu labels and the Inspector value and accessibility name through both switch directions. It also verified the row is absent for a single-video project. The first run exposed an incorrect harness count for the separate gallery and editor menu bars. The corrected harness passed on the replacement build. GallerySettingsOnly passed on the earlier equivalent application build. Both desktop checkouts passed 143 targeted tests and the menu and layout checks. Native x64 and audible Narrator speech were not tested.
+
+## 2026-11-28 — Playback choices and confirmed AI copy replacement (1.0.455.0)
+
+The View > Video Player and preview context menus show two playback choices with a single native checked state, followed by a divider and Regenerate Smaller AI Copy when the original exceeds 2 GB. The editor confirms replacement with Cancel as the default. The shared processing card shows the current step, percentage and Cancel, with screen-reader notifications for progress. The engine saves a validated replacement before retiring its predecessor and rolls back if deletion is blocked.
+
+The Windows 11 ARM64 Debug package is installed with one Start entry. The frozen engine and bundled media doctor passed. ExportSoundOnly passed for both checked choices, the Inspector readout, unchanged saved state when selecting the active choice, the two size limits, declining confirmation and accepting a real regeneration while the AI copy is selected. The test saw the verify and save phases, one replacement, and the refreshed preview. Sparse test media removed the test suite's dependency on allocating several gigabytes. The frozen engine now selects UTF-8 at build time after newly freezing it exposed a decoder error on the Unicode smoke project. Both desktop checkouts passed 145 focused tests and the menu and layout checks. Native x64 and audible Narrator speech were not tested.
+
+GallerySettingsOnly also passed on the final replacement package after the UTF-8 correction, including the Unicode inspector and text export fixtures and the native gallery/editor checks.

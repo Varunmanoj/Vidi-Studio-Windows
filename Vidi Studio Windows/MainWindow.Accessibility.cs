@@ -374,21 +374,25 @@ public sealed partial class MainWindow
             var cloudGroups = desktopMenuGroups.Where(entry => entry.Name == "Cloud Storage").Select(entry => entry.Item).ToArray();
             var project = Model.Project!;
             var savedCloud = project.CloudVideo;
+            var connected = Model.Settings.GetBool("vertexConnected");
             try
             {
+                Model.Settings.Set("vertexConnected", false);
                 foreach (var cloud in new Dictionary<string, string>?[] {
                     null, new() { ["bucket"] = "ui-smoke-fixture", ["object"] = "test.mp4", ["ownership"] = "referenced" }
                 })
                 {
                     project.CloudVideo = cloud;
                     UpdateDesktopMenuStates();
-                    if (cloudGroups.Length == 0 || cloudGroups.Any(group => (group.Visibility == Visibility.Visible) != (cloud != null)))
-                        throw new InvalidOperationException("The editor Cloud Storage menu must follow the open project source.");
+                    if (cloudGroups.Length == 0 || cloudGroups.Any(group => group.Visibility != Visibility.Collapsed) ||
+                        CloudActions(project).Length != 0)
+                        throw new InvalidOperationException("The editor must hide Cloud Storage actions for signed-out projects, including bucket videos.");
                 }
             }
             finally
             {
                 project.CloudVideo = savedCloud;
+                Model.Settings.Set("vertexConnected", connected);
                 UpdateDesktopMenuStates();
             }
             var scale = Root.XamlRoot.RasterizationScale;

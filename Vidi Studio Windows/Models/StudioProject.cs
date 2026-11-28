@@ -214,6 +214,8 @@ public sealed class ProjectPlaybackSettings
 
 public sealed record YouTubePlaybackVideoAsset(string Path, string Thumbnail, string SourceName, double Duration, bool UseYouTubePlayer = false, bool? HasAudio = null, double? TimingAcceptedFor = null);
 
+public sealed record AnalysisVideoCopy(string Path, long Size, double Duration, int Width, int Height, string Codec, string Audio);
+
 public sealed class StudioProject : INotifyPropertyChanged
 {
     public string SelectedLanguage { get; set; } = "auto";
@@ -330,6 +332,19 @@ public sealed class StudioProject : INotifyPropertyChanged
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Source { get; set; } = "";
+    public Dictionary<string, string>? OriginalCloudVideo { get; set; }
+    public AnalysisVideoCopy? AnalysisCopy { get; set; }
+    public bool UseAnalysisCopy { get; set; }
+    [JsonIgnore] public bool CanManageAnalysisCopy => !IsYouTube && (AnalysisCopy != null || (CloudVideo == null && HasLocalSource));
+    [JsonIgnore] public bool HasAnalysisCopyFile
+    {
+        get
+        {
+            try { return !IsYouTube && AnalysisCopy is { } copy && File.Exists(Resolve(copy.Path)); }
+            catch (Exception ex) when (ex is InvalidDataException or IOException or ArgumentException or UnauthorizedAccessException) { return false; }
+        }
+    }
+    [JsonIgnore] public bool UsesAnalysisCopyForPlayback => UseAnalysisCopy && HasAnalysisCopyFile;
     public Dictionary<string,string>? CloudVideo { get; set; }
     [JsonIgnore] public bool ReferencesCloudVideo => CloudVideo?.GetValueOrDefault("ownership") == "referenced";
     [JsonIgnore] public bool OwnsCloudVideo => CloudVideo != null && !ReferencesCloudVideo;

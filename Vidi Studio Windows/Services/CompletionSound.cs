@@ -14,9 +14,10 @@ public static class CompletionSound
 #endif
 
     public static bool ShouldPlay(string command, bool exportEnabled, bool generationEnabled, bool succeeded,
-        bool cancelled, bool hasExportOutput, bool hasGeneratedProject)
+        bool cancelled, bool hasExportOutput, bool hasGeneratedProject, bool copyEnabled = true)
     {
         if (!succeeded || cancelled) return false;
+        if (command == "regenerate-ai-copy") return copyEnabled && hasGeneratedProject;
         if (command.StartsWith("export-", StringComparison.Ordinal) || command == "combine-imported-audio")
             return exportEnabled && hasExportOutput;
         return generationEnabled && hasGeneratedProject && command is
@@ -25,9 +26,9 @@ public static class CompletionSound
     }
 
     public static void Complete(string command, bool exportEnabled, bool generationEnabled, bool succeeded,
-        bool cancelled, bool hasExportOutput, bool hasGeneratedProject)
+        bool cancelled, bool hasExportOutput, bool hasGeneratedProject, bool copyEnabled = true)
     {
-        if (!ShouldPlay(command, exportEnabled, generationEnabled, succeeded, cancelled, hasExportOutput, hasGeneratedProject)) return;
+        if (!ShouldPlay(command, exportEnabled, generationEnabled, succeeded, cancelled, hasExportOutput, hasGeneratedProject, copyEnabled)) return;
         try
         {
             var path = Path.Combine(AppContext.BaseDirectory, "Assets", "Sounds", "descend.wav");

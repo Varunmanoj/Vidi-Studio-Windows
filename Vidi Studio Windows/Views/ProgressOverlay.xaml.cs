@@ -17,6 +17,7 @@ public sealed partial class ProgressOverlay : UserControl
     private Func<bool>? canAnnounce;
     private bool observing;
     private bool announcementQueued;
+    private string? lastCopyAnnouncement;
     public int SessionCount => Exports.SessionCount;
     internal bool IsShowingProcessing => Visibility == Visibility.Visible && ProcessingPanel.Visibility == Visibility.Visible;
     public ProgressOverlay()
@@ -57,7 +58,7 @@ public sealed partial class ProgressOverlay : UserControl
     private void ExportsChanged(object? sender, NotifyCollectionChangedEventArgs e) => Update();
     private void OwnerActivated(object sender, WindowActivatedEventArgs args)
     {
-        if (args.WindowActivationState != WindowActivationState.Deactivated) QueueProcessingAnnouncement();
+        if (args.WindowActivationState != WindowActivationState.Deactivated) Update();
     }
     private void Update()
     {
@@ -71,6 +72,21 @@ public sealed partial class ProgressOverlay : UserControl
         ProcessingRing.IsActive = processing;
         ProcessingStatus.Text = model?.Status ?? "";
         Exports.Visibility = exporting ? Visibility.Visible : Visibility.Collapsed;
+        var fraction = model?.AICopyProgress;
+        CopyProgressPanel.Visibility = processing && fraction.HasValue ? Visibility.Visible : Visibility.Collapsed;
+        CopyProgress.Value = (fraction ?? 0) * 100;
+        CopyPercent.Text = fraction?.ToString("P0") ?? "";
+        if (processing && fraction is { } percent && owner is { } window &&
+            GetForegroundWindow() == WinRT.Interop.WindowNative.GetWindowHandle(window))
+        {
+            var announcement = $"{ProcessingStatus.Text}, {(int)(percent * 10) * 10} percent";
+            if (lastCopyAnnouncement != announcement && FrameworkElementAutomationPeer.CreatePeerForElement(ProcessingStatus) is { } peer)
+            {
+                lastCopyAnnouncement = announcement;
+                peer.RaiseNotificationEvent(AutomationNotificationKind.Other, AutomationNotificationProcessing.MostRecent, announcement, "smaller-ai-copy");
+            }
+        }
+        if (!processing) lastCopyAnnouncement = null;
         QueueProcessingAnnouncement();
     }
 
@@ -80,7 +96,7 @@ public sealed partial class ProgressOverlay : UserControl
     private void QueueProcessingAnnouncement()
     {
         if (announcementQueued || !observing || !IsLoaded || !IsShowingProcessing ||
-            model?.HasAnnouncedProcessing != false || canAnnounce?.Invoke() == false) return;
+            model?.HasAnnouncedProcessing != false || model.AICopyProgress != null || canAnnounce?.Invoke() == false) return;
 
         // Busy and text can change in the same dispatcher turn. Post after the card and
         // its text are visible, and let only the foreground surface announce this operation.

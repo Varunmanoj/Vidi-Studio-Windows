@@ -48,14 +48,16 @@ if ($buildPython) {
 # key handoff, so rebuild it before the app can copy and run it.
 $engineDir = Join-Path $projectRoot 'engine'
 $frozenEngine = Join-Path $projectRoot 'runtime\engine\vidistudio-engine.exe'
+$engineBundler = Join-Path $PSScriptRoot 'bundle-windows-engine.ps1'
 if (Test-Path -LiteralPath $frozenEngine) {
     $frozenTime = (Get-Item -LiteralPath $frozenEngine).LastWriteTimeUtc
-    $stale = Get-ChildItem -LiteralPath $engineDir -Filter *.py -File | Where-Object { $_.LastWriteTimeUtc -gt $frozenTime }
+    $engineInputs = @(Get-ChildItem -LiteralPath $engineDir -Filter *.py -File) + (Get-Item -LiteralPath $engineBundler)
+    $stale = $engineInputs | Where-Object { $_.LastWriteTimeUtc -gt $frozenTime }
     if ($stale) {
         $venvPython = Join-Path $projectRoot '.venv-windows\Scripts\python.exe'
         if (Test-Path -LiteralPath $venvPython) {
-            Write-Host 'Rebuilding the stale frozen engine because the engine sources changed...'
-            & (Join-Path $PSScriptRoot 'bundle-windows-engine.ps1') -Python $venvPython
+            Write-Host 'Rebuilding the frozen engine because its inputs changed...'
+            & $engineBundler -Python $venvPython
             if ($LASTEXITCODE -ne 0) { throw 'The frozen engine rebuild failed.' }
         }
         else {

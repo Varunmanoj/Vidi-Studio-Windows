@@ -339,6 +339,7 @@ public sealed partial class MainWindow
         if (id == "show-in-finder") return Directory.Exists(project.Folder);
         if (id is "open-gallery-window" or "open-editor-window" or "open-project-here") return true;
         if (!usable) return false;
+        if (id.StartsWith("cloud-", StringComparison.Ordinal)) return CloudActions(project).Any(action => action.Id == id);
         if (OnlineRequirements.Services(id, project, Model.Settings).Any(service => ConnectivityService.Shared.Reason(service) != null)) return false;
         return id switch {
             "youtube-open-browser" => YouTubeService.ProjectWatchURL(project.YoutubeURL) != null,
@@ -373,6 +374,7 @@ public sealed partial class MainWindow
                     using var cancelImport = cancellation.Register(Model.Cancel);
                     using var activity = new CloudImportActivity();
                     var args = selection.Arguments("cloud-import").Skip(1).Concat(new[] { "--library", library });
+                    if (selection.SmallerAICopy) args = args.Append("--smaller-ai-copy");
                     List<EngineEvent> created;
                     try
                     {
@@ -387,7 +389,7 @@ public sealed partial class MainWindow
                     {
                         return null;
                     }
-                    if (created.Any(item => item.Data.TryGetProperty("project", out _)) && Model.Project is { CloudVideo: not null } project)
+                    if (created.Any(item => item.Data.TryGetProperty("project", out _)) && Model.Project is { } project && (project.CloudVideo != null || project.AnalysisCopy != null))
                         return project;
                     if (!cancellation.IsCancellationRequested) throw new InvalidOperationException(Model.Status);
                     return null;
@@ -433,8 +435,13 @@ public sealed partial class MainWindow
         finally { checkingCloudPermissions.Remove((session, key)); }
     }
 
+    private bool ShowsCloudVideoActions(StudioProject project) =>
+        !project.IsYouTube && (project.CloudVideo != null || project.OriginalCloudVideo != null)
+        && Model.Settings.GetBool("vertexConnected") && Views.NewProjectDialog.CanUploadCloudVideo(Model.Settings);
+
     private (string Id, string Title)[] CloudActions(StudioProject p)
     {
+        if (!ShowsCloudVideoActions(p)) return Array.Empty<(string, string)>();
         if (p.CloudVideo == null) return new[] { ("cloud-upload", "Upload Video to Cloud Storage…") };
         _ = CheckProjectCloudPermissionsAsync(p);
         var permissions = VerifiedCloudPermissions(p);
@@ -454,7 +461,7 @@ public sealed partial class MainWindow
     }
 
     private async System.Threading.Tasks.Task CloudActionAsync(string id, StudioProject p) {
-        if (!Model.Idle || (id == "cloud-upload" && !Model.Settings.GetBool("vertexConnected")) || !CloudActions(p).Any(a=>a.Id==id)) return;
+        if (!Model.Idle || !CloudActions(p).Any(a => a.Id == id)) return;
         if (id=="cloud-open") { if (p.CloudConsoleUrl is Uri url) await Windows.System.Launcher.LaunchUriAsync(url); return; }
         if (id=="cloud-rename") {
             var name=new TextBox { Header="Video filename",Text=System.IO.Path.GetFileName(p.CloudVideo!["object"]) };
@@ -514,8 +521,7 @@ public sealed partial class MainWindow
             Item("open-project-here", "Open in This Window");
             if (YouTubeService.ProjectWatchURL(project.YoutubeURL) != null) Item("youtube-open-browser");
             Item("open-editor-window", "Open in New Window");
-            if (!project.IsYouTube && (project.CloudVideo!=null || Model.Settings.GetBool("vertexConnected")))
-                foreach (var action in CloudActions(project)) Item(action.Id,action.Title);
+            foreach (var action in CloudActions(project)) Item(action.Id, action.Title);
             Item("project-settings");
             menu.Items.Add(new MenuFlyoutSeparator());
             Item("remove-from-list");
@@ -527,8 +533,7 @@ public sealed partial class MainWindow
             menu.Items.Add(new MenuFlyoutSeparator());
             Item("rename-project", "Rename");
             if (YouTubeService.ProjectWatchURL(project.YoutubeURL) != null) Item("youtube-open-browser");
-            if (!project.IsYouTube && (project.CloudVideo!=null || Model.Settings.GetBool("vertexConnected")))
-                foreach (var action in CloudActions(project)) Item(action.Id,action.Title);
+            foreach (var action in CloudActions(project)) Item(action.Id, action.Title);
             Item("project-settings");
             Item("show-in-finder", "Open in Project Folder");
             if (Model.Settings.GetBool("developerMode")) Item("open-configuration", "Open Project Configuration");

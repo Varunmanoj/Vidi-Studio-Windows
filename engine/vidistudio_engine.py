@@ -4,10 +4,6 @@ import argparse, contextlib, html, json, math, os, platform, plistlib, re, shuti
 import signal
 import queue
 import threading
-import youtube_metadata
-import youtube_playback
-import youtube_audio
-import audio_sources
 import network_activity
 import sarvam_tts
 import elevenlabs_tts
@@ -16,6 +12,10 @@ import vertex_ai
 import gemini_voices
 import gemini_adapter
 import parity
+import youtube_metadata
+import youtube_playback
+import youtube_audio
+import audio_sources
 import import_assets
 import output_languages
 import language_results
@@ -47,22 +47,7 @@ def atomic_json(path, value):
     with tempfile.NamedTemporaryFile('w', encoding='utf-8', dir=path.parent, delete=False) as f:
         json.dump(value, f, ensure_ascii=False, indent=2, allow_nan=False)
         temp = f.name
-    # The desktop app polls project.json for integrity and gallery updates. A
-    # reader can briefly hold the file open on Windows, where os.replace fails
-    # with PermissionError instead of retrying like POSIX rename. Retry briefly
-    # so an in-flight read never turns a completed change into a save failure.
-    for attempt in range(20):
-        try:
-            os.replace(temp, path)
-            return
-        except PermissionError:
-            if attempt == 19:
-                try:
-                    os.unlink(temp)
-                except OSError:
-                    pass
-                raise
-            time.sleep(0.05)
+    os.replace(temp, path)
 
 
 def config_path():
@@ -72,8 +57,8 @@ def config_path():
 
 def config():
     p = Path(os.environ.get('VIDISTUDIO_CONFIG', config_path()))
-    defaults = json.loads(Path(__file__).with_name('ai-defaults.json').read_text(encoding='utf-8'))
-    saved = json.loads(p.read_text(encoding='utf-8')) if p.exists() else {}
+    defaults = json.loads(Path(__file__).with_name('ai-defaults.json').read_text())
+    saved = json.loads(p.read_text()) if p.exists() else {}
     defaults['models'].update(saved.get('models',{}) or {})
     for stage,overrides in (saved.get('prompts',{}) or {}).items():
         pair = defaults['prompts'].setdefault(stage,{})
@@ -95,6 +80,14 @@ def config():
 
 
 def safe_error(exc):
+    details = getattr(exc, 'details', None)
+    if details:
+        for d in details:
+            if isinstance(d, dict) and d.get('reason') == 'API_KEY_INVALID':
+                return 'API key not valid. Please check your Gemini API key in Settings.'
+    raw_message = getattr(exc, 'message', None) or str(exc)
+    if 'API_KEY_INVALID' in str(exc) or 'API key not valid' in raw_message:
+        return 'API key not valid. Please check your Gemini API key in Settings.'
     message = str(exc)
     vertex_key = os.environ.get("VIDISTUDIO_VERTEX_KEY", "")
     if vertex_key: message = message.replace(vertex_key, "[redacted]")
@@ -120,7 +113,7 @@ def tool(name):
     raise ValueError(f'{name} is unavailable. Set its path in Settings.')
 
 
-def run(args, timeout=3600, export_progress=None):
+def run(args, timeout=3600, export_progress=None, progress_key="exportProgress"):
     if export_progress:
         args = [args[0], '-progress', 'pipe:1', '-nostats', '-stats_period', '0.25', *args[1:]]
     process = subprocess.Popen([str(x) for x in args], stdout=subprocess.PIPE,
@@ -160,9 +153,8 @@ def run(args, timeout=3600, export_progress=None):
             closed = set()
             seconds = 0.0
             last_fraction = start
-            emit(message, exportProgress=start)
+            emit(message, **{progress_key: start})
             while len(closed) < 2:
-                youtube_audio.check_cancelled()
                 if time.monotonic() >= deadline:
                     raise subprocess.TimeoutExpired(args, timeout)
                 try:
@@ -182,12 +174,12 @@ def run(args, timeout=3600, export_progress=None):
                         ratio = min(1, max(0, seconds / duration)) if duration > 0 else 0
                         fraction = start + (end - start) * ratio
                         if fraction - last_fraction >= 0.005:
-                            emit(message, exportProgress=fraction)
+                            emit(message, **{progress_key: fraction})
                             last_fraction = fraction
             process.wait(timeout=max(0.001, deadline - time.monotonic()))
             if process.returncode:
                 raise ValueError(stderr or f'Command failed: {Path(args[0]).name}')
-            emit(message, exportProgress=end)
+            emit(message, **{progress_key: end})
             return ''
         stdout, stderr = process.communicate(timeout=timeout)
         if process.returncode:
@@ -197,7 +189,6 @@ def run(args, timeout=3600, export_progress=None):
         if readers: stopped.set()
         youtube_audio.stop_worker(process)
         for reader in readers: reader.join(timeout=1)
-
 
 
 def run_export(args, duration, start=0.02, end=0.92, message='Creating export', timeout=3600):
@@ -525,6 +516,11 @@ def save_segments(p, transcript, cues):
     import_assets.audit_timing(p)
 
 
+def save_summary(p, text):
+    """Directly update the project summary text."""
+    import_assets.save_summary(p, text)
+
+
 def thumbnails(root, p):
     (root/'thumbnails').mkdir(parents=True, exist_ok=True)
     paths = []
@@ -664,123 +660,80 @@ def client_and_model(kind, project=None):
     return gemini_client(), model
 
 
+def detect_gemini_plan(client, available_names=None):
+    """Detect whether the configured Gemini API key is on a Free or Paid tier."""
+    if available_names:
+        for paid_indicator in ('gemini-omni-1.1-flash', 'gemini-omni-flash-preview'):
+            if paid_indicator in available_names:
+                return 'paid'
+    try:
+        getter = getattr(getattr(client, 'models', None), 'get', None)
+        if getter:
+            model = getter(model='gemini-omni-1.1-flash')
+            name = getattr(model, 'name', None)
+            if isinstance(name, str) and 'gemini-omni' in name:
+                return 'paid'
+    except Exception:
+        pass
+    try:
+        caches = getattr(client, 'caches', None)
+        if caches and hasattr(caches, 'list'):
+            # Only paid tier accounts have access to context caching
+            pager = caches.list()
+            res = list(pager)
+            if isinstance(res, list):
+                return 'paid'
+    except Exception:
+        pass
+    return 'free'
+
+
 def check_api_key():
     if not str(config().get('apiKey') or '').strip():
         emit('No API key entered', keyStatus='missing',
              validationMessage='Enter a Gemini API key, then choose Check API Key & Plan.')
         return
     try:
-        client = gemini_client()
+        list_models()
     except Exception as exc:
-        if not network_activity.credential_rejected(exc): raise
-        err_msg = safe_error(exc)
-        emit('Gemini API key is invalid',
-             keyValid=False,
-             keyStatus='invalid',
-             validationMessage='The entered Gemini API key is invalid. Google rejected it. Replace it with a valid key from Google AI Studio.',
-             plan='invalid',
-             detectedPlan='invalid',
-             error=err_msg,
-             modelCount=0,
-             models=[])
-        return
-
-    try:
-        available = []
-        has_pro = False
-        try:
-            for model in client.models.list():
-                name = str(getattr(model, 'name', '') or '').removeprefix('models/')
-                actions = [str(action) for action in (getattr(model, 'supported_actions', None) or [])]
-                normalized_actions = {action.replace('_', '').lower() for action in actions}
-                if not name.startswith('gemini-') or 'generatecontent' not in normalized_actions:
-                    continue
-                available.append({
-                    'name': name,
-                    'displayName': str(getattr(model, 'display_name', '') or name),
-                    'supportedActions': actions,
-                })
-                if 'pro' in name.lower():
-                    has_pro = True
-        except Exception as exc:
-            if not network_activity.credential_rejected(exc): raise
-            err_text = safe_error(exc)
-            is_invalid = any(token in err_text.upper() for token in ('API_KEY_INVALID', 'API KEY NOT VALID', 'INVALID_ARGUMENT', 'PERMISSION_DENIED', 'UNAUTHENTICATED', 'FORBIDDEN'))
-            user_msg = 'The provided Gemini API key is invalid or rejected by Google.' if is_invalid else f'Could not verify API key: {err_text}'
-            cfg_file = Path(os.environ.get('VIDISTUDIO_CONFIG', config_path()))
-            if cfg_file.exists():
-                try:
-                    current_cfg = json.loads(cfg_file.read_text(encoding='utf-8'))
-                    current_cfg['apiKeyValid'] = False
-                    current_cfg['apiPlan'] = 'invalid'
-                    atomic_json(cfg_file, current_cfg)
-                except Exception:
-                    pass
-            emit('Gemini API key is invalid',
-                 keyValid=False,
-                 keyStatus='invalid',
-                 validationMessage='The entered Gemini API key is invalid. Google rejected it. Replace it with a valid key from Google AI Studio.',
-                 plan='invalid',
-                 detectedPlan='invalid',
-                 error=user_msg,
-                 modelCount=0,
-                 models=[])
-            return
-
-        available.sort(key=lambda model: (model['displayName'].lower(), model['name']))
-        if not available:
-            raise ValueError('No compatible Gemini models are available for this API key.')
-
-        detected_plan = 'paid' if has_pro else 'free'
-        plan = detected_plan
-
-        # Automatically select the optimal values based on the detected plan without requiring user to choose:
-        transcribe_model = 'gemini-3.5-transcribe' if any(m['name'] == 'gemini-3.5-transcribe' for m in available) else 'gemini-3.8-flash'
-        tts_model = 'gemini-3.8-flash-lite-tts' if any(m['name'] == 'gemini-3.8-flash-lite-tts' for m in available) else 'gemini-3.8-flash'
-        summary_model = ('gemini-3.8-pro' if any(m['name'] == 'gemini-3.8-pro' for m in available) else 'gemini-3.8-flash') if plan == 'paid' else 'gemini-3.8-flash'
-        ad_model = ('gemini-3.8-pro' if any(m['name'] == 'gemini-3.8-pro' for m in available) else 'gemini-3.8-flash') if plan == 'paid' else 'gemini-3.8-flash'
-        # A credential check must preserve the user's processing choice.
-        video_processing = gemini_adapter.video_processing(config().get('videoProcessing', 'agentic'))
-
-        selected_models = {
-            'transcript': transcribe_model,
-            'summary': summary_model,
-            'audio_descriptions': ad_model,
-            'text_rewrite': 'gemini-3.8-flash',
-            'tts_audio': tts_model,
-            'screen_text': 'gemini-3.8-flash',
-            'youtube_transcript': 'gemini-3.8-flash',
-        }
-
-        cfg_file = Path(os.environ.get('VIDISTUDIO_CONFIG', config_path()))
-        if cfg_file.exists():
-            try:
-                current_cfg = json.loads(cfg_file.read_text(encoding='utf-8'))
-                current_cfg['apiPlan'] = plan
-                current_cfg['apiKeyValid'] = True
-                current_cfg['videoProcessing'] = video_processing
-                current_cfg.setdefault('models', {}).update(selected_models)
-                atomic_json(cfg_file, current_cfg)
-            except Exception:
-                pass
-
-        emit('Gemini API key check succeeded',
-             keyValid=True,
-             keyStatus='valid',
-             plan=plan,
-             detectedPlan=detected_plan,
-             hasPro=has_pro,
-             modelCount=len(available),
-             selectedModels=selected_models,
-             selectedVideoProcessing=video_processing,
-             models=available)
-    finally:
-        client.close()
+        if not network_activity.credential_rejected(exc):
+            raise
+        emit('Invalid Gemini API key', keyStatus='invalid', keyValid=False,
+             validationMessage='The entered Gemini API key is invalid. Google rejected it. Replace it with a valid key from Google AI Studio.')
 
 
 def list_models():
-    # Use the same credential verdict and transport-error handling as Check.
-    return check_api_key()
+    client = gemini_client()
+    try:
+        available = []
+        for model in client.models.list():
+            name = str(getattr(model, 'name', '') or '').removeprefix('models/')
+            actions = [str(action) for action in (getattr(model, 'supported_actions', None) or [])]
+            normalized_actions = {action.replace('_', '').lower() for action in actions}
+            if not name.startswith('gemini-') or 'generatecontent' not in normalized_actions:
+                continue
+            available.append({
+                'name': name,
+                'displayName': str(getattr(model, 'display_name', '') or name),
+                'supportedActions': actions,
+            })
+        available.sort(key=lambda model: (model['displayName'].lower(), model['name']))
+        if not available:
+            raise ValueError('No compatible Gemini models are available for this API key.')
+        available_names = {m['name'] for m in available}
+        plan = detect_gemini_plan(client, available_names)
+        try:
+            p = Path(os.environ.get('VIDISTUDIO_CONFIG', config_path()))
+            saved = json.loads(p.read_text()) if p.exists() else {}
+            if saved.get('geminiPlan') != plan:
+                saved['geminiPlan'] = plan
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(json.dumps(saved, indent=2))
+        except Exception:
+            pass
+        emit('Available Gemini models loaded', models=available, plan=plan, valid=True, keyValid=True, keyStatus='valid')
+    finally:
+        client.close()
 
 
 def delete_description_narration(root, project):
@@ -852,13 +805,13 @@ def file_expiry(value):
 
 def reusable_video(root,p,client):
     if isinstance(client, vertex_ai.VertexSession):
-        return vertex_ai.media(config(), p, local(root, p['source']))
+        return vertex_ai.media(config(), p, analysis_source(root, p))
     if vertex_ai.referenced_video(p):
         raise ValueError('Choose Vertex AI with Google sign-in in Settings > AI to analyze this Cloud Storage video.')
     if p.get('sourceType') == 'youtube':
         raise ValueError('YouTube videos use their public link and do not need a Files API upload.')
-    source=local(root,p['source']);ensure_supported_local_video(source)
-    stat=source.stat();fingerprint=f"{p['source']}|{stat.st_size}|{stat.st_mtime_ns}"
+    source=analysis_source(root,p);ensure_supported_local_video(source)
+    stat=source.stat();fingerprint=f"{source.relative_to(root.resolve()).as_posix()}|{stat.st_size}|{stat.st_mtime_ns}"
     cached=p.get('geminiVideo')
     if cached and cached.get('fingerprint')==fingerprint:
         f=remote_video_status(root,p,client)
@@ -1125,7 +1078,7 @@ def _ai_video_once(root, p, stage):
                     chunk=root/'transcript'/f'audio-{start}.wav'
                     emit(f'Creating the transcript from minute {start//60}')
                     try:
-                        run([tool('ffmpeg'),'-y','-v','error','-ss',str(start),'-i',local(root,p['source']),'-t',str(chunk_seconds),'-vn','-ac','1','-ar','16000',chunk])
+                        run([tool('ffmpeg'),'-y','-v','error','-ss',str(start),'-i',analysis_source(root,p),'-t',str(chunk_seconds),'-vn','-ac','1','-ar','16000',chunk])
                         data.extend(gemini_adapter.transcribe_audio(client,model,chunk,start,lambda text:emit(text)))
                     finally:
                         chunk.unlink(missing_ok=True)
@@ -1133,7 +1086,7 @@ def _ai_video_once(root, p, stage):
             if youtube: uri=p['youtubeURL'];mime=None
             else:
                 if not isinstance(client, vertex_ai.VertexSession):
-                    ensure_supported_local_video(local(root,p['source']))
+                    ensure_supported_local_video(analysis_source(root,p))
                 emit('Preparing the video for analysis')
                 uploaded=reusable_video(root,p,client);uri=uploaded.uri;mime=uploaded.mime_type
             pair=parity.media_prompt_pair(cfg,key)
@@ -1220,7 +1173,7 @@ def ai_video(root, p, stage, max_attempts=AI_MAX_ATTEMPTS):
 def gemini_speech(output, text, project):
     cfg = config()
     output = Path(output)
-    client, model = client_and_model('tts',project)
+    client, model = client_and_model('tts', project or None)
     raw_wav = None
     try:
         # Gemini 3.8 TTS treats input as a verbatim transcript. Older TTS models
@@ -1260,20 +1213,37 @@ def preview_tts(output, text):
     if not output: raise ValueError('Voice preview requires --output.')
     if not text or len(text) > 500: raise ValueError('Use a sample between 1 and 500 characters.')
     cfg = config()
+    mode = cfg.get('ttsMode')
+    if mode not in ('gemini', 'piper'):
+        raise ValueError('Choose Gemini Voices or Piper Voices for a voice preview.')
     output.parent.mkdir(parents=True, exist_ok=True)
-    if cfg.get('ttsMode') == 'gemini':
-        gemini_speech(output, text, {})
-    elif os.name == 'nt':
-        import windows_speech
+    if mode == 'piper':
         raw = output.with_name(output.stem + '-raw.wav')
         try:
-            windows_speech.request(cfg, 'synthesize', text=text, output=str(raw), rate=speech_controls(cfg)[0])
+            piper_speech(raw, text, cfg)
             finish_system_speech(raw, output, cfg)
         finally:
             raw.unlink(missing_ok=True)
     else:
-        raise ValueError('Select Gemini for this voice preview.')
+        gemini_speech(output, text, {})
     emit('Voice sample ready', audio=str(output))
+
+
+def synthesize_speech(output, text):
+    """Synthesizes arbitrary-length local speech, used for live preview and summary read-aloud."""
+    if not output: raise ValueError('Speech requires --output.')
+    if not text or not text.strip(): raise ValueError('Speech requires text.')
+    cfg = config()
+    if cfg.get('ttsMode') != 'piper':
+        raise ValueError('This speech command supports Piper Voices.')
+    output.parent.mkdir(parents=True, exist_ok=True)
+    raw = output.with_name(output.stem + '-raw.wav')
+    try:
+        piper_speech(raw, text, cfg)
+        finish_system_speech(raw, output, cfg)
+    finally:
+        raw.unlink(missing_ok=True)
+    emit('Speech ready', audio=str(output))
 
 
 def speech_controls(cfg):
@@ -1367,8 +1337,11 @@ def system_voice_signature(cfg):
 
 def narration_engine(cfg):
     mode = str(cfg.get('ttsMode', 'system') or 'system').strip() or 'system'
-    if mode == 'gemini':
-        return mode
+    # Azure Voices was removed from the Mac app; its legacy choice falls back to
+    # Apple Voices while saved labels stay readable in reports. Piper now runs
+    # in-process with the bundled Python engine.
+    if mode not in ('gemini', 'sarvam', 'elevenlabs', 'system', 'piper'):
+        mode = 'system'
     if os.name == 'nt' and mode == 'system':
         return 'windows-core'
     return mode
@@ -1391,6 +1364,7 @@ def narration_voice(cfg):
 
 
 def narration_signature(cfg, project=None):
+    if cfg.get('ttsMode') == 'elevenlabs': return elevenlabs_tts.signature(cfg)
     if cfg.get('ttsMode') == 'sarvam': return sarvam_tts.signature(cfg)
     if cfg.get('ttsMode', 'system') == 'gemini':
         stage = project_model_stage(cfg, 'tts_audio', project)
@@ -1400,12 +1374,145 @@ def narration_signature(cfg, project=None):
     rate, pitch, volume = speech_controls(cfg)
     if cfg.get('ttsMode') == 'piper':
         return f"piper|{narration_voice(cfg)}|{rate:.3f}|{pitch:.3f}|{volume:.3f}"
-    return f"{cfg.get('ttsMode', 'system')}|{system_voice_signature(cfg)}|{rate:.3f}|{pitch:.3f}|{volume:.3f}"
+    return f"system|{system_voice_signature(cfg)}|{rate:.3f}|{pitch:.3f}|{volume:.3f}"
+
+
+_PIPER_VOICES = {}
+
+
+def piper_locations(cfg):
+    """Resolves the downloaded Piper model selected in Settings."""
+    folder = (os.environ.get('VIDISTUDIO_PIPER_VOICES') or '').strip()
+    if not folder:
+        raise ValueError('The Piper voice folder is unavailable. Restart VidiStudio, then try again.')
+    selected = str(cfg.get('piperVoice') or cfg.get('systemVoice') or '').strip()
+    if not selected:
+        raise ValueError('Choose a Piper voice in Settings. Download one first if the list is empty.')
+    if Path(selected).name != selected:
+        raise ValueError('Choose a Piper voice in Settings. Download one first if the list is empty.')
+    model = Path(folder) / (selected + '.onnx')
+    settings = Path(folder) / (selected + '.onnx.json')
+    if not model.is_file() or not settings.is_file():
+        raise ValueError('The selected Piper voice is not downloaded. Download it in Settings, then try again.')
+    return selected, model, settings
+
+
+_ESPEAK_PATH_LIMIT = 150
+_ESPEAK_DATA_COPY = None
+
+
+def espeak_data_home():
+    """espeak-ng keeps its data path in a 160-byte buffer, so deep app bundles
+    need the data at a short path. The application support folder is used."""
+    if os.name == 'nt':
+        base = Path(os.environ.get('LOCALAPPDATA') or Path.home() / 'AppData' / 'Local')
+    else:
+        base = Path.home() / 'Library' / 'Application Support' if sys.platform == 'darwin' else Path.home() / '.local' / 'share'
+    return base / 'VidiStudio' / 'piper' / 'espeak-ng-data'
+
+
+def relocate_espeak_data(source):
+    """Copies espeak-ng data once to a short path and reuses it until the bundle changes."""
+    global _ESPEAK_DATA_COPY
+    if _ESPEAK_DATA_COPY is not None:
+        return _ESPEAK_DATA_COPY
+    target = espeak_data_home()
+    marker = target.parent / 'espeak-ng-data.version'
+    try:
+        source_key = f"{source}|{(source / 'phontab').stat().st_mtime_ns}"
+    except OSError:
+        source_key = None
+    if str(target) != str(source) and (source_key is None or not marker.is_file() or marker.read_text().strip() != source_key):
+        shutil.copytree(source, target, dirs_exist_ok=True)
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(source_key or '')
+        _ESPEAK_DATA_COPY = target
+        return target
+    _ESPEAK_DATA_COPY = target if (target / 'phontab').is_file() else source
+    return _ESPEAK_DATA_COPY
+
+
+def piper_espeak_data():
+    """Finds Piper's espeak-ng data, which sits beside the frozen piper package.
+
+    espeak-ng silently falls back to its build-time data path when the folder
+    path is 160 bytes or longer, which happens inside a signed app bundle, so
+    long paths are mirrored to a short application support folder first.
+    """
+    if _ESPEAK_DATA_COPY is not None:
+        return _ESPEAK_DATA_COPY
+    candidates = []
+    override = (os.environ.get('VIDISTUDIO_ESPEAK_DATA') or '').strip()
+    if override:
+        candidates.append(Path(override))
+    try:
+        import piper
+        candidates.append(Path(piper.__file__).parent / 'espeak-ng-data')
+    except Exception:
+        pass
+    executable_folder = Path(sys.executable).resolve().parent
+    candidates.append(executable_folder / '_internal' / 'piper' / 'espeak-ng-data')
+    candidates.append(executable_folder / 'piper' / 'espeak-ng-data')
+    for base in (executable_folder, executable_folder.parent, executable_folder.parent.parent):
+        try:
+            matches = sorted(base.glob('**/espeak-ng-data/phontab'))
+        except OSError:
+            matches = []
+        candidates.extend(match.parent for match in matches[:1])
+    for candidate in candidates:
+        if not (candidate / 'phontab').is_file():
+            continue
+        if len(str(candidate)) < _ESPEAK_PATH_LIMIT:
+            return candidate
+        return relocate_espeak_data(candidate)
+    raise ValueError('The bundled Piper voice data is missing. Reinstall Vidi Studio, then try again.')
+
+
+def load_piper_voice(model, settings):
+    key = (str(model), str(settings))
+    cached = _PIPER_VOICES.get(key)
+    if cached is not None:
+        return cached
+    try:
+        from piper import PiperVoice
+    except ImportError as exc:
+        raise ValueError('The bundled Piper speech engine is unavailable. Reinstall Vidi Studio, then try again.') from exc
+    voice = PiperVoice.load(str(model), str(settings), espeak_data_dir=piper_espeak_data())
+    _PIPER_VOICES[key] = voice
+    return voice
+
+
+def piper_speech(raw, text, cfg):
+    """Writes a mono WAV with the selected Piper voice; pitch and volume are applied later."""
+    _, model, settings = piper_locations(cfg)
+    from piper import SynthesisConfig
+    voice = load_piper_voice(model, settings)
+    rate = speech_controls(cfg)[0]
+    with wave.open(str(raw), 'wb') as stream:
+        # Piper only writes the WAV format when the first audio chunk arrives;
+        # punctuation-only text has none, so a default header keeps wave from
+        # raising "# channels not specified" before the friendly error below.
+        stream.setnchannels(1)
+        stream.setsampwidth(2)
+        stream.setframerate(int(getattr(voice.config, 'sample_rate', 22050) or 22050))
+        # Piper's length scale is the inverse of speaking rate.
+        voice.synthesize_wav(text, stream, syn_config=SynthesisConfig(length_scale=1.0 / rate))
+    try:
+        with wave.open(str(raw), 'rb') as stream:
+            frames = stream.getnframes()
+    except (OSError, EOFError, wave.Error):
+        frames = 0
+    if frames <= 0:
+        # Punctuation-only text (for example a horizontal rule) yields an empty
+        # stream that ffmpeg cannot finish, so report it as readable guidance.
+        raise ValueError('This text has no words to read aloud.')
 
 
 def finish_system_speech(raw, output, cfg):
     _, pitch, volume = speech_controls(cfg)
     stream = next((item for item in probe(raw).get('streams', []) if item.get('codec_type') == 'audio'), {})
+    if not stream:
+        raise ValueError('The selected voice produced no audio for this text.')
     sample_rate = int(stream.get('sample_rate') or 24000)
     filters = []
     if abs(pitch - 1.0) > .0001:
@@ -1436,7 +1543,7 @@ def synthesize(root,p,segment=None,changed=False,regenerate_all=False,segments=N
     cues = validate_cues(p['cues'],p['duration'],p['transcript'])
     if not cues: raise ValueError('Create audio description segments first.')
     cfg = config()
-    signature = narration_signature(cfg,p)
+    signature = narration_signature(cfg, p)
     engine_name = narration_engine(cfg)
     voice_name = narration_voice(cfg)
     narration_folder = language_results.generation_asset_folder('audio-description', os.environ.get('VIDISTUDIO_OUTPUT_LANGUAGE', p.get('selectedLanguage', 'auto')))
@@ -1492,7 +1599,11 @@ def synthesize(root,p,segment=None,changed=False,regenerate_all=False,segments=N
             text_stream.write(c['text'])
             textfile = Path(text_stream.name)
         try:
-            if cfg.get('ttsMode','system') == 'elevenlabs':
+            if cfg.get('ttsMode','system') == 'piper':
+                raw = output.with_name(output.stem + '-raw.wav')
+                piper_speech(raw, c['text'], cfg)
+                finish_system_speech(raw, output, cfg)
+            elif cfg.get('ttsMode','system') == 'elevenlabs':
                 elevenlabs_tts.synthesize(output, c['text'], cfg, run, tool('ffmpeg'), emit)
             elif cfg.get('ttsMode','system') == 'sarvam':
                 sarvam_tts.synthesize(output, c['text'], cfg, run, tool('ffmpeg'), emit)
@@ -1508,13 +1619,16 @@ def synthesize(root,p,segment=None,changed=False,regenerate_all=False,segments=N
                 finish_system_speech(raw, output, cfg)
             elif os.name == 'nt':
                 raw = output.with_name(output.stem + '-raw.wav')
-                import windows_speech
-                windows_speech.request(cfg, 'synthesize', text=c['text'], output=str(raw), rate=speech_controls(cfg)[0])
+                rate, _, volume = speech_controls(cfg)
+                script = "$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Speech; $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; if ($env:VDS_VOICE) { $s.SelectVoice($env:VDS_VOICE) }; $s.Rate=[int]$env:VDS_RATE; $s.Volume=[int]$env:VDS_VOLUME; $s.SetOutputToWaveFile($env:VDS_OUT); $s.Speak([IO.File]::ReadAllText($env:VDS_TEXT)); $s.Dispose()"
+                env = os.environ | {'VDS_OUT':str(raw),'VDS_TEXT':str(textfile),'VDS_VOICE':cfg.get('systemVoice',''),'VDS_RATE':str(round((rate-1.0)*10)),'VDS_VOLUME':str(round(volume*100))}
+                result = subprocess.run(['powershell','-NoProfile','-NonInteractive','-Command',script],env=env,capture_output=True,text=True)
+                if result.returncode: raise ValueError('Windows system speech failed: '+result.stderr[-500:])
                 finish_system_speech(raw, output, cfg)
             else: raise ValueError('System voices are supported on macOS and Windows.')
             actual = float(probe(output)['format'].get('duration', 0))
             if actual <= 0:
-                raise ValueError('System speech produced no audio. Choose an installed voice in Settings and check macOS speech availability.')
+                raise ValueError('The selected voice produced no audio. Choose an installed Apple or downloaded Piper voice in Settings, then check speech availability.')
             if actual > c['end']-c['start']:
                 raise ValueError(narration_fit_error_message(i+1, actual, c['end']-c['start']))
             if not p.get('narrationVoice'):
@@ -1761,7 +1875,6 @@ def validate_rendered_video(source, output):
 def commit_export(project, relative, output, temporary, video_processing=None):
     """Atomically replace the configured export and keep one project-list entry."""
     emit('Checking exported file', exportProgress=0.96)
-    youtube_audio.check_cancelled()
     if output.suffix.lower() in ('.mov', '.mp4', '.m4v', '.m4a'):
         streams = probe(temporary).get('streams', [])
         def selected_tracks(kind):
@@ -1795,7 +1908,6 @@ def commit_export(project, relative, output, temporary, video_processing=None):
 
 def commit_directory_export(project, relative, output, temporary):
     """Replace one generated export folder without exposing a partial package."""
-    youtube_audio.check_cancelled()
     backup = output.with_name(f'.{output.name}.replaced-{uuid.uuid4().hex}')
     try:
         if output.exists():
@@ -2361,9 +2473,6 @@ def export_youtube_audio(root, project, described=False, replace_existing=False,
         raise ValueError('Import AD audio first.')
     if imported_ad:
         import_assets.require_resolved_timing(project)
-    # Report missing media tools before entering the download worker.
-    tool('ffmpeg')
-    tool('ffprobe')
     relative, output, temporary = prepare_export_target(
         root, project, 'YouTube Studio Audio Description' if described else 'YouTube Audio Only', format, replace_existing
     )
@@ -2984,24 +3093,6 @@ def validate_analysis_prerequisites(command, root, project):
     if command == 'generate-ad-cues' and not project['summary'].strip():
         raise ValueError('Generate the summary first.')
 
-def export_original_video(root, project, replace_existing=False):
-    """Save the local source video unchanged when no captions or AD are selected."""
-    if project.get('sourceType') == 'youtube' or not project.get('source'):
-        raise ValueError('Original video export requires a local source video.')
-    source = local(root, project['source'])
-    extension = source.suffix.lstrip('.').lower() or 'mp4'
-    relative, output, temporary = prepare_export_target(
-        root, project, 'Original Video', extension, replace_existing
-    )
-    try:
-        shutil.copy2(source, temporary)
-        validate_video_stream_copy(source, temporary)
-        commit_export(project, relative, output, temporary, 'copied')
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-
 def dispatch_project(args, root, p):
     if args.command in ('cloud-upload','cloud-remove','cloud-rename'):
         return cloud_video.update(args, root, p, config(), SimpleNamespace(**globals()))
@@ -3103,9 +3194,117 @@ def dispatch_project(args, root, p):
         import_assets.save_summary(p, text, origin)
     elif args.command in parity.COMMANDS: parity.execute(args,root,p,core)
 
+def analysis_source(root, project):
+    copy = project.get('analysisCopy')
+    return local(root, copy['path'] if copy else project['source'])
+
+
+def check_copy_cancellation():
+    if os.name == 'nt':
+        youtube_audio.check_cancelled()
+
+
+def encode_analysis_copy(root, project):
+    source = local(root, project['source'])
+    duration = project['duration']
+    limit = MAX_LOCAL_VIDEO_SIZE_BYTES
+    cfg = config()
+    if cfg.get('aiProvider') == 'vertex' and vertex_ai.express(cfg):
+        models = cfg.get('vertexExpressModels') or {}
+        limit = min(256_000_000 if models.get(stage, 'gemini-3').startswith('gemini-3') else 15_000_000
+                    for stage in ('youtube_transcript', 'summary', 'audio_descriptions'))
+    # Leave room for MP4 tables and encoder variance. Short inputs use a quality cap.
+    target = min(limit * 0.8, source.stat().st_size * 0.45)
+    total_rate = int(8 * target / duration)
+    audio_rate = min(96_000, total_rate // 5) if project['hasAudio'] else 0
+    video_rate = min(1_200_000, total_rate - audio_rate)
+    if video_rate < 12_000:
+        raise import_assets.ImportIssue('Couldn’t Create Smaller AI Copy', 'This video is too long to create a usable AI copy within the analysis limit.')
+    relative = 'analysis/ai-' + uuid.uuid4().hex[:12] + '.mp4'
+    output = local(root, relative)
+    output.parent.mkdir(exist_ok=True)
+    try:
+        for attempt in range(2):
+            message = 'Creating smaller AI copy' if not attempt else 'Retrying smaller AI copy at a lower bitrate'
+            emit(message, progress=0)
+            command = [tool('ffmpeg'), '-nostdin', '-y', '-v', 'error', '-i', source,
+                       '-map', '0:V:0', '-map', '0:a:0?', '-map_metadata', '-1', '-map_chapters', '-1',
+                       '-vf', "scale='min(iw,1280)':'min(ih,720)':force_original_aspect_ratio=decrease:force_divisible_by=2",
+                       '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-crf', '26',
+                       '-maxrate', str(video_rate), '-bufsize', str(video_rate * 2)]
+            if audio_rate:
+                command += ['-c:a', 'aac', '-ac', '2', '-b:a', str(audio_rate)]
+            run([*command, '-movflags', '+faststart', output], timeout=max(3600, duration * 5),
+                export_progress=(duration, 0, 0.9, message), progress_key='progress')
+            check_copy_cancellation()
+            size = output.stat().st_size
+            if 0 < size < min(limit, source.stat().st_size):
+                break
+            video_rate = max(8_000, video_rate // 2)
+        else:
+            raise import_assets.ImportIssue('Couldn’t Create Smaller AI Copy', 'FFmpeg could not make a complete video below the analysis limit.')
+        emit('Verifying smaller AI copy', progress=0.92)
+        info = probe(output)
+        stream = next(s for s in info['streams'] if s['codec_type'] == 'video')
+        audio = next((s for s in info['streams'] if s['codec_type'] == 'audio'), {})
+        actual_duration = float(info['format']['duration'])
+        if not math.isfinite(actual_duration) or abs(actual_duration - duration) > 0.5 or bool(audio) != project['hasAudio']:
+            raise import_assets.ImportIssue('Couldn’t Create Smaller AI Copy', 'The AI copy did not preserve the original duration or audio.')
+        return dict(path=relative, size=size, duration=actual_duration, width=stream['width'],
+                    height=stream['height'], codec=stream['codec_name'], audio=audio.get('codec_name', 'None'))
+    except BaseException:
+        output.unlink(missing_ok=True)
+        raise
+
+
+def regenerate_analysis_copy(root, project):
+    original = local(root, project['source']) if project.get('source') else None
+    if original is None or not original.is_file():
+        raise import_assets.ImportIssue('Couldn’t Create Smaller AI Copy', 'The original video file is unavailable.')
+    folder = root / 'analysis'
+    if folder.is_symlink():
+        raise import_assets.ImportIssue('Couldn’t Create Smaller AI Copy', 'The AI copy folder is a symbolic link.')
+    previous = project.get('analysisCopy')
+    previous_path = local(root, previous['path']) if previous else None
+    manifest = root / 'project.json'
+    saved = json.loads(manifest.read_text(encoding='utf-8'))
+    copy = encode_analysis_copy(root, project)
+    fresh = local(root, copy['path'])
+    try:
+        cloud = project.get('cloudVideo')
+        if cloud and cloud_video.crc32c(fresh) != cloud.get('crc32c'):
+            raise import_assets.ImportIssue('Couldn’t Create Smaller AI Copy', 'The new encode differs from the uploaded AI copy. Remove the project-owned cloud copy before replacing it.')
+        emit('Saving smaller AI copy', progress=0.97)
+        check_copy_cancellation()
+        project['analysisCopy'] = copy
+        project.pop('geminiVideo', None)
+        save(root, project)
+    except BaseException:
+        # The atomic save may have finished just before cancellation arrived.
+        if json.loads(manifest.read_text(encoding='utf-8')).get('analysisCopy') != copy:
+            fresh.unlink(missing_ok=True)
+        raise
+
+    # Retire older generated files only after the validated replacement is published.
+    # Keep the previously referenced copy until the end so a cleanup failure can roll back.
+    try:
+        for candidate in folder.glob('ai-*.mp4'):
+            if (re.fullmatch(r'ai-[0-9a-f]{12}\.mp4', candidate.name) and not candidate.is_symlink()
+                    and candidate not in (fresh, previous_path, original)):
+                candidate.unlink(missing_ok=True)
+        if previous_path is not None and previous_path.parent == folder and previous_path not in (fresh, original):
+            previous_path.unlink(missing_ok=True)
+    except OSError as exc:
+        atomic_json(manifest, saved)
+        fresh.unlink(missing_ok=True)
+        raise import_assets.ImportIssue('Couldn’t Replace Smaller AI Copy', 'Close any player that has the AI copy open and try again.') from exc
+
+
 def import_local_video(args, cloud_reference=None):
     if not args.video or not args.library: raise ValueError('Import requires --video and --library.')
-    ensure_supported_local_video(args.video, cloud=args.command in ('cloud-create', 'cloud-import'))
+    reducing = getattr(args, 'smaller_ai_copy', False)
+    if not reducing:
+        ensure_supported_local_video(args.video, cloud=args.command in ('cloud-create', 'cloud-import'))
     if args.command != 'cloud-import':
         try:
             ensure_unique_local_video(args.library, args.video.name)
@@ -3121,24 +3320,61 @@ def import_local_video(args, cloud_reference=None):
     if not video: raise import_assets.ImportIssue('Video Couldn’t Be Imported', 'The selected file has no video stream.')
     duration=float(info['format'].get('duration',video.get('duration',0)))
     if not math.isfinite(duration) or duration<=0: raise ValueError('The video duration could not be determined.')
-    root=args.library.resolve()/(args.video.stem[:60]+'-'+str(uuid.uuid4())[:8])
+    library = args.library.resolve()
+    destination = library / (args.video.stem[:60] + '-' + str(uuid.uuid4())[:8])
+    library.mkdir(parents=True, exist_ok=True)
+    if reducing:
+        # Keep the unpublished manifest below the library scanner's depth.
+        with tempfile.TemporaryDirectory(dir=library, prefix='.import-') as staging:
+            staged = Path(staging) / 'project'
+            try:
+                write_video_project(args, staged, info, video, duration, cloud_reference, reducing=True)
+                check_copy_cancellation()
+                staged.rename(destination)
+            except BaseException:
+                # Roll back only the generation uploaded by this new project.
+                manifest = staged / 'project.json'
+                if args.command == 'cloud-create' and manifest.is_file():
+                    pending = json.loads(manifest.read_text(encoding='utf-8'))
+                    if pending.get('cloudVideo'):
+                        cloud_video.delete_project_object(config(), pending['id'], pending['cloudVideo'], emit)
+                raise
+    else:
+        write_video_project(args, destination, info, video, duration, cloud_reference, reducing=False)
+    emit('Import complete', project=str(destination), progress=1)
+
+
+def write_video_project(args, root, info, video, duration, cloud_reference, *, reducing):
+    streams = info['streams']
     for folder in ['source','metadata','thumbnails']: (root/folder).mkdir(parents=True,exist_ok=True)
     source='source/'+args.video.name
     emit('Copying source video into local project')
-    shutil.copy2(args.video,root/source)
+    if reducing:
+        with args.video.open('rb') as src, (root/source).open('xb') as dest:
+            while block := src.read(8 * 1024 * 1024):
+                check_copy_cancellation()
+                dest.write(block)
+    else:
+        shutil.copy2(args.video,root/source)
     p=dict(schemaVersion=2,id=str(uuid.uuid4()),name=args.video.stem,source=source,duration=duration,width=video.get('width',0),height=video.get('height',0),hasAudio=any(s['codec_type']=='audio' for s in streams),createdAt=time.time(),updatedAt=time.time(),thumbnails=[],transcript=[],summary='',cues=[],exports=[],exportMediaInfo={},status='Imported',transcriptGenerated=False,summaryGenerated=False,descriptionsGenerated=False)
-    if cloud_reference:
+    if reducing:
+        info['format']['filename'] = source
+        p['analysisCopy'] = encode_analysis_copy(root, p)
+        emit('Saving smaller AI copy', progress=0.97)
+    if cloud_reference and reducing:
+        p['originalCloudVideo'] = cloud_reference
+    elif cloud_reference:
         p.update(sourceType='cloud', cloudVideo=cloud_reference)
     language_results.migrate(p, language_results.default_language(config()))
     atomic_json(root/'metadata/probe.json',info); save(root,p)
-    emit('Project imported',project=str(root))
+    if not reducing: emit('Project imported',project=str(root))
     with project_lock(root):
         thumbnails(root,p)
         cleanup_project_storage(root,p)
         save(root,p)
         if args.command == 'cloud-create':
             cloud_video.update(SimpleNamespace(command='cloud-upload'), root, p, config(), SimpleNamespace(**globals()))
-    emit('Import complete',project=str(root),progress=1); return
+
 
 
 def delete_cloud_project_video(args):
@@ -3167,7 +3403,9 @@ def delete_cloud_project_video(args):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--voice-search', default='')
-    parser.add_argument('command',choices=['cloud-projects','cloud-delete-project-video','cloud-object-permissions','cloud-object-rename','cloud-object-delete','cloud-browse','cloud-preview','cloud-list','cloud-import','cloud-create','vertex-connect','vertex-adopt-google-signin','vertex-disconnect','vertex-check','cloud-upload','cloud-rename','cloud-remove','elevenlabs-settings','preview-sarvam-sample','check-sarvam-key','list-sarvam-models','normalize-speech','check-api-key','reanalyze-transcript-segment','undo-transcript','redo-transcript','reanalyze-segment','prepare-analysis-video','check-video-availability','cleanup-project','clear-generated','delete-generated','delete-segment-audio','list-models','list-voices','preview-tts','import-video','probe-video','generate-thumbnails','transcribe','generate-summary','generate-ad-cues','synthesize-tts','export-final-video','export-selectable-video','export-original-video','export-closed-audio-description-video','export-open-audio-description-video','export-closed-caption-video','export-dual-closed-caption-video','export-open-caption-video','export-original-audio','export-described-audio','export-youtube-described-audio','export-youtube-original-audio','download-youtube-audio','export-hls','save-cues','save-segments','save-summary','doctor',*parity.COMMANDS,*import_assets.COMMANDS,*audio_sources.COMMANDS,*language_results.COMMANDS,*youtube_playback.COMMANDS,'read-youtube-metadata'])
+    parser.add_argument('--smaller-ai-copy', action='store_true')
+    parser.add_argument('--playback-copy', choices=['original','ai'])
+    parser.add_argument('command',choices=['regenerate-ai-copy','set-copy-playback','cloud-projects','cloud-delete-project-video','cloud-object-permissions','cloud-object-rename','cloud-object-delete','cloud-browse','cloud-preview','cloud-list','cloud-import','cloud-create','vertex-connect','vertex-adopt-google-signin','vertex-disconnect','vertex-check','cloud-upload','cloud-rename','cloud-remove','elevenlabs-settings','preview-sarvam-sample','check-sarvam-key','list-sarvam-models','normalize-speech','check-api-key','reanalyze-transcript-segment','undo-transcript','redo-transcript','reanalyze-segment','prepare-analysis-video','check-video-availability','cleanup-project','clear-generated','delete-generated','delete-segment-audio','list-models','list-voices','preview-tts','synthesize-speech','import-video','probe-video','generate-thumbnails','transcribe','generate-summary','generate-ad-cues','synthesize-tts','export-final-video','export-selectable-video','export-closed-audio-description-video','export-open-audio-description-video','export-closed-caption-video','export-dual-closed-caption-video','export-open-caption-video','export-original-audio','export-described-audio','export-youtube-described-audio','export-youtube-original-audio','download-youtube-audio','export-hls','save-cues','save-segments','save-summary','doctor','read-youtube-metadata','expire-youtube-cache',*parity.COMMANDS,*import_assets.COMMANDS,*audio_sources.COMMANDS,*language_results.COMMANDS,*youtube_playback.COMMANDS])
     parser.add_argument('--project',type=Path); parser.add_argument('--video',type=Path); parser.add_argument('--library',type=Path); parser.add_argument('--input',type=Path)
     parser.add_argument('--media-format', choices=VIDEO_EXPORT_FORMATS + AUDIO_EXPORT_FORMATS)
     parser.add_argument('--content',choices=['transcript','summary','descriptions','combined'],default='descriptions'); parser.add_argument('--url'); parser.add_argument('--name'); parser.add_argument('--timestamp',type=float,default=0); parser.add_argument('--duration',type=float); parser.add_argument('--segment'); parser.add_argument('--segments', action='append'); parser.add_argument('--format',choices=['srt','vtt','txt','json','md'],default='srt'); parser.add_argument('--changed',action='store_true'); parser.add_argument('--start-stage',default='transcribe')
@@ -3217,7 +3455,6 @@ def main():
     if args.command == 'vertex-check':
         emit('Vertex AI connection verified', vertexModels=vertex_ai.catalog(config()))
         return
-    if args.command == "export-original-video": args.command = "export-selectable-video"
     if args.language and not (args.command == 'select-overview-language' and args.language == 'project'):
         os.environ['VIDISTUDIO_OUTPUT_LANGUAGE'] = language_results.language(args.language)
     if args.command == 'expire-youtube-cache':
@@ -3243,17 +3480,13 @@ def main():
     if args.command == 'download-youtube-audio':
         if not args.url or not args.output:
             raise ValueError('Choose a YouTube URL and temporary audio folder.')
-        try:
-            youtube_audio.download(args.url, args.output, emit, ffmpeg_path=tool('ffmpeg'))
-        except Exception as error:
-            raise youtube_audio.write_worker_error(args.output, error) from None
-        return
-    if args.command == 'check-api-key':
-        check_api_key(); return
+        youtube_audio.download(args.url, args.output, emit, ffmpeg_path=tool('ffmpeg')); return
     if args.command == 'elevenlabs-settings':
         elevenlabs_tts.execute(args.elevenlabs_action, json.loads(args.elevenlabs_request), emit); return
     if args.command == 'preview-sarvam-sample':
         sarvam_tts.preview_sample(args.sarvam_model, args.sarvam_voice, args.sarvam_language, run, tool('ffmpeg'), emit); return
+    if args.command == 'list-voices':
+        gemini_voices.list_catalog(config(), args.voice_search, emit); return
     if args.command == 'check-sarvam-key':
         sarvam_tts.check_key(emit); return
     if args.command == 'list-sarvam-models':
@@ -3264,10 +3497,12 @@ def main():
         finish_system_speech(args.input, args.output, config()); return
     if args.command == 'preview-tts':
         preview_tts(args.output, args.text); return
+    if args.command == 'synthesize-speech':
+        synthesize_speech(args.output, args.text); return
+    if args.command == 'check-api-key':
+        check_api_key(); return
     if args.command == 'list-models':
         list_models(); return
-    if args.command == 'list-voices':
-        gemini_voices.list_catalog(config(), args.voice_search, emit); return
     core=SimpleNamespace(**globals())
     if args.command in ('import-youtube','validate-config'):
         parity.execute(args,None,None,core);return
@@ -3317,7 +3552,7 @@ def main():
             if not source_bucket:
                 raise ValueError('Choose a source bucket before importing a Cloud Storage video.')
             source_cfg = dict(cfg, vertexBucket=source_bucket)
-            args.video, reference = cloud_video.download(source_cfg, args.name, Path(tmp), vertex_ai.MAX_CLOUD_VIDEO_SIZE_BYTES, emit,
+            args.video, reference = cloud_video.download(source_cfg, args.name, Path(tmp), None if args.smaller_ai_copy else vertex_ai.MAX_CLOUD_VIDEO_SIZE_BYTES, emit,
                                                          generation=args.source_generation, source_project=args.source_project)
             import_local_video(args, reference)
         return
@@ -3329,12 +3564,25 @@ def main():
     if args.command in ('copy-results', 'translate-results'):
         language_results.validate_copy_languages(json.loads(args.input.read_text(encoding='utf-8')), translating=args.command == 'translate-results')
     with project_lock(root):
-        p=migrate_project_schema(root,json.loads((root/'project.json').read_text(encoding='utf-8')))
+        p=migrate_project_schema(root,json.loads((root/'project.json').read_text()))
         if args.command in youtube_metadata.ANALYSIS_COMMANDS and youtube_metadata.is_private(p):
             raise ValueError(youtube_metadata.PRIVATE_ANALYSIS_MESSAGE)
         if args.command in ('inspect-import', 'inspect-original-audio'):
             # Import preflight must not update timestamps or save a migrated manifest.
             dispatch_project(args, root, p)
+            return
+        if args.command in ('regenerate-ai-copy', 'set-copy-playback'):
+            previous = p.get('analysisCopy')
+            if p.get('sourceType') == 'youtube' or (not previous and p.get('cloudVideo')):
+                raise ValueError('Open a local project with an original video available.')
+            if args.command == 'set-copy-playback':
+                if not previous or not args.playback_copy or (args.playback_copy == 'ai' and not analysis_source(root, p).is_file()):
+                    raise ValueError('The selected playback file is unavailable.')
+                p['useAnalysisCopy'] = args.playback_copy == 'ai'
+                save(root, p)
+            else:
+                regenerate_analysis_copy(root, p)
+            emit('AI copy ready' if args.command == 'regenerate-ai-copy' else 'Playback source changed', project=str(root), progress=1)
             return
         if args.command in youtube_playback.COMMANDS:
             youtube_playback.execute(args, root, p, core)

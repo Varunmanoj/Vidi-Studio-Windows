@@ -329,6 +329,8 @@ public sealed partial class MainWindow
         ClearSummaryHighlight(); SummaryRichText.Children.Clear(); summaryLines.Clear(); ReadbackSentence.Text = "";
         ProjectDetails.Children.Clear(); VideoDetails.Children.Clear(); YouTubeInspectorDetails.Children.Clear(); InspectorExports.Children.Clear();
         YouTubeDetailsSection.Visibility = Visibility.Collapsed;
+        AICopySection.Visibility = Visibility.Collapsed;
+        AICopyDetails.Children.Clear();
         Thumbnails.Children.Clear(); Thumbnails.ColumnDefinitions.Clear(); ThumbnailEmpty.Visibility = Visibility.Visible;
         TranscriptTrack.Children.Clear(); DescriptionTrack.Children.Clear(); UpdateTimelineCursor();
         CaptionText.Text = DescriptionCaptionText.Text = ""; CaptionOverlay.Visibility = Visibility.Collapsed;
@@ -860,7 +862,10 @@ public sealed partial class MainWindow
     {
         if (!project.IsYouTube)
         {
-            AddInfo(panel, "Source", Path.GetFileName(project.Source));
+            var label = project.AnalysisCopy != null ? "Original Video File" : "Source";
+            if (panel == VideoDetails && !string.IsNullOrEmpty(project.Source))
+                AddProjectVideoFileRow(panel, project, project.Source, isCopy: false, label: label, value: Path.GetFileName(project.Source));
+            else AddInfo(panel, label, Path.GetFileName(project.Source));
             return;
         }
         var videoID = SharedYouTubeLink.VideoId(project.YoutubeURL);
@@ -919,12 +924,133 @@ public sealed partial class MainWindow
         row.ContextFlyout = menu;
     }
 
+    private Button? originalVideoInformationButton;
+    private Button? analysisCopyInformationButton;
+
+    private void AddProjectVideoFileRow(StackPanel panel, StudioProject project, string path, bool isCopy, string label, string value)
+    {
+        var informationTitle = isCopy ? "Smaller AI Copy Information" : "Original Video Information";
+        var informationId = isCopy ? "ai-copy-file-information" : "original-video-file-information";
+        var row = AddInfo(panel, label, value);
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var info = new Button { Content = Views.MenuIcons.Create(informationId), Padding = new Thickness(5),
+            VerticalAlignment = VerticalAlignment.Top, IsEnabled = ProjectVideoFile(project, path, isCopy) != null };
+        if (isCopy) analysisCopyInformationButton = info; else originalVideoInformationButton = info;
+        AutomationProperties.SetName(info, informationTitle);
+        AutomationProperties.SetAutomationId(info, informationId);
+        ToolTipService.SetToolTip(info, informationTitle);
+        Grid.SetColumn(info, 2);
+        row.Children.Add(info);
+
+        async Task ShowInformation()
+        {
+            if (ProjectVideoFile(project, path, isCopy) == null) return;
+            var dialog = new ContentDialog
+            {
+                Title = informationTitle,
+                Content = new TextBlock { Text = Path.GetFileName(path), TextWrapping = TextWrapping.Wrap },
+                PrimaryButtonText = "Open File",
+                SecondaryButtonText = "Open Folder",
+                CloseButtonText = "Cancel"
+            };
+            var result = await ShowDialogAsync(dialog, 570, 330);
+            if (result is ContentDialogResult.Primary or ContentDialogResult.Secondary)
+                await OpenProjectVideoFileAsync(project, path, isCopy, reveal: result == ContentDialogResult.Secondary);
+        }
+
+        info.Click += async (_, _) => await ShowInformation();
+        var menu = Views.MenuAccessKeys.Create();
+        AddMenuAction(informationTitle, informationId, ShowInformation);
+        AddMenuAction("Open File", isCopy ? "open-ai-copy-file" : "open-original-video-file",
+            () => OpenProjectVideoFileAsync(project, path, isCopy, reveal: false));
+        AddMenuAction("Open Folder", isCopy ? "reveal-ai-copy-file" : "reveal-original-video-file",
+            () => OpenProjectVideoFileAsync(project, path, isCopy, reveal: true));
+        menu.Opening += (_, _) =>
+        {
+            foreach (var item in menu.Items.OfType<MenuFlyoutItem>())
+                item.IsEnabled = ProjectVideoFile(project, path, isCopy) != null;
+        };
+        row.ContextFlyout = menu;
+        info.ContextFlyout = menu;
+
+        void AddMenuAction(string title, string id, Func<Task> action)
+        {
+            var item = new MenuFlyoutItem { Text = title, Tag = id, Icon = Views.MenuIcons.Create(id) };
+            item.Click += async (_, _) => await action();
+            menu.Items.Add(item);
+        }
+    }
+
+    private static bool ShowAnalysisCopyAction(StudioProject project) =>
+        project.CanManageAnalysisCopy && (project.AnalysisCopy == null || OriginalExceedsAnalysisCopyLimit(project));
+
+    private static bool OriginalExceedsAnalysisCopyLimit(StudioProject project)
+    {
+        try
+        {
+            return project.HasLocalSource && new FileInfo(project.Resolve(project.Source)).Length > Views.NewProjectDialog.MaximumLocalVideoBytes;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException) { return false; }
+    }
+
+    private static string? ProjectVideoPath(StudioProject? project, bool isCopy)
+    {
+        if (project == null || project.IsYouTube) return null;
+        var path = isCopy ? project.AnalysisCopy?.Path : project.Source;
+        return string.IsNullOrEmpty(path) ? null : path;
+    }
+
+    private string? ProjectVideoFile(StudioProject project, string path, bool isCopy)
+    {
+        if (!Model.Idle || Model.Project is not { } current || current.Folder != project.Folder ||
+            ProjectVideoPath(current, isCopy) != path) return null;
+        try
+        {
+            var file = current.Resolve(path);
+            return File.Exists(file) ? file : null;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException) { return null; }
+    }
+
+    private async Task OpenProjectVideoFileAsync(StudioProject project, string path, bool isCopy, bool reveal)
+    {
+        if (ProjectVideoFile(project, path, isCopy) is not { } full) return;
+        try
+        {
+            var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(full);
+            if (!reveal)
+            {
+                if (await Launcher.LaunchFileAsync(file)) return;
+            }
+            else
+            {
+                var options = new FolderLauncherOptions();
+                WinRT.Interop.InitializeWithWindow.Initialize(options, WinRT.Interop.WindowNative.GetWindowHandle(this));
+                options.ItemsToSelect.Add(file);
+                if (await Launcher.LaunchFolderPathAsync(Path.GetDirectoryName(full)!, options)) return;
+            }
+        }
+        catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
+        await ShowErrorMessage(isCopy ? "Couldn’t Open the AI Copy" : "Couldn’t Open the Original Video", reveal ? "File Explorer couldn’t show this file." : "Your default video player couldn’t open this file.");
+    }
+
     private async void UpdateInspector(StudioProject p)
     {
         RefreshLanguagePanel();
         UpdateAudioSourcePanel();
         ProjectDetails.Children.Clear(); VideoDetails.Children.Clear(); YouTubeInspectorDetails.Children.Clear(); InspectorExports.Children.Clear();
         YouTubeDetailsSection.Visibility = p.IsYouTube ? Visibility.Visible : Visibility.Collapsed;
+        AICopySection.Visibility = p.CanManageAnalysisCopy ? Visibility.Visible : Visibility.Collapsed;
+        AICopyDetails.Children.Clear();
+        originalVideoInformationButton = analysisCopyInformationButton = null;
+        if (p.AnalysisCopy is { } copy)
+        {
+            AddProjectVideoFileRow(AICopyDetails, p, copy.Path, isCopy: true, label: "AI analysis file", value: copy.Path);
+            AddInfo(AICopyDetails, "AI copy size", FormatInspectorFileSize(copy.Size));
+            AddInfo(AICopyDetails, "AI copy resolution", $"{copy.Width} × {copy.Height}");
+            AddInfo(AICopyDetails, "AI copy duration", NarrationTimeFormat.ProjectDuration(copy.Duration), NarrationTimeFormat.SpokenProjectDuration(copy.Duration));
+            AddInfo(AICopyDetails, "AI copy codecs", $"{copy.Codec} / {copy.Audio}");
+        }
         AddInfo(ProjectDetails, "Name", p.Name); AddInfo(ProjectDetails, "Type", p.IsYouTube ? "YouTube" : p.CloudVideo != null ? "Cloud Storage" : "Local Video");
         AddInfo(ProjectDetails, "Folder", p.Folder);
         if (p.CloudVideo is { } cloud) {
@@ -946,7 +1072,7 @@ public sealed partial class MainWindow
                 cloud.GetValueOrDefault("size"), cloud.GetValueOrDefault("contentType"), cloud.GetValueOrDefault("storageClass"),
                 cloud.GetValueOrDefault("created"), cloud.GetValueOrDefault("updated"));
         }
-        if (!p.IsYouTube && (p.CloudVideo != null || Model.Settings.GetBool("vertexConnected"))) {
+        if (ShowsCloudVideoActions(p)) {
             foreach (var action in CloudActions(p)) {
                 var button = new Button { Content = action.Title };
                 ToolTipService.SetToolTip(button, action.Title);
@@ -955,6 +1081,14 @@ public sealed partial class MainWindow
             }
         }
         AddVideoSourceInformation(VideoDetails, p);
+        if (!p.IsYouTube && p.AnalysisCopy is { } previewCopy)
+        {
+            var copySelected = p.UsesAnalysisCopyForPlayback;
+            var version = copySelected ? "Smaller AI Copy" : "Original Video";
+            var filename = Path.GetFileName(copySelected ? previewCopy.Path : p.Source);
+            var preview = copySelected || p.HasLocalSource ? $"{version} ({filename})" : "Unavailable";
+            AddInfo(VideoDetails, "Preview Source", preview, spokenValue: preview);
+        }
         AddInfo(VideoDetails, "Duration", NarrationTimeFormat.ProjectDuration(p.Duration), NarrationTimeFormat.SpokenProjectDuration(p.Duration));
         AddInfo(VideoDetails, "Resolution", p.IsYouTube && p.Width <= 0 ? "Not available from YouTube" : $"{p.Width} × {p.Height}");
         if (p.IsYouTube) PopulateYouTubeInspector(p);
@@ -975,8 +1109,12 @@ public sealed partial class MainWindow
                         }
                         else if (Value(stream, "codec_type") == "audio") AddInfo(VideoDetails, "Audio", Value(stream, "codec_name") + ", " + Value(stream, "channels") + " channels");
                     }
-                if (doc.RootElement.TryGetProperty("format", out var format)) { AddInfo(VideoDetails, "Container", Value(format, "format_long_name")); if (long.TryParse(Value(format, "size"), out var size)) AddInfo(VideoDetails, "Source size", $"{size / 1048576d:F1} MB"); }
+                if (doc.RootElement.TryGetProperty("format", out var format))
+                    AddInfo(VideoDetails, "Container", Value(format, "format_long_name"));
             }
+            if (p.HasLocalSource) AddInfo(VideoDetails, "Source Size", FormatInspectorFileSize(new FileInfo(p.Resolve(p.Source)).Length));
+            if (p.OriginalCloudVideo is { } original)
+                AddInfo(VideoDetails, "Original bucket object", $"gs://{original.GetValueOrDefault("bucket")}/{original.GetValueOrDefault("object")}");
             PopulateExportGroups(InspectorExports, p);
             UpdateAvailability();
             var bytes = await Task.Run(() => Directory.EnumerateFiles(p.Folder, "*", SearchOption.AllDirectories).Sum(file => new FileInfo(file).Length));
@@ -984,6 +1122,14 @@ public sealed partial class MainWindow
         }
         catch (Exception ex) { Model.Engine.Log(ex.ToString()); }
     }
+    private static string FormatInspectorFileSize(long bytes) => bytes switch
+    {
+        >= 1_000_000_000 => $"{bytes / 1_000_000_000d:0.##} GB",
+        >= 1_000_000 => $"{bytes / 1_000_000d:0.##} MB",
+        >= 1_000 => $"{bytes / 1_000d:0.##} KB",
+        _ => $"{bytes:N0} bytes"
+    };
+
     private static (string Name, string Glyph, int Order) ExportCategoryFor(StudioProject project, string relative)
     {
         var extension = Path.GetExtension(relative).ToLowerInvariant();

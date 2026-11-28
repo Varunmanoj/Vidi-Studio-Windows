@@ -199,6 +199,20 @@
        <TextBlock x:Name="ProjectInformation" Visibility="Collapsed"/>
       </StackPanel>
       <StackPanel Spacing="8"><TextBlock AutomationProperties.HeadingLevel="Level2" Text="Video Information" FontWeight="SemiBold"/><Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10"><StackPanel x:Name="VideoDetails" Spacing="8"/></Border></StackPanel>
+      <StackPanel x:Name="AICopySection" Spacing="8" Visibility="Collapsed">
+       <TextBlock AutomationProperties.HeadingLevel="Level2" Text="Smaller AI Copy" FontWeight="SemiBold"/>
+       <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10">
+        <StackPanel Spacing="8">
+         <StackPanel x:Name="AICopyDetails" Spacing="8"/>
+         <Button x:Name="InspectorManageAICopyButton" Style="{StaticResource InspectorButton}" AutomationProperties.AutomationId="inspector-manage-ai-copy">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+           <FontIcon AutomationProperties.AccessibilityView="Raw" Glyph="&#xE72C;" FontSize="14"/>
+           <TextBlock x:Name="InspectorManageAICopyLabel" TextWrapping="Wrap"/>
+          </StackPanel>
+         </Button>
+        </StackPanel>
+       </Border>
+      </StackPanel>
       <StackPanel x:Name="DescriptionStatisticsSection" Spacing="8" Visibility="Collapsed"><TextBlock AutomationProperties.HeadingLevel="Level2" Text="Audio Description" FontWeight="SemiBold"/><Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10"><StackPanel x:Name="DescriptionStatistics" Spacing="8"/></Border></StackPanel>
       <StackPanel x:Name="YouTubeDetailsSection" Spacing="8" Visibility="Collapsed"><TextBlock AutomationProperties.HeadingLevel="Level2" Text="YouTube Information" FontWeight="SemiBold"/><Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="8" Padding="10"><StackPanel x:Name="YouTubeInspectorDetails" Spacing="8"/></Border></StackPanel>
       <StackPanel x:Name="AudioSourcePanel" Spacing="8" Visibility="Collapsed"/>

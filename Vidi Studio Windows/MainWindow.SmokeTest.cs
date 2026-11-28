@@ -5,9 +5,12 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Input;
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Vidi_Studio_Windows.Services;
@@ -74,6 +77,250 @@ public sealed partial class MainWindow
             observedGenerationAnnouncements = null;
         }
     }
+    private async Task VerifySmallerAICopyAsync(string fixtureFolder)
+    {
+        var work = Path.Combine(Path.GetDirectoryName(fixtureFolder)!, "ai-copy-" + Guid.NewGuid());
+        Directory.CreateDirectory(work);
+        var input = Path.Combine(work, "Camera original.mp4");
+        var library = Path.Combine(work, "library");
+        try
+        {
+            using (var oversized = File.Create(input)) SetSparseTestLength(oversized, 2_150_000_001);
+            foreach (var cloud in new[] { false, true })
+            {
+                var ready = new TaskCompletionSource<ContentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+                void Capture(ContentDialog dialog, Window owner) { if (dialog.Title as string == "Video Is Too Large") ready.TrySetResult(dialog); }
+                Views.WindowedDialog.ReadyToShow += Capture;
+                var checking = Views.NewProjectDialog.CheckVideoSizeAsync(this, Model.Settings, input, asCloud: cloud);
+                try
+                {
+                    var dialog = await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                    var label = cloud ? "Create Smaller AI Copy" : "Cancel";
+                    var button = FindButton(dialog, label) ?? throw new InvalidOperationException("Missing " + label);
+                    var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(button);
+                    ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+                    var expected = cloud ? Views.NewProjectDialog.VideoImportChoice.Reduce : Views.NewProjectDialog.VideoImportChoice.Cancel;
+                    if (await checking.WaitAsync(TimeSpan.FromSeconds(10)) != expected || Directory.Exists(library))
+                        throw new InvalidOperationException("Size dialog did not defer project creation.");
+                }
+                finally
+                {
+                    Views.WindowedDialog.ReadyToShow -= Capture;
+                    if (!checking.IsCompleted && ready.Task.IsCompletedSuccessfully) ready.Task.Result.Hide();
+                }
+            }
+            File.Copy(Path.Combine(fixtureFolder, "source.mp4"), input, overwrite: true);
+            using (var media = File.OpenWrite(input)) media.SetLength(2_000_000);
+            Model.Settings.Set("soundAfterAICopy", true);
+            var plays = CompletionSound.PlayCountForSmokeTest;
+            var events = await Model.RunAsync("import-video", new[] { "--video", input, "--library", library }, needsProject: false);
+            var result = events.LastOrDefault(e => e.Data.TryGetProperty("project", out _));
+            if (result == null) throw new InvalidOperationException("Smaller AI copy import failed. " + Model.Status);
+            Model.Open(result.Data.GetProperty("project").GetString()!);
+            ShowEditor();
+            UpdateDesktopMenuStates();
+            var command = editorMenus.Single(menu => menu.Title == "Project").Items.OfType<MenuFlyoutItem>()
+                .Single(item => Equals(item.Tag, "regenerate-ai-copy"));
+            TextBlock? PreviewSource() => VideoDetails.Children.OfType<Grid>()
+                .Where(row => row.Children.OfType<TextBlock>().Any(item => item.Text == "Preview Source"))
+                .SelectMany(row => row.Children.OfType<TextBlock>()).SingleOrDefault(item => Grid.GetColumn(item) == 1);
+            if (PreviewSource() != null)
+                throw new InvalidOperationException("A single-video project should not show the preview version row.");
+            if (command.Text != "Create Smaller AI Copy" || command.Visibility != Visibility.Visible || command.IsEnabled ||
+                InspectorManageAICopyButton.Visibility != Visibility.Visible || InspectorManageAICopyButton.IsEnabled)
+                throw new InvalidOperationException("The Project menu and inspector must disable Create Smaller AI Copy for a small original.");
+            // Create a copy through the engine to exercise projects saved before the editor size restriction.
+            await Model.RunAsync("regenerate-ai-copy");
+            var project = Model.Project!;
+            var copy = project.AnalysisCopy ?? throw new InvalidOperationException("AI copy metadata missing.");
+            if (copy.Size != new FileInfo(project.Resolve(copy.Path)).Length || copy.Size >= new FileInfo(input).Length ||
+                project.UseAnalysisCopy || CompletionSound.PlayCountForSmokeTest != plays + 1)
+                throw new InvalidOperationException("Incorrect default playback, size or conversion sound.");
+            // Layout creates separate gallery and editor menu bars in addition to the preview context menu.
+            void VerifyPlaybackChoices(bool useCopy)
+            {
+                var originalItems = desktopMenuItems["play-original-video"];
+                var copyItems = desktopMenuItems["play-smaller-ai-copy"];
+                if (originalItems.Count != 3 || copyItems.Count != 3 ||
+                    originalItems.Any(item => item is not ToggleMenuFlyoutItem choice || choice.Text != "Play Original Video" || !choice.IsEnabled || choice.IsChecked == useCopy) ||
+                    copyItems.Any(item => item is not ToggleMenuFlyoutItem choice || choice.Text != "Play Smaller AI Copy" || !choice.IsEnabled || choice.IsChecked != useCopy))
+                    throw new InvalidOperationException("Both playback choices must be listed, with only the active one checked.");
+            }
+            VerifyPlaybackChoices(useCopy: false);
+            foreach (var useCopy in new[] { true, false })
+            {
+                var playbackAction = useCopy ? "play-smaller-ai-copy" : "play-original-video";
+                await RunDesktopCommandAsync(playbackAction);
+                VerifyPlaybackChoices(useCopy);
+                var path = useCopy ? copy.Path : project.Source;
+                var version = useCopy ? "Smaller AI Copy" : "Original Video";
+                var expectedPreview = $"{version} ({Path.GetFileName(path)})";
+                var preview = PreviewSource();
+                if (Model.Project?.UsesAnalysisCopyForPlayback != useCopy ||
+                    Models.StudioProject.Load(project.Folder).UseAnalysisCopy != useCopy ||
+                    loadedPlaybackSource != project.Resolve(path) || preview is null || preview.Text != expectedPreview ||
+                    AutomationProperties.GetName(preview) != "Preview Source: " + expectedPreview)
+                    throw new InvalidOperationException("Preview and player menus did not switch files together.");
+                var saved = File.ReadAllText(project.Resolve("project.json"));
+                await RunDesktopCommandAsync(playbackAction);
+                VerifyPlaybackChoices(useCopy);
+                if (File.ReadAllText(project.Resolve("project.json")) != saved)
+                    throw new InvalidOperationException("Selecting the current playback version must keep the saved project unchanged.");
+            }
+            var section = ((StackPanel)InspectorScrollViewer.Content).Children.OfType<Expander>()
+                .Single(group => group.Content is Views.AccessibilityGroup { Child: var child } && ReferenceEquals(child, AICopySection));
+            var sectionPeer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(section);
+            if (sectionPeer?.GetName() != "Smaller AI Copy" || sectionPeer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.ExpandCollapse)
+                is not Microsoft.UI.Xaml.Automation.Provider.IExpandCollapseProvider disclosure)
+                throw new InvalidOperationException("Smaller AI Copy needs an accessible inspector disclosure.");
+            disclosure.Collapse();
+            if (section.IsExpanded) throw new InvalidOperationException("AI copy section did not collapse.");
+            disclosure.Expand();
+            if (!section.IsExpanded || command.Text != "Regenerate Smaller AI Copy" ||
+                !AICopyDetails.Children.OfType<Grid>().SelectMany(row => row.Children.OfType<TextBlock>()).Any(label =>
+                    label.Text.EndsWith(" KB") || label.Text.EndsWith(" MB")) ||
+                FormatInspectorFileSize(3_256_757_148).Split(' ').Last() != "GB")
+                throw new InvalidOperationException("Copy metadata, units, or regeneration label are missing.");
+            await VerifyVideoFileInformationAsync(project.Source, isCopy: false);
+            await VerifyVideoFileInformationAsync(copy.Path, isCopy: true);
+            if (command.Visibility != Visibility.Collapsed || InspectorManageAICopyButton.Visibility != Visibility.Collapsed ||
+                CanRunDesktopCommand("regenerate-ai-copy") || ShowsCloudVideoActions(project))
+                throw new InvalidOperationException("Small local projects must hide regeneration and cloud actions.");
+
+            var thresholdPath = Path.Combine(work, "threshold.mp4");
+            var threshold = new Models.StudioProject { Folder = work, Source = "threshold.mp4" };
+            using (var file = File.Create(thresholdPath)) SetSparseTestLength(file, 2_000_000_000);
+            if (!ShowAnalysisCopyAction(threshold) || OriginalExceedsAnalysisCopyLimit(threshold))
+                throw new InvalidOperationException("Create Smaller AI Copy must be visible and disabled at exactly 2 GB.");
+            threshold.AnalysisCopy = copy;
+            if (ShowAnalysisCopyAction(threshold)) throw new InvalidOperationException("Regeneration must be hidden at exactly 2 GB.");
+            using (var file = File.OpenWrite(thresholdPath)) file.SetLength(2_000_000_001);
+            if (!ShowAnalysisCopyAction(threshold) || !OriginalExceedsAnalysisCopyLimit(threshold))
+                throw new InvalidOperationException("Regeneration must be offered above 2 GB.");
+
+            var projectManifest = project.Resolve("project.json");
+            const string largeSource = "source/Full-size original.mp4";
+            var largePath = project.Resolve(largeSource);
+            File.Copy(project.Resolve(project.Source), largePath);
+            using (var large = File.OpenWrite(largePath))
+            {
+                const long finalLength = 2_000_000_001;
+                var atom = new byte[8];
+                BinaryPrimitives.WriteUInt32BigEndian(atom, checked((uint)(finalLength - large.Length)));
+                "free"u8.CopyTo(atom.AsSpan(4));
+                large.Position = large.Length;
+                large.Write(atom);
+                SetSparseTestLength(large, finalLength);
+            }
+            var manifest = JsonNode.Parse(File.ReadAllText(projectManifest))!;
+            manifest["source"] = largeSource;
+            manifest["useAnalysisCopy"] = true;
+            File.WriteAllText(projectManifest, manifest.ToJsonString());
+            Model.Open(project.Folder);
+            var oldPath = project.Resolve(copy.Path);
+            foreach (var approve in new[] { false, true })
+            {
+                var ready = new TaskCompletionSource<ContentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+                void Capture(ContentDialog dialog, Window owner) { if (dialog.Title as string == "Regenerate Smaller AI Copy?") ready.TrySetResult(dialog); }
+                var stages = new System.Collections.Generic.HashSet<string>();
+                void Track(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+                {
+                    if (args.PropertyName == nameof(Model.Status) && Model.Busy && Model.AICopyProgress.HasValue)
+                        stages.Add(Model.Status);
+                }
+                Views.WindowedDialog.ReadyToShow += Capture;
+                Model.PropertyChanged += Track;
+                var saved = File.ReadAllText(projectManifest);
+                var operation = RunDesktopCommandAsync("regenerate-ai-copy");
+                try
+                {
+                    var dialog = await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                    if (Model.Busy || !File.Exists(oldPath)) throw new InvalidOperationException("Regeneration started before confirmation.");
+                    var label = approve ? "Regenerate Smaller AI Copy" : "Cancel";
+                    var button = FindButton(dialog, label) ?? throw new InvalidOperationException("Missing " + label);
+                    var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(button);
+                    ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+                    await operation.WaitAsync(TimeSpan.FromSeconds(60));
+                    if (!approve && (File.ReadAllText(projectManifest) != saved || stages.Count != 0))
+                        throw new InvalidOperationException("Cancelling confirmation changed the project.");
+                    if (approve && (Model.Project?.AnalysisCopy is not { } replacement || replacement.Path == copy.Path ||
+                        File.Exists(oldPath) || !File.Exists(project.Resolve(replacement.Path)) ||
+                        !stages.Contains("Verifying smaller AI copy") || !stages.Contains("Saving smaller AI copy") ||
+                        loadedPlaybackSource != project.Resolve(replacement.Path)))
+                        throw new InvalidOperationException("Regeneration must report progress, replace the prior copy and restore the selected preview.");
+                }
+                finally
+                {
+                    Views.WindowedDialog.ReadyToShow -= Capture;
+                    Model.PropertyChanged -= Track;
+                    if (!operation.IsCompleted && ready.Task.IsCompletedSuccessfully) ready.Task.Result.Hide();
+                }
+            }
+        }
+        finally
+        {
+            Model.Open(fixtureFolder);
+            Model.Settings.Set("soundAfterAICopy", true);
+            try { Directory.Delete(work, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    private static void SetSparseTestLength(FileStream file, long length)
+    {
+        const uint setSparse = 0x000900C4;
+        if (!DeviceIoControl(file.SafeFileHandle, setSparse, IntPtr.Zero, 0, IntPtr.Zero, 0, out _, IntPtr.Zero))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        file.SetLength(length);
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DeviceIoControl(Microsoft.Win32.SafeHandles.SafeFileHandle file, uint control,
+        IntPtr input, int inputSize, IntPtr output, int outputSize, out int returned, IntPtr overlapped);
+
+    private async Task VerifyVideoFileInformationAsync(string path, bool isCopy)
+    {
+        var title = isCopy ? "Smaller AI Copy Information" : "Original Video Information";
+        var id = isCopy ? "ai-copy-file-information" : "original-video-file-information";
+        var fileRow = (isCopy ? AICopyDetails : VideoDetails).Children.OfType<Grid>().First();
+        var infoButton = fileRow.Children.OfType<Button>().Single();
+        var projectMenu = editorMenus.Single(menu => menu.Title == "Project");
+        var submenu = projectMenu.Items.OfType<MenuFlyoutSubItem>().Single(item => item.Text == (isCopy ? "Smaller AI Copy" : "Original Video"));
+        if (submenu.Visibility != Visibility.Visible || !submenu.IsEnabled ||
+            !submenu.Items.OfType<MenuFlyoutItem>().Select(item => item.Text).SequenceEqual(new[] { "Open File", "Open Folder" }) ||
+            !projectMenu.Items.OfType<MenuFlyoutItem>().Any(item => item.Text == "Open Project in File Explorer" && item.IsEnabled))
+            throw new InvalidOperationException("Project menu file actions are unavailable.");
+        if (!infoButton.IsEnabled || AutomationProperties.GetAutomationId(infoButton) != id ||
+            AutomationProperties.GetName(infoButton) != title ||
+            fileRow.ContextFlyout is not MenuFlyout menu ||
+            !menu.Items.OfType<MenuFlyoutItem>().Select(item => item.Text)
+                .SequenceEqual(new[] { title, "Open File", "Open Folder" }) ||
+            menu.Items.OfType<MenuFlyoutItem>().Any(item => item.Icon == null))
+            throw new InvalidOperationException("AI copy information needs a named button and matching context menu actions.");
+
+        var ready = new TaskCompletionSource<ContentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Capture(ContentDialog dialog, Window owner)
+        {
+            if (dialog.Title as string == title) ready.TrySetResult(dialog);
+        }
+        Views.WindowedDialog.ReadyToShow += Capture;
+        try
+        {
+            var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(infoButton);
+            ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+            var dialog = await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            if (dialog.Content is not TextBlock text || text.Text != Path.GetFileName(path) ||
+                dialog.PrimaryButtonText != "Open File" || dialog.SecondaryButtonText != "Open Folder" || dialog.CloseButtonText != "Cancel")
+                throw new InvalidOperationException("The native dialog must identify the AI copy and offer both file actions.");
+        }
+        finally
+        {
+            Views.WindowedDialog.ReadyToShow -= Capture;
+            if (ready.Task.IsCompletedSuccessfully) ready.Task.Result.Hide();
+        }
+        await Task.Delay(200);
+    }
+
     private DialogPresentationVerifier? dialogPresentationVerifier;
     private Window? settingsLifetimeTestHost;
     private async Task RunSmokeTestAsync(string report)
@@ -153,6 +400,7 @@ public sealed partial class MainWindow
             ShowEditor();
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY") == "1")
             {
+                await VerifySmallerAICopyAsync(folder);
                 var soundSettings = new Views.SettingsDialog(Model, this, 2);
                 var soundDisplay = soundSettings.ShowAsync();
                 try { await Task.Delay(200); await soundSettings.VerifyExportSoundForSmokeTestAsync(); await soundSettings.VerifySoundPreviewsForSmokeTestAsync(); }

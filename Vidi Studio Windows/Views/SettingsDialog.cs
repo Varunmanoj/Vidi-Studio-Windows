@@ -56,6 +56,7 @@ public sealed partial class SettingsDialog : Window
         NavigateForSmokeTest(2);
         await Task.Delay(150);
         await VerifySoundToggleForSmokeTestAsync(exportSoundControl, "export-completion-sound", "soundAfterExport");
+        await VerifySoundToggleForSmokeTestAsync(copySoundControl, "ai-copy-completion-sound", "soundAfterAICopy");
         await VerifySoundToggleForSmokeTestAsync(generationSoundControl, "generation-completion-sound", "soundAfterGeneration");
         if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "Assets", "Sounds", "descend.wav")))
             throw new InvalidOperationException("Completion WAV was not packaged.");
@@ -87,7 +88,7 @@ public sealed partial class SettingsDialog : Window
     internal async Task VerifySoundPreviewsForSmokeTestAsync()
     {
         NavigateForSmokeTest(2);
-        if (soundPreviewControls.Count != 5) throw new InvalidOperationException("Expected five sound preview buttons.");
+        if (soundPreviewControls.Count != 6) throw new InvalidOperationException("Expected six sound preview buttons.");
         foreach (var (id, controls) in soundPreviewControls)
         {
             void ClickButton()
@@ -706,7 +707,7 @@ public sealed partial class SettingsDialog : Window
                     if (row.Children.Contains(field)) row.Children.Remove(field);
         }
     }
-    private ToggleSwitch? exportSoundControl, generationSoundControl;
+    private ToggleSwitch? exportSoundControl, generationSoundControl, copySoundControl;
     private void BuildNarration(StackPanel panel)
     {
         ReleaseRetainedVoiceFields();
@@ -759,6 +760,7 @@ public sealed partial class SettingsDialog : Window
         AddSoundPreference(narrationGroup, "Sound when synthesized audio is unavailable", "soundWhenNarrationMissing", "ascend", "narration-missing-sound", "narration-missing-sound-menu");
         exportSoundControl = AddSoundPreference(narrationGroup, "Play sound after export", "soundAfterExport", "descend", "export-completion-sound", "export-completion-sound-menu");
         generationSoundControl = AddSoundPreference(narrationGroup, "Play sound after generation", "soundAfterGeneration", "descend", "generation-completion-sound", "generation-completion-sound-menu");
+        copySoundControl = AddSoundPreference(narrationGroup, "Play sound after creating a smaller AI copy", "soundAfterAICopy", "descend", "ai-copy-completion-sound", "ai-copy-completion-sound-menu");
         AddSoundPreference(narrationGroup, "Sound when timing validation fails", "soundWhenTimingInvalid", "Buzzer1", "timing-validation-sound", "timing-validation-sound-menu");
         var speechGroup = AddNarrationGroup(localSpeechControls, "Voice controls");
         speechSliders.Clear();

@@ -75,7 +75,8 @@ public sealed partial class MainWindow
     {
         MenuFlyoutItem Command(string id, bool libraryOnly = false)
         {
-            MenuFlyoutItem item = id is "use-youtube-player" or "use-local-video-player" ? new ToggleMenuFlyoutItem() : new MenuFlyoutItem();
+            MenuFlyoutItem item = id is "use-youtube-player" or "use-local-video-player" or "play-original-video" or "play-smaller-ai-copy"
+                ? new ToggleMenuFlyoutItem() : new MenuFlyoutItem();
             item.Tag = id; item.Text = DesktopCommandTitle(id); item.Icon = DesktopCommandIcon(id);
             if (DesktopShortcuts.TryGetValue(id, out var shortcut)) item.KeyboardAcceleratorTextOverride = shortcut.Text;
             item.Click += async (_, _) =>
@@ -91,6 +92,34 @@ public sealed partial class MainWindow
             if (libraryOnly) libraryOnlyMenuItems.Add(item);
             return item;
         }
+        const string manageAICopy = "regenerate-ai-copy";
+        var inspectorAICopyMenu = Views.MenuAccessKeys.Create();
+        inspectorAICopyMenu.Items.Add(Command(manageAICopy));
+        inspectorAICopyMenu.Opening += (_, _) => UpdateDesktopMenuStates();
+        AICopySection.ContextFlyout = inspectorAICopyMenu;
+        InspectorManageAICopyButton.Click += async (_, _) =>
+        {
+            try { await RunDesktopCommandAsync(manageAICopy); }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { await ShowError(ex); }
+        };
+        var playerMenu = new MenuFlyout();
+        playerMenu.Items.Add(Command("play-original-video"));
+        playerMenu.Items.Add(Command("play-smaller-ai-copy"));
+        playerMenu.Items.Add(Separator());
+        playerMenu.Items.Add(Command("regenerate-ai-copy"));
+        playerMenu.Opening += (_, _) =>
+        {
+            UpdateDesktopMenuStates();
+            NormalizeMenuSeparators(playerMenu.Items);
+        };
+        Player.ContextRequested += (_, args) =>
+        {
+            if (Model.Project is not { IsYouTube: false, AnalysisCopy: not null }) return;
+            if (args.TryGetPosition(Player, out var point)) playerMenu.ShowAt(Player, point);
+            else playerMenu.ShowAt(Player);
+            args.Handled = true;
+        };
         static MenuFlyoutSeparator Separator() => new();
         MenuFlyoutSubItem Submenu(string title, params MenuFlyoutItemBase[] entries)
         {
@@ -129,7 +158,7 @@ public sealed partial class MainWindow
                 Submenu("Editor Sections", Command("transcript"), Command("summary"), Command("descriptions"), Command("ad-transcript"), Command("ad-overview")), Separator(),
                 ProjectLanguageMenu(), Separator(), SavedResultsMenu(), Separator(),
                 Command("preview"),
-                Submenu("Video Player", Command("use-youtube-player"), Command("use-local-video-player"), Separator(), Command("choose-playback-video"), Command("remove-playback-video")),
+                Submenu("Video Player", Command("play-original-video"), Command("play-smaller-ai-copy"), Separator(), Command("regenerate-ai-copy"), Command("use-youtube-player"), Command("use-local-video-player"), Separator(), Command("choose-playback-video"), Command("remove-playback-video")),
                 Command("fullscreen"),
                 Command("toggle-timeline"), Command("toggle-thumbnail-images"),
                 Command("summary-zoom-in"), Command("summary-zoom-out"), Command("summary-zoom-reset"), Command("filter-segments"), Command("clear-segment-filter"),
@@ -148,7 +177,9 @@ public sealed partial class MainWindow
             Menu("Project",
                 Submenu("Cloud Storage", Command("cloud-upload"), Command("cloud-open"), Command("cloud-rename"), Command("cloud-remove")),
                 Command("open-selected-project"), Separator(),
-                Command("language-results"),
+                Submenu("Original Video", Command("open-original-video-file"), Command("reveal-original-video-file")),
+                Submenu("Smaller AI Copy", Command("open-ai-copy-file"), Command("reveal-ai-copy-file")),
+                Command("show-in-finder"), Command("regenerate-ai-copy"), Command("language-results"),
                 Submenu("Editor Sections", Command("transcript"), Command("summary"), Command("descriptions"), Command("ad-transcript"), Command("ad-overview")),
                 Submenu("Segments", Command("segment-edit-mode"), Command("add"), Separator(), Command("reanalyze-selection"),
                     Command("segment-select-all"), Command("segment-deselect-all"), Command("segment-edit-selected"), Command("segment-delete-selected"), Separator(),
@@ -160,7 +191,7 @@ public sealed partial class MainWindow
                     Submenu("Narration Audio", Command("synthesize-tts"), Command("synthesize-changed"), Command("review-narration-issues"), Command("review-narration-voices"), Separator(), Command("delete-narration"))),
                 Command("delete-current"), Separator(),
                 Submenu("Import", Command("import-transcript"), Command("import-summary"), Command("import-descriptions"), Command("import-original-audio"), Command("remove-original-audio"), Command("choose-playback-video"), Command("remove-playback-video"), Command("import-ad-audio"), Separator(), Command("import-assets")),
-                Command("show-in-finder"), Command("open-configuration"),
+                Command("open-configuration"),
                 Separator(), Command("rename-project"), Command("trash-project")),
             Menu("YouTube", Command("youtube-browser"), Command("youtube-accounts"), Separator(), Command("youtube-list"), Command("youtube-table"), Separator(), Command("youtube-open-editor"), Command("youtube-open-direct"), Command("youtube-open-browser"), Command("youtube-open-studio"), Command("youtube-project-open-studio"), Separator(), Command("youtube-refresh-list"), Command("youtube-load-videos"), Command("youtube-load-playlists")),
             Menu("Help", Command("help"), Command("website"), Command("about"))
@@ -529,8 +560,8 @@ public sealed partial class MainWindow
         RefreshSavedResultMenus();
         foreach (var (_, group) in desktopMenuGroups.Where(entry => entry.Name == "Video Player"))
         {
-            group.Visibility = desktopEditorVisible && Model.Project?.IsYouTube == true ? Visibility.Visible : Visibility.Collapsed;
-            group.IsEnabled = Model.Project is { } project && CanChangeYouTubePlayback(project);
+            group.Visibility = desktopEditorVisible && (Model.Project?.IsYouTube == true || Model.Project?.AnalysisCopy != null) ? Visibility.Visible : Visibility.Collapsed;
+            group.IsEnabled = Model.Project is { } project && (CanChangeYouTubePlayback(project) || (Model.Idle && project.AnalysisCopy != null));
         }
         foreach (var (id, items) in desktopMenuItems)
             foreach (var item in items)
@@ -542,11 +573,26 @@ public sealed partial class MainWindow
                 var enabled = CanRunDesktopCommand(id);
                 if (item.IsEnabled != enabled) item.IsEnabled = enabled;
                 if (item is ToggleMenuFlyoutItem choice)
-                    choice.IsChecked = id == "use-youtube-player" ? Model.Project?.UsesYouTubePlayer == true : Model.Project?.ActiveLocalYouTubePlaybackPath != null;
+                    choice.IsChecked = id switch
+                    {
+                        "play-original-video" => Model.Project is { HasLocalSource: true, UsesAnalysisCopyForPlayback: false },
+                        "play-smaller-ai-copy" => Model.Project?.UsesAnalysisCopyForPlayback == true,
+                        "use-youtube-player" => Model.Project?.UsesYouTubePlayer == true,
+                        _ => Model.Project?.ActiveLocalYouTubePlaybackPath != null
+                    };
                 item.Visibility = (libraryOnlyMenuItems.Contains(item) ? !desktopEditorVisible : LibraryCommandVisible(id)) ? Visibility.Visible : Visibility.Collapsed;
                 if (libraryOnlyMenuItems.Contains(item) && !LibraryCommandVisible(id)) item.Visibility = Visibility.Collapsed;
                 if (id == "open-configuration" && !Model.Settings.GetBool("developerMode")) item.Visibility = Visibility.Collapsed;
             }
+        var copyTitle = DesktopCommandTitle("regenerate-ai-copy");
+        InspectorManageAICopyLabel.Text = copyTitle;
+        AutomationProperties.SetName(InspectorManageAICopyButton, copyTitle);
+        ToolTipService.SetToolTip(InspectorManageAICopyButton, copyTitle);
+        InspectorManageAICopyButton.Visibility = Model.Project is { } copyProject && ShowAnalysisCopyAction(copyProject)
+            ? Visibility.Visible : Visibility.Collapsed;
+        InspectorManageAICopyButton.IsEnabled = CanRunDesktopCommand("regenerate-ai-copy");
+        if (originalVideoInformationButton != null) originalVideoInformationButton.IsEnabled = CanRunDesktopCommand("open-original-video-file");
+        if (analysisCopyInformationButton != null) analysisCopyInformationButton.IsEnabled = CanRunDesktopCommand("open-ai-copy-file");
         InspectorOpenConfigurationButton.Visibility = Model.Settings.GetBool("developerMode") ? Visibility.Visible : Visibility.Collapsed;
         InspectorOpenConfigurationButton.IsEnabled = CanRunDesktopCommand("open-configuration");
         if (RenameProjectTitleButton != null)
@@ -579,14 +625,25 @@ public sealed partial class MainWindow
         foreach (var (name, group) in desktopMenuGroups)
         {
             if (name == "Video Player") continue;
+            if (name is "Original Video" or "Smaller AI Copy")
+            {
+                var open = name == "Original Video" ? "open-original-video-file" : "open-ai-copy-file";
+                group.Visibility = desktopEditorVisible && EditorCommandVisible(open) ? Visibility.Visible : Visibility.Collapsed;
+                group.IsEnabled = CanRunDesktopCommand(open);
+                continue;
+            }
             group.IsEnabled = desktopEditorVisible && Model.Project != null && (Model.Idle || ((name is "Narration" or "Narration Audio") && Model.IsSynthesizingNarration));
             group.Visibility = desktopEditorVisible
                 ? (name is "Filter Projects by Source" or "Sort Projects" ? Visibility.Collapsed : Visibility.Visible)
                 : (name is "Filter Projects by Source" or "Sort Projects" or "Analysis" ? Visibility.Visible : Visibility.Collapsed);
             if (name is "Filter Projects by Source" or "Sort Projects") group.IsEnabled = !desktopEditorVisible;
             if (name == "Analysis" && !desktopEditorVisible) group.IsEnabled = SelectedGalleryProject() != null && Model.Idle;
-            if (name == "Cloud Storage" && desktopEditorVisible)
-                group.Visibility = Model.Project?.CloudConsoleUrl != null ? Visibility.Visible : Visibility.Collapsed;
+            if (name == "Cloud Storage")
+            {
+                var visible = ProjectManagementTarget() is { } target && ShowsCloudVideoActions(target);
+                group.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+                group.IsEnabled = visible && Model.Idle;
+            }
             if (name == "Summary Reading") {
                 group.Visibility = desktopEditorVisible && Section.SelectedIndex == 1 && !summaryEditMode ? Visibility.Visible : Visibility.Collapsed;
                 group.IsEnabled &= !summaryEditMode;
@@ -643,14 +700,7 @@ public sealed partial class MainWindow
         if ((id is "delete-project" or "trash-project") && !CanDeleteProjectVideo(ProjectManagementTarget())) return false;
         if (id.StartsWith("cloud-"))
         {
-            var project = ProjectManagementTarget();
-            return id switch
-            {
-                "cloud-upload" => !desktopEditorVisible && Model.Settings.GetBool("vertexConnected"),
-                "cloud-rename" => VerifiedCloudPermissions(project).Rename,
-                "cloud-remove" => VerifiedCloudPermissions(project).Delete,
-                _ => project?.CloudVideo != null
-            };
+            return ProjectManagementTarget() is { } project && CloudActions(project).Any(action => action.Id == id);
         }
         if (id == "youtube-browser") return !desktopEditorVisible && youtubeBrowserCanRun == null;
         if (id.StartsWith("youtube-", StringComparison.Ordinal)) {
@@ -747,6 +797,10 @@ public sealed partial class MainWindow
             "youtube-details" or "youtube-refresh" or "youtube-project-open-studio" => Model.Project?.IsYouTube == true,
             "import-original-audio" => Model.Project?.IsYouTube == true,
             "remove-original-audio" => Model.Project is { IsYouTube: true, OriginalAudio: not null },
+            "open-original-video-file" or "reveal-original-video-file" => ProjectVideoPath(Model.Project, isCopy: false) != null,
+            "open-ai-copy-file" or "reveal-ai-copy-file" => ProjectVideoPath(Model.Project, isCopy: true) != null,
+            "play-original-video" or "play-smaller-ai-copy" => Model.Project?.IsYouTube != true && Model.Project?.AnalysisCopy != null,
+            "regenerate-ai-copy" => Model.Project is { } project && ShowAnalysisCopyAction(project),
             "use-youtube-player" or "use-local-video-player" => Model.Project?.IsYouTube == true,
             "choose-playback-video" => Model.Project?.IsYouTube == true,
             "remove-playback-video" => Model.Project is { IsYouTube: true, YouTubePlaybackVideo: not null },
@@ -851,7 +905,7 @@ public sealed partial class MainWindow
     private bool CanRunDesktopCommand(string id)
     {
         if (id.StartsWith("cloud-"))
-            return ProjectManagementTarget() is { } cloudProject && Model.Idle && !cloudProject.IsYouTube && (cloudProject.CloudVideo != null || Model.Settings.GetBool("vertexConnected")) && CloudActions(cloudProject).Any(a=>a.Id==id);
+            return ProjectManagementTarget() is { } cloudProject && Model.Idle && CloudActions(cloudProject).Any(action => action.Id == id);
         if (validationShowcaseActive) return false;
         if (windowClosed) return false;
         if (id == "focus-search") return !searchOpening && (desktopEditorVisible ? EditorSearch.Visibility == Visibility.Visible && Model.Project != null : GallerySearchHost.Visibility == Visibility.Visible);
@@ -922,6 +976,13 @@ public sealed partial class MainWindow
             case "import-descriptions":
             case "import-ad-audio":
                 return !p.IntegrityPlaceholder && p.Integrity?.ManifestUnreadable != true && p.Integrity?.FolderMissing != true;
+            case "open-original-video-file":
+            case "reveal-original-video-file": return ProjectVideoFile(p, p.Source, isCopy: false) != null;
+            case "open-ai-copy-file":
+            case "reveal-ai-copy-file": return p.AnalysisCopy is { } copy && ProjectVideoFile(p, copy.Path, isCopy: true) != null;
+            case "play-original-video": return Model.Idle && p.AnalysisCopy != null && p.HasLocalSource;
+            case "play-smaller-ai-copy": return Model.Idle && p.HasAnalysisCopyFile;
+            case "regenerate-ai-copy": return Model.Idle && p.CanManageAnalysisCopy && OriginalExceedsAnalysisCopyLimit(p) && !summaryEditMode;
             case "use-youtube-player": case "use-local-video-player": return p.CanChooseYouTubePlayer && CanChangeYouTubePlayback(p);
             case "choose-playback-video": return CanChooseYouTubePlaybackVideo(p);
             case "remove-playback-video": return p.YouTubePlaybackVideo != null && CanChangeYouTubePlayback(p);
@@ -1054,6 +1115,13 @@ public sealed partial class MainWindow
             "youtube-browser" => "My YouTube Videos…", "youtube-details" => "Video Details…", "youtube-refresh" => "Refresh YouTube Details", "youtube-captions" => "Import YouTube Captions…",
             "import-transcript" => "Import Transcript…", "import-summary" => "Import Summary…",
             "import-descriptions" => "Import Descriptions…", "import-assets" => "Import Existing Assets…",
+            "open-original-video-file" => "Open File",
+            "open-ai-copy-file" => "Open File",
+            "reveal-original-video-file" => "Open Folder",
+            "reveal-ai-copy-file" => "Open Folder",
+            "play-original-video" => "Play Original Video",
+            "play-smaller-ai-copy" => "Play Smaller AI Copy",
+            "regenerate-ai-copy" => Model.Project?.AnalysisCopy == null ? "Create Smaller AI Copy" : "Regenerate Smaller AI Copy",
             "use-youtube-player" => "YouTube Player", "use-local-video-player" => "Local Video Player",
             "choose-playback-video" => "Choose Local Playback Video…", "remove-playback-video" => "Remove Local Playback Video…",
             "import-original-audio" => "Import Original Audio…", "remove-original-audio" => "Remove Original Audio…", "import-ad-audio" => "Import AD Audio…",
@@ -1067,7 +1135,7 @@ public sealed partial class MainWindow
             "sort-duration-asc" => "Duration — Shortest First",
             "sort-duration-desc" => "Duration — Longest First",
             "sort-origin" => "Origin",
-            "show-in-finder" => "Show Project in File Explorer", "open-configuration" => "Open Project Configuration",
+            "show-in-finder" => "Open Project in File Explorer", "open-configuration" => "Open Project Configuration",
             "rename-project" => "Rename Project…", "trash-project" => "Move Project to Recycle Bin…", _ => id
         };
     }
@@ -1136,7 +1204,8 @@ public sealed partial class MainWindow
             "new-project" or "add" => "New project", "open-project" or "show-in-finder" => "Open project folder",
             "Import" => "Import", "import-assets" => "Import existing assets", "import-transcript" => "Import transcript",
             "import-summary" => "Import summary", "import-descriptions" => "Import descriptions", "filter-segments" => "Filter segments",
-            "choose-playback-video" or "remove-playback-video" or "remove-original-audio" or "use-youtube-player" or "use-local-video-player" or "Video Player" => id,
+            "choose-playback-video" or "remove-playback-video" or "remove-original-audio" or "use-youtube-player" or "use-local-video-player" or "play-original-video" or "play-smaller-ai-copy" or "regenerate-ai-copy" or "Video Player" or "Original Video" or "Smaller AI Copy"
+                or "open-original-video-file" or "reveal-original-video-file" or "open-ai-copy-file" or "reveal-ai-copy-file" => id,
             "import-original-audio" => "Import original audio", "import-ad-audio" => "Import AD audio",
             "Sort Segments" => "Sort segments",
             "sort-start" => "Sort by start time", "sort-duration-asc" => "Shortest duration first",
@@ -1345,6 +1414,23 @@ public sealed partial class MainWindow
             case "import-summary": await ImportExistingAssetsAsync(Models.ImportScope.Summary); break;
             case "import-descriptions": await ImportExistingAssetsAsync(Models.ImportScope.Descriptions); break;
             case "use-youtube-player": await SelectYouTubePlayerAsync(embedded: true); break;
+            case "open-original-video-file":
+            case "reveal-original-video-file":
+            case "open-ai-copy-file":
+            case "reveal-ai-copy-file":
+                if (Model.Project is { } videoProject)
+                {
+                    var isCopy = id.EndsWith("ai-copy-file", StringComparison.Ordinal);
+                    var path = isCopy ? videoProject.AnalysisCopy?.Path : videoProject.Source;
+                    if (path != null) await OpenProjectVideoFileAsync(videoProject, path, isCopy, reveal: id.StartsWith("reveal-", StringComparison.Ordinal));
+                }
+                break;
+            case "play-original-video": case "play-smaller-ai-copy":
+                var useCopy = id == "play-smaller-ai-copy";
+                if (Model.Project?.UsesAnalysisCopyForPlayback != useCopy)
+                    await Model.RunAsync("set-copy-playback", new[] { "--playback-copy", useCopy ? "ai" : "original" });
+                break;
+            case "regenerate-ai-copy": await CreateOrRegenerateAnalysisCopyAsync(); break;
             case "use-local-video-player": await SelectYouTubePlayerAsync(embedded: false); break;
             case "choose-playback-video": await ChangeYouTubePlaybackAsync(remove: false); break;
             case "remove-playback-video": await ChangeYouTubePlaybackAsync(remove: true); break;

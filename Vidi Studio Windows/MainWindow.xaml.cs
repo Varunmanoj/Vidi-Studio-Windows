@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -10,6 +11,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Vidi_Studio_Windows.Models;
@@ -92,6 +94,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         InitializeEditorShortcutTooltips();
         Model.ConfirmCloudAction = Confirm;
+        Model.ConfirmRegeneration = ConfirmRegenerationAsync;
         EditorSearch.TextChanging += (_, _) => UpdateEditorSearch();
         ProjectSplitView.RegisterPropertyChangedCallback(SplitView.IsPaneOpenProperty, (_, _) => SyncPanelVisibilityToggles());
         InspectorSplitView.RegisterPropertyChangedCallback(SplitView.IsPaneOpenProperty, (_, _) => SyncPanelVisibilityToggles());
@@ -185,7 +188,10 @@ public sealed partial class MainWindow : Window
         Activated += (_, args) => {
             searchAnnouncementWindowActive = args.WindowActivationState != WindowActivationState.Deactivated;
             ConnectivityService.Shared.Active = args.WindowActivationState != WindowActivationState.Deactivated;
-            if (ConnectivityService.Shared.Active) ConnectivityService.Shared.Check();
+            if (ConnectivityService.Shared.Active) {
+                ConnectivityService.Shared.Check();
+                QueueGenerationAnnouncement();
+            }
             if (ready) RefreshProjectIntegrity();
         };
         Closed += (_, _) =>
@@ -289,9 +295,11 @@ public sealed partial class MainWindow : Window
         var cloudImport = desktopEditorVisible && !editorBusy ? CloudImportActivity.Current : default;
         var importing = cloudImport.Message != null;
         StatusText.Visibility = deleting || importing ? Visibility.Collapsed : Visibility.Visible;
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetLiveSetting(StatusText, ActiveExports.IsShowingProcessing
-            ? Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Off
-            : Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
+        var liveSetting = Model.GenerationAnnouncementStage != null
+            ? AutomationLiveSetting.Off : AutomationLiveSetting.Polite;
+        AutomationProperties.SetLiveSetting(StatusText, ActiveExports.IsShowingProcessing
+            ? AutomationLiveSetting.Off : liveSetting);
+        AutomationProperties.SetLiveSetting(SectionProcessingTitle, liveSetting);
         if (StatusRing != null)
         {
             StatusRing.IsActive = editorBusy || (importing && cloudImport.Fraction == null);
@@ -343,7 +351,35 @@ public sealed partial class MainWindow : Window
         }
         UpdateSectionOverlay(analyzing);
         UpdateDesktopMenuStates();
+        QueueGenerationAnnouncement();
     }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+    private bool generationAnnouncementQueued;
+
+    private void QueueGenerationAnnouncement()
+    {
+        if (generationAnnouncementQueued || !ready || windowClosed || !desktopEditorVisible ||
+            Model.GenerationAnnouncementStage == null || !StatusRing.IsActive) return;
+        // Let WinUI lay out the spinner first and only announce from the visible foreground editor.
+        generationAnnouncementQueued = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            generationAnnouncementQueued = false;
+            if (!ready || windowClosed || !desktopEditorVisible || !StatusStageTitle.IsLoaded ||
+                !StatusRing.IsActive || StatusRing.Visibility != Visibility.Visible ||
+                StatusStageTitle.Visibility != Visibility.Visible ||
+                GetForegroundWindow() != WinRT.Interop.WindowNative.GetWindowHandle(this) ||
+                FrameworkElementAutomationPeer.CreatePeerForElement(StatusStageTitle) is not { } peer ||
+                Model.TakeGenerationAnnouncement() is not { } message) return;
+            peer.RaiseNotificationEvent(AutomationNotificationKind.Other,
+                AutomationNotificationProcessing.ImportantAll, message, "generation-processing");
+#if DEBUG
+            observedGenerationAnnouncements?.Add(message);
+#endif
+        });
+    }
+
     private void UpdateSectionOverlay(bool analyzing)
     {
         if (!ready || SectionProcessingRing == null || SectionProcessingOverlay == null) return;
@@ -430,6 +466,20 @@ public sealed partial class MainWindow : Window
     private Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog, int width = 680, int height = 460)
         => Views.WindowedDialog.ShowAsync(dialog, this, width, height);
     private async Task<bool> Confirm(string title, string text, string action = "Continue") => await ShowDialogAsync(Dialog(title, DialogMessage(text), action)) == ContentDialogResult.Primary;
+    private async Task<bool> ConfirmRegenerationAsync(string title, string message, string action)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, MaxWidth = 400 },
+            PrimaryButtonText = action,
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close
+        };
+        return await Views.WindowedDialog.ShowAsync(dialog, this, announcement: title + " " + message)
+            == ContentDialogResult.Primary;
+    }
+
     internal static async Task<bool> ConfirmPrivateYouTubeOpenAsync(Window owner) =>
         await Views.WindowedDialog.ShowAsync(new ContentDialog
         {

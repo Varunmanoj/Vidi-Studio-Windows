@@ -224,6 +224,24 @@ public sealed class StudioProject : INotifyPropertyChanged
     [JsonIgnore] public bool OverviewMatchesEditingResult => OverviewLanguageCode == SelectedLanguage;
     public string SectionLanguage(string kind) => SelectedLanguage;
     public string OperationLanguage(string command) => SelectedLanguage;
+    internal static string? GenerationResultKind(string command) => command switch
+    {
+        "transcribe" => "transcript",
+        "generate-summary" => "summary",
+        "generate-ad-cues" => "descriptions",
+        _ => null
+    };
+
+    internal bool HasSavedGenerationResult(string command, string? language = null)
+    {
+        if (GenerationResultKind(command) is not { } kind) return false;
+        var destination = language ?? OperationLanguage(command);
+        if (SavedResults.Any(result => result.Kind == kind && result.Language == destination && result.State == "saved"))
+            return true;
+        // Older projects can mark an empty, generated transcript without a result record.
+        return LanguageResults == null && destination == "auto" && kind == "transcript" &&
+            Extra?.TryGetValue("transcriptGenerated", out var flag) == true && flag.ValueKind == JsonValueKind.True;
+    }
     [JsonIgnore] public IReadOnlyList<string> AvailableViewingLanguages => SavedResults.Select(r => r.Language).Distinct().OrderBy(v => v).ToList();
     [JsonIgnore] public IReadOnlyList<string> DeletionLanguages => SavedResults.Select(r => r.Language)
         .Concat(Exports.SelectMany(path => ExportResults.TryGetValue(path, out var provenance)

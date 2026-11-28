@@ -55,13 +55,21 @@ public sealed partial class SettingsDialog : Window
     {
         NavigateForSmokeTest(2);
         await Task.Delay(150);
-        var sound = exportSoundControl ?? throw new InvalidOperationException("Missing export sound control.");
+        await VerifySoundToggleForSmokeTestAsync(exportSoundControl, "export-completion-sound", "soundAfterExport");
+        await VerifySoundToggleForSmokeTestAsync(generationSoundControl, "generation-completion-sound", "soundAfterGeneration");
+        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "Assets", "Sounds", "descend.wav")))
+            throw new InvalidOperationException("Completion WAV was not packaged.");
+    }
+
+    private async Task VerifySoundToggleForSmokeTestAsync(ToggleSwitch? sound, string id, string key)
+    {
+        if (sound == null) throw new InvalidOperationException("Missing sound control: " + id);
         sound.StartBringIntoView();
         await Task.Delay(150);
         var menu = sound.ContextFlyout as MenuFlyout ?? throw new InvalidOperationException("Missing export sound context menu.");
-        var item = menu.Items.OfType<ToggleMenuFlyoutItem>().Single(choice => choice.Tag as string == "export-completion-sound-menu");
+        var item = menu.Items.OfType<ToggleMenuFlyoutItem>().Single(choice => choice.Tag as string == id + "-menu");
         var original = sound.IsOn;
-        if (original != SettingsStore.GetBool(draft["soundAfterExport"], true)) throw new InvalidOperationException("Export sound default differs.");
+        if (original != SettingsStore.GetBool(draft[key], true)) throw new InvalidOperationException("Export sound default differs.");
         menu.ShowAt(sound);
         await Task.Delay(100);
         if (item.IsChecked != original) throw new InvalidOperationException("Export sound menu check differs.");
@@ -70,47 +78,45 @@ public sealed partial class SettingsDialog : Window
         var provider = (Microsoft.UI.Xaml.Automation.Provider.IToggleProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Toggle);
         provider.Toggle();
         // Toggle via automation invokes the same Click handler as menu activation.
-        if (sound.IsOn != item.IsChecked || SettingsStore.GetBool(draft["soundAfterExport"], true) != item.IsChecked)
+        if (sound.IsOn != item.IsChecked || SettingsStore.GetBool(draft[key], true) != item.IsChecked)
             throw new InvalidOperationException("Export sound menu did not update the shared setting.");
         sound.IsOn = !original;
-        if (SettingsStore.GetBool(draft["soundAfterExport"], true) == original) throw new InvalidOperationException("Export sound control did not update setting.");
+        if (SettingsStore.GetBool(draft[key], true) == original) throw new InvalidOperationException("Export sound control did not update setting.");
         sound.IsOn = original;
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "Assets", "Sounds", "descend.wav")))
-            throw new InvalidOperationException("Export completion WAV was not packaged.");
     }
     internal async Task VerifySoundPreviewsForSmokeTestAsync()
     {
         NavigateForSmokeTest(2);
-        if (soundPreviewControls.Count != 4) throw new InvalidOperationException("Expected four sound preview buttons.");
-        foreach (var (resource, controls) in soundPreviewControls)
+        if (soundPreviewControls.Count != 5) throw new InvalidOperationException("Expected five sound preview buttons.");
+        foreach (var (id, controls) in soundPreviewControls)
         {
             void ClickButton()
             {
                 var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(controls.Button);
                 ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
             }
-            var original = SettingsStore.GetBool(draft["soundAfterExport"], true);
-            draft["soundAfterExport"] = false;
+            var original = SettingsStore.GetBool(draft[controls.Key], true);
+            draft[controls.Key] = false;
             ClickButton();
-            if (!soundPreview.IsPlaying(resource) || controls.Button.Content is not SymbolIcon { Symbol: Symbol.Pause } || !controls.Menu.Text.StartsWith("Pause sound:"))
-                throw new InvalidOperationException("Preview did not become Pause: " + resource);
+            if (!soundPreview.IsPlaying(id) || controls.Button.Content is not SymbolIcon { Symbol: Symbol.Pause } || !controls.Menu.Text.StartsWith("Pause sound:"))
+                throw new InvalidOperationException("Preview did not become Pause: " + id);
             ClickButton();
             if (soundPreview.Playing || controls.Button.Content is not SymbolIcon { Symbol: Symbol.Play })
-                throw new InvalidOperationException("Preview did not pause: " + resource);
+                throw new InvalidOperationException("Preview did not pause: " + id);
             await Task.Delay(200);
-            if (soundPreview.Resource != resource || soundPreview.Playing) throw new InvalidOperationException("Paused preview lost its position.");
+            if (soundPreview.ActiveId != id || soundPreview.Playing) throw new InvalidOperationException("Paused preview lost its position.");
             var menuPeer = new Microsoft.UI.Xaml.Automation.Peers.MenuFlyoutItemAutomationPeer(controls.Menu);
             ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)menuPeer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
-            if (!soundPreview.IsPlaying(resource)) throw new InvalidOperationException("Menu did not resume preview.");
-            for (var attempt = 0; attempt < 150 && soundPreview.Resource != null; attempt++) await Task.Delay(20);
-            if (soundPreview.Resource != null || controls.Button.Content is not SymbolIcon { Symbol: Symbol.Play } || !controls.Menu.Text.StartsWith("Play sound:"))
-                throw new InvalidOperationException("Finished preview did not reset to Play: " + resource);
-            if (SettingsStore.GetBool(draft["soundAfterExport"], true)) throw new InvalidOperationException("Preview changed the toggle.");
-            draft["soundAfterExport"] = original;
+            if (!soundPreview.IsPlaying(id)) throw new InvalidOperationException("Menu did not resume preview.");
+            for (var attempt = 0; attempt < 150 && soundPreview.ActiveId != null; attempt++) await Task.Delay(20);
+            if (soundPreview.ActiveId != null || controls.Button.Content is not SymbolIcon { Symbol: Symbol.Play } || !controls.Menu.Text.StartsWith("Play sound:"))
+                throw new InvalidOperationException("Finished preview did not reset to Play: " + id);
+            if (SettingsStore.GetBool(draft[controls.Key], true)) throw new InvalidOperationException("Preview changed the toggle.");
+            draft[controls.Key] = original;
         }
-        soundPreview.Toggle("descend");
+        soundPreview.Toggle("generation-completion-sound", "descend");
         NavigateForSmokeTest(0);
-        if (soundPreview.Resource != null) throw new InvalidOperationException("Leaving Narration did not stop its preview.");
+        if (soundPreview.ActiveId != null) throw new InvalidOperationException("Leaving Narration did not stop its preview.");
     }
     internal async Task VerifyProviderSwitchingAsync()
     {
@@ -244,7 +250,7 @@ public sealed partial class SettingsDialog : Window
     private readonly JsonObject draft;
     private readonly MediaPlayer samplePlayer = new();
     private readonly SettingsSoundPreview soundPreview;
-    private readonly Dictionary<string, (Button Button, MenuFlyoutItem Menu, string Label)> soundPreviewControls = new();
+    private readonly Dictionary<string, (Button Button, MenuFlyoutItem Menu, string Label, string Key)> soundPreviewControls = new();
     private bool voiceWarningOpen;
     private readonly VoiceSelectionWarning voiceSelectionWarning = new();
     internal static ContentDialog VoiceConnectionDialog(OnlineService service, string reason) => new() {
@@ -652,21 +658,21 @@ public sealed partial class SettingsDialog : Window
         var menu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         var choice = new ToggleMenuFlyoutItem { Text = label, Tag = menuId, Icon = new FontIcon { Glyph = "\uE767" } };
         var previewItem = new MenuFlyoutItem { Tag = id + "-preview-menu", Icon = new FontIcon { Glyph = "\uE768" } };
-        previewItem.Click += (_, _) => ToggleSoundPreview(resource);
+        previewItem.Click += (_, _) => ToggleSoundPreview(id, resource);
         menu.Opening += (_, _) => { choice.IsChecked = toggle.IsOn; UpdateSoundPreviewControls(); };
         choice.Click += (_, _) => toggle.IsOn = choice.IsChecked;
         menu.Items.Add(choice); menu.Items.Add(previewItem);
         toggle.ContextFlyout = menu;
         var preview = new Button { Width = 36, Height = 36, VerticalAlignment = VerticalAlignment.Center };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(preview, id + "-preview");
-        preview.Click += (_, _) => ToggleSoundPreview(resource);
+        preview.Click += (_, _) => ToggleSoundPreview(id, resource);
         var previewMenu = Vidi_Studio_Windows.Views.MenuAccessKeys.Create();
         var matchingPreviewItem = new MenuFlyoutItem { Tag = id + "-preview-button-menu", Icon = new FontIcon { Glyph = "\uE768" } };
-        matchingPreviewItem.Click += (_, _) => ToggleSoundPreview(resource);
+        matchingPreviewItem.Click += (_, _) => ToggleSoundPreview(id, resource);
         previewMenu.Items.Add(matchingPreviewItem);
-        previewMenu.Opening += (_, _) => { matchingPreviewItem.Text = PreviewSoundTitle(resource, label); };
+        previewMenu.Opening += (_, _) => { matchingPreviewItem.Text = PreviewSoundTitle(id, label); };
         preview.ContextFlyout = previewMenu;
-        soundPreviewControls[resource] = (preview, previewItem, label);
+        soundPreviewControls[id] = (preview, previewItem, label, key);
         var row = new Grid { ColumnSpacing = 12 };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -676,14 +682,14 @@ public sealed partial class SettingsDialog : Window
         panel.Children.Add(row); UpdateSoundPreviewControls();
         return toggle;
     }
-    private string PreviewSoundTitle(string resource, string label) => (soundPreview.IsPlaying(resource) ? "Pause" : "Play") + " sound: " + label;
-    private void ToggleSoundPreview(string resource) { StopSample(false); soundPreview.Toggle(resource); }
+    private string PreviewSoundTitle(string id, string label) => (soundPreview.IsPlaying(id) ? "Pause" : "Play") + " sound: " + label;
+    private void ToggleSoundPreview(string id, string resource) { StopSample(false); soundPreview.Toggle(id, resource); }
     private void UpdateSoundPreviewControls()
     {
-        foreach (var (resource, controls) in soundPreviewControls)
+        foreach (var (id, controls) in soundPreviewControls)
         {
-            var title = PreviewSoundTitle(resource, controls.Label);
-            controls.Button.Content = new SymbolIcon(soundPreview.IsPlaying(resource) ? Symbol.Pause : Symbol.Play);
+            var title = PreviewSoundTitle(id, controls.Label);
+            controls.Button.Content = new SymbolIcon(soundPreview.IsPlaying(id) ? Symbol.Pause : Symbol.Play);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(controls.Button, title);
             ToolTipService.SetToolTip(controls.Button, title);
             controls.Menu.Text = title;
@@ -700,7 +706,7 @@ public sealed partial class SettingsDialog : Window
                     if (row.Children.Contains(field)) row.Children.Remove(field);
         }
     }
-    private ToggleSwitch? exportSoundControl;
+    private ToggleSwitch? exportSoundControl, generationSoundControl;
     private void BuildNarration(StackPanel panel)
     {
         ReleaseRetainedVoiceFields();
@@ -752,6 +758,7 @@ public sealed partial class SettingsDialog : Window
         AddSoundPreference(narrationGroup, "Sound when narration is off", "soundWhenNarrationOff", "Boink3", "narration-off-sound", "narration-off-sound-menu");
         AddSoundPreference(narrationGroup, "Sound when synthesized audio is unavailable", "soundWhenNarrationMissing", "ascend", "narration-missing-sound", "narration-missing-sound-menu");
         exportSoundControl = AddSoundPreference(narrationGroup, "Play sound after export", "soundAfterExport", "descend", "export-completion-sound", "export-completion-sound-menu");
+        generationSoundControl = AddSoundPreference(narrationGroup, "Play sound after generation", "soundAfterGeneration", "descend", "generation-completion-sound", "generation-completion-sound-menu");
         AddSoundPreference(narrationGroup, "Sound when timing validation fails", "soundWhenTimingInvalid", "Buzzer1", "timing-validation-sound", "timing-validation-sound-menu");
         var speechGroup = AddNarrationGroup(localSpeechControls, "Voice controls");
         speechSliders.Clear();

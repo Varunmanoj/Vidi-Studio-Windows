@@ -158,6 +158,7 @@ public partial class App : Application
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GEMINI_VOICES_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_GEMINI_VOICES_ONLY"));
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_JUMP_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_JUMP_ONLY"));
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_EXPORT_SOUND_ONLY"));
+            Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GENERATION_ANNOUNCEMENTS_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_GENERATION_ANNOUNCEMENTS_ONLY"));
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_YOUTUBE_LAYOUT_ONLY"));
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_SHELL_OPEN_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_SHELL_OPEN_ONLY"));
             Environment.SetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY", environment.GetValueOrDefault("VIDISTUDIO_UI_SMOKE_PROJECT_SEARCH_ONLY"));

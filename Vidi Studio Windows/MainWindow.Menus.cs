@@ -1035,9 +1035,9 @@ public sealed partial class MainWindow
             "segment-edit-selected" => "Edit Selected Segments…", "segment-delete-selected" => "Delete Selected Segments…",
             "follow" => "Toggle Transcript Follow", "undo" => "Undo Segment Edit", "redo" => "Redo Segment Edit", "analyze" => "Analyze Video…",
             "prepare-video" => p?.Thumbnails.Count > 0 ? "Regenerate Video Details & Timeline Pictures…" : "Generate Video Details & Timeline Pictures",
-            "transcribe" => p != null && (p.HasTranscript || ExtraFlag(p, "transcriptGenerated")) ? "Regenerate Transcript…" : "Generate Transcript",
-            "generate-summary" => p != null && (p.HasSummary || ExtraFlag(p, "summaryGenerated")) ? "Regenerate Summary…" : "Generate Summary",
-            "generate-ad-cues" => p != null && (p.Cues.Count > 0 || ExtraFlag(p, "descriptionsGenerated")) ? "Regenerate Audio Descriptions…" : "Generate Audio Descriptions",
+            "transcribe" => p?.HasSavedGenerationResult("transcribe") == true ? "Regenerate Transcript…" : "Generate Transcript",
+            "generate-summary" => p?.HasSavedGenerationResult("generate-summary") == true ? "Regenerate Summary…" : "Generate Summary",
+            "generate-ad-cues" => p?.HasSavedGenerationResult("generate-ad-cues") == true ? "Regenerate Audio Descriptions…" : "Generate Audio Descriptions",
             "synthesize-tts" => Model.IsSynthesizingNarration
                 ? (Model.NarratingSegmentIndex is { } idx && p != null ? $"Synthesizing AD Segment {idx} of {p.Cues.Count}…" : "Synthesizing Narration…")
                 : p?.AllADAudioTitle ?? "Generate All AD Audio",

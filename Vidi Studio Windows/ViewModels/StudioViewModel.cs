@@ -42,8 +42,14 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     private StudioProject? project;
     public StudioProject? Project { get => project; set { project = value; Changed(); } }
     private bool busy;
-    public bool Busy { get => busy; private set { busy = value; if (!value) HasAnnouncedProcessing = false; Changed(); Changed(nameof(Idle)); Changed(nameof(IsAnalyzing)); Changed(nameof(ProcessingStageTitle)); } }
+    public bool Busy { get => busy; private set { busy = value; if (!value) { HasAnnouncedProcessing = false; generationAnnouncements.Reset(); } Changed(); Changed(nameof(Idle)); Changed(nameof(IsAnalyzing)); Changed(nameof(ProcessingStageTitle)); } }
     internal bool HasAnnouncedProcessing { get; set; }
+    private bool announcesGenerationStages;
+    private readonly GenerationProcessingAnnouncement generationAnnouncements = new();
+    internal string? GenerationAnnouncementStage =>
+        IsAnalyzing && announcesGenerationStages && ProcessingSection is { } section && processingPlan.Contains(section)
+            ? section : null;
+    internal string? TakeGenerationAnnouncement() => generationAnnouncements.Take(GenerationAnnouncementStage);
     public bool Idle => !Busy;
     public bool IsExporting { get; private set; }
     private string status = "Import a video or open an existing project to begin.";
@@ -644,6 +650,35 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         return report;
     }
     public Func<string, string, string, Task<bool>>? ConfirmCloudAction { get; set; }
+    internal Func<string, string, string, Task<bool>>? ConfirmRegeneration { get; set; }
+    private bool regenerationPromptOpen;
+
+    private async Task<bool> ConfirmSavedRegenerationAsync(string command, StudioProject project, string[] arguments)
+    {
+        if (StudioProject.GenerationResultKind(command) is not { } kind) return true;
+        var languageIndex = Array.IndexOf(arguments, "--language");
+        var language = languageIndex >= 0 && languageIndex + 1 < arguments.Length
+            ? arguments[languageIndex + 1] : project.OperationLanguage(command);
+        var savedProject = StudioProject.TryLoad(project.Folder) ?? project;
+        if (!savedProject.HasSavedGenerationResult(command, language)) return true;
+        if (ConfirmRegeneration is not { } confirm) return false;
+
+        var action = "Regenerate " + (kind switch
+        {
+            "transcript" => "Transcript",
+            "summary" => "Summary",
+            _ => "Audio Descriptions"
+        });
+        var message = $"This creates a new version in “{project.Name}”. Your saved versions will remain available.";
+        regenerationPromptOpen = true;
+        try
+        {
+            return await confirm(action + "?", message, action) && !Busy &&
+                Project is { } selected && selected.Id == project.Id && selected.Folder == project.Folder &&
+                selected.OperationLanguage(command) == project.OperationLanguage(command);
+        }
+        finally { regenerationPromptOpen = false; }
+    }
     private async Task<bool> AuthorizeAIConnectionAsync(string command, StudioProject? project, bool throwOnProcessingError)
     {
         if (project?.RequiresLocalYouTubePlayback == true && OnlineRequirements.PrivateYouTubeAnalysisCommand(command))
@@ -687,8 +722,14 @@ public sealed class StudioViewModel : INotifyPropertyChanged
     public async Task<List<EngineEvent>> RunAsync(string command, IEnumerable<string>? extra = null, bool needsProject = true,
         bool throwOnProcessingError = false, Action<EngineEvent>? observeProgress = null)
     {
-        if (Busy) return new();
+        if (Busy || regenerationPromptOpen) return new();
         if (needsProject && Project == null) { Status = "Open a project first."; return new(); }
+        if (needsProject && Project is { } requestedProject && StudioProject.GenerationResultKind(command) != null)
+        {
+            var arguments = extra?.ToArray() ?? Array.Empty<string>();
+            if (!await ConfirmSavedRegenerationAsync(command, requestedProject, arguments)) return new();
+            extra = arguments;
+        }
         if (!await AuthorizeAIConnectionAsync(command, needsProject ? Project : null, throwOnProcessingError)) return new();
         bool vertexVideoTask = needsProject && Project is { IsYouTube: false } && OnlineRequirements.VideoAICommand(command);
         if (Settings.Get("aiProvider") == "vertex" && Settings.Get("vertexAuth") == "express" && vertexVideoTask) {
@@ -759,14 +800,13 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             command is "export-youtube-original-audio" or "export-youtube-described-audio" or "combine-imported-audio";
         YouTubeAudioExportRecovery? audioRecovery = null;
         string? connectionFailure = null;
-        var exportSucceeded = false;
+        var completionSucceeded = false;
         var hasExportOutput = false;
+        var hasGeneratedProject = false;
         IsExporting = command.StartsWith("export-", StringComparison.Ordinal) && Project != null;
         ContentTransferCommand = command is "copy-results" or "translate-results" or "attach-youtube-playback" ? command : null;
         ContentTransferProgress = null;
-        processingPlan.Clear();
-        processingPlan.AddRange(AnalysisPlan(command, extra));
-        ProcessingSection = InitialProcessingSection(command);
+        ConfigureProcessingStages(command, extra);
         VideoPreparation = null;
         if (command == "synthesize-tts" && Project is { } synthProject)
         {
@@ -935,14 +975,18 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             }), operation.Token);
             var imported = result.LastOrDefault(e => e.Data.TryGetProperty("project", out _));
             var folder = imported?.Data.GetProperty("project").GetString() ?? Project?.Folder;
-            if (folder != null && File.Exists(Path.Combine(folder, "project.json"))) Open(folder);
+            if (folder != null && File.Exists(Path.Combine(folder, "project.json")))
+            {
+                Open(folder);
+                hasGeneratedProject = imported != null && Project?.Folder == ProjectFolderIdentity.Normalize(folder);
+            }
             if (pendingNarrationFailures is { } narrationReport) { pendingNarrationFailures = null; NarrationFailures?.Invoke(this, narrationReport); }
             if (command is "check-api-key" or "list-models" || IsAICommand(command)) ClearAiIssue();
             var exportSummary = result.LastOrDefault(e => e.Data.TryGetProperty("exportSummary", out _));
             Status = exportSummary?.Message ?? "Complete";
             hasExportOutput = result.Any(e => e.Data.TryGetProperty("export", out var path) &&
                 path.ValueKind == System.Text.Json.JsonValueKind.String && !string.IsNullOrWhiteSpace(path.GetString()));
-            exportSucceeded = !result.Any(e => e.Data.TryGetProperty("error", out var error) &&
+            completionSucceeded = !result.Any(e => e.Data.TryGetProperty("error", out var error) &&
                 error.ValueKind == System.Text.Json.JsonValueKind.True);
             return result;
         }
@@ -970,7 +1014,7 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             if (Project != null && File.Exists(Path.Combine(Project.Folder, "project.json")))
             {
                 try { Project = StudioProject.Load(Project.Folder); ProjectReloaded?.Invoke(this, EventArgs.Empty); }
-                catch (Exception ex) { exportSucceeded = false; Engine.Log(ex.ToString()); Status = "Could not reload the project. Reopen its folder to retry."; }
+                catch (Exception ex) { completionSucceeded = false; Engine.Log(ex.ToString()); Status = "Could not reload the project. Reopen its folder to retry."; }
             }
             if (exportSession != null) ExportSessions.Remove(exportSession);
             IsSynthesizingNarration = false; NarratingSegmentId = null; NarratingSegmentIndex = null; NarratingTotalCount = 0; narratingQueueIds.Clear();
@@ -982,8 +1026,9 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             ProcessingSection = null; VideoPreparation = null; processingPlan.Clear();
             var wasCancelled = operation.IsCancellationRequested;
             operation.Dispose(); operation = null; IsExporting = false; Busy = false;
-            ExportCompletionSound.Complete(command, Settings.GetBool("soundAfterExport", true),
-                exportSucceeded, wasCancelled, hasExportOutput);
+            CompletionSound.Complete(command, Settings.GetBool("soundAfterExport", true),
+                Settings.GetBool("soundAfterGeneration", true), completionSucceeded, wasCancelled,
+                hasExportOutput, hasGeneratedProject);
         }
         if (connectionFailure != null) await NotifyConnectivityAsync(connectionFailure);
         if (audioRecovery != null && YouTubeAudioRecoveryRequested is { } recover)
@@ -1011,6 +1056,31 @@ public sealed class StudioViewModel : INotifyPropertyChanged
         "transcribe" or "generate-summary" or "generate-ad-cues" or "analyze" or "regenerate-all"
         or "reanalyze-segment" or "reanalyze-transcript-segment" or "rewrite-cue" or "capture-frame"
         or "import-youtube" or "align-imported-text" or "synthesize-tts" or "prepare-analysis-video";
+
+    private void ConfigureProcessingStages(string command, IEnumerable<string>? extra)
+    {
+        processingPlan.Clear();
+        processingPlan.AddRange(AnalysisPlan(command, extra));
+        announcesGenerationStages = processingPlan.Count > 0 && ContentTransferCommand == null && command != "prepare-analysis-video";
+        generationAnnouncements.Reset();
+        ProcessingSection = processingPlan.FirstOrDefault() ?? InitialProcessingSection(command);
+    }
+
+#if DEBUG
+    internal void BeginGenerationForSmokeTest(string command, string[]? args = null)
+    {
+        ConfigureProcessingStages(command, args);
+        Busy = true;
+    }
+
+    internal void SetGenerationStageForSmokeTest(string section) => ProcessingSection = section;
+    internal void EndGenerationForSmokeTest()
+    {
+        Busy = false;
+        ProcessingSection = null;
+        processingPlan.Clear();
+    }
+#endif
 
     private static string? InitialProcessingSection(string command) => command switch
     {
@@ -1042,13 +1112,16 @@ public sealed class StudioViewModel : INotifyPropertyChanged
             "generate-ad-cues" or "reanalyze-segment" or "prepare-analysis-video" => new List<string> { "descriptions" },
             _ => new List<string>()
         };
-        if (stages.Count > 1 && extra != null)
+        if (command == "analyze" && extra != null)
         {
             var list = extra.ToList();
             var flag = list.IndexOf("--start-stage");
             if (flag >= 0 && flag + 1 < list.Count)
             {
-                var startIndex = stages.IndexOf(list[flag + 1]);
+                var startIndex = stages.IndexOf(list[flag + 1] switch {
+                    "transcribe" => "transcript", "generate-summary" => "summary",
+                    "generate-ad-cues" => "descriptions", var stage => stage
+                });
                 if (startIndex > 0) stages = stages.GetRange(startIndex, stages.Count - startIndex);
             }
         }

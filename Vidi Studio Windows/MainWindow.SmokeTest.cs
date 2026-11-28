@@ -19,6 +19,61 @@ namespace Vidi_Studio_Windows;
 public sealed partial class MainWindow
 {
     private static int smokeTestClaimed;
+    private System.Collections.Generic.List<string>? observedGenerationAnnouncements;
+    private async Task VerifyGenerationAnnouncementsForSmokeTestAsync()
+    {
+        ShowEditor();
+        Activate();
+        await Task.Delay(250);
+        observedGenerationAnnouncements = new();
+        async Task VerifyStageAsync(string message)
+        {
+            for (var retry = 0; retry < 40 && observedGenerationAnnouncements.LastOrDefault() != message; retry++)
+                await Task.Delay(25);
+            if (!StatusRing.IsActive || StatusRing.Visibility != Visibility.Visible ||
+                observedGenerationAnnouncements.LastOrDefault() != message)
+                throw new InvalidOperationException("Missing notification from the visible progress indicator: " + message);
+        }
+        const string transcript = "Processing. Generating transcript.";
+        const string summary = "Processing. Generating summary.";
+        const string descriptions = "Processing. Generating descriptions.";
+        try
+        {
+            Model.BeginGenerationForSmokeTest("regenerate-all");
+            await VerifyStageAsync(transcript);
+            Model.ReportStatus("Waiting for the transcript response…");
+            Model.SetGenerationStageForSmokeTest("transcript");
+            Model.SetGenerationStageForSmokeTest("summary");
+            await VerifyStageAsync(summary);
+            Model.SetGenerationStageForSmokeTest("descriptions");
+            await VerifyStageAsync(descriptions);
+            if (!observedGenerationAnnouncements.SequenceEqual(new[] { transcript, summary, descriptions }))
+                throw new InvalidOperationException("Analysis stage notifications were repeated or out of order.");
+            Model.EndGenerationForSmokeTest();
+            foreach (var (command, message) in new[] {
+                ("reanalyze-transcript-segment", transcript), ("generate-summary", summary), ("reanalyze-segment", descriptions)
+            }) {
+                observedGenerationAnnouncements.Clear();
+                Model.BeginGenerationForSmokeTest(command);
+                await VerifyStageAsync(message);
+                Model.ReportStatus("Updating saved results…");
+                await Task.Delay(100);
+                if (observedGenerationAnnouncements.Count != 1)
+                    throw new InvalidOperationException("Repeated progress announcement for " + command);
+                Model.EndGenerationForSmokeTest();
+            }
+            observedGenerationAnnouncements.Clear();
+            Model.BeginGenerationForSmokeTest("analyze", new[] { "--start-stage", "generate-summary" });
+            await VerifyStageAsync(summary);
+            if (observedGenerationAnnouncements.Count != 1)
+                throw new InvalidOperationException("Announced a stage that Analyze Video skipped.");
+        }
+        finally
+        {
+            Model.EndGenerationForSmokeTest();
+            observedGenerationAnnouncements = null;
+        }
+    }
     private DialogPresentationVerifier? dialogPresentationVerifier;
     private Window? settingsLifetimeTestHost;
     private async Task RunSmokeTestAsync(string report)
@@ -30,6 +85,12 @@ public sealed partial class MainWindow
             var folder = Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_PROJECT");
             if (folder == null) throw new InvalidOperationException("Smoke project is required.");
             Model.Open(folder);
+            if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GENERATION_ANNOUNCEMENTS_ONLY") == "1")
+            {
+                await VerifyGenerationAnnouncementsForSmokeTestAsync();
+                await File.WriteAllTextAsync(report, "PASS: visible editor spinner sent native UI Automation notifications for every active transcript, summary and description generation stage and for individual transcript and description re-analysis; duplicate updates and skipped stages were silent.");
+                return;
+            }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_GEMINI_VOICES_ONLY") == "1")
             {
                 ShowEditor();
@@ -95,23 +156,38 @@ public sealed partial class MainWindow
                 var soundDisplay = soundSettings.ShowAsync();
                 try { await Task.Delay(200); await soundSettings.VerifyExportSoundForSmokeTestAsync(); await soundSettings.VerifySoundPreviewsForSmokeTestAsync(); }
                 finally { soundSettings.Close(); await soundDisplay; }
-                var initial = ExportCompletionSound.PlayCountForSmokeTest;
+                var initial = CompletionSound.PlayCountForSmokeTest;
                 Model.Settings.Set("soundAfterExport", true);
                 var soundResult = await Model.RunAsync("export-subtitles", new[] { "--content", "transcript", "--format", "txt", "--replace-existing" });
-                if (!soundResult.Any(e => e.Data.TryGetProperty("export", out _)) || ExportCompletionSound.PlayCountForSmokeTest != initial + 1)
-                    throw new InvalidOperationException($"Successful export cue mismatch: {Model.Status}; events={soundResult.Count}; plays={ExportCompletionSound.PlayCountForSmokeTest - initial}.");
+                if (!soundResult.Any(e => e.Data.TryGetProperty("export", out _)) || CompletionSound.PlayCountForSmokeTest != initial + 1)
+                    throw new InvalidOperationException($"Successful export cue mismatch: {Model.Status}; events={soundResult.Count}; plays={CompletionSound.PlayCountForSmokeTest - initial}.");
                 Model.Settings.Set("soundAfterExport", false);
                 await Model.RunAsync("export-subtitles", new[] { "--content", "transcript", "--format", "txt", "--replace-existing" });
-                if (ExportCompletionSound.PlayCountForSmokeTest != initial + 1) throw new InvalidOperationException("Disabled cue played.");
+                if (CompletionSound.PlayCountForSmokeTest != initial + 1) throw new InvalidOperationException("Disabled cue played.");
                 Model.Settings.Set("soundAfterExport", true);
                 await Model.RunAsync("export-not-a-real-command");
-                if (ExportCompletionSound.PlayCountForSmokeTest != initial + 1) throw new InvalidOperationException("Failed export played a completion cue.");
+                if (CompletionSound.PlayCountForSmokeTest != initial + 1) throw new InvalidOperationException("Failed export played a completion cue.");
                 var cancelled = Model.RunAsync("export-subtitles", new[] { "--content", "transcript", "--format", "txt", "--replace-existing" });
                 Model.Cancel();
                 await cancelled;
-                if (ExportCompletionSound.PlayCountForSmokeTest != initial + 1) throw new InvalidOperationException("Cancelled export played a completion cue.");
+                if (CompletionSound.PlayCountForSmokeTest != initial + 1) throw new InvalidOperationException("Cancelled export played a completion cue.");
+                var generationInitial = CompletionSound.PlayCountForSmokeTest;
+                string[] generationCommands = ["transcribe", "generate-summary", "generate-ad-cues", "analyze",
+                    "regenerate-all", "reanalyze-transcript-segment", "reanalyze-segment"];
+                foreach (var command in generationCommands)
+                {
+                    CompletionSound.Complete(command, false, true, true, false, false, true);
+                    if (CompletionSound.PlayCountForSmokeTest != ++generationInitial)
+                        throw new InvalidOperationException($"Successful {command} did not dispatch a completion cue.");
+                    CompletionSound.Complete(command, true, false, true, false, false, true);
+                    CompletionSound.Complete(command, false, true, false, false, false, true);
+                    CompletionSound.Complete(command, false, true, true, true, false, true);
+                    CompletionSound.Complete(command, false, true, true, false, false, false);
+                    if (CompletionSound.PlayCountForSmokeTest != generationInitial)
+                        throw new InvalidOperationException($"Disabled, failed, cancelled or incomplete {command} played a cue.");
+                }
                 Model.Settings.Save();
-                await File.WriteAllTextAsync(report, "PASS: bundled export WAV, default-on control/checked context menu/shared setting; successful real text export dispatches one cue; disabled, failed and cancelled exports remain silent.");
+                await File.WriteAllTextAsync(report, "PASS: shared WAV, five native previews, independent export and generation switches with checked context menus; real text export and simulated generation/re-analysis completions dispatch one cue when enabled; disabled, failed, cancelled and incomplete operations remain silent.");
                 return;
             }
             if (Environment.GetEnvironmentVariable("VIDISTUDIO_UI_SMOKE_JUMP_ONLY") == "1")
@@ -133,7 +209,8 @@ public sealed partial class MainWindow
             {
                 await VerifyCompanionDialogsForSmokeTestAsync(report);
                 await VerifyDuplicateProjectDialogForSmokeTestAsync(report);
-                await File.WriteAllTextAsync(report, "PASS: one hidden, content-fitted native window per dialog presentation, no visible startup resize or nested animation; light/dark initial presentation and live light/dark/system themes; dynamic content growth, cancellation before presentation, delete gating, Primary/Secondary/Cancel results, and duplicate New Project guidance with no writes to the existing project.");
+                await VerifyRegenerationConfirmationsForSmokeTestAsync();
+                await File.WriteAllTextAsync(report, "PASS: one hidden, content-fitted native window per dialog presentation, no visible startup resize or nested animation; light/dark initial presentation and live light/dark/system themes; dynamic content growth, cancellation before presentation, delete gating, Primary/Secondary/Cancel results, and duplicate New Project guidance with no writes to the existing project. All three saved generation actions show a named, Cancel-default confirmation and Cancel leaves the project untouched.");
                 return;
             }
             VerifyContextualMenusForSmokeTest();
@@ -2139,6 +2216,48 @@ public sealed partial class MainWindow
         if (!reopened.Projects.Any(project => project.Folder == importedFolder)) throw new InvalidOperationException("A project outside the default library was forgotten on reopen.");
         Model.Open(originalFolder);
     }
+    private async Task VerifyRegenerationConfirmationsForSmokeTestAsync()
+    {
+        var project = Model.Project ?? throw new InvalidOperationException("A saved project fixture is required.");
+        var manifest = Path.Combine(project.Folder, "project.json");
+        var before = await File.ReadAllBytesAsync(manifest);
+        foreach (var (command, name) in new[] {
+            ("transcribe", "Transcript"), ("generate-summary", "Summary"), ("generate-ad-cues", "Audio Descriptions")
+        })
+        {
+            var title = $"Regenerate {name}?";
+            var ready = new TaskCompletionSource<ContentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+            void Capture(ContentDialog dialog, Window window)
+            {
+                if (dialog.Title as string == title && window.Title == title) ready.TrySetResult(dialog);
+            }
+            Views.WindowedDialog.ReadyToShow += Capture;
+            try
+            {
+                var regeneration = Model.RunAsync(command);
+                var dialog = await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                await Task.Delay(1000);
+                if (dialog.DefaultButton != ContentDialogButton.Close || Model.Busy ||
+                    dialog.PrimaryButtonText != $"Regenerate {name}" ||
+                    dialog.Content is not TextBlock { Text: var message } ||
+                    !message.Contains("Your saved versions will remain available."))
+                    throw new InvalidOperationException($"The {name} warning is incomplete or processing started early.");
+                var cancel = FindButton(dialog, "Cancel") ?? throw new InvalidOperationException("Missing Cancel.");
+                var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(cancel);
+                ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(
+                    Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+                if ((await regeneration.WaitAsync(TimeSpan.FromSeconds(10))).Count != 0 ||
+                    !before.SequenceEqual(await File.ReadAllBytesAsync(manifest)))
+                    throw new InvalidOperationException($"Cancelling {name} regeneration changed the project.");
+            }
+            finally
+            {
+                Views.WindowedDialog.ReadyToShow -= Capture;
+                if (ready.Task.IsCompletedSuccessfully) ready.Task.Result.Hide();
+            }
+        }
+    }
+
     private async Task VerifyCompanionDialogsForSmokeTestAsync(string report)
     {
         // Focused dialog validation does not depend on speech engines or editor selection tests.

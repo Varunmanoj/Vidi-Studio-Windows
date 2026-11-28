@@ -334,7 +334,8 @@ internal static class WindowedDialog
     internal static event Action<ContentDialog, Window>? ReadyToShow;
 #endif
 
-    internal static async Task<ContentDialogResult> ShowAsync(ContentDialog dialog, Window owner, int width = 680, int height = 460)
+    internal static async Task<ContentDialogResult> ShowAsync(ContentDialog dialog, Window owner, int width = 680, int height = 460,
+        string? announcement = null)
     {
         CompactDialogLayout.PrepareDialog(dialog);
         var window = new Window { Title = dialog.Title?.ToString() ?? "Vidi Studio" };
@@ -500,6 +501,19 @@ internal static class WindowedDialog
             ReadyToShow?.Invoke(dialog, window);
 #endif
             window.Activate();
+            if (announcement != null)
+            {
+                root.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+                {
+                    var announcementSource = dialog.Content as FrameworkElement ?? dialog;
+                    if (closed || showing.Status != Windows.Foundation.AsyncStatus.Started || !announcementSource.IsLoaded ||
+                        Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(announcementSource) is not { } peer)
+                        return;
+                    peer.RaiseNotificationEvent(Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationKind.Other,
+                        Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationProcessing.ImportantAll,
+                        announcement, "dialog-confirmation");
+                });
+            }
             layout.ObserveContentChanges();
             return await showing;
         }

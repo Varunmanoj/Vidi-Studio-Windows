@@ -465,7 +465,7 @@
        <ScrollViewer x:Name="ExportList" Visibility="Collapsed" AutomationProperties.Name="Created exports"><StackPanel x:Name="ExportGroups" Padding="14,18" Spacing="8"/></ScrollViewer>
        <Grid x:Name="SectionProcessingOverlay" Visibility="Collapsed" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Canvas.ZIndex="10">
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14" MaxWidth="420">
-         <ProgressRing x:Name="SectionProcessingRing" Width="52" Height="52" IsActive="False" HorizontalAlignment="Center" AutomationProperties.Name="Section processing"/>
+         <ProgressRing x:Name="SectionProcessingRing" Width="52" Height="52" IsActive="False" HorizontalAlignment="Center" AutomationProperties.AccessibilityView="Raw"/>
          <TextBlock x:Name="SectionProcessingTitle" FontWeight="SemiBold" FontSize="16" TextAlignment="Center" HorizontalAlignment="Center" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
          <TextBlock x:Name="SectionProcessingStatus" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="13" TextAlignment="Center" HorizontalAlignment="Center" TextWrapping="Wrap"/>
         </StackPanel>
@@ -503,7 +503,7 @@
    <Border x:Name="StatusFooter" Grid.Row="5" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="14,7">
     <Grid ColumnSpacing="10">
      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-     <ProgressRing x:Name="StatusRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" VerticalAlignment="Center" AutomationProperties.Name="Processing"/>
+     <ProgressRing x:Name="StatusRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" VerticalAlignment="Center" AutomationProperties.AccessibilityView="Raw"/>
      <StackPanel Grid.Column="1" VerticalAlignment="Center">
       <ProgressBar x:Name="ContentTransferProgressBar" Minimum="0" Maximum="1" Visibility="Collapsed" AutomationProperties.Name="Copy or translation progress"/>
       <TextBlock x:Name="StatusStageTitle" FontWeight="SemiBold" FontSize="12" Visibility="Collapsed"/>
